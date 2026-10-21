@@ -4,6 +4,17 @@
  * You should have received a copy of the license in this archive (see LICENSE).
  *
  * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent
+ */
+
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
@@ -143,6 +154,8 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
         return tabsContainer.getChildAt(position);
     }
 
+    protected void onTabClicked(int position) {
+    }
     private void addIconTab(final int position, Drawable drawable, CharSequence contentDescription) {
         ImageView tab = new ImageView(getContext()) {
             @Override
@@ -174,6 +187,7 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
                     return;
                 }
             }
+            onTabClicked(position);
             pager.setCurrentItem(position, smoothScroll && isTabAnimationEnabled());
         });
         tabsContainer.addView(tab);
@@ -201,6 +215,7 @@ public class PagerSlidingTabStrip extends HorizontalScrollView {
                     return;
                 }
             }
+            onTabClicked(position);
             pager.setCurrentItem(position, smoothScroll && isTabAnimationEnabled());
         });
         tab.setPadding(AndroidUtilities.dp(16), 0, AndroidUtilities.dp(16), 0);

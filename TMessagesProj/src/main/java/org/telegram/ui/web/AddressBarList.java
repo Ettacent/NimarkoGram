@@ -76,6 +76,7 @@ import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class AddressBarList extends FrameLayout {
 
     public static final int MAX_RECENTS = 20;
@@ -557,6 +558,11 @@ public class AddressBarList extends FrameLayout {
             insertView.setScaleType(ImageView.ScaleType.CENTER);
             insertView.setImageResource(R.drawable.menu_browser_arrowup);
             addView(insertView, LayoutHelper.createFrame(32, 32, Gravity.CENTER_VERTICAL | Gravity.RIGHT, 8, 8, 10, 8));
+            if (getResources() instanceof NimarkoIconResources
+                    && ((NimarkoIconResources) getResources()).hasReplacement(R.drawable.menu_browser_arrowup)) {
+                insertView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                insertView.setPadding(dp(9), dp(9), dp(9), dp(9));
+            }
         }
 
         public void setTopBottom(int grayBackgroundColor, int rippleColor, boolean top, boolean bottom) {

@@ -1,10 +1,12 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.res.Resources;
 import android.graphics.Canvas;
-import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -16,17 +18,45 @@ import org.telegram.ui.ActionBar.Theme;
  * Created by grishka on 10.02.17.
  */
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class BetterRatingView extends View {
-	private Bitmap filledStar, hollowStar;
-	private Paint paint = new Paint();
+	private Drawable filledStar, hollowStar;
+	private Resources starResources;
+	private long starGeneration;
+	private int starDensity;
+	private boolean starColorsSet;
+	private int filledColor, hollowColor;
 	private int numStars = 5;
 	private int selectedRating = 0;
 	private OnRatingChangeListener listener;
 
 	public BetterRatingView(Context context) {
 		super(context);
-		filledStar = BitmapFactory.decodeResource(getResources(), R.drawable.ic_rating_star_filled).extractAlpha();
-		hollowStar = BitmapFactory.decodeResource(getResources(), R.drawable.ic_rating_star).extractAlpha();
+		updateStarDrawables();
+	}
+
+	private void updateStarDrawables() {
+		Resources resources = getContext().getResources();
+		long generation = resources instanceof NimarkoIconResources
+				? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+		int density = resources.getDisplayMetrics().densityDpi;
+		if (starResources != resources || starGeneration != generation || starDensity != density) {
+			filledStar = resources.getDrawable(R.drawable.ic_rating_star_filled).mutate();
+			hollowStar = resources.getDrawable(R.drawable.ic_rating_star).mutate();
+			starResources = resources;
+			starGeneration = generation;
+			starDensity = density;
+			starColorsSet = false;
+		}
+		int selected = Theme.getColor(Theme.key_dialogTextBlue);
+		int empty = Theme.getColor(Theme.key_dialogTextHint);
+		if (!starColorsSet || filledColor != selected || hollowColor != empty) {
+			filledStar.setColorFilter(selected, PorterDuff.Mode.SRC_IN);
+			hollowStar.setColorFilter(empty, PorterDuff.Mode.SRC_IN);
+			filledColor = selected;
+			hollowColor = empty;
+			starColorsSet = true;
+		}
 	}
 
 	@Override
@@ -36,9 +66,12 @@ public class BetterRatingView extends View {
 
 	@Override
 	protected void onDraw(Canvas canvas) {
+		updateStarDrawables();
 		for (int i = 0; i < numStars; i++) {
-			paint.setColor(Theme.getColor(i < selectedRating ? Theme.key_dialogTextBlue : Theme.key_dialogTextHint));
-			canvas.drawBitmap(i < selectedRating ? filledStar : hollowStar, i * AndroidUtilities.dp(32 + 16), 0, paint);
+			Drawable star = i < selectedRating ? filledStar : hollowStar;
+			int left = i * AndroidUtilities.dp(32 + 16);
+			star.setBounds(left, 0, left + AndroidUtilities.dp(32), AndroidUtilities.dp(32));
+			star.draw(canvas);
 		}
 	}
 

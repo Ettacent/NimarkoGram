@@ -116,6 +116,7 @@ public class NimarkoChatsHelper extends BaseController {
     public static Drawable editedDrawable;
 
     public static CharSequence createForwardedString(MessageObject messageObject) {
+        MessageStatusIcons.ensureCurrentResources();
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
 
         if (forwardsDrawable == null) {
@@ -137,6 +138,7 @@ public class NimarkoChatsHelper extends BaseController {
     }
 
     public static CharSequence createEditedString(MessageObject messageObject) {
+        MessageStatusIcons.ensureCurrentResources();
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
         boolean hasForwards = messageObject.messageOwner.forwards > 0;
         boolean isMusic = messageObject.isMusic();

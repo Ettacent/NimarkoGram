@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import android.animation.Animator;
@@ -8,7 +10,6 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.drawable.Drawable;
-import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.view.TextureView;
@@ -22,7 +23,6 @@ import androidx.media3.exoplayer.ExoPlayer;
 import org.telegram.ui.AspectRatioFrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.ImageReceiver;
@@ -43,48 +43,67 @@ import java.net.URLEncoder;
 
 public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, NotificationCenter.NotificationCenterDelegate {
 
+    private static final float DEFAULT_VIDEO_ASPECT_RATIO = 0.671f;
     private final SvgHelper.SvgDrawable svgIcon;
     Paint phoneFrame1 = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint phoneFrame2 = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     boolean fromTop = false;
     File file;
-    float aspectRatio;
+    float aspectRatio = DEFAULT_VIDEO_ASPECT_RATIO;
+    int videoRotation;
     String attachFileName;
     ImageReceiver imageReceiver = new ImageReceiver(this);
 
     Runnable nextCheck;
 
-    private void checkVideo() {
-        if (file != null && file.exists() || SharedConfig.streamMedia) {
-            if (file != null && file.exists()) {
-                if ((NotificationCenter.getGlobalInstance().getCurrentHeavyOperationFlags() & 512) != 0) {
+    private void cancelNextCheck() {
                     if (nextCheck != null) {
                         AndroidUtilities.cancelRunOnUIThread(nextCheck);
-                    }
+            nextCheck = null;
+        }
+    }
+
+    private static float getDocumentAspectRatio(TLRPC.Document document) {
+        if (document != null) {
+            for (TLRPC.DocumentAttribute attribute : document.attributes) {
+                if (attribute instanceof TLRPC.TL_documentAttributeVideo && attribute.w > 0 && attribute.h > 0) {
+                    return attribute.w / (float) attribute.h;
+                }
+            }
+        }
+        return DEFAULT_VIDEO_ASPECT_RATIO;
+    }
+
+    private void updateVideoSize(VideoPlayerHolderBase owner, int width, int height, int rotation, float pixelRatio) {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!attached || videoPlayerBase != owner || owner.released || width <= 0 || height <= 0) return;
+            float pixels = pixelRatio > 0 && !Float.isInfinite(pixelRatio) && !Float.isNaN(pixelRatio) ? pixelRatio : 1f;
+            double ratio = width * (double) pixels / height;
+            if (rotation == 90 || rotation == 270) ratio = 1d / ratio;
+            float decodedRatio = (float) ratio;
+            if (!(decodedRatio > 0) || Float.isInfinite(decodedRatio)) return;
+            aspectRatio = decodedRatio;
+            videoRotation = rotation;
+            aspectRatioFrameLayout.setAspectRatio(aspectRatio, rotation);
+        });
+    }
+
+    private void checkVideo() {
+        cancelNextCheck();
+        if (!attached) return;
+        boolean localFile = file != null && file.exists();
+        if (!localFile && !SharedConfig.streamMedia) return;
+        if (localFile && (NotificationCenter.getGlobalInstance().getCurrentHeavyOperationFlags() & 512) != 0) {
                     AndroidUtilities.runOnUIThread(nextCheck = this::checkVideo, 300);
                     return;
                 }
 
-                try {
-                    MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(ApplicationLoader.applicationContext, Uri.fromFile(file));
-                    int width = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-                    int height = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-                    retriever.release();
-                    aspectRatio = width / (float) height;
-                } catch (Exception e) {
-                    aspectRatio = 0.671f;
-                }
-            } else {
-                aspectRatio = 0.671f;
-            }
-
-            if (allowPlay) {
-                runVideoPlayer();
-            }
+        if (videoPlayerBase == null) {
+            aspectRatio = getDocumentAspectRatio(document);
+            videoRotation = 0;
         }
-        nextCheck = null;
+        if (allowPlay) runVideoPlayer();
     }
 
     int currentAccount;
@@ -266,6 +285,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
                 Utilities.globalQueue.postRunnable(() -> {
                     File file = FileLoader.getInstance(currentAccount).getPathToAttach(document);
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (this.document != document) return;
                         this.file = file;
                         checkVideo();
                     });
@@ -504,9 +524,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
         super.onAttachedToWindow();
         attached = true;
         updateAttachState();
-        if (!firstFrameRendered) {
             checkVideo();
-        }
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileLoaded);
     }
 
@@ -514,6 +532,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attached = false;
+        cancelNextCheck();
         updateAttachState();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileLoaded);
         if (helloParticlesDrawable != null) {
@@ -521,6 +540,8 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
             helloParticlesDrawable = null;
         }
         stopVideoPlayer();
+        firstFrameRendered = false;
+        textureView.setAlpha(0f);
     }
 
     @Override
@@ -547,42 +568,15 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
     }
 
     private void runVideoPlayer() {
-        if (file != null || SharedConfig.streamMedia) {
+        if (!attached || !allowPlay) return;
+        boolean localFile = file != null && file.exists();
+        if (localFile || SharedConfig.streamMedia && document != null) {
             if (videoPlayerBase != null) {
                 return;
             }
-            aspectRatioFrameLayout.setAspectRatio(aspectRatio, 0);
-            videoPlayerBase = new VideoPlayerHolderBase() {
-                @Override
-                public void onStateChanged(boolean playWhenReady, int playbackState) {
-                    if (videoPlayerBase == null) return;
-                    if (playbackState == ExoPlayer.STATE_ENDED) {
-                        videoPlayerBase.seekTo(0);
-                        videoPlayerBase.play();
-                    } else if (playbackState == ExoPlayer.STATE_IDLE) {
-                        videoPlayerBase.play();
-                    }
-                }
-
-                @Override
-                public void onRenderedFirstFrame() {
-                    if (textureView == null) return;
-                    if (!VideoScreenPreview.this.firstFrameRendered) {
-                        textureView.setAlpha(0);
-                        textureView.animate().alpha(1f).setListener(new AnimatorListenerAdapter() {
-                            @Override
-                            public void onAnimationEnd(Animator animation) {
-                                VideoScreenPreview.this.firstFrameRendered = true;
-                                invalidate();
-                            }
-                        }).setDuration(200);
-                    }
-                }
-            };
-            videoPlayerBase.with(textureView);
 
             Uri uri;
-            if (file != null && file.exists()) {
+            if (localFile) {
                 uri = Uri.fromFile(file);
             } else {
                 try {
@@ -597,14 +591,46 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
                             "&reference=" + Utilities.bytesToHex(document.file_reference != null ? document.file_reference : new byte[0]);
                     uri = Uri.parse("tg://" + attachFileName + params);
                 } catch (Exception exception) {
-                    uri = null;
-                }
-            }
-
-            if (uri == null) {
                 return;
             }
 
+            }
+            aspectRatioFrameLayout.setAspectRatio(aspectRatio, videoRotation);
+            videoPlayerBase = new VideoPlayerHolderBase() {
+                @Override
+                public void onStateChanged(boolean playWhenReady, int playbackState) {
+                    if (videoPlayerBase != this || released) return;
+                    if (playbackState == ExoPlayer.STATE_ENDED) {
+                        seekTo(0);
+                        play();
+                    } else if (playbackState == ExoPlayer.STATE_IDLE) {
+                        play();
+                    }
+                }
+
+                @Override
+                protected void onVideoSizeChanged(int width, int height, int rotation, float pixelRatio) {
+                    updateVideoSize(this, width, height, rotation, pixelRatio);
+                }
+
+                @Override
+                public void onRenderedFirstFrame() {
+                    if (videoPlayerBase != this || released || !attached || textureView == null) return;
+                    final VideoPlayerHolderBase owner = this;
+                    if (!VideoScreenPreview.this.firstFrameRendered) {
+                        textureView.setAlpha(0);
+                        textureView.animate().alpha(1f).setListener(new AnimatorListenerAdapter() {
+                            @Override
+                            public void onAnimationEnd(Animator animation) {
+                                if (videoPlayerBase != owner || owner.released || !attached) return;
+                                VideoScreenPreview.this.firstFrameRendered = true;
+                                invalidate();
+                            }
+                        }).setDuration(200);
+                    }
+                }
+            };
+            videoPlayerBase.with(textureView);
             videoPlayerBase.preparePlayer(uri, false, 1f);
             if (!firstFrameRendered) {
                 imageReceiver.stopAnimation();
@@ -618,6 +644,10 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
     long lastFrameTime;
 
     private void stopVideoPlayer() {
+        if (textureView != null) {
+            textureView.animate().setListener(null);
+            textureView.animate().cancel();
+        }
         if (videoPlayerBase != null) {
             lastFrameTime = videoPlayerBase.getCurrentPosition();
             videoPlayerBase.release(() -> {

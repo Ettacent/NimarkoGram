@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="clock" android:fillColor="#00000000"
+        android:strokeWidth="1.60" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14.5,3.4A9,9 0,1 1,3.2,12.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="clock_hands" android:fillColor="#00000000"
+        android:strokeWidth="1.60" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,8V12.7L8.9,15.4">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="forward_arrow" android:fillColor="#00000000"
+        android:strokeWidth="1.60" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3.2,8V6A2,2 0,0 1,5.2,4H11 M8.2,1.8L11,4L8.2,6.8">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

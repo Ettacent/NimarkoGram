@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 3.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -198,7 +200,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         currentAccount = account;
         currentType = type;
         currentPassword = password;
-        waitingForEmail = !TextUtils.isEmpty(currentPassword.email_unconfirmed_pattern);
+        waitingForEmail = currentPassword != null && !TextUtils.isEmpty(currentPassword.email_unconfirmed_pattern);
         if (currentPassword == null && (currentType == TYPE_INTRO || currentType == TYPE_VERIFY)) {
             loadPasswordInfo();
         }
@@ -425,7 +427,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
         buttonTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         buttonTextView.setTypeface(AndroidUtilities.bold());
-        buttonTextView.setBackground(Theme.AdaptiveRipple.filledRectByKey(Theme.key_featuredStickers_addButton, 6));
+        buttonTextView.setBackground(Theme.AdaptiveRipple.filledRectByKey(Theme.key_featuredStickers_addButton, 24));
         buttonTextView.setOnClickListener(v -> processNext());
 
         switch (currentType) {
@@ -1996,6 +1998,8 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                     } else {
                         if ("EMAIL_INVALID".equals(error.text)) {
                             showAlertWithText(LocaleController.getString(R.string.AppName), LocaleController.getString(R.string.PasswordEmailInvalid));
+                        } else if ("EMAIL_NOT_ALLOWED".equals(error.text)) {
+                            showAlertWithText(LocaleController.getString(R.string.AppName), LocaleController.getString(R.string.EmailNotAllowed));
                         } else if (error.text.startsWith("FLOOD_WAIT")) {
                             int time = Utilities.parseInt(error.text);
                             String timeString;

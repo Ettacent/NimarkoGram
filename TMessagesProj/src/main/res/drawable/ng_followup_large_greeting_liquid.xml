@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram large_greeting source artwork; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="80dp" android:height="80dp" android:viewportWidth="80" android:viewportHeight="80">
+    <path android:name="bubble_open_waving_hand_cutout" android:pathData="M41 12.7 C24.9 12.7 11.7 24.7 11.7 39.6 C11.7 54.5 24.9 66.4 41 66.4 C45.5 66.4 49.8 65.5 53.7 63.8 C56.5 66.7 61.5 68.8 65.6 68.3 Q67.1 68.1 66.2 66.9 C63.4 63.5 63 60.3 62.8 58 C67.5 53.2 70.3 46.7 70.3 39.6 C70.3 24.7 57.1 12.7 41 12.7 ZM40.2 55.7 C36 53.7 28.6 47 25.1 43.2 C23.5 41.3 24.5 38.6 26.6 39.4 L33.7 43.9 C34.6 44.5 35.1 43.3 34.4 42.6 L26.7 34.5 C25.1 32.6 27.3 30.6 28.9 32.1 L36.6 39.7 C37.4 40.5 38.3 39.5 37.6 38.6 L30.7 28.8 C29.2 26.8 31.6 24.7 33.1 26.7 L40.8 37.1 C41.5 38.1 42.6 37.5 42.1 36.3 L37.8 27.3 C36.6 25.1 37.5 23.4 39.3 23.7 C40.2 23.8 40.7 24.8 41.3 25.8 L47.5 38 C48 39.1 48.9 39.8 49.5 38.7 L52.9 32.4 C53.8 30.7 56 30.4 56 32.2 L53.3 44.8 L53.2 48.8 C52.9 54.9 46.9 58.5 42.2 56.5 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="20" android:endY="80">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

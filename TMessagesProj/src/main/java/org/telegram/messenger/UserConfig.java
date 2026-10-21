@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -294,7 +296,9 @@ public class UserConfig extends BaseController {
             }
             SharedPreferences preferences = getPreferences();
             if (currentAccount == 0) {
-                selectedAccount = preferences.getInt("selectedAccount", 0);
+                final int storedSelectedAccount = preferences.getInt("selectedAccount", 0);
+                selectedAccount = storedSelectedAccount >= 0 && storedSelectedAccount < MAX_ACCOUNT_COUNT
+                        ? storedSelectedAccount : 0;
             }
             registeredForPush = preferences.getBoolean("registeredForPush", false);
             lastSendMessageId = preferences.getInt("lastSendMessageId", -210000);

@@ -5,6 +5,7 @@
     <string name="NM_WL_Ordinary">一般繞過封鎖</string>
     <string name="NM_WL_Title">繞過白名單限制</string>
     <string name="NM_WL_Network">所有電信商</string>
+    <string name="NM_WL_Enable">使用繞過封鎖線路</string>
     <string name="NM_WL_About">適用於白名單網路。</string>
     <string name="NM_WL_Request">訂閱</string>
     <string name="NM_WL_Status">存取狀態</string>
@@ -13,6 +14,7 @@
     <string name="NM_WL_Privacy">目前價格顯示於此頁面，存取按月付費。需要有效的付費訂閱，先前獲准的帳號也不例外。付款頁面會直接在 YooKassa 中開啟，付款狀態由伺服器自動確認。此裝置上只需一個已登入的付費帳號，所有本機帳號即可共用存取權限。首次帳號驗證需要連線至 Telegram。登出付費帳號後，共享存取將停止，除非仍有其他付費帳號保持登入。</string>
     <string name="NM_WL_Checking">正在檢查…</string>
     <string name="NM_WL_Approved">已生效</string>
+    <string name="NM_WL_ActivationPending">訂閱已生效。連線尚未就緒，無需重複付款。</string>
     <string name="NM_WL_Blocked">存取已遭封鎖</string>
     <string name="NM_WL_Expired">訂閱已到期</string>
     <string name="NM_WL_Busy">請稍後重試</string>
@@ -21,7 +23,6 @@
     <string name="NM_WL_AccountChanged">帳號已變更，請重試。</string>
     <string name="NM_WL_Error">無法檢查存取權限，請稍後重試。</string>
     <string name="NM_WL_Details">存取條件與隱私</string>
-    <string name="NM_WL_Enable">使用繞過封鎖線路</string>
     <string name="NM_WL_Expiry">有效期限</string>
     <string name="NM_WL_Price">價格</string>
     <string name="NM_WL_MonthlyPrice">每月 %1$s</string>
@@ -36,5 +37,4 @@
     <string name="NM_WL_PaymentDelayed">付款仍在核實中，請稍後重新開啟此頁面。</string>
     <string name="NM_WL_PaymentRequired">存取未啟用</string>
     <string name="NM_WL_PriceUnknown">價格暫不可用</string>
-    <string name="NM_WL_ActivationPending">訂閱已生效。連線尚未就緒，無需重複付款。</string>
 </resources>

@@ -89,6 +89,7 @@ public final class NativeCrashDiagnostics {
                     NativeExitInfoReader.markSession(app, session);
                     setKey(reporter, "ng_diag_schema", "5");
                     setKey(reporter, "ng_diag_session", session);
+                    CrashDiagnostics.setNativeSession(session);
                     setKey(reporter, "ng_diag_mapping_id", mapping);
                     setKey(reporter, "ng_diag_journal_evicted", String.valueOf(evicted));
                     ready.accept(journal);

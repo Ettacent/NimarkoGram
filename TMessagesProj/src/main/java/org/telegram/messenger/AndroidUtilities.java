@@ -1617,7 +1617,7 @@ public class AndroidUtilities {
             return 0;
         }
         try {
-            Bitmap b = Bitmaps.createScaledBitmap(bitmap, 1, 1, true);
+            Bitmap b = Bitmap.createScaledBitmap(bitmap, 1, 1, true);
             if (b != null) {
                 int bitmapColor = b.getPixel(0, 0);
                 if (bitmap != b) {
@@ -3054,6 +3054,15 @@ public class AndroidUtilities {
         }
     }
 
+    public static int getAccountInProduction() {
+        if (UserConfig.getInstance(UserConfig.selectedAccount).isClientActivated() && !ConnectionsManager.getInstance(UserConfig.selectedAccount).isTestBackend())
+            return UserConfig.selectedAccount;
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; ++i) {
+            if (UserConfig.getInstance(i).isClientActivated() && !ConnectionsManager.getInstance(i).isTestBackend())
+                return i;
+        }
+        return UserConfig.selectedAccount;
+    }
     public static float getPixelsInCM(float cm, boolean isX) {
         return (cm / 2.54f) * (isX ? displayMetrics.xdpi : displayMetrics.ydpi);
     }
@@ -6802,25 +6811,28 @@ public class AndroidUtilities {
     }
 
     public static String getBuildVersionInfo() {
+        return getBuildVersionInfo(false);
+    }
+
+    public static String getBuildVersionInfo(boolean multiline) {
         try {
             PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
-            int code = pInfo.versionCode / 10;
-            String abi = "";
+            int code = pInfo.versionCode;
+            String abi;
+            if (ApplicationLoader.isStandaloneBuild()) {
+                abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
+            } else {
             switch (pInfo.versionCode % 10) {
                 case 1:
                 case 2:
                     abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
                     break;
                 default:
-                case 9:
-                    if (ApplicationLoader.isStandaloneBuild()) {
-                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    } else {
                         abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    }
                     break;
             }
-            return formatString("TelegramVersion", R.string.TelegramVersion, String.format(Locale.US, "v%s (%d) %s", pInfo.versionName, code, abi));
+            }
+            return formatString("TelegramVersion", R.string.TelegramVersion, String.format(Locale.US, multiline ? "v%s (%d)\n%s" : "v%s (%d) %s", pInfo.versionName, code, abi));
         } catch (Exception e) {
             FileLog.e(e);
         }

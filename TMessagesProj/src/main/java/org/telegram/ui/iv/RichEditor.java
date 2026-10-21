@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -13,6 +15,7 @@ import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Outline;
@@ -23,6 +26,8 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.RadialGradient;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -37,6 +42,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -69,6 +75,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_iv;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.Components.Premium.PremiumFeatureBottomSheet;
 import org.telegram.ui.GradientClip;
 import org.telegram.ui.PremiumPreviewFragment;
@@ -96,6 +103,8 @@ import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
+import org.telegram.ui.Components.SmoothRippleDrawable;
+import org.telegram.ui.Components.inset.WindowAnimatedInsetsProvider;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.chat.ChatInputViewsContainer;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
@@ -150,15 +159,30 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     private MessageObject editingMessageObject;
     private ChatInputViewsContainer animateInputView;
     private ChatActivityEnterView animateEnterView;
+    private ChatActivity animateFromChat;
     private final Rect tempRect = new Rect();
     private BlurredBackgroundDrawable animateInputBackground;
+    private final RectF animateBackgroundRect = new RectF();
+    private final int[] animateContainerLocation = new int[2];
     private RectF animateFromRect;
     private boolean animatingOpen;
     private int[] location = new int[2];
     private int[] animateEnterViewFrom, animateEnterViewTo, animateSendButtonFrom;
     private float animateOpenProgress = 1.0f;
     private int animateInputAlpha = 255;
+    private AnimatorSet richTransitionAnimator;
+    private Runnable richTransitionStart;
+    private View richTransitionStartHost;
+    private Runnable richTransitionCleanup;
+
+    private void cancelRichEditorAnimation() {
+        final AnimatorSet animator = richTransitionAnimator;
+        final Runnable cleanup = richTransitionCleanup;
+        if (cleanup != null) cleanup.run();
+        if (animator != null) animator.cancel();
+    }
     public RichEditor animateFrom(ChatActivity chatActivity) {
+        animateFromChat = chatActivity;
         animateInputView = chatActivity.chatInputViewsContainer;
         animateEnterView = chatActivity.getChatActivityEnterView();
         return this;
@@ -168,15 +192,23 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         animateInputView.getLocationInWindow(location);
         animateInputView.getInputBubbleDrawableBounds(tempRect);
         out.set(tempRect);
-        out.offset(location[0], location[1]);
+        out.offset(location[0] - animateContainerLocation[0], location[1] - animateContainerLocation[1]);
+        if (animateInputBackground != null) {
+            animateInputBackground.setSourceOffset(
+                    animateInputView.blurredBackgroundDrawable.getSourceOffsetX() + animateContainerLocation[0] - location[0],
+                    animateInputView.blurredBackgroundDrawable.getSourceOffsetY() + animateContainerLocation[1] - location[1]);
+        }
     }
 
     private void updateAnimatingLocations() {
+        container.getLocationInWindow(animateContainerLocation);
         if (animateFromRect == null) animateFromRect = new RectF();
         captureInputBubbleBounds(animateFromRect);
 
         if (animateEnterViewFrom == null) animateEnterViewFrom = new int[2];
         animateEnterView.getLocationInWindow(animateEnterViewFrom);
+        animateEnterViewFrom[0] -= animateContainerLocation[0];
+        animateEnterViewFrom[1] -= animateContainerLocation[1];
         if (animateEnterViewTo == null) animateEnterViewTo = new int[2];
         animateEnterViewTo[0] = listView.getPaddingLeft();
         animateEnterViewTo[1] = listView.getPaddingTop();
@@ -184,14 +216,32 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
 
         if (animateSendButtonFrom == null) animateSendButtonFrom = new int[2];
         animateEnterView.sendButtonContainer.getLocationInWindow(animateSendButtonFrom);
+        animateSendButtonFrom[0] -= animateContainerLocation[0];
+        animateSendButtonFrom[1] -= animateContainerLocation[1];
+        updateAnimatingBackground();
+    }
+
+    private void updateAnimatingBackground() {
+        if (animateInputBackground == null) return;
+        final int padding = dp(7);
+        animateBackgroundRect.set(-padding, -padding,
+                container.getWidth() + padding, container.getHeight() + padding);
+        lerp(animateFromRect, animateBackgroundRect, animateOpenProgress, animateBackgroundRect);
+        animateInputBackground.setBounds(
+                Math.round(animateBackgroundRect.left), Math.round(animateBackgroundRect.top),
+                Math.round(animateBackgroundRect.right), Math.round(animateBackgroundRect.bottom));
+        animateInputBackground.setRadius(lerp(dpf2(ChatInputViewsContainer.INPUT_BUBBLE_RADIUS), 0f, animateOpenProgress));
+        animateInputBackground.setAlpha(Math.round(animateInputAlpha * (1f - animateOpenProgress)));
     }
 
     @Override
     public AnimatorSet onCustomTransitionAnimation(boolean isOpen, Runnable callback) {
+        cancelRichEditorAnimation();
         final boolean customTransition = !AndroidUtilities.isTablet()
-                && animateInputView != null && animateEnterView != null;
-        if (!isOpen && customTransition) {
-            animateEnterView.beginRichEditorTransition();
+                && animateFromChat != null && animateInputView != null && animateEnterView != null;
+        final Object transitionOwner = new Object();
+        if (customTransition) {
+            animateEnterView.beginRichEditorTransition(transitionOwner);
         }
         if (!isOpen) {
             if (!persistedDraftOnEnd) {
@@ -207,7 +257,15 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         if (customTransition) {
             final AnimatorSet animatorSet = new AnimatorSet();
 
-            animateInputBackground = animateInputView.blurredBackgroundDrawable;
+            final org.telegram.ui.ActionBar.ActionBarLayout transitionLayout =
+                    parentLayout instanceof org.telegram.ui.ActionBar.ActionBarLayout
+                            ? (org.telegram.ui.ActionBar.ActionBarLayout) parentLayout : null;
+
+            final ChatActivity transitionChat = animateFromChat;
+            final View transitionView = container;
+            final BlurredBackgroundDrawable transitionBackground =
+                    transitionChat.createRichEditorBackground(transitionView);
+            animateInputBackground = transitionBackground;
             animateInputAlpha = animateInputView.getInputBubbleAlpha();
 
             final ValueAnimator va = ValueAnimator.ofFloat(
@@ -230,32 +288,52 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
                 container.invalidate();
             });
             final boolean[] cleanedUp = {false};
+            final boolean[] captured = {false};
+            final boolean[] cancelled = {false};
+            final boolean[] callbackDelivered = {false};
             final Runnable cleanup = () -> {
                 if (cleanedUp[0]) {
                     return;
                 }
                 cleanedUp[0] = true;
+                if (transitionLayout != null) transitionLayout.unregisterCustomTransitionCleanup(animatorSet);
                 animatingOpen = false;
+                if (captured[0] && animateEnterView.isRichEditorTransitionOwner(transitionOwner)) {
                 animateEnterView.setAlpha(1.0f);
                 animateEnterView.sendButtonContainer.setVisibility(destinationSendVisibility[0]);
-                animateInputBackground.setRadius(dp(ChatInputViewsContainer.INPUT_BUBBLE_RADIUS));
                 animateInputView.setInputBubbleAlpha(animateInputAlpha);
                 animateInputView.setDrawInputCenterBackground(
                         destinationDrawInputCenterBackground[0]);
                 animateInputView.invalidate();
-                if (!isOpen) {
-                    animateEnterView.endRichEditorTransition();
+                }
+                animateEnterView.endRichEditorTransition(transitionOwner);
+                transitionChat.releaseRichEditorBackground(transitionView, transitionBackground);
+                if (animateInputBackground == transitionBackground) {
+                    animateInputBackground = null;
+                }
+                if (richTransitionAnimator == animatorSet) {
+                    if (richTransitionStartHost != null && richTransitionStart != null) {
+                        richTransitionStartHost.removeCallbacks(richTransitionStart);
+                    }
+                    richTransitionAnimator = null;
+                    richTransitionStart = null;
+                    richTransitionStartHost = null;
+                    richTransitionCleanup = null;
                 }
             };
-            va.addListener(new AnimatorListenerAdapter() {
+            animatorSet.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     cleanup.run();
+                    if (!cancelled[0] && !callbackDelivered[0]) {
+                        callbackDelivered[0] = true;
                     callback.run();
                 }
 
+                }
                 @Override
                 public void onAnimationCancel(Animator animation) {
+                    cancelled[0] = true;
                     cleanup.run();
                 }
             });
@@ -290,10 +368,18 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
                 if (cleanedUp[0]) {
                     return;
                 }
+                if (!animateEnterView.isRichEditorTransitionOwner(transitionOwner)
+                        || parentLayout == null || parentLayout instanceof org.telegram.ui.ActionBar.ActionBarLayout
+                        && !((org.telegram.ui.ActionBar.ActionBarLayout) parentLayout).ownsCurrentTransitionAnimation(animatorSet)) {
+                    cancelled[0] = true;
+                    cleanup.run();
+                    return;
+                }
                 updateAnimatingLocations();
                 destinationDrawInputCenterBackground[0] =
                         animateInputView.isDrawInputCenterBackground();
                 destinationSendVisibility[0] = animateEnterView.sendButtonContainer.getVisibility();
+                captured[0] = true;
                 animateInputView.setDrawInputCenterBackground(false);
                 animateInputView.invalidate();
                 animateEnterView.setAlpha(0.0f);
@@ -306,6 +392,14 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
             // after the destination composer has laid out. A custom pre-draw
             // loop used to mutate the destination repeatedly and competed with
             // the IME/navigation transition when Back was pressed.
+            richTransitionAnimator = animatorSet;
+            richTransitionCleanup = () -> {
+                cancelled[0] = true;
+                cleanup.run();
+            };
+            if (transitionLayout != null) transitionLayout.registerCustomTransitionCleanup(animatorSet, richTransitionCleanup);
+            richTransitionStart = startTransition;
+            richTransitionStartHost = isOpen ? container : animateInputView;
             if (!isOpen) {
                 animateInputView.postOnAnimation(startTransition);
             } else {
@@ -409,8 +503,68 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     private int keyboardHeight;
     private int keyboardHeightLand;
     private boolean keyboardVisible;
+    private boolean waitingForEmojiKeyboard;
+    private WindowAnimatedInsetsProvider editorInsetsProvider;
+    private boolean editorInputPaused;
+    private int keyboardSettlementGeneration;
+    private Runnable keyboardSettlement;
+    private int animatedKeyboardInset = -1;
+    private final WindowAnimatedInsetsProvider.Listener editorInsetsListener = new WindowAnimatedInsetsProvider.Listener() {
+        @Override public View getAnimatedInsetsTargetView() { return container; }
+        @Override public void onAnimatedInsetsStarted() { cancelKeyboardSettlement(); }
+        @Override public void onAnimatedInsetsChanged(View view, WindowInsetsCompat insets) {
+            if (editorInputPaused || view != container) return;
+            animatedKeyboardInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+            updateBottomPanelTranslation();
+        }
+        @Override public void onAnimatedInsetsFinished() {
+            animatedKeyboardInset = -1;
+            updateBottomPanelTranslation();
+            scheduleKeyboardSettlement();
+        }
+    };
+    private final Runnable emojiKeyboardTimeout = () -> {
+        if (!waitingForEmojiKeyboard) return;
+        waitingForEmojiKeyboard = false;
+        if (emojiView != null) emojiView.setVisibility(View.GONE);
+        emojiPadding = 0;
+        applyEmojiPadding();
+    };
     private SizeNotifierFrameLayout.SizeNotifierFrameLayoutDelegate sizeDelegate;
 
+    private final Rect editorControlBounds = new Rect();
+    private final int[] editorRootLocation = new int[2];
+
+    private boolean isTouchOnEditorControls(MotionEvent event) {
+        container.getRootView().getLocationOnScreen(editorRootLocation);
+        final int x = Math.round(event.getRawX()) - editorRootLocation[0];
+        final int y = Math.round(event.getRawY()) - editorRootLocation[1];
+        if (isTouchOnEmojiPanel(event)) return true;
+        return isEditorControlAt(topPanel, x, y) || isEditorControlAt(bottomContainer, x, y);
+    }
+
+    private boolean isTouchOnEmojiPanel(MotionEvent event) {
+        if (container == null) return false;
+        container.getRootView().getLocationOnScreen(editorRootLocation);
+        return emojiView != null && emojiView.getVisibility() == View.VISIBLE
+                && emojiView.getGlobalVisibleRect(editorControlBounds)
+                && editorControlBounds.contains(Math.round(event.getRawX()) - editorRootLocation[0],
+                        Math.round(event.getRawY()) - editorRootLocation[1]);
+    }
+
+    private boolean isEditorControlAt(View view, int x, int y) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0
+                || !view.getGlobalVisibleRect(editorControlBounds) || !editorControlBounds.contains(x, y)) return false;
+        if (view.isClickable() || view.isLongClickable() || view.getBackground() != null
+                || view instanceof HorizontalScrollView) return true;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                if (isEditorControlAt(group.getChildAt(i), x, y)) return true;
+            }
+        }
+        return false;
+    }
     @Override
     public View createView(Context context) {
         actionBar.setCastShadows(false);
@@ -420,30 +574,84 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         container = new SizeNotifierFrameLayout(context) {
             private boolean touchStartedInBottomPanel;
 
+            private boolean touchStartedInRetainedEmoji;
+            private boolean selectionTouchCaptured;
+            private boolean emojiDismissTap;
+            private float emojiTapX, emojiTapY;
+            private int emojiTapGeneration;
+            private final int emojiTapSlop = ViewConfiguration.get(context).getScaledTouchSlop();
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
-                if (listView.textSelectionHelper.isInSelectionMode() && listView.textSelectionOverlay.onTouchEvent(ev)) {
+                final int action = ev.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    touchStartedInBottomPanel = isTouchOnEditorControls(ev);
+                    touchStartedInRetainedEmoji = waitingForEmojiKeyboard && isTouchOnEmojiPanel(ev);
+                    selectionTouchCaptured = false;
+                    emojiTapGeneration++;
+                    emojiTapX = ev.getRawX();
+                    emojiTapY = ev.getRawY();
+                    emojiDismissTap = !touchStartedInBottomPanel && emojiViewVisible
+                            && !listView.textSelectionHelper.isInSelectionMode();
+                } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN
+                        || action == MotionEvent.ACTION_POINTER_UP || ev.getPointerCount() != 1
+                        || Math.hypot(ev.getRawX() - emojiTapX, ev.getRawY() - emojiTapY) > emojiTapSlop) {
+                    emojiDismissTap = false;
+                }
+                if (touchStartedInRetainedEmoji) {
+                    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) touchStartedInRetainedEmoji = false;
                     return true;
                 }
-                final int dismissBoundary = emojiSearchOpened && emojiView != null
-                    ? (int) emojiView.getY()
-                    : getHeight() - dp(8 + 44 + 8) - Math.max(Math.max(emojiPadding, bottomInset), imeInset);
-                if (ev.getAction() == MotionEvent.ACTION_DOWN && emojiViewVisible && ev.getY() < dismissBoundary) {
-                    hideEmojiPopup(true);
+                if (!touchStartedInBottomPanel && listView.dispatchSelectionHandleTouch(ev)) {
+                    emojiDismissTap = false;
+                    if (!selectionTouchCaptured && action != MotionEvent.ACTION_DOWN) {
+                        MotionEvent cancel = MotionEvent.obtain(ev);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        try { super.dispatchTouchEvent(cancel); } finally { cancel.recycle(); }
+                    }
+                    selectionTouchCaptured = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL;
+                    return true;
                 }
-                if ((ev.getAction() != MotionEvent.ACTION_DOWN || ev.getY() > getPaddingTop() + dp(8 + 44 + 8) && ev.getY() < dismissBoundary) &&
+                if (selectionTouchCaptured) {
+                    emojiDismissTap = false;
+                    listView.handleSelectionTouch(ev);
+                    selectionTouchCaptured = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL;
+                    return true;
+                }
+                if (!touchStartedInBottomPanel &&
                     listView.textSelectionOverlay.checkOnTap(ev)
                 ) {
-                    ev.setAction(MotionEvent.ACTION_CANCEL);
-                }
-                if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-                    final int bottomPanelTop = getHeight() - dp(8 + 44 + 8) - Math.max(Math.max(emojiPadding, bottomInset), imeInset);
-                    touchStartedInBottomPanel = bottomPanel.getVisibility() == View.VISIBLE && ev.getY() >= bottomPanelTop;
-                }
-                if (!touchStartedInBottomPanel && listView.handleSelectionTouch(ev)) {
+                    emojiDismissTap = false;
+                    MotionEvent cancel = MotionEvent.obtain(ev);
+                    cancel.setAction(MotionEvent.ACTION_CANCEL);
+                    try { super.dispatchTouchEvent(cancel); } finally { cancel.recycle(); }
                     return true;
                 }
-                return super.dispatchTouchEvent(ev);
+                if (!touchStartedInBottomPanel && listView.handleSelectionTouch(ev)) {
+                    emojiDismissTap = false;
+                    if (action != MotionEvent.ACTION_DOWN) {
+                        MotionEvent cancel = MotionEvent.obtain(ev);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        try { super.dispatchTouchEvent(cancel); } finally { cancel.recycle(); }
+                    }
+                    selectionTouchCaptured = action != MotionEvent.ACTION_UP && action != MotionEvent.ACTION_CANCEL;
+                    return true;
+                }
+                final boolean handled = super.dispatchTouchEvent(ev);
+                if (action == MotionEvent.ACTION_UP && emojiDismissTap
+                        && ev.getEventTime() - ev.getDownTime() < ViewConfiguration.getLongPressTimeout()) {
+                    final int gesture = emojiTapGeneration;
+                    final int popup = keyboardSettlementGeneration;
+                    final int selection = listView.getSelectionGeneration();
+                    post(() -> {
+                        if (gesture != emojiTapGeneration || popup != keyboardSettlementGeneration
+                                || selection != listView.getSelectionGeneration()
+                                || container != this || !isAttachedToWindow() || editorInputPaused || waitingForEmojiKeyboard
+                                || !emojiViewVisible || listView.textSelectionHelper.isInSelectionMode()) return;
+                        hideEmojiPopup(true);
+                    });
+                }
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) emojiDismissTap = false;
+                return handled;
             }
 
             @Override
@@ -463,20 +671,9 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
             protected void dispatchDraw(Canvas canvas) {
                 bgPaint.setColor(Theme.multAlpha(getThemedColor(Theme.key_windowBackgroundWhite), animateOpenProgress));
                 if (animatingOpen && animateInputBackground != null) {
-                    rect.set(0, 0, getWidth(), getHeight());
-                    rect.inset(-dp(7), -dp(7));
+                    rect.set(animateBackgroundRect);
                     final float rad = lerp(dpf2(ChatInputViewsContainer.INPUT_BUBBLE_RADIUS), 0, animateOpenProgress);
-                    lerp(animateFromRect, rect, animateOpenProgress, rect);
-
-                    tempRect.set(animateInputBackground.getBounds());
-                    animateInputBackground.setBounds(
-                        (int) rect.left, (int) rect.top,
-                        (int) rect.right, (int) rect.bottom
-                    );
-                    animateInputBackground.setRadius(rad);
-                    animateInputBackground.setAlpha((int) (0xFF * (1.0f - animateOpenProgress)));
                     animateInputBackground.draw(canvas);
-                    animateInputBackground.setBounds(tempRect);
 
                     rect.inset(dp(7), dp(7));
                     canvas.drawRoundRect(rect, rad, rad, bgPaint);
@@ -568,7 +765,11 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
             @Override
             public void onListLayoutUpdated() {}
             @Override
-            public void makeEditTextFocusable(RichEditText et, boolean showKeyboard) {}
+            public void makeEditTextFocusable(RichEditText et, boolean showKeyboard) {
+                if (showKeyboard && emojiViewVisible) {
+                    prepareKeyboardFromPopup();
+                }
+            }
             @Override
             public void onInlineButtonEditRequested(RichEditorListView.InlineButtonEdit edit, View anchor) {
                 final ItemOptions options = ItemOptions.makeOptions(RichEditor.this, anchor).dontFocus();
@@ -740,7 +941,10 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         emojiButton = new ChatActivityEnterViewAnimatedIconView(context, 24);
         emojiButton.setPadding(dp(7), dp(7), dp(7), dp(7));
         emojiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.SRC_IN));
-        emojiButton.setBackground(Theme.createRadSelectorDrawable(getThemedColor(Theme.key_windowBackgroundWhite), getThemedColor(Theme.key_listSelector), dp(20), dp(20)));
+        emojiButton.setBackground(new SmoothRippleDrawable(
+                ColorStateList.valueOf(getThemedColor(Theme.key_listSelector)),
+                Theme.createRoundRectDrawable(dp(20), getThemedColor(Theme.key_windowBackgroundWhite)),
+                new SoftButtonMask()));
         emojiButton.setState(ChatActivityEnterViewAnimatedIconView.State.SMILE, false);
         blocksLayout.addView(emojiButton, LayoutHelper.createLinear(38, 38, Gravity.CENTER_VERTICAL));
         ScaleStateListAnimator.apply(emojiButton);
@@ -961,21 +1165,24 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
             protected void dispatchDraw(@NonNull Canvas canvas) {
                 final float left = leftGradientAlpha.set(canScrollHorizontally(-1));
                 final float right = rightGradientAlpha.set(canScrollHorizontally(1));
-                if (left > 0 || right > 0) {
-                    canvas.saveLayerAlpha(getScrollX(), 0, getScrollX() + getWidth(), getHeight(), 0xFF, Canvas.ALL_SAVE_FLAG);
-                }
+                if (left <= 0 && right <= 0) {
                 super.dispatchDraw(canvas);
-                if (left > 0 || right > 0) {
-                    canvas.save();
+                    return;
+                }
+                final int save = canvas.saveLayerAlpha(getScrollX(), 0, getScrollX() + getWidth(), getHeight(), 0xFF, Canvas.ALL_SAVE_FLAG);
+                try {
+                    super.dispatchDraw(canvas);
+                    final float fadeWidth = Math.min(dp(48), getWidth() / 2f);
                     if (left > 0) {
-                        AndroidUtilities.rectTmp.set(getScrollX(), 0, getScrollX() + dp(48), getHeight());
+                        AndroidUtilities.rectTmp.set(getScrollX(), 0, getScrollX() + fadeWidth, getHeight());
                         clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.LEFT, left);
                     }
                     if (right > 0) {
-                        AndroidUtilities.rectTmp.set(getScrollX() + getWidth() - dp(48), 0, getScrollX() + getWidth(), getHeight());
+                        AndroidUtilities.rectTmp.set(getScrollX() + getWidth() - fadeWidth, 0, getScrollX() + getWidth(), getHeight());
                         clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.RIGHT, right);
                     }
-                    canvas.restore();
+                } finally {
+                    canvas.restoreToCount(save);
                 }
             }
         };
@@ -1615,6 +1822,29 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         return new ShadowWrapperDrawable(inner);
     }
 
+    private static class SoftButtonMask extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float radius;
+
+        @Override
+        protected void onBoundsChange(Rect bounds) {
+            radius = Math.min(bounds.width(), bounds.height()) / 2f;
+            paint.setShader(radius > 0 ? new RadialGradient(
+                    bounds.exactCenterX(), bounds.exactCenterY(), radius,
+                    new int[]{0xFFFFFFFF, 0xFFFFFFFF, 0x00FFFFFF},
+                    new float[]{0f, .65f, 1f}, Shader.TileMode.CLAMP) : null);
+        }
+
+        @Override public void draw(@NonNull Canvas canvas) {
+            if (radius > 0) canvas.drawCircle(getBounds().exactCenterX(), getBounds().exactCenterY(), radius, paint);
+        }
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); invalidateSelf(); }
+        @Override public void setColorFilter(@Nullable ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+    }
+    public static Drawable withShadow(Drawable inner, float r, float x, float y, int color) {
+        return new ShadowWrapperDrawable(inner, r, x, y, color);
+    }
     public static class RequiresPremiumDrawable extends Drawable {
 
         private final Context context;
@@ -1717,6 +1947,12 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
             } else {
                 shadowPaint.setShadowLayer(dp(12), 0, dp(4), Theme.multAlpha(0xFF000000, .10f));
             }
+        }
+        ShadowWrapperDrawable(Drawable inner, float r, float x, float y, int color) {
+            this.inner = inner;
+            inner.setCallback(this);
+            shadowPaint.setColor(0x00000000);
+            shadowPaint.setShadowLayer(r, x, y, color);
         }
 
         @Override
@@ -2274,8 +2510,14 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     }
 
     private void showEmojiPopup() {
+        final boolean switching = waitingForEmojiKeyboard || isKeyboardAnimationRunning();
+        final int retainedHeight = Math.max(0, emojiPadding - bottomInset);
+        cancelKeyboardSettlement();
+        waitingForEmojiKeyboard = false;
+        AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
         createEmojiView();
-        int h = getEmojiPanelHeight();
+        int h = keyboardVisible && imeInset > bottomInset && !switching
+                ? imeInset - bottomInset : Math.max(getEmojiPanelHeight(), retainedHeight);
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) emojiView.getLayoutParams();
         if (lp == null) {
             lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, h, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL);
@@ -2297,11 +2539,18 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     }
 
     private void hideEmojiPopup(boolean animated) {
+        hideEmojiPopup(animated, false);
+    }
+
+    private void hideEmojiPopup(boolean animated, boolean keepKeyboardSpace) {
+        cancelKeyboardSettlement();
+        waitingForEmojiKeyboard = false;
+        AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
         if (emojiSearchOpened) {
             emojiSearchOpened = false;
             if (emojiView != null) {
                 emojiView.closeSearch(false);
-                emojiView.hideSearchKeyboard();
+                if (!keepKeyboardSpace) emojiView.hideSearchKeyboard();
             }
         }
         if (emojiSearchAnimator != null) {
@@ -2312,11 +2561,11 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         emojiTargetEditText = null;
         if (emojiView != null) {
             emojiView.setTranslationY(0);
-            emojiView.setVisibility(View.GONE);
+            if (!keepKeyboardSpace) emojiView.setVisibility(View.GONE);
         }
         if (emojiViewVisible || emojiPadding != 0) {
             emojiViewVisible = false;
-            emojiPadding = 0;
+            if (!keepKeyboardSpace) emojiPadding = 0;
             applyEmojiPadding();
         }
         if (emojiButton != null) {
@@ -2325,11 +2574,78 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     }
 
     private void openKeyboardFromPopup() {
-        hideEmojiPopup(true);
         RichEditText et = listView.findFocusedEditText();
         if (et != null) {
+            prepareKeyboardFromPopup();
             et.requestEditFocus();
-            AndroidUtilities.showKeyboard(et);
+        } else {
+            hideEmojiPopup(true);
+        }
+    }
+
+    private void prepareKeyboardFromPopup() {
+        final boolean transferSearchFocus = emojiSearchOpened && keyboardVisible && !isKeyboardAnimationRunning();
+        hideEmojiPopup(true, true);
+        waitingForEmojiKeyboard = true;
+        AndroidUtilities.runOnUIThread(emojiKeyboardTimeout, 1500);
+        if (transferSearchFocus) scheduleKeyboardSettlement();
+    }
+
+    private boolean isKeyboardAnimationRunning() {
+        return editorInsetsProvider != null && editorInsetsProvider.hasActiveAnimations();
+    }
+
+    private void cancelKeyboardSettlement() {
+        keyboardSettlementGeneration++;
+        if (container != null && keyboardSettlement != null) container.removeCallbacks(keyboardSettlement);
+        keyboardSettlement = null;
+    }
+
+    private void scheduleKeyboardSettlement() {
+        cancelKeyboardSettlement();
+        if (container == null || editorInputPaused || !container.isAttachedToWindow()) return;
+        final int generation = keyboardSettlementGeneration;
+        final View owner = container;
+        keyboardSettlement = () -> {
+            if (generation != keyboardSettlementGeneration || container != owner
+                    || editorInputPaused || !owner.isAttachedToWindow()) return;
+            keyboardSettlement = null;
+            if (isKeyboardAnimationRunning()) return;
+            final WindowInsetsCompat insets = WindowAnimatedInsetsProvider.calculateWindowInsets(owner);
+            if (insets != null) settleKeyboardState(insets);
+        };
+        owner.postOnAnimation(keyboardSettlement);
+    }
+
+    private void settleKeyboardState(WindowInsetsCompat insets) {
+        final int nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+        imeInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
+        final int height = imeInset - nav;
+        if (emojiViewVisible && !emojiSearchOpened) {
+            if (height > dp(20)) {
+                final RichEditText et = listView.findFocusedEditText();
+                if (et != null) AndroidUtilities.hideKeyboard(et);
+            }
+            return;
+        }
+        if (height <= dp(20)) return;
+        if (waitingForEmojiKeyboard) {
+            waitingForEmojiKeyboard = false;
+            AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
+            if (emojiView != null) emojiView.setVisibility(View.GONE);
+            emojiPadding = 0;
+            applyEmojiPadding();
+        }
+        if (height > dp(50) && !AndroidUtilities.isInMultiwindow && !AndroidUtilities.isTablet()) {
+            if (AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
+                if (keyboardHeightLand != height) {
+                    keyboardHeightLand = height;
+                    MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", height).apply();
+                }
+            } else if (keyboardHeight != height) {
+                keyboardHeight = height;
+                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", height).apply();
+            }
         }
     }
 
@@ -2426,23 +2742,12 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         final int keyboardContentHeight = imeInset - bars.bottom;
         final boolean wasKeyboardVisible = keyboardVisible;
         keyboardVisible = keyboardContentHeight > dp(20);
-        if (keyboardVisible && keyboardContentHeight > dp(50) && !AndroidUtilities.isInMultiwindow && !AndroidUtilities.isTablet()) {
-            if (AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y) {
-                keyboardHeightLand = keyboardContentHeight;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height_land3", keyboardHeightLand).commit();
-            } else {
-                keyboardHeight = keyboardContentHeight;
-                MessagesController.getGlobalEmojiSettings().edit().putInt("kbd_height", keyboardHeight).commit();
-            }
-        }
-        if (keyboardVisible && !wasKeyboardVisible && emojiViewVisible && !emojiSearchOpened) {
-            hideEmojiPopup(false);
-        }
         if (!keyboardVisible && wasKeyboardVisible && currentMenuVisible != null) {
             currentMenuVisible.dismiss();
             currentMenuVisible = null;
         }
         onInsets(bars.left, bars.top, bars.right, bars.bottom);
+        scheduleKeyboardSettlement();
         return WindowInsetsCompat.CONSUMED;
     }
 
@@ -2467,6 +2772,13 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         final int bottom = Math.max(Math.max(emojiPadding, bottomInset), imeInset);
         listView.setPadding(0, dp(60), 0, dp(8 + 44 + 8 + 50) + bottom);
         listView.setInsets(bottomInset, imeInset, emojiPadding);
+        updateBottomPanelTranslation();
+    }
+
+    private void updateBottomPanelTranslation() {
+        if (bottomContainer == null || bottomGradient == null) return;
+        final int bottom = Math.max(Math.max(emojiPadding, bottomInset),
+                animatedKeyboardInset >= 0 ? animatedKeyboardInset : imeInset);
         bottomContainer.setTranslationY(-bottom);
         bottomGradient.setTranslationY(-bottom + bottomInset);
     }
@@ -2479,6 +2791,7 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
         emojiView.setDelegate(new EmojiView.EmojiViewDelegate() {
             @Override
             public void onSearchOpenClose(int type) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return;
                 if (type != 0) {
                     RichEditText focused = listView.getFocusedEditTextOrNull();
                     if (focused != null) {
@@ -2497,16 +2810,19 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
 
             @Override
             public void onStickersSettingsClick() {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return;
                 presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null));
             }
 
             @Override
             public void onEmojiSettingsClick(ArrayList<TLRPC.TL_messages_stickerSet> frozenEmojiPacks) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return;
                 presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, frozenEmojiPacks));
             }
 
             @Override
             public boolean onBackspace() {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return false;
                 RichEditText et = resolveEmojiTarget();
                 if (et == null || et.length() == 0) return false;
                 et.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
@@ -2515,6 +2831,7 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
 
             @Override
             public void onEmojiSelected(String symbol) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return;
                 RichEditText et = resolveEmojiTarget();
                 if (et == null) return;
                 int i = resolveEmojiTargetOffset(et);
@@ -2529,6 +2846,7 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
 
             @Override
             public void onCustomEmojiSelected(long documentId, TLRPC.Document document, String emoticon, boolean isRecent) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard) return;
                 RichEditText et = resolveEmojiTarget();
                 if (et == null) return;
                 int i = resolveEmojiTargetOffset(et);
@@ -2559,6 +2877,9 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
 
     @Override
     public boolean onBackPressed(boolean invoked) {
+        if (waitingForEmojiKeyboard) {
+            hideEmojiPopup(false);
+        }
         if (emojiSearchOpened) {
             closeEmojiSearch();
             return false;
@@ -2597,7 +2918,48 @@ public class RichEditor extends BaseFragment implements NotificationCenter.Notif
     private boolean persistedDraftOnEnd;
 
     @Override
+    public void onResume() {
+        editorInputPaused = false;
+        animatedKeyboardInset = -1;
+        super.onResume();
+        if (editorInsetsProvider == null && getParentActivity() instanceof LaunchActivity) {
+            editorInsetsProvider = ((LaunchActivity) getParentActivity()).getRootAnimatedInsetsListener();
+            if (editorInsetsProvider != null) editorInsetsProvider.subscribeToWindowInsetsAnimation(editorInsetsListener);
+        }
+        scheduleKeyboardSettlement();
+    }
+
+    @Override
+    public void onPause() {
+        editorInputPaused = true;
+        animatedKeyboardInset = -1;
+        cancelKeyboardSettlement();
+        if (editorInsetsProvider != null) {
+            editorInsetsProvider.unsubscribeFromWindowInsetsAnimation(editorInsetsListener);
+            editorInsetsProvider = null;
+        }
+        if (waitingForEmojiKeyboard) {
+            waitingForEmojiKeyboard = false;
+            AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
+            if (emojiView != null) emojiView.setVisibility(View.GONE);
+            emojiPadding = 0;
+            applyEmojiPadding();
+        }
+        super.onPause();
+    }
+
+    @Override
     public void onFragmentDestroy() {
+        cancelRichEditorAnimation();
+        editorInputPaused = true;
+        animatedKeyboardInset = -1;
+        cancelKeyboardSettlement();
+        if (editorInsetsProvider != null) {
+            editorInsetsProvider.unsubscribeFromWindowInsetsAnimation(editorInsetsListener);
+            editorInsetsProvider = null;
+        }
+        waitingForEmojiKeyboard = false;
+        AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.currentUserPremiumStatusChanged);
         if (!persistedDraftOnEnd) {
             persistDraft();

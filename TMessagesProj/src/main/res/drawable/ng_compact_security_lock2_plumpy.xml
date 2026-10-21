@@ -1,0 +1,18 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="12dp"
+    android:viewportWidth="12"
+    android:viewportHeight="12">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeAlpha="0.78"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M3.2,5.5V3.6C3.2,0 8.8,0 8.8,3.6V5.5" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3.2,5H8.8Q11,5 11,7.2V9.8Q11,12 8.8,12H3.2Q1,12 1,9.8V7.2Q1,5 3.2,5Z" />
+</vector>

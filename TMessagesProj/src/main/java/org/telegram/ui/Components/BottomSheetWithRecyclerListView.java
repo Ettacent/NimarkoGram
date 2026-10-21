@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -43,7 +45,7 @@ public abstract class BottomSheetWithRecyclerListView extends BottomSheet {
     private final Drawable headerShadowDrawable;
     protected LinearLayoutManager layoutManager;
     protected RecyclerListView recyclerListView;
-    protected ActionBar actionBar;
+    public ActionBar actionBar;
     boolean wasDrawn;
     protected int contentHeight;
     private BaseFragment baseFragment;

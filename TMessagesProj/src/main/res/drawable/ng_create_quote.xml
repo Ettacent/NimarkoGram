@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="quote_card" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8"
+        android:strokeLineJoin="round"
+        android:pathData="M5.5,4H18.5C19.88,4 21,5.12 21,6.5V17.5C21,18.88 19.88,20 18.5,20H5.5C4.12,20 3,18.88 3,17.5V6.5C3,5.12 4.12,4 5.5,4Z"/>
+    <path android:name="quotation_marks" android:fillColor="#FFFFFFFF"
+        android:pathData="M7,8H10.5V11.5C10.5,13.55 9.4,14.8 7.5,15.25V13.65C8.4,13.35 8.9,12.75 9,11.5H7Z M13,8H16.5V11.5C16.5,13.55 15.4,14.8 13.5,15.25V13.65C14.4,13.35 14.9,12.75 15,11.5H13Z"/>
+    <path android:name="attribution" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:pathData="M14,17H17"/>
+</vector>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram iv_checkbox_off.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="17.33dp" android:height="17.33dp" android:viewportWidth="52" android:viewportHeight="52">
+    <path android:strokeWidth="4" android:pathData="M 13 6 L 39 6 Q 46 6 46 13 L 46 39 Q 46 46 39 46 L 13 46 Q 6 46 6 39 L 6 13 Q 6 6 13 6 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="13" android:endY="52">
+                <item android:offset="0" android:color="#FAffffff" />
+                <item android:offset="0.32" android:color="#E0ffffff" />
+                <item android:offset="0.56" android:color="#8Fffffff" />
+                <item android:offset="0.78" android:color="#B8ffffff" />
+                <item android:offset="1" android:color="#F5ffffff" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

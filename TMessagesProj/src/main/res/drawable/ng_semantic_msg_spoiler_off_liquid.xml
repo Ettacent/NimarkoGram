@@ -1,0 +1,38 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="photo_container" android:pathData="M5,3H11 M3,6V19A2,2 0,0 0,5,21H11"
+        android:fillColor="#00000000"
+        android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2" android:endX="22" android:endY="22"
+                android:startColor="#F5FFFFFF" android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="photo_mountains" android:pathData="M3,17L6.5,13.5L9.5,16.5L11,15"
+        android:fillColor="#00000000"
+        android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2" android:endX="22" android:endY="22"
+                android:startColor="#F5FFFFFF" android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="spoiler_pixels" android:pathData="M15.35,3.5A.85,.85 0,1 0,13.65,3.5A.85,.85 0,1 0,15.35,3.5Z M15.35,7.5A.85,.85 0,1 0,13.65,7.5A.85,.85 0,1 0,15.35,7.5Z M15.35,11.5A.85,.85 0,1 0,13.65,11.5A.85,.85 0,1 0,15.35,11.5Z M15.35,19.5A.85,.85 0,1 0,13.65,19.5A.85,.85 0,1 0,15.35,19.5Z M18.85,3.5A.85,.85 0,1 0,17.15,3.5A.85,.85 0,1 0,18.85,3.5Z M18.85,7.5A.85,.85 0,1 0,17.15,7.5A.85,.85 0,1 0,18.85,7.5Z M18.85,11.5A.85,.85 0,1 0,17.15,11.5A.85,.85 0,1 0,18.85,11.5Z M18.85,15.5A.85,.85 0,1 0,17.15,15.5A.85,.85 0,1 0,18.85,15.5Z M22.35,3.5A.85,.85 0,1 0,20.65,3.5A.85,.85 0,1 0,22.35,3.5Z M22.35,7.5A.85,.85 0,1 0,20.65,7.5A.85,.85 0,1 0,22.35,7.5Z M22.35,11.5A.85,.85 0,1 0,20.65,11.5A.85,.85 0,1 0,22.35,11.5Z M22.35,15.5A.85,.85 0,1 0,20.65,15.5A.85,.85 0,1 0,22.35,15.5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2" android:endX="22" android:endY="22"
+                android:startColor="#F5FFFFFF" android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="off_slash" android:pathData="M2,2L22,22"
+        android:fillColor="#00000000"
+        android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2" android:endX="22" android:endY="22"
+                android:startColor="#F5FFFFFF" android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

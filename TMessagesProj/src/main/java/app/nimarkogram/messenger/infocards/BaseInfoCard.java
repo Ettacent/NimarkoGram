@@ -134,7 +134,7 @@ public abstract class BaseInfoCard extends FrameLayout {
             if (r - l != or - ol || b - t != ob - ot) v.invalidateOutline();
         });
         int chipGravity = Gravity.CENTER_VERTICAL
-                | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+                | (InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT);
         addView(content, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, CHIP_HEIGHT_DP, chipGravity));
 
         iconView = new ImageView(context);
@@ -559,7 +559,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     void updateLayoutDirection() {
         FrameLayout.LayoutParams lp =
                 (FrameLayout.LayoutParams) content.getLayoutParams();
-        int gravity = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+        int gravity = Gravity.CENTER_VERTICAL | (InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT);
         if (lp != null && lp.gravity != gravity) {
             lp.gravity = gravity;
             content.setLayoutParams(lp);
@@ -647,7 +647,7 @@ public abstract class BaseInfoCard extends FrameLayout {
                 fragment.presentFragment(new InfoCardsPreferencesActivity());
             }
         });
-        options.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT).show();
+        options.setGravity(InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT).show();
         return options.isShown();
     }
     private BaseFragment getVisibleMenuFragment() {

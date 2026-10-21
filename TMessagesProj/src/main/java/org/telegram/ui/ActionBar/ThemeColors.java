@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import static org.telegram.ui.ActionBar.Theme.*;
@@ -156,6 +158,9 @@ public class ThemeColors {
         defaultColors[key_fastScrollText] = 0xffffffff;
         defaultColors[key_pollCreateIcons] = 0xff909599;
 
+        defaultColors[key_wallet_comment] = 0xfff5f5f5;
+        defaultColors[key_wallet_out_commentBorder] = 0xffd9d9d9;
+        defaultColors[key_wallet_inputCurrency] = 0xff219949;
         defaultColors[key_avatar_text] = 0xffffffff;
 
         defaultColors[key_avatar_backgroundSaved] = 0xff69BDF9;
@@ -954,6 +959,9 @@ public class ThemeColors {
         colorKeysMap.put(key_windowBackgroundWhiteInputField, "windowBackgroundWhiteInputField");
         colorKeysMap.put(key_windowBackgroundWhiteInputFieldActivated, "windowBackgroundWhiteInputFieldActivated");
         colorKeysMap.put(key_pollCreateIcons, "pollCreateIcons");
+        colorKeysMap.put(key_wallet_comment, "wallet_comment");
+        colorKeysMap.put(key_wallet_out_commentBorder, "wallet_out_commentBorder");
+        colorKeysMap.put(key_wallet_inputCurrency, "wallet_inputCurrency");
         colorKeysMap.put(key_windowBackgroundWhiteGrayIcon, "windowBackgroundWhiteGrayIcon");
         colorKeysMap.put(key_windowBackgroundWhiteBlueText, "windowBackgroundWhiteBlueText");
         colorKeysMap.put(key_windowBackgroundWhiteBlueText2, "windowBackgroundWhiteBlueText2");

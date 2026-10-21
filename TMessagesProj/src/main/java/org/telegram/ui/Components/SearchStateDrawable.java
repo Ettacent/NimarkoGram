@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -20,6 +22,9 @@ import com.google.zxing.common.detector.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 
+import org.telegram.messenger.R;
+
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -36,6 +41,7 @@ public class SearchStateDrawable extends Drawable {
     private int alpha = 0xFF;
     private Paint paint;
 
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
     private Path path = new Path();
 
     private RectF progressRect = new RectF();
@@ -91,6 +97,7 @@ public class SearchStateDrawable extends Drawable {
             return;
         } else if (delaySetProgress != null) {
             AndroidUtilities.cancelRunOnUIThread(delaySetProgress);
+            delaySetProgress = null;
         }
 
         if (progress.get() < 1 && animated) {
@@ -148,7 +155,12 @@ public class SearchStateDrawable extends Drawable {
         float backValue   =   toState == State.STATE_BACK     ? fromState == State.STATE_BACK     ? 1 : value : fromState == State.STATE_BACK       ? 1f - value : 0;
         float progressValue = toState == State.STATE_PROGRESS ? fromState == State.STATE_PROGRESS ? 1 : value : fromState == State.STATE_PROGRESS   ? 1f - value : 0;
 
-        if (searchValue > 0) {
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon search = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_search);
+        NimarkoIconResources.PreparedIcon back = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
+        boolean packGlyphs = search != null && back != null;
+
+        if (!packGlyphs && searchValue > 0) {
             // o
             drawCircle(
                 canvas,
@@ -158,7 +170,7 @@ public class SearchStateDrawable extends Drawable {
             );
         }
 
-        if (searchValue > 0 || backValue > 0) {
+        if (!packGlyphs && (searchValue > 0 || backValue > 0)) {
             // —
             canvas.save();
             canvas.rotate(searchValue * 45, cx, cy);
@@ -176,7 +188,7 @@ public class SearchStateDrawable extends Drawable {
             canvas.restore();
         }
 
-        if (backValue > 0) {
+        if (!packGlyphs && backValue > 0) {
             // <
             float ax = fromState == State.STATE_PROGRESS ? lerp(x(.5f + progressRadius), x(.2409f), backValue) : x(.2409f);
 
@@ -196,6 +208,10 @@ public class SearchStateDrawable extends Drawable {
             canvas.restore();
         }
 
+        if (packGlyphs) {
+            packIconRenderer.draw(canvas, search, paint, cx, cy, mn * searchValue, searchValue, -45 * (1 - searchValue));
+            packIconRenderer.draw(canvas, back, paint, cx, cy, mn * backValue, backValue, 45 * searchValue);
+        }
         if (progressValue > 0) {
             if (progressStart < 0 && progressValue > .8f) {
                 progressStart = System.currentTimeMillis();

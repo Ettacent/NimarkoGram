@@ -157,7 +157,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         private RecyclerListView listView;
         private RecyclerView.Adapter listAdapter;
 
-        private int pendingSettingHighlight = RecyclerView.NO_POSITION;
+        private SettingsSearchHighlight settingHighlight;
         private int selectedColor;
         private long selectedEmoji;
         private ThemePreviewMessagesCell messagesCellPreview;
@@ -238,24 +238,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     super.onMeasure(widthSpec, heightSpec);
                 }
 
-                @Override
-                protected void onLayout(boolean changed, int l, int t, int r, int b) {
-                    super.onLayout(changed, l, t, r, b);
-                    if (pendingSettingHighlight != RecyclerView.NO_POSITION) {
-                        final int target = pendingSettingHighlight;
-                        RecyclerView.ViewHolder holder = findViewHolderForAdapterPosition(target);
-                        if (holder != null && !holder.isRemoved() && !holder.isInvalid()) {
-                            pendingSettingHighlight = RecyclerView.NO_POSITION;
-                            highlightRow(() -> target);
-                        }
-                    }
-                }
-
-                @Override
-                protected void onDetachedFromWindow() {
-                    pendingSettingHighlight = RecyclerView.NO_POSITION;
-                    super.onDetachedFromWindow();
-                }
             };
             ((DefaultItemAnimator) listView.getItemAnimator()).setSupportsChangeAnimations(false);
             listView.setLayoutManager(new LinearLayoutManager(getContext()));
@@ -798,7 +780,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
         }
 
-        private void scrollToSetting(int settingId) {
+        private int getSettingRow(int settingId) {
             int position = -1;
             if (type == PAGE_MESSAGE) {
                 if (settingId == SETTING_SHOW_SECONDS) position = timeWithSecondsSwitchRow;
@@ -814,10 +796,20 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 else if (settingId == SETTING_PROFILE_COLOR) position = profileBackgroundSwitchRow;
                 else if (settingId == SETTING_PROFILE_EMOJI) position = profileEmojiSwitchRow;
             }
-            if (position < 0 || listView == null || listView.getLayoutManager() == null) return;
-            pendingSettingHighlight = position;
-            ((LinearLayoutManager) listView.getLayoutManager())
-                    .scrollToPositionWithOffset(position, AndroidUtilities.dp(80));
+            return position;
+        }
+
+        private void scrollToSetting(int settingId) {
+            clearSettingHighlight();
+            if (listView == null) return;
+            settingHighlight = new SettingsSearchHighlight(listView, () -> getSettingRow(settingId));
+        }
+
+        private void clearSettingHighlight() {
+            if (settingHighlight != null) {
+                settingHighlight.run();
+                settingHighlight = null;
+            }
         }
 
         private void updateMessages() {
@@ -968,6 +960,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         }
         initialSettingScrollHost = null;
         initialSettingScroll = null;
+        if (messagePage != null) messagePage.clearSettingHighlight();
+        if (profilePage != null) profilePage.clearSettingHighlight();
     }
 
     @Override
@@ -1097,7 +1091,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             final int targetSetting = initialSettingId;
             initialSettingScrollHost = openingView;
             initialSettingScroll = () -> {
-                if (contentView != openingView || isFinished) return;
+                if (initialSettingScrollHost != openingView || contentView != openingView || isFinished) return;
                 initialSettingScrollHost = null;
                 initialSettingScroll = null;
                 targetPage.scrollToSetting(targetSetting);
@@ -1115,6 +1109,12 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     public void onFragmentClosed() {
         super.onFragmentClosed();
         Bulletin.removeDelegate(this);
+    }
+
+    @Override
+    public void onPause() {
+        cancelInitialSettingScroll();
+        super.onPause();
     }
 
     @Override

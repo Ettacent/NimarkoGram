@@ -1168,14 +1168,15 @@ public final class NimarkoInAppNotifications {
             refreshTitleBadge();
             body = label(activity, 14, 1);
             body.setSingleLine(true);
-            body.setText(preview ? message : getString(R.string.NotificationHiddenMessage));
+            final String displayMessage = preview ? message : getString(R.string.NotificationHiddenMessage);
+            body.setText(compactPreview(displayMessage));
             body.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
             bodyParams.topMargin = dp(3);
             bodies = new FrameLayout(activity);
             bodies.addView(body, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             expandedBody = label(activity, 14, 8);
-            expandedBody.setText(body.getText());
+            expandedBody.setText(displayMessage);
             expandedBody.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
             expandedBody.setAlpha(0f);
             expandedBody.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -1273,7 +1274,7 @@ public final class NimarkoInAppNotifications {
         }
 
         void replaceText(String name, String message) {
-            if (TextUtils.equals(title.senderName, name) && TextUtils.equals(body.getText(), message)) return;
+            if (TextUtils.equals(title.senderName, name) && TextUtils.equals(expandedBody.getText(), message)) return;
             if (SharedConfig.animationsEnabled() && text.isShown() && text.isAttachedToWindow()) {
                 text.capture();
             } else {
@@ -1281,8 +1282,25 @@ public final class NimarkoInAppNotifications {
             }
             if (slot != null) slot.directResize = slot.getChildCount() == 1;
             refreshTitleBadge();
-            body.setText(message);
+            body.setText(compactPreview(message));
             expandedBody.setText(message);
+        }
+
+        private static String compactPreview(String message) {
+            if (message == null || message.isEmpty()) return message;
+            final StringBuilder result = new StringBuilder(message.length());
+            boolean space = false;
+            for (int i = 0; i < message.length(); i++) {
+                final char value = message.charAt(i);
+                if (Character.isWhitespace(value) || Character.isSpaceChar(value)) {
+                    space = result.length() > 0;
+                } else {
+                    if (space) result.append(' ');
+                    result.append(value);
+                    space = false;
+                }
+            }
+            return result.toString();
         }
 
         private void refreshTitleBadge() {
@@ -1559,7 +1577,7 @@ public final class NimarkoInAppNotifications {
             measuredAvailableHeight = availableHeight();
             int titleHeight = Math.max(dp(20), title.getLineHeight());
             setTextSlotHeight(title, titleHeight);
-            setTextSlotHeight(body, body.getLineHeight());
+            setTextSlotHeight(body, LayoutHelper.WRAP_CONTENT);
             int bodyLimit = Math.max(dp(34), Math.min(dp(220), measuredAvailableHeight
                     - getPaddingTop() - getPaddingBottom() - titleHeight - dp(3)));
             int lines = Math.max(2, Math.min(8, bodyLimit / Math.max(1, expandedBody.getLineHeight())));

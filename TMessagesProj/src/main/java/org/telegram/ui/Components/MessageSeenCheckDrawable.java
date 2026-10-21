@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -15,10 +17,6 @@ import org.telegram.ui.Cells.DialogCell;
 
 public class MessageSeenCheckDrawable {
 
-    private CharSequence lastSpanned;
-    private int lastColor;
-    private Drawable drawable;
-    private float lastDensity;
 
     private int resId;
     private int colorKey;
@@ -45,25 +43,18 @@ public class MessageSeenCheckDrawable {
     }
 
     public CharSequence getSpanned(Context context, Theme.ResourcesProvider resourcesProvider) {
-        if (lastSpanned != null && drawable != null && AndroidUtilities.density == lastDensity) {
-            if (lastColor != Theme.getColor(colorKey, resourcesProvider)) {
-                drawable.setColorFilter(new PorterDuffColorFilter(lastColor = Theme.getColor(colorKey, resourcesProvider), PorterDuff.Mode.SRC_IN));
-            }
-            return lastSpanned;
-        }
         if (context == null) {
             return null;
         }
         SpannableStringBuilder str = new SpannableStringBuilder("v ");
-        lastDensity = AndroidUtilities.density;
-        drawable = context.getResources().getDrawable(resId).mutate();
-        drawable.setColorFilter(new PorterDuffColorFilter(lastColor = Theme.getColor(colorKey, resourcesProvider), PorterDuff.Mode.SRC_IN));
+        Drawable drawable = context.getResources().getDrawable(resId).mutate();
+        drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(colorKey, resourcesProvider), PorterDuff.Mode.SRC_IN));
         final int w = this.w <= 0 ? drawable.getIntrinsicWidth() : AndroidUtilities.dp(this.w);
         final int h = this.h <= 0 ? drawable.getIntrinsicHeight() : AndroidUtilities.dp(this.h);
         final int oy = AndroidUtilities.dp(this.oy);
         drawable.setBounds(0, oy, w, oy + h);
         str.setSpan(new ImageSpan(drawable, DynamicDrawableSpan.ALIGN_CENTER), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         str.setSpan(new DialogCell.FixedWidthSpan(AndroidUtilities.dp(2)), 1, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return lastSpanned = str;
+        return str;
     }
 }

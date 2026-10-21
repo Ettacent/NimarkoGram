@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram iv_media_dots.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="72" android:viewportHeight="72">
+    <path android:fillColor="#ffffff" android:pathData="M12,36 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 Z" android:strokeColor="#ffffff" android:strokeWidth="0.9" android:strokeAlpha="1" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:fillColor="#ffffff" android:pathData="M30,36 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 Z" android:strokeColor="#ffffff" android:strokeWidth="0.9" android:strokeAlpha="1" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:fillColor="#ffffff" android:pathData="M48,36 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 Z" android:strokeColor="#ffffff" android:strokeWidth="0.9" android:strokeAlpha="1" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

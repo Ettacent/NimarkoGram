@@ -103,9 +103,10 @@ static const int VIDEO_DECODER_SUCCESS = 0;
 static const int VIDEO_DECODER_ERROR_INVALID_DATA = -1;
 static const int VIDEO_DECODER_ERROR_OTHER = -2;
 static const int VIDEO_DECODER_ERROR_READ_FRAME = -3;
+static const int VIDEO_DECODER_END_OF_STREAM = -5;
+static const int VIDEO_DECODER_NEED_INPUT = -6;
 // LINT.ThenChange(../java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java)
 
-static const int VIDEO_DECODER_END_OF_STREAM = -5;
 static jmethodID growOutputBufferMethod;
 
 /**
@@ -593,8 +594,8 @@ struct JniContext {
 
     AVCodecContext* codecContext = nullptr;
     SwsContext* swsContext = nullptr;
-
     bool swsFullRange = false;
+
     ANativeWindow* native_window = nullptr;
     jobject surface = nullptr;
 
@@ -603,7 +604,24 @@ struct JniContext {
     int native_window_height = 0;
     int native_window_format = 0;
     bool use_rgba_fallback = false;
+    int lastVideoErrorStage = 0;
+    int lastVideoErrorCode = 0;
 };
+
+static int videoError(JniContext* context, int stage, int code) {
+    if (context) {
+        context->lastVideoErrorStage = stage;
+        context->lastVideoErrorCode = code;
+    }
+    return VIDEO_DECODER_ERROR_OTHER;
+}
+
+VIDEO_DECODER_FUNC(jlong, ffmpegGetLastVideoError, jlong jContext) {
+    const JniContext* context = reinterpret_cast<JniContext*>(jContext);
+    if (!context) return 0;
+    return static_cast<jlong>((static_cast<uint64_t>(context->lastVideoErrorStage) << 32)
+            | static_cast<uint32_t>(context->lastVideoErrorCode));
+}
 
 constexpr int AlignTo16(int value) {
     return (value + 15) & ~15;
@@ -645,9 +663,6 @@ const int* cvt_colorspace_coefficients(AVColorSpace colorSpace) {
     }
 }
 
-/**
- * Converts a decoded frame to the requested pixel format and size.
- */
 bool is_full_range(const AVFrame* frame) {
     switch (static_cast<AVPixelFormat>(frame->format)) {
         case AV_PIX_FMT_YUVJ420P:
@@ -660,6 +675,10 @@ bool is_full_range(const AVFrame* frame) {
             return frame->color_range == AVCOL_RANGE_JPEG;
     }
 }
+
+/**
+ * Converts a decoded frame to the requested pixel format and size.
+ */
 AVFrame* cvt_format(JniContext* jniContext,
                     AVFrame* src,
                     AVPixelFormat dst_format,
@@ -683,6 +702,7 @@ AVFrame* cvt_format(JniContext* jniContext,
     double filter_coefficients[] = {0.0, 1.0, 0.0};
     SwsVector filter_vector = {filter_coefficients, 3};
     SwsFilter filter = {&filter_vector, nullptr, &filter_vector, nullptr};
+
     SwsContext* swsContext =
             sws_getCachedContext(
                     jniContext->swsContext,
@@ -698,13 +718,12 @@ AVFrame* cvt_format(JniContext* jniContext,
                     NULL);
 
     jniContext->swsContext = swsContext;
+
     if (!swsContext) {
         LOGE("Failed to allocate swsContext.");
         return nullptr;
     }
 
-
-    // Preserve the decoded frame's matrix/range while changing bit depth/format.
     const int src_range =
             full_range ? 1 : 0;
     const int* coefficients =
@@ -742,8 +761,8 @@ AVFrame* cvt_format(JniContext* jniContext,
     dst->width = dst_width;
     dst->height = dst_height;
     dst->format = dst_format;
-
     dst->color_range = AVCOL_RANGE_MPEG;
+
     const int alloc_result = av_frame_get_buffer(dst, 0);
     if (alloc_result < 0) {
         logError("av_frame_get_buffer", alloc_result);
@@ -981,13 +1000,17 @@ VIDEO_DECODER_FUNC(
         jlong inputTimeUs) {
     JniContext* const jniContext =
             reinterpret_cast<JniContext*>(jContext);
+    if (jniContext) {
+        jniContext->lastVideoErrorStage = 0;
+        jniContext->lastVideoErrorCode = 0;
+    }
 
     if (!jniContext ||
         !jniContext->codecContext ||
         (!encodedData && length != 0) ||
         length < 0) {
         LOGE("Invalid context or input buffer.");
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 1, AVERROR(EINVAL));
     }
 
     AVPacket* packet = nullptr;
@@ -1003,27 +1026,24 @@ VIDEO_DECODER_FUNC(
             inputCapacity < static_cast<jlong>(length)) {
             LOGE("Invalid direct input buffer: capacity=%lld length=%d",
                  static_cast<long long>(inputCapacity), length);
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 2, AVERROR(EINVAL));
         }
 
         packet = av_packet_alloc();
         if (!packet) {
             LOGE("Failed to allocate packet.");
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 3, AVERROR(ENOMEM));
         }
 
-    // Do not point AVPacket directly at Java memory.
-    //
-    // The normal DecoderInputBuffer is padded, but PendingInput in the PR is
-    // copied into a direct ByteBuffer whose capacity is exactly the payload
-    // length. FFmpeg parsers may legally read AV_INPUT_BUFFER_PADDING_SIZE bytes
-    // past packet->data + packet->size. av_new_packet() allocates that padding
-    // and zeroes it.
+        // Do not point AVPacket directly at Java memory.
+        //
+        // past packet->data + packet->size. av_new_packet() allocates that padding
+        // and zeroes it.
         const int allocationResult = av_new_packet(packet, length);
         if (allocationResult < 0) {
             logError("av_new_packet", allocationResult);
             av_packet_free(&packet);
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 4, allocationResult);
         }
 
         if (length > 0) {
@@ -1034,8 +1054,8 @@ VIDEO_DECODER_FUNC(
         }
 
         packet->pts = inputTimeUs;
-
     }
+
     const int result =
             avcodec_send_packet(jniContext->codecContext, packet);
 
@@ -1047,6 +1067,7 @@ VIDEO_DECODER_FUNC(
 
     if (result == AVERROR_INVALIDDATA) {
         logError("avcodec_send_packet", result);
+        videoError(jniContext, 5, result);
         return VIDEO_DECODER_ERROR_INVALID_DATA;
     }
 
@@ -1059,7 +1080,7 @@ VIDEO_DECODER_FUNC(
     }
 
     logError("avcodec_send_packet", result);
-    return VIDEO_DECODER_ERROR_OTHER;
+    return videoError(jniContext, 5, result);
 }
 
 VIDEO_DECODER_FUNC(
@@ -1071,18 +1092,22 @@ VIDEO_DECODER_FUNC(
         jboolean decodeOnly) {
     JniContext* const jniContext =
             reinterpret_cast<JniContext*>(jContext);
+    if (jniContext) {
+        jniContext->lastVideoErrorStage = 0;
+        jniContext->lastVideoErrorCode = 0;
+    }
 
     if (!jniContext ||
         !jniContext->codecContext ||
         !jOutputBuffer) {
         LOGE("Invalid context or output buffer.");
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 6, AVERROR(EINVAL));
     }
 
     AVFrame* rawFrame = av_frame_alloc();
     if (!rawFrame) {
         LOGE("Failed to allocate output frame.");
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 7, AVERROR(ENOMEM));
     }
 
     const int receiveResult =
@@ -1091,24 +1116,32 @@ VIDEO_DECODER_FUNC(
 
     if (receiveResult == AVERROR(EAGAIN)) {
         av_frame_free(&rawFrame);
-        return VIDEO_DECODER_ERROR_INVALID_DATA;
+        return VIDEO_DECODER_NEED_INPUT;
     }
 
     if (receiveResult == AVERROR_EOF) {
         av_frame_free(&rawFrame);
         return VIDEO_DECODER_END_OF_STREAM;
     }
+
+    if (receiveResult == AVERROR_INVALIDDATA) {
+        logError("avcodec_receive_frame", receiveResult);
+        av_frame_free(&rawFrame);
+        videoError(jniContext, 8, receiveResult);
+        return VIDEO_DECODER_ERROR_INVALID_DATA;
+    }
+
     if (receiveResult != 0) {
         logError("avcodec_receive_frame", receiveResult);
         av_frame_free(&rawFrame);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 8, receiveResult);
     }
 
     // The frame must still be dequeued from FFmpeg for decode-only input, but
     // there is no need to allocate/convert/copy it into the Java output buffer.
     if (decodeOnly) {
         av_frame_free(&rawFrame);
-        return VIDEO_DECODER_ERROR_INVALID_DATA;
+        return VIDEO_DECODER_NEED_INPUT;
     }
 
     AVFrame* frame = rawFrame;
@@ -1125,7 +1158,7 @@ VIDEO_DECODER_FUNC(
         if (!frame) {
             av_frame_free(&rawFrame);
             LOGW("Convert to YUV420P failed.");
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 9, AVERROR(EINVAL));
         }
 
         av_frame_free(&rawFrame);
@@ -1138,7 +1171,7 @@ VIDEO_DECODER_FUNC(
         LOGE("Invalid decoded frame dimensions: %dx%d",
              decodedWidth, decodedHeight);
         av_frame_free(&frame);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 10, AVERROR(EINVAL));
     }
 
     int outputWidth = decodedWidth;
@@ -1178,12 +1211,12 @@ VIDEO_DECODER_FUNC(
 
         if (env->ExceptionCheck()) {
             av_frame_free(&frame);
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 11, AVERROR(ENOMEM));
         }
 
         if (!initResult) {
             av_frame_free(&frame);
-            return VIDEO_DECODER_ERROR_OTHER;
+            return videoError(jniContext, 11, AVERROR(EINVAL));
         }
     }
 
@@ -1202,7 +1235,7 @@ VIDEO_DECODER_FUNC(
 
     if (env->ExceptionCheck()) {
         av_frame_free(&frame);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 12, AVERROR(EINVAL));
     }
 
     jobject dataObject =
@@ -1213,7 +1246,7 @@ VIDEO_DECODER_FUNC(
     if (!dataObject) {
         LOGE("Output data buffer is null.");
         av_frame_free(&frame);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 13, AVERROR(EINVAL));
     }
 
     uint8_t* data =
@@ -1242,7 +1275,7 @@ VIDEO_DECODER_FUNC(
 
         env->DeleteLocalRef(dataObject);
         av_frame_free(&frame);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 14, AVERROR(EINVAL));
     }
 
     const libyuv::RotationMode rotate =
@@ -1271,7 +1304,7 @@ VIDEO_DECODER_FUNC(
 
     if (rotateResult != 0) {
         LOGE("I420Rotate failed: %d", rotateResult);
-        return VIDEO_DECODER_ERROR_OTHER;
+        return videoError(jniContext, 15, rotateResult);
     }
 
     return VIDEO_DECODER_SUCCESS;

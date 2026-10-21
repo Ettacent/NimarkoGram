@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -592,6 +594,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             updateOnIdleState = true;
             return;
         }
+        updateOnIdleState = false;
         oldItems.clear();
         oldItems.addAll(items);
         oldMiniItems.clear();
@@ -1054,6 +1057,10 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
 
     AnimatorSet storiesAnimatorSet;
     public void setProgressToCollapse(float progress, boolean animated) {
+        setProgressToCollapse(progress, animated, false);
+    }
+
+    public void setProgressToCollapse(float progress, boolean animated, boolean hapticFeedback) {
         if (collapsedProgress1 == progress) {
             return;
         }
@@ -1094,9 +1101,11 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
                     @Override
                     public void onAnimationStart(Animator animation) {
                         super.onAnimationStart(animation);
+                        if (hapticFeedback) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                         } catch (Exception ignored) {}
+                        }
                     }
                 });
                 ArrayList<Animator> animators = new ArrayList<>();
@@ -1356,6 +1365,10 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
 
     public void onResume() {
         storiesController.checkExpiredStories();
+        updateItems(false, false);
+        recyclerListView.invalidate();
+        listViewMini.invalidate();
+        invalidate();
         for (int i = 0; i < items.size(); i++) {
             TL_stories.PeerStories stories = storiesController.getStories(items.get(i).dialogId);
             if (stories != null) {
@@ -1366,8 +1379,17 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
 
     public void setOverscroll(float storiesOverscroll) {
         overscrollProgress = storiesOverscroll / dp(90);
+        if (overscrollProgress == 0 && updateOnIdleState) {
+            AndroidUtilities.runOnUIThread(this::updateItemsOnIdle);
+        }
         invalidate();
         recyclerListView.invalidate();
+    }
+
+    private void updateItemsOnIdle() {
+        if (updateOnIdleState && currentState != TRANSITION_STATE && overscrollProgress == 0) {
+            updateItems(true, false);
+        }
     }
 
     public boolean openOverscrollSelectedStory() {
@@ -2053,7 +2075,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         int prevState = this.currentState;
         this.currentState = state;
         if (currentState != TRANSITION_STATE && updateOnIdleState) {
-            AndroidUtilities.runOnUIThread(() -> updateItems(true, false));
+            AndroidUtilities.runOnUIThread(this::updateItemsOnIdle);
         }
         if (currentState == EXPANDED_STATE) {
             AndroidUtilities.forEachViews(recyclerListView, view -> {

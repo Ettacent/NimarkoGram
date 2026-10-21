@@ -1,0 +1,32 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="16"
+    android:viewportHeight="16">
+    <path
+        android:pathData="M1.2,4.5H2.1M6.9,4.5H14.8M1.2,11.5H9.1M13.9,11.5H14.8"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:startX="1" android:startY="1" android:endX="15" android:endY="15">
+                <item android:offset="0" android:color="#CFFFFFFF" />
+                <item android:offset="0.5" android:color="#FFFFFFFF" />
+                <item android:offset="1" android:color="#CFFFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M6.85,4.5A2.35,2.35 0,1 1,2.15 4.5A2.35,2.35 0,1 1,6.85 4.5ZM5.5,4.5A1,1 0,1 1,3.5 4.5A1,1 0,1 1,5.5 4.5ZM13.85,11.5A2.35,2.35 0,1 1,9.15 11.5A2.35,2.35 0,1 1,13.85 11.5ZM12.5,11.5A1,1 0,1 1,10.5 11.5A1,1 0,1 1,12.5 11.5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:startX="0" android:startY="1" android:endX="0" android:endY="15">
+                <item android:offset="0" android:color="#E6FFFFFF" />
+                <item android:offset="0.5" android:color="#FFFFFFFF" />
+                <item android:offset="1" android:color="#E6FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

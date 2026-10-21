@@ -1,3 +1,17 @@
+/**
+ * This is the source code of Cherrygram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
+ *
+ * NG port: ChatsHelper.java -> NimarkoChatHelper.java
+ * Verbatim copy of methods that don't depend on CG-only surfaces (ChatActivityHelper,
+ * MessageMenuHelper, ChatActivity private fields, getCustomReactions, CG_*_strings).
+ * GPL-2.0 same-license relicensing approved (user owns both repos).
+ */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -115,6 +129,7 @@ public class NimarkoChatHelper extends BaseController {
     }
 
     public static CharSequence createForwardedString(MessageObject messageObject) {
+        MessageStatusIcons.ensureCurrentResources();
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
 
         if (forwardsDrawable == null) {
@@ -135,6 +150,7 @@ public class NimarkoChatHelper extends BaseController {
     }
 
     public static SpannableStringBuilder getEditedSpan() {
+        MessageStatusIcons.ensureCurrentResources();
         if (editedDrawable == null) {
             editedDrawable = MessageStatusIcons.create(R.drawable.msg_edited);
         }
@@ -146,6 +162,7 @@ public class NimarkoChatHelper extends BaseController {
     }
 
     public static CharSequence createEditedString(MessageObject messageObject) {
+        MessageStatusIcons.ensureCurrentResources();
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder();
         boolean hasForwards = messageObject.messageOwner.forwards > 0;
         boolean isMusic = messageObject.isMusic();

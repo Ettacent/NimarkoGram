@@ -23,6 +23,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.collection.MutableIntList;
 
+import app.nimarkogram.messenger.diagnostics.RawProxyDiagnostics;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 
@@ -288,6 +289,8 @@ public class NotificationCenter {
     public static final int loadedAiComposeTones = totalEvents++;
     public static final int updatedChatbot = totalEvents++;
 
+    public static final int walletUpdate = totalEvents++;
+    public static final int walletTransactionsUpdate = totalEvents++;
     public static final int activeAccountChanged = totalEvents++;
     public static final int pushMessagesUpdated = totalEvents++;
     public static final int wallpapersDidLoad = totalEvents++;
@@ -720,7 +723,18 @@ public class NotificationCenter {
         }
         if (!postponeCallbackList.isEmpty()) {
             for (int i = 0; i < postponeCallbackList.size(); i++) {
-                if (postponeCallbackList.get(i).needPostpone(id, currentAccount, args)) {
+                PostponeNotificationCallback callback = postponeCallbackList.get(i);
+                boolean postpone;
+                long token = RawProxyDiagnostics.begin(callback, RawProxyDiagnostics.Phase.POSTPONE_DELIVERY);
+                try {
+                    postpone = callback.needPostpone(id, currentAccount, args);
+                } catch (RuntimeException | Error failure) {
+                    RawProxyDiagnostics.failure(token, failure);
+                    throw failure;
+                } finally {
+                    RawProxyDiagnostics.end(token);
+                }
+                if (postpone) {
                     delayedPosts.add(new DelayedPost(id, args));
                     return;
                 }
@@ -731,7 +745,7 @@ public class NotificationCenter {
         if (objects != null && !objects.isEmpty()) {
             for (int a = 0; a < objects.size(); a++) {
                 NotificationCenterDelegate obj = objects.get(a);
-                obj.didReceivedNotification(id, currentAccount, args);
+                deliverNotification(obj, id, currentAccount, args);
             }
         }
         broadcasting--;
@@ -741,7 +755,16 @@ public class NotificationCenter {
                     int key = removeAfterBroadcast.keyAt(a);
                     ArrayList<NotificationCenterDelegate> arrayList = removeAfterBroadcast.get(key);
                     for (int b = 0; b < arrayList.size(); b++) {
-                        removeObserver(arrayList.get(b), key);
+                        NotificationCenterDelegate observer = arrayList.get(b);
+                        long token = RawProxyDiagnostics.begin(diagnosticObserver(observer), RawProxyDiagnostics.Phase.DRAIN_REMOVE);
+                        try {
+                            removeObserver(observer, key);
+                        } catch (RuntimeException | Error failure) {
+                            RawProxyDiagnostics.failure(token, failure);
+                            throw failure;
+                        } finally {
+                            RawProxyDiagnostics.end(token);
+                        }
                     }
                 }
                 removeAfterBroadcast.clear();
@@ -751,12 +774,29 @@ public class NotificationCenter {
                     int key = addAfterBroadcast.keyAt(a);
                     ArrayList<NotificationCenterDelegate> arrayList = addAfterBroadcast.get(key);
                     for (int b = 0; b < arrayList.size(); b++) {
-                        addObserverInternal(arrayList.get(b), key);
+                        addObserverInternal(arrayList.get(b), key, true);
                     }
                 }
                 addAfterBroadcast.clear();
             }
         }
+    }
+
+    private static void deliverNotification(NotificationCenterDelegate observer, int id, int account, Object[] args) {
+        long token = RawProxyDiagnostics.begin(observer, RawProxyDiagnostics.Phase.DELIVERY);
+        try {
+            observer.didReceivedNotification(id, account, args);
+        } catch (RuntimeException | Error failure) {
+            RawProxyDiagnostics.failure(token, failure);
+            throw failure;
+        } finally {
+            RawProxyDiagnostics.end(token);
+        }
+    }
+
+    private static NotificationCenterDelegate diagnosticObserver(NotificationCenterDelegate observer) {
+        return observer instanceof WeakObserversGroupImpl
+                ? ((WeakObserversGroupImpl) observer).reference.get() : observer;
     }
 
     public void updateObserver(boolean add, NotificationCenterDelegate observer, int id) {
@@ -842,7 +882,7 @@ public class NotificationCenter {
         public void didReceivedNotification(int id, int account, Object... args) {
             final NotificationCenterDelegate delegate = reference.get();
             if (delegate != null) {
-                delegate.didReceivedNotification(id, account, args);
+                deliverNotification(delegate, id, account, args);
             } else {
                 FileLog.e("MEMORY_LEAK observer " + id + " with destroyed WeakReference");
                 removeAllObservers();
@@ -879,11 +919,19 @@ public class NotificationCenter {
     }
 
     private void addObserverInternal(NotificationCenterDelegate observer, int id) {
+        addObserverInternal(observer, id, false);
+    }
+
+    private void addObserverInternal(NotificationCenterDelegate observer, int id, boolean draining) {
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
                 throw new RuntimeException("addObserver allowed only from MAIN thread");
             }
         }
+        long token = RawProxyDiagnostics.begin(diagnosticObserver(observer), broadcasting != 0
+                ? RawProxyDiagnostics.Phase.DEFER_ADD
+                : draining ? RawProxyDiagnostics.Phase.DRAIN_ADD : RawProxyDiagnostics.Phase.ADD);
+        try {
         if (broadcasting != 0) {
             ArrayList<NotificationCenterDelegate> arrayList = addAfterBroadcast.get(id);
             if (arrayList == null) {
@@ -907,6 +955,12 @@ public class NotificationCenter {
                 FileLog.e(new RuntimeException("Total observers more than 1000, need check for memory leak. " + id), true);
             }
         }
+        } catch (RuntimeException | Error failure) {
+            RawProxyDiagnostics.failure(token, failure);
+            throw failure;
+        } finally {
+            RawProxyDiagnostics.end(token);
+        }
     }
 
     private ArrayList<NotificationCenterDelegate> createArrayForId(int id) {
@@ -923,6 +977,9 @@ public class NotificationCenter {
                 throw new RuntimeException("removeObserver allowed only from MAIN thread");
             }
         }
+        long token = RawProxyDiagnostics.begin(diagnosticObserver(observer), broadcasting != 0
+                ? RawProxyDiagnostics.Phase.DEFER_REMOVE : RawProxyDiagnostics.Phase.REMOVE);
+        try {
         if (broadcasting != 0) {
             ArrayList<NotificationCenterDelegate> arrayList = removeAfterBroadcast.get(id);
             if (arrayList == null) {
@@ -936,6 +993,12 @@ public class NotificationCenter {
         if (objects != null) {
             objects.remove(observer);
         }
+        } catch (RuntimeException | Error failure) {
+            RawProxyDiagnostics.failure(token, failure);
+            throw failure;
+        } finally {
+            RawProxyDiagnostics.end(token);
+        }
     }
 
     public boolean hasObservers(int id) {
@@ -948,8 +1011,16 @@ public class NotificationCenter {
                 throw new RuntimeException("PostponeNotificationsCallback allowed only from MAIN thread");
             }
         }
+        long token = RawProxyDiagnostics.begin(callback, RawProxyDiagnostics.Phase.POSTPONE_ADD);
+        try {
         if (!postponeCallbackList.contains(callback)) {
             postponeCallbackList.add(callback);
+            }
+        } catch (RuntimeException | Error failure) {
+            RawProxyDiagnostics.failure(token, failure);
+            throw failure;
+        } finally {
+            RawProxyDiagnostics.end(token);
         }
     }
 
@@ -959,7 +1030,17 @@ public class NotificationCenter {
                 throw new RuntimeException("removePostponeNotificationsCallback allowed only from MAIN thread");
             }
         }
-        if (postponeCallbackList.remove(callback)) {
+        boolean removed;
+        long token = RawProxyDiagnostics.begin(callback, RawProxyDiagnostics.Phase.POSTPONE_REMOVE);
+        try {
+            removed = postponeCallbackList.remove(callback);
+        } catch (RuntimeException | Error failure) {
+            RawProxyDiagnostics.failure(token, failure);
+            throw failure;
+        } finally {
+            RawProxyDiagnostics.end(token);
+        }
+        if (removed) {
             runDelayedNotifications();
         }
     }

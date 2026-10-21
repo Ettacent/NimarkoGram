@@ -14,7 +14,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
-import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
@@ -284,12 +283,10 @@ public class AcceptDeclineView extends View {
         if (retryMod) {
             canvas.saveLayer(0, 0, getMeasuredWidth(), getMeasuredHeight(), linePaint, Canvas.ALL_SAVE_FLAG);
             declineDrawable.draw(canvas);
-            if (cancelDrawable instanceof BitmapDrawable) {
-                BitmapDrawable bitmapDrawable = (BitmapDrawable) cancelDrawable;
-                if (bitmapDrawable.getBitmap() != null) {
-                    canvas.drawBitmap(bitmapDrawable.getBitmap(), null, bitmapDrawable.getBounds(), maskPaint);
-                }
-            }
+            Rect bounds = cancelDrawable.getBounds();
+            canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, maskPaint, Canvas.ALL_SAVE_FLAG);
+            cancelDrawable.draw(canvas);
+            canvas.restore();
             canvas.restore();
         } else {
             declineDrawable.draw(canvas);

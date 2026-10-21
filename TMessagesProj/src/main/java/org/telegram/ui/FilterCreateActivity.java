@@ -2683,7 +2683,7 @@ public class FilterCreateActivity extends BaseFragment {
 
                 closeImageView = new ImageView(context);
                 closeImageView.setScaleType(ImageView.ScaleType.CENTER);
-                closeImageView.setImageResource(R.drawable.msg_close);
+                closeImageView.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
                 closeImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText5), PorterDuff.Mode.MULTIPLY));
                 closeImageView.setOnClickListener(e -> dismiss());
                 addView(closeImageView, LayoutHelper.createFrame(48, 48, Gravity.RIGHT | Gravity.TOP, 0, -4, 2, 0));

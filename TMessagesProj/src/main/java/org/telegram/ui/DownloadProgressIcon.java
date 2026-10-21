@@ -1,7 +1,10 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -20,6 +23,8 @@ import org.telegram.ui.Components.RLottieDrawable;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.NimarkoConfig;
 public class DownloadProgressIcon extends View implements NotificationCenter.NotificationCenterDelegate {
 
     Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -37,8 +42,10 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
     boolean showCompletedIcon;
     boolean hasUnviewedDownloads;
     int currentColor;
+    private boolean colorsInitialized;
     private boolean wasDrawn;
 
+    private int appliedIconPack = NimarkoConfig.ICON_REPLACE_NONE;
     public DownloadProgressIcon(int currentAccount, Context context) {
         super(context);
         this.currentAccount = currentAccount;
@@ -65,9 +72,26 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec), MeasureSpec.EXACTLY));
+        updateImageBounds();
+    }
+
+    private int updateImageBounds() {
+        appliedIconPack = NimarkoConfig.ICON_REPLACE_NONE;
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(R.drawable.ng_header_download);
+        if (icon != null && icon.bitmap != null && !icon.bitmap.isRecycled()) {
+            appliedIconPack = icons.selection;
+            int size = Math.max(0, Math.min(AndroidUtilities.dp(24), Math.min(getMeasuredWidth(), getMeasuredHeight())));
+            float x = (getMeasuredWidth() - size) / 2f;
+            float y = (getMeasuredHeight() - size) / 2f;
+            downloadImageReceiver.setImageCoords(x, y, size, size);
+            downloadCompleteImageReceiver.setImageCoords(x, y, size, size);
+            return size;
+        }
         int padding = AndroidUtilities.dp(15);
         downloadImageReceiver.setImageCoords(padding, padding, getMeasuredWidth() - padding * 2, getMeasuredHeight() - padding * 2);
         downloadCompleteImageReceiver.setImageCoords(padding, padding, getMeasuredWidth() - padding * 2, getMeasuredHeight() - padding * 2);
+        return -1;
     }
 
     @Override
@@ -77,7 +101,10 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             return;
         }
 
-        if (currentColor != Theme.getColor(Theme.key_actionBarDefaultIcon)) {
+        int customIconSize = updateImageBounds();
+
+        if (!colorsInitialized || currentColor != Theme.getColor(Theme.key_actionBarDefaultIcon)) {
+            colorsInitialized = true;
             currentColor = Theme.getColor(Theme.key_actionBarDefaultIcon);
             paint.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
             paint2.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
@@ -86,6 +113,11 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             paint2.setAlpha(100);
         }
 
+        int materialAlpha = appliedIconPack == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS ? 128
+                : appliedIconPack == NimarkoConfig.ICON_REPLACE_PLUMPY ? 89 : 255;
+        int foregroundAlpha = Color.alpha(currentColor);
+        paint.setAlpha((foregroundAlpha * materialAlpha + 127) / 255);
+        paint2.setAlpha(customIconSize >= 0 ? Math.round(100f * materialAlpha * foregroundAlpha / (255f * 255f)) : 100);
         if (currentProgress != progress) {
             currentProgress += progressDt;
             if (progressDt > 0 && currentProgress > progress) {
@@ -97,10 +129,12 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             }
         }
 
-        int cy = getMeasuredHeight() / 2 + AndroidUtilities.dp(8);
-        float r = AndroidUtilities.dp(1f);
+        float cy = customIconSize >= 0 ? getMeasuredHeight() / 2f + customIconSize * (7f / 24f)
+                : getMeasuredHeight() / 2 + AndroidUtilities.dp(8);
+        float r = customIconSize >= 0 ? customIconSize / 32f : AndroidUtilities.dp(1f);
 
-        float startPadding = AndroidUtilities.dp(16);
+        float startPadding = customIconSize >= 0 ? (getMeasuredWidth() - customIconSize * (14f / 24f)) / 2f
+                : AndroidUtilities.dp(16);
         float width = getMeasuredWidth() - startPadding * 2;
         AndroidUtilities.rectTmp.set(startPadding, cy - r, getMeasuredWidth() - startPadding, cy + r);
         canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, paint2);

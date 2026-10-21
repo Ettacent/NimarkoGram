@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_IconPicker_Title">Find your style</string>
+    <string name="NM_IconPicker_Hint">Swipe through the packs and see how they look in the interface.</string>
+    <string name="NM_IconPicker_PreviewHint">Swiping only changes the preview.</string>
+    <string name="NM_IconPicker_DefaultDescription">Familiar outlines and balanced details.</string>
+    <string name="NM_IconPicker_SolarDescription">Fine lines and soft, rounded shapes.</string>
+    <string name="NM_IconPicker_LiquidDescription">Depth, gentle highlights and glass-like edges.</string>
+    <string name="NM_IconPicker_PlumpyDescription">Expressive shapes and smooth silhouettes.</string>
+    <string name="NM_IconPicker_Applied">In use</string>
+    <string name="NM_IconPicker_Apply">Apply</string>
+    <string name="NM_IconPicker_Previous">Previous icon pack</string>
+    <string name="NM_IconPicker_Next">Next icon pack</string>
+    <string name="NM_IconPicker_Position">%1$d / %2$d</string>
+    <string name="NM_IconPicker_PageDescription">%1$s, pack %2$d of %3$d</string>
+    <string name="NM_IconPicker_CurrentDescription">%1$s is the current icon pack</string>
+    <string name="NM_IconPicker_ApplyDescription">Apply %1$s</string>
+</resources>

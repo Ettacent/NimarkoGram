@@ -1,0 +1,17 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="plane" android:pathData="M19.4,3.1C20.1,2.4 21,2.3 21.5,2.8C22,3.3 21.9,4.2 21.2,4.9L15.5,10.6L18.4,19.8L16.7,21.5L11.5,14.6L7.4,18.6L7.6,21L6.5,22L4.7,18.3L2,16.5L3,15.4L5.4,15.6L9.4,11.5L2.5,6.3L4.2,4.6L13.4,7.5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="fuselage_glint" android:pathData="M19.4,3.1C20.1,2.4 21,2.3 21.5,2.8L6.5,17.8L5.6,16.9Z"
+        android:fillColor="#59FFFFFF"/>
+</vector>

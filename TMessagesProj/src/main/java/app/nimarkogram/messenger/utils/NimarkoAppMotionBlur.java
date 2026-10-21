@@ -13,6 +13,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.animation.AnimationUtils;
 import android.view.ViewGroup;
 import android.view.SurfaceView;
 import android.view.ViewTreeObserver;
@@ -34,7 +35,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         View.OnAttachStateChangeListener {
     public interface Excluded {}
     private static final int MAX_VIEWS = 512;
-    private static final int MAX_LAYERS = 48;
+    private static final int MAX_LAYERS = 12;
     private static final long MAX_FRAME_GAP_NS = 120_000_000L;
     private static boolean windowVisibilityUnavailable;
     private static final WeakHashMap<ViewGroup, WeakReference<NimarkoAppMotionBlur>> INSTANCES = new WeakHashMap<>();
@@ -338,12 +339,13 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
             return true;
         }
         bindObserver(root);
-        long now = System.nanoTime();
+        long now = frameTimeNanos();
         float newDensity = root.getResources().getDisplayMetrics().density;
         if (!Float.isFinite(newDensity) || newDensity <= 0f) {
             reset();
             return true;
         }
+        if (now == lastFrameNs && rootWidth == root.getWidth() && rootHeight == root.getHeight() && density == newDensity) return true;
         if (rootWidth != root.getWidth() || rootHeight != root.getHeight() || density != newDensity
                 || lastFrameNs != 0L && (now <= lastFrameNs || now - lastFrameNs > MAX_FRAME_GAP_NS)) {
             reset();
@@ -474,6 +476,8 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         entry.excluded = view instanceof SurfaceView
                 || view instanceof Excluded
                 || nestedOwner != null && !nestedOwner.detached;
+        entry.containsExcluded = entry.excluded;
+        entry.childrenComplete = true;
         entry.split |= entry.excluded;
         if (view instanceof RecyclerView && !entry.excluded) {
             RecyclerView recyclerView = (RecyclerView) view;
@@ -639,10 +643,16 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         for (int i = sampledCount - 1; i >= 0; i--) {
             Entry entry = sampledEntries[i];
             if (entry.parent != null && (entry.relativeMotion || entry.independent || entry.split)) entry.parent.split = true;
+            if (entry.parent != null && entry.containsExcluded) entry.parent.containsExcluded = true;
+            if (entry.parent != null && !entry.childrenComplete) entry.parent.childrenComplete = false;
         }
         int layers = 0;
-        double remainingPixels = rootWidth * (double) rootHeight * 2d;
-        float maximumSpan = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH ? 16f : 8f;
+        final boolean high = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH;
+        final int layerLimit = Build.VERSION.SDK_INT < 33 ? 4 : high ? MAX_LAYERS : 8;
+        final double pixelBudget = rootWidth * (double) rootHeight * (high && Build.VERSION.SDK_INT >= 33 ? 1.5d : 1d);
+        double remainingPixels = pixelBudget;
+        float maximumSpan = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH
+                ? NimarkoMotionBlurState.MAX_SPAN_PX : NimarkoMotionBlurState.REDUCED_MAX_SPAN_PX;
         for (int i = 0; i < sampledCount; i++) {
             Entry entry = sampledEntries[i];
             entry.aggregate = false;
@@ -666,7 +676,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
             View view = entry.view.get();
             double cost = entry.width * (double) entry.height;
             if (view != null && (entry.aggregate || entry.eligible && !entry.split)
-                    && !entry.covered && layers < MAX_LAYERS && cost <= remainingPixels
+                    && !entry.covered && layers < layerLimit && cost <= remainingPixels
                     && (entry.aggregate || entry.motion.getLength() > 0f)) {
                 entry.selected = true;
                 layers++;
@@ -703,7 +713,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
             }
         }
         layers = 0;
-        remainingPixels = rootWidth * (double) rootHeight * 2d;
+        remainingPixels = pixelBudget;
         for (int i = 0; i < sampledCount; i++) {
             Entry entry = sampledEntries[i];
             if (entry.selected && entry.applied) {
@@ -717,7 +727,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
             View view = entry.view.get();
             double cost = entry.width * (double) entry.height;
             if (!entry.selected && !entry.covered && view != null && entry.eligible && !entry.split
-                    && entry.motion.getLength() > 0f && layers < MAX_LAYERS && cost <= remainingPixels) {
+                    && entry.motion.getLength() > 0f && layers < layerLimit && cost <= remainingPixels) {
                 NimarkoMotionBlurEffect.apply(view, entry.span);
                 if (NimarkoMotionBlurEffect.isApplied(view)) {
                     entry.selected = entry.applied = true;
@@ -733,7 +743,11 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
     }
 
     private void coalesceScrollingChildren(Entry parent) {
-        if (parent.historyDiscontinuous || parent.excluded || !parent.childrenComplete) return;
+        if (parent.historyDiscontinuous || parent.containsExcluded || !parent.childrenComplete) return;
+        final View parentView = parent.view.get();
+        final ScrollTracker tracker = parentView instanceof RecyclerView ? scrollTrackers.get(parentView) : null;
+        final boolean scrolling = tracker != null && tracker.registered && tracker.frame == frame
+                && (tracker.consumedX != 0L || tracker.consumedY != 0L);
         int count = 0;
         float referenceX = 0f, referenceY = 0f, sumX = 0f, sumY = 0f;
         float referenceSpanX = 0f, referenceSpanY = 0f;
@@ -741,6 +755,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         for (int i = 0; i < sampledCount; i++) {
             Entry child = sampledEntries[i];
             if (child.parent != parent || child.visibleArea <= 0f) continue;
+            if (scrolling && child.historyDiscontinuous && !child.containsExcluded && child.localMatrix.isIdentity()) continue;
             if (child.historyDiscontinuous || child.excluded || child.split || !child.eligible
                     || child.motion.getLength() <= 0f) return;
             for (int j = 2; j < 8; j += 2) {
@@ -890,6 +905,10 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("Main thread required");
     }
 
+    static long frameTimeNanos() {
+        return AnimationUtils.currentAnimationTimeMillis() * 1_000_000L;
+    }
+
     private static final class WindowVisibility34 implements ViewTreeObserver.OnWindowVisibilityChangeListener {
         private static boolean methodsChecked;
         private final WeakReference<NimarkoAppMotionBlur> ownerReference;
@@ -1023,6 +1042,7 @@ public final class NimarkoAppMotionBlur implements ViewTreeObserver.OnPreDrawLis
         boolean independent;
         boolean split;
         boolean excluded;
+        boolean containsExcluded;
         boolean eligible;
         boolean selected;
         boolean applied;

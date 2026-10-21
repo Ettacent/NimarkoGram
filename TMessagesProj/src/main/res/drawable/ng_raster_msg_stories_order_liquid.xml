@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="28dp" android:height="24dp"
+    android:viewportWidth="28" android:viewportHeight="24">
+    <path android:name="story_circle" android:fillColor="#00000000"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M18.5,12A8.5,8.5 0,1 1,1.5,12A8.5,8.5 0,1 1,18.5,12">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="26" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="first_order" android:fillColor="#00000000"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7.8,9.4L10.4,7.4V16.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="26" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="story_arcs" android:fillColor="#00000000"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M20.8,4A12,12 0,0 1,20.8,20 M24.2,3.2L25.2,4.6 M26.2,7L26.7,8.7 M27,11.4V13 M26.6,15.5L26,17.2 M25.1,19.4L24,20.9">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="26" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

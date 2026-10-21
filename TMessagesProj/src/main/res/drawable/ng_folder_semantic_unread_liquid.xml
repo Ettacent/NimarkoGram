@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="bubble" android:pathData="M12,4C7,4 3,7.3 3,11.5C3,13.3 3.7,14.9 4.8,16.2L3.5,20.5L8.1,18.7C9.3,19.2 10.6,19.5 12,19.5C17,19.5 21,16 21,11.5C21,10.8 20.9,10.2 20.7,9.6C17.2,11.4 13.2,8.9 13.5,4.1C13,4 12.5,4 12,4Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="unread_dot" android:pathData="M21.5,5.5A3,3 0,1 1,15.5,5.5A3,3 0,1 1,21.5,5.5Z"
+        android:fillColor="#DBFFFFFF"/>
+    <path android:name="glint" android:pathData="M4.7,8C6.1,5.5 9.7,3.7 13.5,4.1L13.5,5.2C9.9,4.8 6.7,5.9 4.7,8Z"
+        android:fillColor="#44FFFFFF"/>
+</vector>

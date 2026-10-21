@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram camera_moon_solar.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M12 22c5.52 0 10-4.48 10-10 0-0.46-0.7-0.54-0.93-0.14-1.14 1.88-3.2 3.14-5.57 3.14C11.91 15 9 12.09 9 8.5c0-2.36 1.26-4.43 3.14-5.57C12.54 2.7 12.46 2 12 2 6.48 2 2 6.48 2 12s4.48 10 10 10Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

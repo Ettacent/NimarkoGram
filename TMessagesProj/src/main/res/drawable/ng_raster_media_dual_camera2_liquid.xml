@@ -1,0 +1,26 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="phone" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M11.5,3.5H8A2,2 0,0 0,6,5.5V19.5A2,2 0,0 0,8,21.5H14A2,2 0,0 0,16,19.5V13">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="second_camera" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M19.3,7A3.3,3.3 0,1 1,12.7,7A3.3,3.3 0,1 1,19.3,7">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

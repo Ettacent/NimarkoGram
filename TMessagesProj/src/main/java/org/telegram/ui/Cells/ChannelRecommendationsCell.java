@@ -43,6 +43,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -60,6 +61,7 @@ import org.telegram.ui.Components.Text;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class ChannelRecommendationsCell {
 
     private ChatMessageCell cell;
@@ -106,6 +108,16 @@ public class ChannelRecommendationsCell {
     private final ButtonBounce closeBounce;
     private final Paint closePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer();
+
+    private boolean drawPackClose(Canvas canvas, float cx, float cy) {
+        if (closePaint.getXfermode() != null) return false;
+        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
+        final float size = 2f * dp(4) + closePaint.getStrokeWidth();
+        packClose.draw(canvas, closePaint, cx, cy, size, size, 1f, false);
+        return true;
+    }
     public void setMessageObject(MessageObject messageObject) {
         this.currentAccount = messageObject.currentAccount;
         this.msg = messageObject;
@@ -373,8 +385,10 @@ public class ChannelRecommendationsCell {
             canvas.save();
             canvas.scale(cs, cs, cx, cy);
             closePaint.setStrokeWidth(dp(1.33f));
+            if (!drawPackClose(canvas, cx, cy)) {
             canvas.drawLine(cx - dp(4), cy - dp(4), cx + dp(4), cy + dp(4), closePaint);
             canvas.drawLine(cx - dp(4), cy + dp(4), cx + dp(4), cy - dp(4), closePaint);
+            }
             closeBounds.set(cx - dp(12), cy - dp(12), cx + dp(12), cy + dp(12));
             canvas.restore();
 

@@ -765,6 +765,8 @@
     <string name="NM_StickerSizePreviewReply">на Марс 🚀</string>
     <string name="NM_StickerSizePreviewText">ахаха 😂</string>
     <string name="NM_ForceBlur">Блюр интерфейса</string>
+    <string name="NM_MotionBlur">Размытие в движении</string>
+    <string name="NM_MotionBlur_Desc">Добавляет размытие движения к интерфейсу приложения. Может увеличить нагрузку на GPU.</string>
     <string name="NM_HideActionBarStatus">Скрыть статус в шапке</string>
     <string name="NM_DisableSendHints">Отключить подсказки отправки</string>
     <string name="NM_DisableSendHints_Desc">Скрыть подсказку об отправке позже и без звука.</string>
@@ -1345,6 +1347,16 @@
     <string name="NM_CAM_MultiMicrophone">Мультимикрофонная запись</string>
     <string name="NM_CAM_MultiMicrophoneDesc">Широкий захват звука для голосовых и кружков CameraX. Зависит от устройства.</string>
     <string name="NM_CAM_RoundAudioInfo">Для новых кружков. Работа микрофонов зависит от устройства; при необходимости используется моно.</string>
-    <string name="NM_MotionBlur">Размытие в движении</string>
-    <string name="NM_MotionBlur_Desc">Добавляет размытие движения к интерфейсу приложения. Может увеличить нагрузку на GPU.</string>
+    <string name="BotTypeAgent">Агент</string>
+    <string name="BotTypeGame">Игра</string>
+    <string name="BotTypeApp">Приложение</string>
+    <string name="BotTypeAI">ИИ</string>
+    <string name="BotTypeNonBinary">Небинарный</string>
+    <string name="AudioRecorderSettings">Голосовые сообщения</string>
+    <string name="AudioRecorderGeneral">Запись</string>
+    <string name="AudioRecorderUseNewRecorder">Новый механизм записи</string>
+    <string name="AudioRecorderNoiseSuppression">Шумоподавление</string>
+    <string name="AudioRecorderNoiseSuppressionOff">Выключено</string>
+    <string name="AudioRecorderNoiseSuppressionRNNoise">RNNoise</string>
+    <string name="AudioRecorderGeneralInfo">RNNoise убирает фоновый шум, но может влиять на музыку и очень тихую речь.</string>
 </resources>

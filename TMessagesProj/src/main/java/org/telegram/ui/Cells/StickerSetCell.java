@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -219,7 +221,7 @@ public class StickerSetCell extends FrameLayout {
         addView(valueTextView, LayoutHelper.createFrameRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START, 71, 32, 70, 0));
         if (option == 3) {
             deleteView = new ImageView(context);
-            deleteView.setImageResource(R.drawable.msg_close);
+            deleteView.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
             deleteView.setPadding(dp(8), dp(8), dp(8), dp(8));
             deleteView.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText), PorterDuff.Mode.SRC_IN);
             deleteView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
@@ -746,8 +748,8 @@ public class StickerSetCell extends FrameLayout {
         @Override
         public void attachedView(RecyclerListView listView, View view, UItem item) {
             final StickerSetCell cell = (StickerSetCell) view;
-            cell.setChecked(item.checked, true);
-            cell.setReorderable(listView instanceof UniversalRecyclerView ? ((UniversalRecyclerView) listView).isReorderAllowed() : false, true);
+            cell.setChecked(item != null && item.checked, true);
+            cell.setReorderable(listView instanceof UniversalRecyclerView && ((UniversalRecyclerView) listView).isReorderAllowed(), true);
         }
 
         public static UItem of(TLRPC.TL_messages_stickerSet set) {

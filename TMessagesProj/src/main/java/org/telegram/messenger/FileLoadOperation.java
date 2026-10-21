@@ -10,6 +10,7 @@
 
 package org.telegram.messenger;
 
+import android.os.SystemClock;
 import org.telegram.messenger.utils.ImmutableByteArrayOutputStream;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.NativeByteBuffer;
@@ -46,6 +47,17 @@ public class FileLoadOperation {
     public static volatile DispatchQueue filesQueue = new DispatchQueue("writeFileQueue");
     public static ImmutableByteArrayOutputStream filesQueueByteBuffer;
     private boolean forceSmallChunk;
+    private boolean useDownloadByteBudget;
+    private int downloadByteBudget;
+    private int downloadConnectionsCount = 2;
+    private boolean isAudioDocument;
+    private boolean paceDocumentRequests;
+    private DownloadRequestPacer downloadRequestPacer;
+    private final Runnable pacedDownloadRequest = () -> {
+        if (this.state == stateDownloading && !this.paused) {
+            startDownloadRequest(-1);
+        }
+    };
     private Runnable fileWriteRunnable;
     public boolean isStory;
 
@@ -420,6 +432,10 @@ public class FileLoadOperation {
     }
 
     public FileLoadOperation(TLRPC.Document documentLocation, Object parent) {
+        isAudioDocument = MessageObject.isVoiceDocument(documentLocation) || MessageObject.isMusicDocument(documentLocation) ||
+                (documentLocation != null && documentLocation.mime_type != null && documentLocation.mime_type.startsWith("audio/"));
+        paceDocumentRequests = documentLocation != null && !MessageObject.isAnyKindOfStickerOrEmoji(documentLocation) &&
+                !"application/x-tgwallpattern".equals(documentLocation.mime_type);
         updateParams();
         try {
             parentObject = parent;
@@ -857,6 +873,17 @@ public class FileLoadOperation {
                 boolean bigChunk = totalBytesCount >= bigFileSizeFrom;
                 currentDownloadChunkSize = bigChunk ? downloadChunkSizeBig : downloadChunkSize;
                 currentMaxDownloadRequests = bigChunk ? maxDownloadRequestsBig : maxDownloadRequests;
+                useDownloadByteBudget = !MessagesController.getInstance(currentAccount).downloadImprovementKillswitch &&
+                        totalBytesCount > 0 && key == null && !encryptFile && !isAudioDocument && stream == null &&
+                        !isPreloadVideoOperation && !supportsPreloading && preloadPrefixSize == 0;
+                if (useDownloadByteBudget) {
+                    boolean premium = UserConfig.getInstance(currentAccount).isPremium();
+                    downloadConnectionsCount = premium ? ConnectionsManager.DownloadConnectionsCount : 2;
+                    downloadByteBudget = (premium ? 16 : 2) * 1024 * 1024;
+                    if (!wsBypassDownloadProfile) {
+                        currentMaxDownloadRequests = downloadByteBudget / currentDownloadChunkSize;
+                    }
+                }
             }
         }
         final boolean alreadyStarted = state != stateIdle;
@@ -864,6 +891,9 @@ public class FileLoadOperation {
         paused = false;
         if (stream != null) {
             Utilities.stageQueue.postRunnable(() -> {
+                if (alreadyStarted && state == stateCancelling) {
+                    state = stateDownloading;
+                }
                 if (streamListeners == null) {
                     streamListeners = new ArrayList<>();
                 }
@@ -912,6 +942,9 @@ public class FileLoadOperation {
             });
         } else if (alreadyStarted) {
             Utilities.stageQueue.postRunnable(() -> {
+                if (state == stateCancelling) {
+                    state = stateDownloading;
+                }
                 startDownloadRequest(-1);
             });
         }
@@ -1359,7 +1392,7 @@ public class FileLoadOperation {
     }
 
     private void cancelOnStage(boolean deleteFiles) {
-        if (state != stateFinished && state != stateFailed) {
+        if (state != stateFinished && state != stateFailed && state != stateCanceled && state != stateCancelling) {
             state = stateCancelling;
             cancelRequests(() -> {
                 if (state == stateCancelling) {
@@ -1418,12 +1451,12 @@ public class FileLoadOperation {
 
     private void cancelRequests(Runnable fullyCancelled) {
         FileLog.d("cancelRequests" + (fullyCancelled != null ? " with callback" : ""));
+        int[] waitingForCancelledCount = new int[] {1};
         if (requestInfos != null) {
-            int[] waitingForCancelledCount = new int[1];
-            int[] waitingDownloadSize = new int[2];
+            int[] waitingDownloadSize = new int[ConnectionsManager.DownloadConnectionsCount];
             for (int a = 0; a < requestInfos.size(); a++) {
                 RequestInfo requestInfo = requestInfos.get(a);
-                if (requestInfo.requestToken != 0) {
+                if (requestInfo.requestToken != 0 && !requestInfo.cancelled) {
                     requestInfo.cancelling = true;
                     if (fullyCancelled == null) {
                         requestInfo.cancelled = true;
@@ -1446,17 +1479,20 @@ public class FileLoadOperation {
                             }
                         });
                     }
-                    int index = requestInfo.connectionType == ConnectionsManager.ConnectionTypeDownload ? 0 : 1;
+                    int index = requestInfo.connectionType >>> 16;
                     waitingDownloadSize[index] += requestInfo.chunkSize;
                 }
             }
-            for (int i = 0; i < 2; i++) {
-                int connectionType = i == 0 ? ConnectionsManager.ConnectionTypeDownload : ConnectionsManager.ConnectionTypeDownload2;
+            for (int i = 0; i < waitingDownloadSize.length; i++) {
+                int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
                 if (waitingDownloadSize[i] > 1024 * 1024)  {
                     int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                     ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
                 }
             }
+        }
+        if (--waitingForCancelledCount[0] == 0 && fullyCancelled != null) {
+            fullyCancelled.run();
         }
     }
 
@@ -1778,6 +1814,9 @@ public class FileLoadOperation {
         req.file_token = cdnToken;
         req.offset = offset;
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (state != stateDownloading && state != stateCancelling) {
+                return;
+            }
             if (error != null) {
                 onFail(false, 0);
             } else if (response instanceof Vector) {
@@ -2237,7 +2276,7 @@ public class FileLoadOperation {
 
     private void clearOperation(RequestInfo currentInfo, boolean preloadChanged, boolean acceptChunksAfterCancel) {
         long minOffset = Long.MAX_VALUE;
-        int[] waitingDownloadSize = new int[2];
+        int[] waitingDownloadSize = new int[ConnectionsManager.DownloadConnectionsCount];
         for (int a = 0; a < requestInfos.size(); a++) {
             RequestInfo info = requestInfos.get(a);
             minOffset = Math.min(info.offset, minOffset);
@@ -2269,8 +2308,8 @@ public class FileLoadOperation {
                 }
             }
         }
-        for (int i = 0; i < 2; i++) {
-            int connectionType = i == 0 ? ConnectionsManager.ConnectionTypeDownload : ConnectionsManager.ConnectionTypeDownload2;
+        for (int i = 0; i < waitingDownloadSize.length; i++) {
+            int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
             if (waitingDownloadSize[i] > 512 * 1024 * 2)  {
                 int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                 ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
@@ -2327,6 +2366,7 @@ public class FileLoadOperation {
     }
 
     protected void startDownloadRequest(int useConnectionType) {
+        Utilities.stageQueue.cancelRunnable(pacedDownloadRequest);
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
             if (Utilities.stageQueue != null && Utilities.stageQueue.getHandler() != null && Thread.currentThread() != Utilities.stageQueue.getHandler().getLooper().getThread()) {
                 throw new RuntimeException("Wrong thread!!!");
@@ -2337,9 +2377,6 @@ public class FileLoadOperation {
         }
         if (BuildVars.LOGS_ENABLED && FULL_LOGS) {
             FileLog.d(fileName + " startDownloadRequest");
-        }
-        if (state == stateCancelling) {
-            state = stateDownloading;
         }
         if (paused || reuploadingCdn || state != stateDownloading || requestingReference ||
                 (!isStory && streamPriorityStartOffset == 0 && (!nextPartWasPreloaded && (requestInfos.size() + delayedRequestInfos.size() >= currentMaxDownloadRequests))) ||
@@ -2354,8 +2391,18 @@ public class FileLoadOperation {
             count = Math.max(0, currentMaxDownloadRequests - requestInfos.size());
         } else {
             if (streamPriorityStartOffset == 0 && !nextPartWasPreloaded && (!isPreloadVideoOperation || moovFound != 0) && totalBytesCount > 0) {
-                count = Math.max(0, currentMaxDownloadRequests - requestInfos.size());
+                count = Math.max(0, currentMaxDownloadRequests - requestInfos.size() -
+                        (useDownloadByteBudget ? delayedRequestInfos.size() : 0));
             }
+        }
+
+        if (downloadRequestPacer != null) {
+            long delay = downloadRequestPacer.remainingDelay(SystemClock.uptimeMillis());
+            if (delay > 0) {
+                Utilities.stageQueue.postRunnable(pacedDownloadRequest, delay);
+                return;
+            }
+            count = Math.min(count, 1);
         }
 
         if (!requestedReference) {
@@ -2463,12 +2510,18 @@ public class FileLoadOperation {
             final TLObject request;
             int connectionType;
             if (useConnectionType == -1) {
-                connectionType = requestsCount % 2 == 0 ? ConnectionsManager.ConnectionTypeDownload : ConnectionsManager.ConnectionTypeDownload2;
+                connectionType = ConnectionsManager.ConnectionTypeDownload | ((requestsCount & (downloadConnectionsCount - 1)) << 16);
             } else {
                 connectionType = useConnectionType;
             }
 
             int flags = (isForceRequest ? ConnectionsManager.RequestFlagForceDownload : 0);
+            if (useDownloadByteBudget) {
+                flags |= ConnectionsManager.RequestFlagDownloadByteBudget;
+                if (totalBytesCount < 20 * 1024) {
+                    flags |= ConnectionsManager.RequestFlagSmallDownload;
+                }
+            }
             if (isCdn) {
                 TLRPC.TL_upload_getCdnFile req = new TLRPC.TL_upload_getCdnFile();
                 req.file_token = cdnToken;
@@ -2545,6 +2598,16 @@ public class FileLoadOperation {
             flags |= ConnectionsManager.RequestFlagListenAfterCancel;
             int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
             final int requestToken = requestInfo.requestToken = ConnectionsManager.getInstance(currentAccount).sendRequestSync(request, (response, error) -> {
+                try {
+                    if (state != stateDownloading && state != stateCancelling) {
+                        return;
+                    }
+                    if (state == stateCancelling && (error != null ||
+                            !(response instanceof TLRPC.TL_upload_file) &&
+                            !(response instanceof TLRPC.TL_upload_webFile) &&
+                            !(response instanceof TLRPC.TL_upload_cdnFile))) {
+                        return;
+                    }
                 if (requestInfo.cancelled) {
                     FileLog.e("received chunk but definitely cancelled offset=" + requestInfo.offset + " size=" + requestInfo.chunkSize + " token=" + requestInfo.requestToken);
                     return;
@@ -2591,9 +2654,6 @@ public class FileLoadOperation {
                     priorityRequestInfo = null;
                 }
                 if (error != null) {
-                    if (requestInfo.whenCancelled != null) {
-                        requestInfo.whenCancelled.run();
-                    }
                     if (error.code == -2000) {
                         requestInfos.remove(requestInfo);
                         requestedBytesCount -= requestInfo.chunkSize;
@@ -2623,9 +2683,6 @@ public class FileLoadOperation {
                         }
                     }
                     if (res.encryption_iv == null || res.encryption_key == null || res.encryption_iv.length != 16 || res.encryption_key.length != 32) {
-                        if (requestInfo.whenCancelled != null) {
-                            requestInfo.whenCancelled.run();
-                        }
                         error = new TLRPC.TL_error();
                         error.text = "bad redirect response";
                         error.code = 400;
@@ -2658,6 +2715,9 @@ public class FileLoadOperation {
                         req.request_token = res.request_token;
                         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response1, error1) -> {
                             reuploadingCdn = false;
+                                if (state != stateDownloading) {
+                                    return;
+                                }
                             if (response1 instanceof Vector) {
                                 final Vector<TLRPC.TL_fileHash> vector = (Vector) response1;
                                 if (!vector.objects.isEmpty()) {
@@ -2708,6 +2768,8 @@ public class FileLoadOperation {
                         }
                     }
                     processRequestResult(requestInfo, error);
+                    }
+                } finally {
                     if (requestInfo.whenCancelled != null) {
                         requestInfo.whenCancelled.run();
                     }
@@ -2718,6 +2780,11 @@ public class FileLoadOperation {
             }
             AndroidUtilities.runOnUIThread(() -> uiRequestTokens.add(requestToken));
             requestsCount++;
+            if (downloadRequestPacer != null) {
+                long now = SystemClock.uptimeMillis();
+                downloadRequestPacer.onRequestSent(now);
+                Utilities.stageQueue.postRunnable(pacedDownloadRequest, downloadRequestPacer.remainingDelay(now));
+            }
         }
     }
 
@@ -2741,6 +2808,9 @@ public class FileLoadOperation {
         int targetMaxRequests = bigChunk || isStory
                 ? maxDownloadRequestsBig
                 : maxDownloadRequests;
+        if (useDownloadByteBudget && !wsBypassDownloadProfile) {
+            targetMaxRequests = downloadByteBudget / targetChunkSize;
+        }
         if (currentDownloadChunkSize == targetChunkSize
                 && currentMaxDownloadRequests == targetMaxRequests) {
             return false;

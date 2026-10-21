@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -22,9 +24,11 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CheckBox2;
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
@@ -178,7 +182,11 @@ public class ActionBarMenuSubItem extends FrameLayout {
             rightIcon.setVisibility(View.GONE);
         } else {
             rightIcon.setVisibility(View.VISIBLE);
+            if (icon == R.drawable.msg_text_check) {
+                rightIcon.setImageDrawable(CompactIconHelper.getDrawable(getContext(), icon));
+            } else {
             rightIcon.setImageResource(icon);
+            }
         }
     }
 

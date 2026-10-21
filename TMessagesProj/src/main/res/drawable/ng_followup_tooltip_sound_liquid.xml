@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram tooltip_sound source artwork; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="38dp" android:height="34dp" android:viewportWidth="38" android:viewportHeight="34">
+    <path android:name="physical_device_outline" android:pathData="M22 0 H33.3 C35.8 0 37.7 1.9 37.7 4.4 V29.7 C37.7 32.1 35.8 34 33.3 34 H22 C19.5 34 17.7 32.1 17.7 29.7 V4.4 C17.7 1.9 19.5 0 22 0 ZM22 1.8 H33.3 Q35.9 1.8 35.9 4.4 V29.7 Q35.9 32.2 33.3 32.2 H22 Q19.5 32.2 19.5 29.7 V4.4 Q19.5 1.8 22 1.8 Z" android:fillType="evenOdd" android:fillAlpha="0.34509803921568627">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="9.5" android:endY="34">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="separate_physical_side_button" android:pathData="M15.1 7 H16.7 V16.7 H15.1 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="9.5" android:endY="34">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="press_side_button_right_arrow" android:pathData="M1.1 11.7 H10.7 M6.5 7.4 L10.8 11.7 L6.5 16" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="9.5" android:endY="34">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

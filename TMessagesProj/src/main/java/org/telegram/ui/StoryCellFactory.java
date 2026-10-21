@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
@@ -44,7 +46,7 @@ public class StoryCellFactory extends UItem.UItemFactory<SharedPhotoVideoCell2> 
 
     @Override
     public void attachedView(RecyclerListView listView, View view, UItem item) {
-        ((SharedPhotoVideoCell2) view).setReordering(item.reordering, false);
+        ((SharedPhotoVideoCell2) view).setReordering(item != null && item.reordering, false);
     }
 
     public static UItem asStory(int tab, MessageObject story, int parentColumns, boolean checkable) {

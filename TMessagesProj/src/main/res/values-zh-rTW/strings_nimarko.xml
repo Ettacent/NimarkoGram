@@ -54,7 +54,9 @@
     <string name="NimarkoDisableProximity">停用距離感應器</string>
     <string name="NimarkoDisableProxyAds">不顯示代理贊助商</string>
     <string name="NimarkoDisableUnarchiveSwipe">停用滑動取消封存</string>
-    <string name="NimarkoDisableVMAutoplay">停用語音訊息自動播放</string>
+    <string name="NimarkoDisableVMAutoplay">關閉連續播放</string>
+    <string name="NM_DisableVoiceAutoNext_Desc">目前的語音訊息或影片訊息播放完畢後停止。下一則需手動播放。</string>
+    <string name="NM_DisableVoiceAutoNext_SearchTerms">語音 影片訊息 圓形影片 連播 自動播放 下一則</string>
     <string name="NimarkoDoubleTapEdit">編輯</string>
     <string name="NimarkoDoubleTapIn">雙擊已收到的訊息</string>
     <string name="NimarkoDoubleTapNone">無</string>
@@ -389,7 +391,7 @@
     <string name="NM_SettingsSummaryChatView">頂端列、背景與訊息配置</string>
     <string name="NM_SettingsSummaryInputText">表情符號、編輯與文字顯示</string>
     <string name="NM_SettingsSummaryGesturesActions">點按、滑動與快捷操作</string>
-    <string name="NM_SettingsSummaryMediaPlayback">照片、影片與 GIF</string>
+    <string name="NM_SettingsSummaryMediaPlayback">語音與影片訊息、照片、影片及 GIF</string>
     <string name="NM_SettingsSummaryReactionsEffects">表情回應與貼圖效果</string>
     <string name="NM_SettingsSummaryChatNotifications">聲音與震動</string>
     <string name="NM_SettingsSummaryChatTools">分享、訊息選單與篩選器</string>
@@ -471,6 +473,10 @@
     <string name="NM_SettingsDesc_CardsEnable">在聊天列表上方顯示資訊卡片</string>
     <string name="NM_SettingsDesc_CardsInfinite">捲動列表時循環顯示卡片</string>
     <string name="NM_SettingsDesc_CardsAutoScroll">自動切換資訊卡片</string>
+    <string name="NM_CARDS_Side">卡片位置</string>
+    <string name="NM_CARDS_SideRight">右側</string>
+    <string name="NM_CARDS_SideLeft">左側</string>
+    <string name="NM_SettingsDesc_CardsSide">設定位置</string>
     <string name="NM_SettingsDesc_ShowAccounts">在設定中直接顯示帳號</string>
     <string name="NM_SettingsDesc_OldTime">使用傳統的最後上線時間格式</string>
     <string name="NM_SettingsDesc_ReplacePunctuation">輸入時替換為排版標點</string>

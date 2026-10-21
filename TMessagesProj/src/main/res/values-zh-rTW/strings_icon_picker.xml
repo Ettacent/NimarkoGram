@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_IconPicker_Title">找到你的風格</string>
+    <string name="NM_IconPicker_Hint">左右滑動瀏覽圖示包，預覽它們在介面中的效果。</string>
+    <string name="NM_IconPicker_PreviewHint">滑動僅切換預覽，不會變更目前的圖示包。</string>
+    <string name="NM_IconPicker_DefaultDescription">熟悉的輪廓，協調的細節。</string>
+    <string name="NM_IconPicker_SolarDescription">細緻線條，柔和圓潤的造型。</string>
+    <string name="NM_IconPicker_LiquidDescription">立體層次、柔和高光與玻璃質感。</string>
+    <string name="NM_IconPicker_PlumpyDescription">鮮明的造型，流暢的輪廓。</string>
+    <string name="NM_IconPicker_Applied">使用中</string>
+    <string name="NM_IconPicker_Apply">套用</string>
+    <string name="NM_IconPicker_Previous">上一個圖示包</string>
+    <string name="NM_IconPicker_Next">下一個圖示包</string>
+    <string name="NM_IconPicker_Position">%1$d / %2$d</string>
+    <string name="NM_IconPicker_PageDescription">%1$s，第 %2$d 個圖示包，共 %3$d 個</string>
+    <string name="NM_IconPicker_CurrentDescription">%1$s 是目前使用的圖示包</string>
+    <string name="NM_IconPicker_ApplyDescription">套用 %1$s</string>
+</resources>

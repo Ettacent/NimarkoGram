@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.inset;
 
 import android.graphics.PointF;
@@ -17,6 +19,9 @@ import org.telegram.ui.Components.chat.ViewPositionWatcher;
 
 import java.util.List;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import me.vkryl.core.BitwiseUtils;
 import me.vkryl.core.reference.ReferenceList;
 
@@ -46,26 +51,26 @@ public class WindowAnimatedInsetsProvider extends WindowInsetsAnimationCompat.Ca
         return insets;
     }
 
-    private int activeAnimationsCounter;
+    private final Set<WindowInsetsAnimationCompat> activeAnimations =
+            Collections.newSetFromMap(new IdentityHashMap<>());
 
     public boolean hasActiveAnimations() {
-        return activeAnimationsCounter > 0;
+        return !activeAnimations.isEmpty();
     }
 
     @Override
     public WindowInsetsAnimationCompat.@NonNull BoundsCompat onStart(@NonNull WindowInsetsAnimationCompat animation, WindowInsetsAnimationCompat.@NonNull BoundsCompat bounds) {
-        if (activeAnimationsCounter == 0) {
+        final boolean wasEmpty = activeAnimations.isEmpty();
+        if (activeAnimations.add(animation) && wasEmpty) {
             dispatchWindowInsetsAnimationStart();
         }
-        activeAnimationsCounter++;
         return super.onStart(animation, bounds);
     }
 
     @Override
     public void onEnd(@NonNull WindowInsetsAnimationCompat animation) {
         super.onEnd(animation);
-        activeAnimationsCounter--;
-        if (activeAnimationsCounter == 0) {
+        if (activeAnimations.remove(animation) && activeAnimations.isEmpty()) {
             dispatchWindowInsetsAnimationFinish();
         }
     }

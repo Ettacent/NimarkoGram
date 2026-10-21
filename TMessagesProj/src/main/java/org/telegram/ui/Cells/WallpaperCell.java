@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -28,6 +30,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
@@ -330,7 +333,7 @@ public class WallpaperCell extends FrameLayout {
 
         circlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        checkDrawable = context.getResources().getDrawable(R.drawable.background_selected).mutate();
+        checkDrawable = CompactIconHelper.getDrawable(context, R.drawable.background_selected);
 
         backgroundPaint = new Paint();
         backgroundPaint.setColor(Theme.getColor(Theme.key_sharedMedia_photoPlaceholder));

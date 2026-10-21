@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import android.content.Context;
@@ -51,7 +53,7 @@ public class SettingsSearchCell extends FrameLayout {
     public static int standardIcon(ProfileActivity.SearchAdapter.SearchResult result) {
         switch (result.guid) {
             case 500: return R.drawable.msg_edit;
-            case 501: case 5: case 105: case 122: case 218: return R.drawable.msg_calls;
+            case 501: case 5: case 105: case 127: case 218: return R.drawable.msg_calls;
             case 502: return R.drawable.msg_add;
             case 3: return R.drawable.msg_groups;
             case 4: return R.drawable.msg_channel;
@@ -59,7 +61,7 @@ public class SettingsSearchCell extends FrameLayout {
             case 101: return R.drawable.msg2_block2;
             case 102: return R.drawable.msg_recent;
             case 103: case 222: case 223: case 224: case 225: return R.drawable.msg_gallery;
-            case 110: return R.drawable.settings_devices;
+            case 110: case 128: case 129: return R.drawable.settings_devices;
             case 124: return R.drawable.msg2_autodelete;
             case 125: return R.drawable.msg2_email;
             case 220: return R.drawable.pill_proxy;
@@ -186,7 +188,7 @@ public class SettingsSearchCell extends FrameLayout {
 
     public void setTextAndValue(CharSequence text, String[] value, boolean faq, boolean divider) {
         LayoutParams layoutParams = (LayoutParams) textView.getLayoutParams();
-        if (faq) {
+        if (faq && value != null && value.length > 0) {
             valueTextView.setText(text);
             SpannableStringBuilder builder = new SpannableStringBuilder();
             for (int a = 0; a < value.length; a++) {
@@ -204,7 +206,7 @@ public class SettingsSearchCell extends FrameLayout {
             layoutParams.topMargin = AndroidUtilities.dp(10);
         } else {
             textView.setText(text);
-            if (value != null) {
+            if (value != null && value.length > 0) {
                 SpannableStringBuilder builder = new SpannableStringBuilder();
                 for (int a = 0; a < value.length; a++) {
                     if (a != 0) {
@@ -234,6 +236,7 @@ public class SettingsSearchCell extends FrameLayout {
         needDivider = divider;
         setWillNotDraw(!needDivider);
         left = 16;
+        requestLayout();
     }
 
     @Override

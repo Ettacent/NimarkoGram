@@ -83,6 +83,7 @@ public class BottomSheetTabsOverlay extends View {
         public void release();
         public boolean isFullSize();
 
+        default long getPresentationGeneration() { return 0; }
         public default boolean hadDialog() { return false; };
         public boolean setDialog(BottomSheetTabDialog dialog);
 
@@ -103,6 +104,7 @@ public class BottomSheetTabsOverlay extends View {
 
     private BottomSheetTabs tabsView;
     private Sheet dismissingSheet;
+    private DismissalCapture dismissingCapture;
     private Sheet openingSheet;
     private BottomSheetTabs.TabDrawable dismissingTab;
     private BottomSheetTabs.TabDrawable openingTab;
@@ -562,6 +564,84 @@ public class BottomSheetTabsOverlay extends View {
         }
     }
 
+    private void clearDismissal(DismissalCapture capture) {
+        if (dismissingCapture == capture) {
+            dismissingCapture = null;
+            dismissingSheet = null;
+            dismissingTab = null;
+            invalidate();
+        }
+    }
+
+    private final class DismissalCapture {
+        final Sheet sheet;
+        final BottomSheetTabs.WebTabData tab;
+        final BottomSheetTabs owner;
+        final int account;
+        final long presentation;
+        final int frameRateGeneration;
+        final Runnable cleanup = () -> complete(null);
+        boolean captureStarted;
+        boolean completed;
+        Bitmap publishedBitmap;
+
+        DismissalCapture(Sheet sheet, BottomSheetTabs.WebTabData tab, int frameRateGeneration) {
+            this.sheet = sheet;
+            this.tab = tab;
+            this.owner = tabsView;
+            this.account = owner.currentAccount;
+            this.presentation = sheet.getPresentationGeneration();
+            this.frameRateGeneration = frameRateGeneration;
+            tab.previewCaptureCleanup = cleanup;
+        }
+
+        boolean isPresentationCurrent() {
+            return sheet.getPresentationGeneration() == presentation;
+        }
+
+        boolean beginCapture() {
+            if (captureStarted || completed || !isPresentationCurrent()) {
+                return false;
+            }
+            captureStarted = true;
+            return true;
+        }
+
+        void complete(Bitmap bitmap) {
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                completeOnUIThread(bitmap);
+            } else {
+                AndroidUtilities.runOnUIThread(() -> completeOnUIThread(bitmap));
+            }
+        }
+
+        private void completeOnUIThread(Bitmap bitmap) {
+            if (completed) {
+                recycleUnpublished(bitmap);
+                return;
+            }
+            completed = true;
+            if (tab.previewCaptureCleanup == cleanup) {
+                tab.previewCaptureCleanup = null;
+            }
+            if (isPresentationCurrent()) {
+                if (bitmap != null && tab.previewBitmap == null && owner.getTabs(account).contains(tab)) {
+                    tab.previewBitmap = publishedBitmap = bitmap;
+                }
+                sheet.getWindowView().setDrawingFromOverlay(false);
+                sheet.release();
+            }
+            recycleUnpublished(bitmap);
+            clearDismissal(this);
+            finishTransitionFrameRate(frameRateGeneration, 300);
+        }
+
+        private void recycleUnpublished(Bitmap bitmap) {
+            if (bitmap != null && bitmap != publishedBitmap && !bitmap.isRecycled()) {
+                bitmap.recycle();
+            }
+        }
+    }
     public boolean dismissSheet(Sheet sheet) {
         if (sheet == null) return false;
         if (tabsView == null) return false;
@@ -587,9 +667,12 @@ public class BottomSheetTabsOverlay extends View {
             return false;
         }
         final int frameRateGeneration = beginTransitionFrameRate(sheet, tab.webView != null ? tab.webView : tab.view2);
+        final DismissalCapture capture = new DismissalCapture(sheet, tab, frameRateGeneration);
+        dismissingCapture = capture;
         dismissingTab = tabsView.pushTab(tab);
         post(() -> {
-            if (sheet != null && sheet.getWindowView() != null) {
+            if (dismissingCapture == capture && !capture.captureStarted && !capture.completed
+                    && capture.isPresentationCurrent() && sheet.getWindowView() != null) {
                 sheet.getWindowView().setDrawingFromOverlay(true);
             }
         });
@@ -598,40 +681,40 @@ public class BottomSheetTabsOverlay extends View {
         dismissProgress = 0;
         animator = ValueAnimator.ofFloat(0, 1);
         animator.addUpdateListener(anm -> {
+            if (dismissingCapture == capture && capture.isPresentationCurrent()) {
             dismissProgress = (float) anm.getAnimatedValue();
             invalidate();
+            }
         });
         animator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (!capture.beginCapture()) {
+                    clearDismissal(capture);
+                    if (!capture.captureStarted) {
+                        capture.complete(null);
+                    }
+                    return;
+                }
+                Bitmap preview = null;
                 View view = tab.webView != null ? tab.webView : tab.view2;
                 if (view != null && tab.previewBitmap == null && tab.viewWidth > 0 && tab.viewHeight > 0) {
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        renderHardwareViewToBitmap(view, -tab.viewScroll, TAB_PREVIEW_MAX_WIDTH_PX, TAB_PREVIEW_MAX_HEIGHT_PX, b -> {
-                            tab.previewBitmap = b;
-                            sheet.getWindowView().setDrawingFromOverlay(false);
-                            sheet.release();
-                            finishTransitionFrameRate(frameRateGeneration, 300);
-                        });
-                        dismissingSheet = null;
-                        invalidate();
+                        renderHardwareViewToBitmap(view, -tab.viewScroll, TAB_PREVIEW_MAX_WIDTH_PX, TAB_PREVIEW_MAX_HEIGHT_PX, capture::complete);
+                        clearDismissal(capture);
                         return;
                     } else {
                         final float previewScale = Math.min(1f, Math.min(TAB_PREVIEW_MAX_WIDTH_PX / (float) tab.viewWidth, TAB_PREVIEW_MAX_HEIGHT_PX / (float) tab.viewHeight));
                         final int previewWidth = Math.max(1, Math.round(tab.viewWidth * previewScale));
                         final int previewHeight = Math.max(1, Math.round(tab.viewHeight * previewScale));
-                        tab.previewBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.RGB_565);
-                        Canvas canvas = new Canvas(tab.previewBitmap);
+                        preview = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.RGB_565);
+                        Canvas canvas = new Canvas(preview);
                         canvas.scale(previewScale, previewScale);
                         canvas.translate(0, -tab.viewScroll);
                         view.draw(canvas);
                     }
                 }
-                sheet.getWindowView().setDrawingFromOverlay(false);
-                sheet.release();
-                dismissingSheet = null;
-                invalidate();
-                finishTransitionFrameRate(frameRateGeneration, 300);
+                capture.complete(preview);
             }
         });
         AndroidUtilities.applySpring(animator, 220, 30, 1);
@@ -970,7 +1053,7 @@ public class BottomSheetTabsOverlay extends View {
     private final Path clipPath = new Path();
 
     private void drawDismissingTab(Canvas canvas) {
-        if (dismissingSheet != null) {
+        if (dismissingSheet != null && dismissingCapture != null && dismissingCapture.isPresentationCurrent()) {
             getLocationOnScreen(pos2);
             tabsView.getLocationOnScreen(pos);
             tabsView.getTabBounds(rect, 0);

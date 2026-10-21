@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet.tl;
 
 import android.graphics.Bitmap;
@@ -327,6 +329,7 @@ public class TL_iv {
                 case textAutoEmail.constructor: return new textAutoEmail();
                 case textAutoPhone.constructor: return new textAutoPhone();
                 case textBankCard.constructor: return new textBankCard();
+                case textTonAddress.constructor: return new textTonAddress();
                 case textMentionName.constructor: return new textMentionName();
                 case textDate.constructor: return new textDate();
                 case textDiff.constructor: return new textDiff();
@@ -829,6 +832,20 @@ public class TL_iv {
                 return ((TL_iv.textPlain) text).text;
             }
             return null;
+        }
+    }
+    public static class textTonAddress extends RichText {
+        public static final int constructor = 0x3cd2a36a;
+
+        @Override
+        public void readParams(InputSerializedData stream, boolean exception) {
+            text = RichText.TLdeserialize(stream, stream.readInt32(exception), exception);
+        }
+
+        @Override
+        public void serializeToStream(OutputSerializedData stream) {
+            stream.writeInt32(constructor);
+            text.serializeToStream(stream);
         }
     }
 

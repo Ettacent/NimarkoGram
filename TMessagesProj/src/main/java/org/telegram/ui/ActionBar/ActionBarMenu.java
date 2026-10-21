@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -570,6 +572,21 @@ public class ActionBarMenu extends LinearLayout {
         return w;
     }
 
+    public int getVisibleItemsLayoutWidth() {
+        int width = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (!(child instanceof ActionBarMenuItem) || child.getVisibility() == View.GONE) continue;
+            int occupied = child.getMeasuredWidth();
+            ViewGroup.LayoutParams params = child.getLayoutParams();
+            if (params instanceof ViewGroup.MarginLayoutParams) {
+                ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) params;
+                occupied += margins.leftMargin + margins.rightMargin;
+            }
+            width += Math.max(0, occupied);
+        }
+        return width;
+    }
     public int getVisibleItemsMeasuredWidth() {
         int w = 0;
         for (int i = 0, count = getChildCount(); i < count; i++) {
@@ -677,6 +694,36 @@ public class ActionBarMenu extends LinearLayout {
     }
 
     public int getItemsWidth() {
+        if (glassMode) {
+            int position = 0;
+            int left = Integer.MAX_VALUE;
+            int right = Integer.MIN_VALUE;
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (child.getVisibility() == View.GONE) continue;
+                ViewGroup.LayoutParams params = child.getLayoutParams();
+                int childWidth = child.getMeasuredWidth();
+                if (childWidth == 0 && params != null && params.width > 0) {
+                    childWidth = params.width;
+                }
+                int leftMargin = 0;
+                int rightMargin = 0;
+                if (child instanceof ActionBarMenuItem) {
+                    leftMargin = rightMargin = -dp(5);
+                } else if (params instanceof ViewGroup.MarginLayoutParams) {
+                    ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) params;
+                    leftMargin = margins.leftMargin;
+                    rightMargin = margins.rightMargin;
+                }
+                position += leftMargin;
+                if (child instanceof ActionBarMenuItem && child.getVisibility() == View.VISIBLE) {
+                    left = Math.min(left, position);
+                    right = Math.max(right, position + childWidth);
+                }
+                position += childWidth + rightMargin;
+            }
+            return left == Integer.MAX_VALUE ? 0 : Math.max(0, right - left);
+        }
         float mLeft = Float.POSITIVE_INFINITY;
         float mRight = Float.NEGATIVE_INFINITY;
         boolean found = false;

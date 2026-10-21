@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Compact adaptation of bundled msg_views_solar.xml geometry (Cherrygram/NimarkoGram).
+     Original port attribution: github.com/arsLan4k1390, 2022-2026; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="12dp"
+    android:viewportWidth="16" android:viewportHeight="12">
+    <group android:scaleX=".5555556" android:scaleY=".5555556" android:translateX="1.333333" android:translateY="1">
+        <path android:fillColor="#FFFFFFFF" android:fillAlpha=".45" android:pathData="M1.53 12.7C0.51 11.48 0 10.85 0 9s0.51-2.47 1.53-3.7C3.57 2.8 6.98 0 12 0c5.02 0 8.43 2.81 10.47 5.3C23.49 6.52 24 7.15 24 9s-0.51 2.47-1.53 3.7C20.43 15.2 17.02 18 12 18c-5.02 0-8.43-2.81-10.47-5.3Z" />
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M17.4,9 A5.4,5.4 0,1 1,6.6,9 A5.4,5.4 0,1 1,17.4,9 Z M14.2,9 A2.2,2.2 0,1 1,9.8,9 A2.2,2.2 0,1 1,14.2,9 Z" />
+    </group>
+</vector>

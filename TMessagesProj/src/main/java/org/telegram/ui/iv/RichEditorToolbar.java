@@ -1,9 +1,12 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.graphics.Matrix;
 import android.graphics.Outline;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -708,6 +711,41 @@ public class RichEditorToolbar extends FrameLayout {
         return bottomInnerContainer;
     }
 
+    private final Matrix touchInverseMatrix = new Matrix();
+    private final float[] touchPoint = new float[2];
+
+    public boolean isTouchOnControls(float parentX, float parentY) {
+        return isTouchOnControl(this, parentX, parentY);
+    }
+
+    private boolean isTouchOnControl(View view, float parentX, float parentY) {
+        if (view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0) return false;
+        float x = parentX - view.getLeft();
+        float y = parentY - view.getTop();
+        if (view.getParent() instanceof View) {
+            final View parent = (View) view.getParent();
+            x += parent.getScrollX();
+            y += parent.getScrollY();
+        }
+        if (!view.getMatrix().isIdentity()) {
+            if (!view.getMatrix().invert(touchInverseMatrix)) return false;
+            touchPoint[0] = x;
+            touchPoint[1] = y;
+            touchInverseMatrix.mapPoints(touchPoint);
+            x = touchPoint[0];
+            y = touchPoint[1];
+        }
+        if (x < 0 || y < 0 || x >= view.getWidth() || y >= view.getHeight()) return false;
+        if (view.isClickable() || view.isLongClickable()
+                || view instanceof HorizontalScrollView || view == trashPanelIcon) return true;
+        if (view instanceof ViewGroup) {
+            final ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                if (isTouchOnControl(group.getChildAt(i), x, y)) return true;
+            }
+        }
+        return false;
+    }
     private int color(int key) {
         return Theme.getColor(key, resourcesProvider);
     }

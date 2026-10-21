@@ -17,6 +17,8 @@ import app.nimarkogram.messenger.preferences.components.StickerSizeCell;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -35,6 +37,7 @@ import org.telegram.ui.LaunchActivity;
 import java.util.ArrayList;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import app.nimarkogram.messenger.preferences.helpers.NimarkoAlertDialogSwitchers;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
@@ -90,6 +93,9 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     private AvatarCornersPreviewCell avatarCornersCell;
     private StickerSizeCell stickerSizeCell;
 
+    private Resources boundIconResources;
+    private Configuration boundIconConfiguration;
+    private long boundIconGeneration = Long.MIN_VALUE;
     public AppearancePreferencesActivity() {
         this(PAGE_OVERVIEW);
     }
@@ -129,7 +135,35 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     @Override
     public View createView(Context context) {
         setMD3(true);
-        return super.createView(context);
+        View view = super.createView(context);
+        rememberIconResources(view.getResources());
+        return view;
+    }
+
+    private void rememberIconResources(Resources resources) {
+        boundIconResources = resources;
+        boundIconConfiguration = new Configuration(resources.getConfiguration());
+        boundIconGeneration = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : Long.MIN_VALUE;
+    }
+
+    @Override public void onResume() {
+        super.onResume();
+        onIconPackResourcesChanged();
+    }
+
+    @Override public boolean onIconPackResourcesChanged() {
+        if (fragmentView == null || actionBar == null || listView == null || listView.adapter == null) return false;
+        Resources resources = fragmentView.getResources();
+        if (!(resources instanceof NimarkoIconResources) || boundIconConfiguration == null
+                || !boundIconConfiguration.equals(resources.getConfiguration())) return false;
+        long generation = ((NimarkoIconResources) resources).getReplacementGeneration();
+        if (resources != boundIconResources || generation != boundIconGeneration) {
+            actionBar.setBackButtonDrawable(resources.getDrawable(R.drawable.ic_ab_back).mutate());
+            listView.adapter.update(false);
+            rememberIconResources(resources);
+        }
+        return true;
     }
 
     @Override

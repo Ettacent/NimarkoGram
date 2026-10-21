@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="28dp" android:height="28dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="forward" android:fillColor="#00000000"
+        android:strokeWidth="1.35" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4,19C4.8,12.5 8.5,9.5 14,9.5V5.8L21.4,12.8L14,19.8V15.5C9.5,15.5 6.3,16.6 4,19Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="sliders" android:fillColor="#00000000"
+        android:strokeWidth="1.35" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3,3H5 M8,3H12 M3,6.5H7 M10,6.5H12">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="knobs" android:fillColor="#00000000"
+        android:strokeWidth="1.35" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,3A1.5,1.5 0,1 1,5,3A1.5,1.5 0,1 1,8,3 M10,6.5A1.5,1.5 0,1 1,7,6.5A1.5,1.5 0,1 1,10,6.5">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

@@ -3,11 +3,13 @@
 package org.telegram.ui.Components.FloatingDebug;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -209,7 +211,14 @@ public class FloatingDebugView extends FrameLayout implements NotificationCenter
         ImageView actionIcon = new ImageView(context);
         actionIcon.setImageResource(R.drawable.device_phone_android);
         actionIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_actionIcon), PorterDuff.Mode.SRC_IN));
+        Resources iconResources = context.getResources();
+        if (iconResources instanceof NimarkoIconResources && ((NimarkoIconResources) iconResources).hasReplacement(R.drawable.device_phone_android)) {
+            int iconSize = Math.max(1, (int) Math.min(32f * iconResources.getDisplayMetrics().density, AndroidUtilities.dp(56) * 4f / 7f));
+            actionIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            floatingButtonContainer.addView(actionIcon, new FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER));
+        } else {
         floatingButtonContainer.addView(actionIcon);
+        }
         floatingButtonContainer.setVisibility(GONE);
         addView(floatingButtonContainer, LayoutHelper.createFrame(56, 56));
 

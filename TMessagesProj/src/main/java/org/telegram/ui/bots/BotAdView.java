@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -41,6 +43,7 @@ import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Stories.recorder.HintView2;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 public class BotAdView extends FrameLayout {
 
     private final LinearLayout layout;
@@ -111,7 +114,7 @@ public class BotAdView extends FrameLayout {
         closeView = new ImageView(context);
         closeView.setBackground(Theme.createSelectorDrawable(Theme.RIPPLE_MASK_CIRCLE_AUTO, Theme.multAlpha(Theme.getColor(Theme.key_dialogEmptyImage, resourcesProvider), .20f)));
         ScaleStateListAnimator.apply(closeView);
-        closeView.setImageResource(R.drawable.msg_close);
+        closeView.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.msg_close));
         closeView.setScaleType(ImageView.ScaleType.CENTER);
         closeView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_topPanelClose, resourcesProvider), PorterDuff.Mode.SRC_IN));
         closeView.setOnClickListener(v -> {

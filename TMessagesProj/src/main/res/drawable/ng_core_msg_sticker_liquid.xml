@@ -1,0 +1,36 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Based on Telegram Android resources (GPL v2 or later).
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group android:translateX="0.48" android:translateY="0.48"
+        android:scaleX="0.96" android:scaleY="0.96">
+        <path android:fillAlpha="0.7" android:fillType="evenOdd" android:pathData="M7.84 1.92 H16.16 C19.4295 1.92 22.08 4.5705 22.08 7.84 V12 C22.08 17.567 17.567 22.08 12 22.08 H7.84 C4.5705 22.08 1.92 19.4295 1.92 16.16 V7.84 C1.92 4.5705 4.5705 1.92 7.84 1.92 Z M7.2 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M14.24 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M7.289 15.229 C8.76 16.824 10.354 17.55 12 17.55 C13.67 17.55 14.993 17.17 15.73 16.37 A.75 .75 0 0 0 14.67 15.31 C14.11 15.92 13.276 16.05 12 16.05 C10.66 16.05 9.48 15.39 8.391 14.211 A.75 .75 0 0 0 7.289 15.229 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="3.936" android:startY="1.92"
+                    android:endX="20.064" android:endY="22.08">
+                    <item android:offset="0" android:color="#EBFFFFFF"/>
+                    <item android:offset="0.55" android:color="#94FFFFFF"/>
+                    <item android:offset="1" android:color="#C7FFFFFF"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:fillColor="#00000000" android:strokeColor="#6BFFFFFF" android:strokeAlpha="0.7"
+            android:strokeWidth="0.55" android:pathData="M7.84 1.92 H16.16 C19.4295 1.92 22.08 4.5705 22.08 7.84 V12 C22.08 17.567 17.567 22.08 12 22.08 H7.84 C4.5705 22.08 1.92 19.4295 1.92 16.16 V7.84 C1.92 4.5705 4.5705 1.92 7.84 1.92 Z"/>
+        <group>
+            <clip-path android:fillType="evenOdd" android:pathData="M7.84 1.92 H16.16 C19.4295 1.92 22.08 4.5705 22.08 7.84 V12 C22.08 17.567 17.567 22.08 12 22.08 H7.84 C4.5705 22.08 1.92 19.4295 1.92 16.16 V7.84 C1.92 4.5705 4.5705 1.92 7.84 1.92 Z M7.2 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M14.24 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M7.289 15.229 C8.76 16.824 10.354 17.55 12 17.55 C13.67 17.55 14.993 17.17 15.73 16.37 A.75 .75 0 0 0 14.67 15.31 C14.11 15.92 13.276 16.05 12 16.05 C10.66 16.05 9.48 15.39 8.391 14.211 A.75 .75 0 0 0 7.289 15.229 Z"/>
+            <path android:fillAlpha="0.7" android:pathData="M11.52 22.08 H12 C17.567 22.08 22.08 17.567 22.08 12 V10.56 V12.16 C22.08 13.3971 21.0771 14.4 19.84 14.4 H18.24 C16.1192 14.4 14.4 16.1192 14.4 18.24 V19.84 C14.4 21.0771 13.3971 22.08 12.16 22.08 Z">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="11.52" android:startY="10.56"
+                        android:endX="22.08" android:endY="22.08"
+                        android:startColor="#F5FFFFFF" android:endColor="#7AFFFFFF"/>
+                </aapt:attr>
+            </path>
+            <path android:fillColor="#00000000" android:strokeColor="#CCFFFFFF" android:strokeAlpha="0.7"
+                android:strokeWidth="0.55" android:strokeLineCap="round" android:pathData="M11.52 22.08 H12.16 C13.3971 22.08 14.4 21.0771 14.4 19.84 V18.24 C14.4 16.1192 16.1192 14.4 18.24 14.4 H19.84 C21.0771 14.4 22.08 13.3971 22.08 12.16 V10.56"/>
+        </group>
+    </group>
+</vector>

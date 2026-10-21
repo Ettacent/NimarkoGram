@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.utils;
 
 import android.graphics.drawable.Drawable;
@@ -24,6 +26,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     private static final long FRAME_INTERVAL_NS = 1_000_000_000L / TARGET_FPS;
 
 
+    private static final long[] FRAME_MASKS = buildFrameMasks();
     private static Choreographer60FpsContent sInstance;
 
     public static Choreographer60FpsContent getInstance() {
@@ -178,20 +181,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     private void dispatchFrame(long frameTimeNanos) {
+        final long tickMask = 1L << mCounter;
         for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
-            final boolean fire;
-            if (group.stride > 0) {
-                fire = mCounter % group.stride == 0;
-            } else {
-                group.accumulatedNs += FRAME_INTERVAL_NS;
-                if (group.accumulatedNs >= group.intervalNs) {
-                    group.accumulatedNs %= group.intervalNs;
-                    fire = true;
-                } else {
-                    fire = false;
-                }
-            }
+            final boolean fire = (group.frameMask & tickMask) != 0;
             if (fire) {
                 if (group.runnableCallbacksOnce != null) {
                     ReferenceList<Runnable> referenceList = group.runnableCallbacksOnce;
@@ -245,33 +238,86 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         }
 
         mCounter++;
+        if (mCounter == TARGET_FPS) {
+            mCounter = 0;
+        }
     }
 
     private CallbackGroup getOrCreateGroup(int fps) {
+        fps = Math.max(1, Math.min(fps, TARGET_FPS));
         CallbackGroup group = mGroups.get(fps);
         if (group == null) {
-            long intervalNs = 1_000_000_000L / fps;
-            int stride = (TARGET_FPS % fps == 0) ? TARGET_FPS / fps : 0;
-            group = new CallbackGroup(intervalNs, stride);
+            group = new CallbackGroup(FRAME_MASKS[fps - 1]);
             mGroups.put(fps, group);
         }
         return group;
     }
 
 
+    private static long[] buildFrameMasks() {
+        long[] masks = new long[TARGET_FPS];
+        for (int index = 0; index < masks.length; index++) {
+            masks[index] = buildFrameMask(index + 1);
+        }
+        return masks;
+    }
+
+    private static long buildFrameMask(int fps) {
+        int baseFps = 1;
+        for (int candidate = 2; candidate <= TARGET_FPS; candidate++) {
+            if (TARGET_FPS % candidate == 0
+                    && Math.abs(candidate - fps) < Math.abs(baseFps - fps)) {
+                baseFps = candidate;
+            }
+        }
+
+        int stride = TARGET_FPS / baseFps;
+        long mask = 0;
+        for (int tick = 0; tick < TARGET_FPS; tick += stride) {
+            mask |= 1L << tick;
+        }
+
+        int correction = fps - baseFps;
+        int leapFrames = Math.abs(correction);
+        for (int i = 0; i < leapFrames; i++) {
+            int targetTick = (2 * i + 1) * TARGET_FPS / (2 * leapFrames);
+            for (int distance = 0; distance < TARGET_FPS; distance++) {
+                boolean selected = false;
+                for (int direction = 0; direction < 2; direction++) {
+                    int tick = (targetTick + (direction == 0 ? distance : -distance)
+                            + TARGET_FPS) % TARGET_FPS;
+                    long bit = 1L << tick;
+                    if (correction > 0) {
+                        if ((mask & bit) != 0 || (stride % 2 == 0 && tick % 2 == 0)) {
+                            continue;
+                        }
+                        mask |= bit;
+                    } else {
+                        if ((mask & bit) == 0) {
+                            continue;
+                        }
+                        mask &= ~bit;
+                    }
+                    selected = true;
+                    break;
+                }
+                if (selected) {
+                    break;
+                }
+            }
+        }
+        return mask;
+    }
     private static final class CallbackGroup {
-        final long intervalNs;
-        final int  stride;
-        long accumulatedNs;
+        final long frameMask;
 
         final ReferenceList<FrameCallback> callbacks = new ReferenceList<>();
         final ReferenceList<Runnable> runnableCallbacks = new ReferenceList<>();
         @Nullable
         ReferenceList<Runnable> runnableCallbacksOnce;
 
-        CallbackGroup(long intervalNs, int stride) {
-            this.intervalNs = intervalNs;
-            this.stride     = stride;
+        CallbackGroup(long frameMask) {
+            this.frameMask = frameMask;
         }
     }
 

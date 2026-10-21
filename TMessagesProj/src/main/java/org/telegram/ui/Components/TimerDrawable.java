@@ -11,6 +11,8 @@
 package org.telegram.ui.Components;
 
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -24,6 +26,8 @@ import android.text.StaticLayout;
 import android.text.TextPaint;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
@@ -45,7 +49,15 @@ public class TimerDrawable extends Drawable {
     private int time = -1;
     private Drawable currentTtlIcon;
     private int iconColor;
+    private boolean iconColorSet;
     private int currentTtlIconId;
+    private Resources iconResources;
+    private Resources.Theme iconTheme;
+    private Configuration iconConfiguration;
+    private long iconGeneration;
+    private int iconDensityDpi;
+    private float iconDensity;
+    private float layoutDensity;
     Context context;
     Theme.ResourcesProvider resourcesProvider;
     private boolean overrideColor;
@@ -63,16 +75,59 @@ public class TimerDrawable extends Drawable {
     }
 
     public void setTime(int value) {
-        if (time != value) {
+        if (time == -1 && value == -1) {
+            return;
+        }
+        boolean changed = time != value;
+        if (changed) {
             time = value;
 
-            if (isDialog) {
-                currentTtlIcon = ContextCompat.getDrawable(context, R.drawable.msg_autodelete_badge2).mutate();
-            } else {
-                currentTtlIcon = ContextCompat.getDrawable(context, time == 0 ? R.drawable.msg_mini_autodelete : R.drawable.msg_mini_autodelete_empty).mutate();
+        }
+        refreshIcon(changed);
+    }
+
+    private void refreshIcon(boolean timeChanged) {
+        Resources resources = context.getResources();
+        Resources.Theme theme = context.getTheme();
+        NimarkoIconResources packResources = resources instanceof NimarkoIconResources
+                ? (NimarkoIconResources) resources : null;
+        long generation = packResources == null ? 0 : packResources.getReplacementGeneration();
+        int densityDpi = resources.getDisplayMetrics().densityDpi;
+        float density = resources.getDisplayMetrics().density;
+        int id = isDialog ? R.drawable.msg_autodelete_badge2
+                : time == 0 ? R.drawable.msg_mini_autodelete : R.drawable.msg_mini_autodelete_empty;
+        boolean environmentChanged = iconResources != resources || iconTheme != theme
+                || iconGeneration != generation || iconDensityDpi != densityDpi
+                || iconDensity != density || layoutDensity != AndroidUtilities.density
+                || iconConfiguration == null || !iconConfiguration.equals(resources.getConfiguration());
+        if (environmentChanged || currentTtlIconId != id || currentTtlIcon == null) {
+            int selection = packResources == null ? NimarkoConfig.ICON_REPLACE_NONE : packResources.getAppliedSelection();
+            currentTtlIcon = id != R.drawable.msg_mini_autodelete
+                    ? AutoDeleteTimerDrawable.create(context, selection, isDialog ? AndroidUtilities.dp(22) : AndroidUtilities.dp(21)) : null;
+            if (currentTtlIcon == null) {
+                currentTtlIcon = ContextCompat.getDrawable(context, id).mutate();
+            }
+            if (!isDialog) {
                 currentTtlIcon.setColorFilter(currentColorFilter);
             }
+            iconColorSet = false;
+            currentTtlIconId = id;
+            iconResources = resources;
+            iconTheme = theme;
+            iconGeneration = generation;
+            iconDensityDpi = densityDpi;
+            iconDensity = density;
+            layoutDensity = AndroidUtilities.density;
+            iconConfiguration = new Configuration(resources.getConfiguration());
             invalidateSelf();
+        }
+        if (timeChanged || environmentChanged) {
+            updateTimeLayout();
+        }
+    }
+
+    private void updateTimeLayout() {
+        int value = time;
 
             String timeString;
             if (time >= 1 && time < 60) {
@@ -134,7 +189,6 @@ public class TimerDrawable extends Drawable {
 
             invalidateSelf();
         }
-    }
 
     public static TimerDrawable getTtlIcon(int ttl) {
         TimerDrawable timerDrawable = new TimerDrawable(ApplicationLoader.applicationContext, null);
@@ -152,6 +206,9 @@ public class TimerDrawable extends Drawable {
     }
     @Override
     public void draw(@NonNull Canvas canvas) {
+        if (time != -1) {
+            refreshIcon(false);
+        }
         int width = getIntrinsicWidth();
         int height = getIntrinsicHeight();
 
@@ -170,9 +227,18 @@ public class TimerDrawable extends Drawable {
             if (!isStaticIcon && !isDialog) {
                 canvas.drawCircle(getBounds().centerX(), getBounds().centerY(), getBounds().width() / 2f, paint);
                 int iconColor = getForegroundColor();
-                if (this.iconColor != iconColor) {
+                if (!iconColorSet || this.iconColor != iconColor) {
                     this.iconColor = iconColor;
+                    iconColorSet = true;
                     currentTtlIcon.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
+                }
+            } else if (isStaticIcon && currentTtlIcon instanceof AutoDeleteTimerDrawable) {
+                int color = timePaint.getColor();
+                if (!iconColorSet || iconColor != color) {
+                    iconColor = color;
+                    iconColorSet = true;
+                    currentTtlIcon.setColorFilter(currentColorFilter != null ? currentColorFilter
+                            : new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
                 }
             }
             if (isDialog) {
@@ -215,8 +281,12 @@ public class TimerDrawable extends Drawable {
     @Override
     public void setColorFilter(ColorFilter cf) {
         currentColorFilter = cf;
-        if (isStaticIcon) {
+        if (isStaticIcon && currentTtlIcon != null) {
             currentTtlIcon.setColorFilter(cf);
+            iconColorSet = false;
+            if (currentTtlIcon instanceof AutoDeleteTimerDrawable) {
+                invalidateSelf();
+            }
         }
     }
 

@@ -40,6 +40,7 @@ import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEncodingService;
 import org.telegram.tgnet.TLRPC;
@@ -52,6 +53,7 @@ import org.telegram.ui.Components.RLottieDrawable;
 
 import java.io.File;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class DownloadButton extends ImageView {
 
     private int currentAccount;
@@ -365,6 +367,7 @@ public class DownloadButton extends ImageView {
 
     public static class PreparingVideoToast extends View {
 
+        private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer();
         private final Paint dimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint textPaint2 = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -508,8 +511,10 @@ public class DownloadButton extends ImageView {
             canvas.save();
             canvas.scale(cancelButtonScale, cancelButtonScale, cx, cy);
             whitePaint.setStrokeWidth(dp(3.4f));
+            if (!drawPackClose(canvas, cx, cy)) {
             canvas.drawLine(cx - dp(7), cy - dp(7), cx + dp(7), cy + dp(7), whitePaint);
             canvas.drawLine(cx - dp(7), cy + dp(7), cx + dp(7), cy - dp(7), whitePaint);
+            }
             canvas.restore();
 
             canvas.save();
@@ -520,6 +525,15 @@ public class DownloadButton extends ImageView {
             textPaint.setAlpha((int) (0xFF * alpha));
             preparingLayout.draw(canvas);
             canvas.restore();
+        }
+
+        private boolean drawPackClose(Canvas canvas, float cx, float cy) {
+            if (whitePaint.getXfermode() != null) return false;
+            final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+            if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
+            final float size = 2f * dp(7) + whitePaint.getStrokeWidth();
+            packClose.draw(canvas, whitePaint, cx, cy, size, size, 1f, false);
+            return true;
         }
 
         private void drawToast(Canvas canvas, float alpha) {

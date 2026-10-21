@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -414,6 +416,12 @@ void Handshake::processHandshakeResponse_resPQ(TLObject *message, int64_t messag
 
         authServerNonce = new ByteArray(result->server_nonce.get());
 
+        if (result->pq == nullptr || result->pq->length != 8) {
+            if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: invalid pq length, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+            beginHandshake(false);
+            return;
+        }
+
         uint64_t pq = ((uint64_t) (result->pq->bytes[0] & 0xff) << 56) |
                       ((uint64_t) (result->pq->bytes[1] & 0xff) << 48) |
                       ((uint64_t) (result->pq->bytes[2] & 0xff) << 40) |
@@ -598,7 +606,17 @@ void Handshake::processHandshakeResponse_serverDHParams(TLObject *message, int64
 
         TL_server_DH_params_ok *result = (TL_server_DH_params_ok *) message;
 
-        NativeByteBuffer *tmpAesKeyAndIv = BuffersStorage::getInstance().getFreeBuffer(84);
+        if (result->encrypted_answer == nullptr ||
+            result->encrypted_answer->length < SHA_DIGEST_LENGTH ||
+            result->encrypted_answer->length % AES_BLOCK_SIZE != 0) {
+            if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: invalid encrypted DH params length, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+            beginHandshake(false);
+            return;
+        }
+
+        const auto reuseBuffer = [](NativeByteBuffer *buffer) { buffer->reuse(); };
+        std::unique_ptr<NativeByteBuffer, decltype(reuseBuffer)> tmpAesKeyAndIv(
+                BuffersStorage::getInstance().getFreeBuffer(84), reuseBuffer);
 
         NativeByteBuffer *newNonceAndServerNonce = BuffersStorage::getInstance().getFreeBuffer(authNewNonce->length + authServerNonce->length);
         newNonceAndServerNonce->writeBytes(authNewNonce);
@@ -622,8 +640,8 @@ void Handshake::processHandshakeResponse_serverDHParams(TLObject *message, int64
         Datacenter::aesIgeEncryption(result->encrypted_answer->bytes, tmpAesKeyAndIv->bytes(), tmpAesKeyAndIv->bytes() + 32, false, false, result->encrypted_answer->length);
 
         bool hashVerified = false;
-        for (uint32_t i = 0; i < 16; i++) {
-            SHA1(result->encrypted_answer->bytes + SHA_DIGEST_LENGTH, result->encrypted_answer->length - i - SHA_DIGEST_LENGTH, tmpAesKeyAndIv->bytes() + 64);
+        for (uint32_t i = 0; i < 16 && SHA_DIGEST_LENGTH + i <= result->encrypted_answer->length; i++) {
+            SHA1(result->encrypted_answer->bytes + SHA_DIGEST_LENGTH, result->encrypted_answer->length - SHA_DIGEST_LENGTH - i, tmpAesKeyAndIv->bytes() + 64);
             if (!memcmp(tmpAesKeyAndIv->bytes() + 64, result->encrypted_answer->bytes, SHA_DIGEST_LENGTH)) {
                 hashVerified = true;
                 break;
@@ -639,11 +657,21 @@ void Handshake::processHandshakeResponse_serverDHParams(TLObject *message, int64
         bool error = false;
         NativeByteBuffer *answerWithHash = new NativeByteBuffer(result->encrypted_answer->bytes + SHA_DIGEST_LENGTH, result->encrypted_answer->length - SHA_DIGEST_LENGTH);
         uint32_t constructor = answerWithHash->readUint32(&error);
-        TL_server_DH_inner_data *dhInnerData = TL_server_DH_inner_data::TLdeserialize(answerWithHash, constructor, currentDatacenter->instanceNum, error);
+        std::unique_ptr<TL_server_DH_inner_data> dhInnerData(
+                TL_server_DH_inner_data::TLdeserialize(answerWithHash, constructor, currentDatacenter->instanceNum, error));
         delete answerWithHash;
 
-        if (error) {
+        if (error || dhInnerData == nullptr) {
             if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: can't parse decoded DH params, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
+            beginHandshake(false);
+            return;
+        }
+
+        if (dhInnerData->nonce == nullptr ||
+            dhInnerData->server_nonce == nullptr ||
+            dhInnerData->dh_prime == nullptr ||
+            dhInnerData->g_a == nullptr) {
+            if (LOGS_ENABLED) DEBUG_E("account%u dc%u handshake: incomplete decoded DH params, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
             beginHandshake(false);
             return;
         }
@@ -765,7 +793,6 @@ void Handshake::processHandshakeResponse_serverDHParams(TLObject *message, int64
         Datacenter::aesIgeEncryption(clientInnerDataBuffer->bytes(), tmpAesKeyAndIv->bytes(), tmpAesKeyAndIv->bytes() + 32, true, false, clientInnerDataBuffer->limit());
         setClientDhParams->encrypted_data = std::unique_ptr<ByteArray>(new ByteArray(clientInnerDataBuffer->bytes(), clientInnerDataBuffer->limit()));
         clientInnerDataBuffer->reuse();
-        tmpAesKeyAndIv->reuse();
 
         sendAckRequest(messageId);
         sendRequestData(setClientDhParams, true);

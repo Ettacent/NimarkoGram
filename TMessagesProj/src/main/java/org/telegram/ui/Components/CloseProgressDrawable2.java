@@ -4,6 +4,17 @@
  * You should have received a copy of the license in this archive (see LICENSE).
  *
  * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent.
+ */
+
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
@@ -12,18 +23,25 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 
+import org.telegram.messenger.R;
+
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class CloseProgressDrawable2 extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
+    private final Path packArm = new Path();
     private long lastFrameTime;
     private DecelerateInterpolator interpolator = new DecelerateInterpolator();
     private RectF rect = new RectF();
@@ -47,8 +65,9 @@ public class CloseProgressDrawable2 extends Drawable {
     }
 
     public void startAnimation() {
+        if (animating) return;
         animating = true;
-        lastFrameTime = System.currentTimeMillis();
+        lastFrameTime = SystemClock.uptimeMillis();
         invalidateSelf();
     }
 
@@ -74,10 +93,12 @@ public class CloseProgressDrawable2 extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
-        long newTime = System.currentTimeMillis();
+        long newTime = SystemClock.uptimeMillis();
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon close = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_close_white);
         setColor(getCurrentColor());
         if (lastFrameTime != 0) {
-            long dt = (newTime - lastFrameTime);
+            long dt = Math.max(0L, newTime - lastFrameTime);
             if (animating || angle != 0) {
                 angle += 360 * dt / 500.0f;
                 if (!animating && angle >= 720) {
@@ -124,6 +145,17 @@ public class CloseProgressDrawable2 extends Drawable {
             progress3 = (angle - 630) / 90.0f;
         }
 
+        if (close != null) {
+            float size = Math.min(AndroidUtilities.dp(24), side * 3f);
+            if (angle == 0) {
+                packIconRenderer.draw(canvas, close, paint, 0, 0, size, paint.getAlpha() / 255f, 45);
+            } else {
+                drawPackArm(canvas, close, size, 1f, progress1, 0, -size, size, size, size);
+                drawPackArm(canvas, close, size, progress2, 1f, 0, -size, -size, -size, size);
+                drawPackArm(canvas, close, size, 1f, progress3, 0, -size, -size, size, -size);
+                drawPackArm(canvas, close, size, 1f - progress4, 1f, size / 3f * progress4, size, -size, size, size);
+            }
+        } else {
         if (progress1 != 0) {
             canvas.drawLine(0, 0, 0, side * progress1, paint);
         }
@@ -137,6 +169,7 @@ public class CloseProgressDrawable2 extends Drawable {
             canvas.drawLine(side * progress4, 0, side, 0, paint);
         }
 
+        }
         canvas.restore();
 
         int cx = getBounds().centerX();
@@ -145,6 +178,22 @@ public class CloseProgressDrawable2 extends Drawable {
         canvas.drawArc(rect, (angle < 360 ? 0 : angle - 360) - 45, (angle < 360 ? angle : 720 - angle), false, paint);
 
         lastFrameTime = newTime;
+    }
+
+    private void drawPackArm(Canvas canvas, NimarkoIconResources.PreparedIcon close, float size,
+            float scaleX, float scaleY, float translationX, float x1, float y1, float x2, float y2) {
+        if (scaleX <= 0 || scaleY <= 0) return;
+        canvas.save();
+        canvas.translate(translationX, 0);
+        canvas.scale(scaleX, scaleY);
+        packArm.reset();
+        packArm.moveTo(0, 0);
+        packArm.lineTo(x1, y1);
+        packArm.lineTo(x2, y2);
+        packArm.close();
+        canvas.clipPath(packArm);
+        packIconRenderer.draw(canvas, close, paint, 0, 0, size, paint.getAlpha() / 255f, 45);
+        canvas.restore();
     }
 
     @Override

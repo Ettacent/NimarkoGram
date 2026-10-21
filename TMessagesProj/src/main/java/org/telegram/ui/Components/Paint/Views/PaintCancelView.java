@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Paint.Views;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -9,12 +11,16 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.view.View;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 
+import org.telegram.messenger.R;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
 public class PaintCancelView extends View {
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float progress;
 
+    private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer(), packBack = new BoundedPackIconRenderer();
     public PaintCancelView(Context context) {
         super(context);
 
@@ -33,6 +39,9 @@ public class PaintCancelView extends View {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
+        if (drawPackGlyphs(canvas)) {
+            return;
+        }
         canvas.drawLine(
             getWidth() / 2f + dp(lerp(-5.33f, -4, progress)),
             getHeight() / 2f + dp(lerp(5.33f, 0, progress)),
@@ -48,4 +57,25 @@ public class PaintCancelView extends View {
             paint
         );
     }
+    private boolean drawPackGlyphs(Canvas canvas) {
+        if (paint.getXfermode() != null || progress < 0f || progress > 1f) return false;
+        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        if (!packClose.prepare(batch, R.drawable.ic_close_white)
+                || !packBack.prepare(batch, R.drawable.arrow_more)) return false;
+        final float x1 = dp(lerp(-5.33f, -4, progress)), y1 = dp(lerp(5.33f, 0, progress));
+        final float x2 = dp(lerp(5.33f, 3, progress)), y2 = dp(lerp(-5.33f, -7, progress));
+        final float x3 = dp(lerp(5.33f, 3, progress)), y3 = dp(lerp(5.33f, 7, progress));
+        final float x4 = dp(lerp(-5.33f, -4, progress)), y4 = dp(lerp(-5.33f, 0, progress));
+        final float left = Math.min(Math.min(x1, x2), Math.min(x3, x4));
+        final float right = Math.max(Math.max(x1, x2), Math.max(x3, x4));
+        final float top = Math.min(Math.min(y1, y2), Math.min(y3, y4));
+        final float bottom = Math.max(Math.max(y1, y2), Math.max(y3, y4));
+        final float cx = getWidth() / 2f + (left + right) / 2f;
+        final float cy = getHeight() / 2f + (top + bottom) / 2f;
+        final float width = right - left + paint.getStrokeWidth();
+        final float height = bottom - top + paint.getStrokeWidth();
+        packClose.draw(canvas, paint, cx, cy, width, height, 1f - progress, false);
+        packBack.draw(canvas, paint, cx, cy, width, height, progress, true);
+        return true;
+}
 }

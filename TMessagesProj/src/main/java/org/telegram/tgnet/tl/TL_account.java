@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet.tl;
 
 import android.text.TextUtils;
@@ -1959,12 +1961,13 @@ public class TL_account {
         }
     }
 
-    public static class getPassword extends TLObject {
+    public static class getPassword extends TLMethod<Password> {
         public static final int constructor = 0x548a30f5;
 
 
-        public TLObject deserializeResponse(InputSerializedData stream, int constructor, boolean exception) {
-            return TL_password.TLdeserialize(stream, constructor, exception);
+        @Override
+        public Password deserializeResponseT(InputSerializedData stream, int constructor, boolean exception) {
+            return Password.TLdeserialize(stream, constructor, exception);
         }
 
         public void serializeToStream(OutputSerializedData stream) {

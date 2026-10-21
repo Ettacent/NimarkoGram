@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -71,6 +73,7 @@ import org.telegram.ui.Components.UndoView;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class FiltersSetupActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private RecyclerListView listView;
@@ -1083,6 +1086,10 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
                     drawable2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_checkboxCheck), PorterDuff.Mode.MULTIPLY));
                     CombinedDrawable combinedDrawable = new CombinedDrawable(drawable1, drawable2);
 
+                    if (mContext.getResources() instanceof NimarkoIconResources
+                            && ((NimarkoIconResources) mContext.getResources()).hasReplacement(R.drawable.poll_add_plus)) {
+                        combinedDrawable.setIconSize(dp(16), dp(16));
+                    }
                     textCell.setTextAndIcon(item.text + "", combinedDrawable, false);
                     break;
                 }

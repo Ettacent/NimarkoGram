@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -16,7 +18,7 @@ public class TLParseException extends RuntimeException {
         final TLParseException tlParseException = new TLParseException(message);
 
         FileLog.e(tlParseException, constructorId != 0xcd78e586);
-        if (BuildConfig.DEBUG_VERSION && constructorId != 0xcd78e586 && constructorId != 0xd18be2ef) {
+        if (BuildConfig.DEBUG_VERSION && constructorId != 0xcd78e586 && constructorId != 0xd18be2ef && constructorId != 0xf35c6d01) {
             AndroidUtilities.runOnUIThread(() -> {
                 NotificationCenter.getGlobalInstance()
                     .postNotificationName(NotificationCenter.tlSchemeParseException, tlParseException);

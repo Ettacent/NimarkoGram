@@ -81,6 +81,7 @@ import org.telegram.ui.Components.EmojiView;
 import app.nimarkogram.messenger.NimarkoConfig;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MentionsContainerView;
+import org.telegram.ui.Components.PeriodPackRenderer;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 import org.telegram.ui.Components.Text;
@@ -1425,6 +1426,7 @@ public class CaptionContainerView extends FrameLayout {
 
     public static class PeriodDrawable extends Drawable {
 
+        private final PeriodPackRenderer packRenderer = new PeriodPackRenderer();
         public final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         public final AnimatedTextView.AnimatedTextDrawable textDrawable = new AnimatedTextView.AnimatedTextDrawable(true, false, false) {
@@ -1523,14 +1525,15 @@ public class CaptionContainerView extends FrameLayout {
             final float r = dpf2(diameterDp) / 2f;
             final float fillT = this.fillT.set(filled);
 
+            final int pack = clear ? NimarkoConfig.ICON_REPLACE_NONE : packRenderer.selection();
             if (fillT > 0) {
                 fillPaint.setAlpha((int) (0xFF * alpha * fillT));
-                canvas.drawCircle(cx, cy, dpf2(11.33f) * fillT, fillPaint);
+                packRenderer.drawCircle(canvas, cx, cy, dpf2(11.33f) * fillT, fillPaint, pack);
             }
 
             strokePaint.setAlpha((int) (Color.alpha(strokeColor) * alpha * (1f - fillT)));
             AndroidUtilities.rectTmp.set(cx - r, cy - r, cx + r, cy + r);
-            canvas.drawArc(AndroidUtilities.rectTmp, 90, 180, false, strokePaint);
+            packRenderer.drawArc(canvas, AndroidUtilities.rectTmp, 90, 180, strokePaint, pack);
 
             final int gaps = dashes + 1;
             final float dashWeight = 1f, gapWeight = 1.5f;
@@ -1538,7 +1541,7 @@ public class CaptionContainerView extends FrameLayout {
             final float gapSweep = gapWeight / (dashes * dashWeight + gaps * gapWeight) * 180;
             float a = gapSweep;
             for (int i = 0; i < dashes; ++i) {
-                canvas.drawArc(AndroidUtilities.rectTmp, 270 + a, dashSweep, false, strokePaint);
+                packRenderer.drawArc(canvas, AndroidUtilities.rectTmp, 270 + a, dashSweep, strokePaint, pack);
                 a += dashSweep + gapSweep;
             }
 

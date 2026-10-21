@@ -1,3 +1,4 @@
+/* Modifications Copyright (C) 2026 Ettacent */
 #include "org_telegram_messenger_voip_Instance.h"
 
 #include <jni.h>
@@ -10,7 +11,7 @@
 #include <sdk/android/native_api/base/init.h>
 #include <voip/webrtc/media/base/media_constants.h>
 #include <tgnet/FileLog.h>
-#include <voip/tgcalls/group/GroupInstanceCustomImpl.h>
+#include <tgcalls/tgcalls/group/GroupInstanceCustomImpl.h>
 
 #include <memory>
 #include <utility>
@@ -944,6 +945,9 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeNati
             RtcServer rtcServer;
             rtcServer.id = static_cast<uint8_t>(endpointObject.getIntField("reflectorId"));
             rtcServer.host = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("ipv4"));
+            if (rtcServer.host.empty()) {
+                rtcServer.host = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("ipv6"));
+            }
             rtcServer.port = static_cast<uint16_t>(endpointObject.getIntField("port"));
             rtcServer.login = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("username"));
             rtcServer.password = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("password"));
@@ -953,6 +957,9 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeNati
             RtcServer rtcServer;
             rtcServer.id = static_cast<uint8_t>(endpointObject.getIntField("reflectorId"));
             rtcServer.host = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("ipv4"));
+            if (rtcServer.host.empty()) {
+                rtcServer.host = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("ipv6"));
+            }
             rtcServer.port = static_cast<uint16_t>(endpointObject.getIntField("port"));
             rtcServer.login = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("username"));
             rtcServer.password = tgvoip::jni::JavaStringToStdString(env, endpointObject.getStringField("password"));

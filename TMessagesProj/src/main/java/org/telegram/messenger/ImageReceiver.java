@@ -1292,7 +1292,8 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private boolean prepareDrawAlpha(boolean drawInBackground) {
         final AnimatedFileDrawable animation = getAnimation();
         final RLottieDrawable lottie = getLottieAnimation();
-        final boolean needsRenderingFrame = drawInBackground || crossfadeOnReady || crossfadeWithOldImage;
+        final boolean needsRenderingFrame = drawInBackground || crossfadeOnReady || crossfadeWithOldImage
+                || currentMediaDrawable != null && currentImageDrawable != null;
         if (needsRenderingFrame && lottie != null && !lottie.hasRenderingBitmap()) {
             lottie.updateCurrentFrame(currentTime, drawInBackground);
         }

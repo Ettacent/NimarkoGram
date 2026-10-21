@@ -1,6 +1,9 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
+import static org.telegram.messenger.LocaleController.getCurrencyExpDivider;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.animation.Animator;
@@ -1082,6 +1085,16 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
         return spannableStringBuilder;
     }
 
+    public static CharSequence applyNewSpanTimed(CharSequence str, int since) {
+        if (ConnectionsManager.getInstance(UserConfig.selectedAccount).getCurrentTime() - since > 4 * 7 * 24 * 60 * 60)
+            return str;
+        SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(str);
+        spannableStringBuilder.append("  d");
+        FilterCreateActivity.NewSpan span = new FilterCreateActivity.NewSpan(false, -1);
+        span.setColor(Theme.getColor(Theme.key_premiumGradient1));
+        spannableStringBuilder.setSpan(span, spannableStringBuilder.length() - 1, spannableStringBuilder.length(), 0);
+        return spannableStringBuilder;
+    }
     private void updateBackgroundImage() {
         if (contentView.getMeasuredWidth() == 0 || contentView.getMeasuredHeight() == 0 || backgroundView == null || backgroundView.imageView == null) {
             return;

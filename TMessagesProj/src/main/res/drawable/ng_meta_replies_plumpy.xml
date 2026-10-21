@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Native adaptation of the bundled msg_reply_small_plumpy return-arrow silhouette.
+     Original port attribution: github.com/arsLan4k1390, 2022-2026; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp" android:height="12dp"
+    android:viewportWidth="12" android:viewportHeight="12">
+    <path android:fillColor="#FFFFFFFF" android:fillAlpha=".45" android:pathData="M5,1.55 C5,1.15 4.8,1.05 4.45,1.4 L.95,4.9 C.62,5.23 .62,5.57 .95,5.9 L4.45,9.4 C4.8,9.75 5,9.65 5,9.25 L5,6.7 L7.1,6.7 C8.5,6.7 9.3,7.7 9.3,9.1 L9.3,9.7 C9.3,10.25 9.75,10.7 10.3,10.7 C10.85,10.7 11.3,10.25 11.3,9.7 L11.3,9.1 C11.3,6.2 9.65,4.3 7.1,4.3 L5,4.3 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M7.1,4.3 C9.65,4.3 11.3,6.2 11.3,9.1 L11.3,9.7 C11.3,10.25 10.85,10.7 10.3,10.7 C9.75,10.7 9.3,10.25 9.3,9.7 L9.3,9.1 C9.3,7.7 8.5,6.7 7.1,6.7 C8,6.1 8,5 7.1,4.3 Z" />
+</vector>

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -20,14 +22,19 @@ import androidx.annotation.Nullable;
 
 import org.telegram.messenger.R;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class MuteDrawable extends Drawable {
 
     private Drawable baseDrawable;
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint clipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    private final Paint packPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
+    private int alpha = 255;
     public MuteDrawable(Context context) {
-        baseDrawable = context.getResources().getDrawable(R.drawable.filled_sound_on).mutate();
+        baseDrawable = NimarkoIconResources.getStockDrawable(context, R.drawable.filled_sound_on).mutate();
+        packPaint.setColor(0xFFFFFFFF);
 
         strokePaint.setStyle(Paint.Style.STROKE);
         strokePaint.setStrokeWidth(dpf2(1.566f));
@@ -49,12 +56,23 @@ public class MuteDrawable extends Drawable {
     @Override
     public void draw(@NonNull Canvas canvas) {
         final Rect bounds = getBounds();
-        canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, 0xFF, Canvas.ALL_SAVE_FLAG);
+        final float muted = animatedMuted.set(this.muted);
+        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        final NimarkoIconResources.PreparedIcon soundOn = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_mute);
+        final NimarkoIconResources.PreparedIcon soundOff = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_unmute);
+        if (soundOn != null && soundOff != null) {
+            final float size = Math.min(dp(24), Math.min(bounds.width(), bounds.height()));
+            packIconRenderer.draw(canvas, soundOn, packPaint, bounds.exactCenterX(), bounds.exactCenterY(),
+                    size, alpha / 255f * (1f - muted), 0);
+            packIconRenderer.draw(canvas, soundOff, packPaint, bounds.exactCenterX(), bounds.exactCenterY(),
+                    size, alpha / 255f * muted, 0);
+            return;
+        }
+        canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha, Canvas.ALL_SAVE_FLAG);
 
         baseDrawable.setBounds(bounds);
         baseDrawable.draw(canvas);
 
-        final float muted = animatedMuted.set(this.muted);
         if (muted > 0) {
             final float p = dpf2(.783f);
             float ax = bounds.centerX() - dp(9) + p, ay = bounds.centerY() - dp(9) + p;
@@ -84,12 +102,16 @@ public class MuteDrawable extends Drawable {
 
     @Override
     public void setAlpha(int alpha) {
-        baseDrawable.setAlpha(alpha);
+        this.alpha = Math.max(0, Math.min(255, alpha));
+        baseDrawable.setAlpha(255);
+        invalidateSelf();
     }
 
     @Override
     public void setColorFilter(@Nullable ColorFilter colorFilter) {
 
+        packPaint.setColorFilter(colorFilter);
+        invalidateSelf();
     }
 
     @Override

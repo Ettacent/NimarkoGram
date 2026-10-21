@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.SharedPreferences;
@@ -5,7 +7,7 @@ import android.content.SharedPreferences;
 import androidx.annotation.NonNull;
 
 import org.telegram.messenger.MessagesController;
-import org.telegram.utils.camera.roundvideo.RoundVideoSession;
+import org.telegram.utils.recorder.round.RoundVideoSession;
 
 /** Stores Telegram-specific preferences for the Camera2 round-video implementation. */
 public final class RoundVideoSettings {

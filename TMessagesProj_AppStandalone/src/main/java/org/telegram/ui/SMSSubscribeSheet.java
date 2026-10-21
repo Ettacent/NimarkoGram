@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -63,7 +65,7 @@ public class SMSSubscribeSheet {
 
         ImageView imageView = new ImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setImageResource(R.drawable.large_sms_code);
+        imageView.setImageResource(SmsIconPackResources.resolve(context, R.drawable.large_sms_code));
         imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         imageView.setBackground(Theme.createCircleDrawable(dp(80), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)));
         layout.addView(imageView, LayoutHelper.createLinear(80, 80, Gravity.CENTER_HORIZONTAL, 0, 24, 0, 12));
@@ -94,9 +96,9 @@ public class SMSSubscribeSheet {
                 fragment.showAsSheet(new PremiumPreviewFragment("sms"), params);
             }
         };
-        layout.addView(new FeatureCell(context, R.drawable.menu_feature_sms,     getString(R.string.SmsSubscribeFeature1Title), formatPluralString("SmsSubscribeFeature1Message", isEligible == null ? 100 : isEligible.monthly_sent_sms), resourcesProvider), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 30, 16, 30, 0));
+        layout.addView(new FeatureCell(context, SmsIconPackResources.resolve(context, R.drawable.menu_feature_sms),     getString(R.string.SmsSubscribeFeature1Title), formatPluralString("SmsSubscribeFeature1Message", isEligible == null ? 100 : isEligible.monthly_sent_sms), resourcesProvider), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 30, 16, 30, 0));
         layout.addView(new FeatureCell(context, org.telegram.messenger.R.drawable.menu_feature_premium, getString(R.string.SmsSubscribeFeature2Title), AndroidUtilities.replaceSingleTag(getString(R.string.SmsSubscribeFeature2Message), openPremium), resourcesProvider), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 30, 16, 30, 0));
-        layout.addView(new FeatureCell(context, R.drawable.menu_feature_gift,    getString(R.string.SmsSubscribeFeature3Title), getString(R.string.SmsSubscribeFeature3Message), resourcesProvider), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 30, 16, 30, 0));
+        layout.addView(new FeatureCell(context, SmsIconPackResources.resolve(context, R.drawable.menu_feature_gift),    getString(R.string.SmsSubscribeFeature3Title), getString(R.string.SmsSubscribeFeature3Message), resourcesProvider), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 30, 16, 30, 0));
 
         final Runnable openTOS = () -> {
             if (isEligible == null) return;

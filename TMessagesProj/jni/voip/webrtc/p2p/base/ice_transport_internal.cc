@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2017 The WebRTC Project Authors. All rights reserved.
  *
@@ -10,6 +12,7 @@
 
 #include "p2p/base/ice_transport_internal.h"
 
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "p2p/base/p2p_constants.h"
 
@@ -35,7 +38,8 @@ RTCError VerifyCandidate(const Candidate& cand) {
     return RTCError::OK();
   }
   if (port < 1024) {
-    if ((port != 80) && (port != 443)) {
+    if (!absl::EndsWith(cand.address().hostname(), ".reflector") &&
+        (port != 80) && (port != 443)) {
       return RTCError(RTCErrorType::INVALID_PARAMETER,
                       "candidate has port below 1024, but not 80 or 443");
     }

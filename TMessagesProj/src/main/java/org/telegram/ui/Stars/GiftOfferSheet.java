@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -250,7 +252,6 @@ public class GiftOfferSheet extends BottomSheetWithRecyclerListView {
 
             iconTon = new ImageView(context);
             iconTon.setImageResource(R.drawable.mini_gram_72);
-            iconTon.setColorFilter(0xFF3391d4);
             starsCountEditOutline.addView(iconTon, LayoutHelper.createFrame(22, 22, Gravity.LEFT | Gravity.CENTER_VERTICAL, 14, 0, 0, 0));
 
             dollarsEqView = new AnimatedTextView(context);

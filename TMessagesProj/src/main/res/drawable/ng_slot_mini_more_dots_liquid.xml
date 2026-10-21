@@ -1,0 +1,11 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <path android:pathData="M5,8A1.5,1.5 0,1 1,2,8A1.5,1.5 0,1 1,5,8Z M9.5,8A1.5,1.5 0,1 1,6.5,8A1.5,1.5 0,1 1,9.5,8Z M14,8A1.5,1.5 0,1 1,11,8A1.5,1.5 0,1 1,14,8Z">
+        <aapt:attr name="android:fillColor"><gradient android:startX="0" android:startY="6.5" android:endX="0" android:endY="9.5" android:startColor="#E8FFFFFF" android:centerColor="#98FFFFFF" android:endColor="#C8FFFFFF"/></aapt:attr>
+    </path>
+</vector>

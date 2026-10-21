@@ -1,0 +1,24 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="petals" android:pathData="M12,2.5C14.1,2.5 15.2,4.4 14.6,6.1C16.5,5.4 18.5,6.6 18.5,8.6C18.5,10.2 17.3,11.4 15.7,11.4C16.6,13.1 15.6,15.1 13.7,15.3C12.9,15.4 12.3,15.1 12,14.7C11.7,15.1 11.1,15.4 10.3,15.3C8.4,15.1 7.4,13.1 8.3,11.4C6.7,11.4 5.5,10.2 5.5,8.6C5.5,6.6 7.5,5.4 9.4,6.1C8.8,4.4 9.9,2.5 12,2.5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="leaves" android:pathData="M11.25,15.3H12.75V17.9C14.7,15.9 17.1,15.4 19.4,15.5C18.8,18.7 16.5,20.8 12.75,21V21.5H11.25V21C7.5,20.8 5.2,18.7 4.6,15.5C6.9,15.4 9.3,15.9 11.25,17.9Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="heart" android:pathData="M14.1,9.4A2.1,2.1 0,1 1,9.9,9.4A2.1,2.1 0,1 1,14.1,9.4Z"
+        android:fillColor="#E0FFFFFF"/>
+</vector>

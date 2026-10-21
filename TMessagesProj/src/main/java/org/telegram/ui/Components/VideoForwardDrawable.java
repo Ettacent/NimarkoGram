@@ -14,9 +14,13 @@ import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 
+import org.telegram.messenger.R;
+
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class VideoForwardDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
     private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Path path1 = new Path();
     private boolean leftSide;
@@ -133,6 +137,8 @@ public class VideoForwardDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon play = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_play);
         android.graphics.Rect rect = getBounds();
 
         int x = rect.left + (rect.width() - getIntrinsicWidth()) / 2;
@@ -195,7 +201,7 @@ public class VideoForwardDrawable extends Drawable {
                a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            canvas.drawPath(path1, paint);
+            drawPlayGlyph(canvas, play);
         }
         canvas.translate(AndroidUtilities.dp(18), 0);
         if (animationProgress >= 0.2f && animationProgress <= 0.8f) {
@@ -210,7 +216,7 @@ public class VideoForwardDrawable extends Drawable {
                 a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            canvas.drawPath(path1, paint);
+            drawPlayGlyph(canvas, play);
         }
         canvas.translate(AndroidUtilities.dp(18), 0);
         if (animationProgress >= 0.4f && animationProgress <= 1.0f) {
@@ -225,7 +231,7 @@ public class VideoForwardDrawable extends Drawable {
                 a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            canvas.drawPath(path1, paint);
+            drawPlayGlyph(canvas, play);
         }
         canvas.restore();
 
@@ -276,6 +282,14 @@ public class VideoForwardDrawable extends Drawable {
         }
     }
 
+    private void drawPlayGlyph(Canvas canvas, NimarkoIconResources.PreparedIcon play) {
+        if (play == null) {
+            canvas.drawPath(path1, paint);
+        } else {
+            packIconRenderer.draw(canvas, play, paint, AndroidUtilities.dp(18), AndroidUtilities.dp(16),
+                    AndroidUtilities.dp(18), paint.getAlpha() / 255f, 0);
+        }
+    }
     public void setShowing(boolean showing) {
         this.showing = showing;
         invalidate();

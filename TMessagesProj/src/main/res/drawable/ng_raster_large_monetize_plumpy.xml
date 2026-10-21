@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="65dp" android:height="65dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="coin" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M16.4,7.4A4.4,4.4 0,1 1,7.6,7.4A4.4,4.4 0,1 1,16.4,7.4"/>
+    <path android:name="dollar" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M13.7,5.7C13.2,5.1 10.5,5.2 10.5,6.4C10.5,7.9 13.7,6.9 13.7,8.5C13.7,9.8 11.1,10 10.3,9.2 M12,4.4V10.4"/>
+    <path android:name="stack" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M6.2,10.7C5.3,11.3 5,12.1 5,13V17.6C5,19.6 8.1,21 12,21C15.9,21 19,19.6 19,17.6V13C19,12.1 18.7,11.3 17.8,10.7 M5.1,13C6.2,15.8 17.8,15.8 18.9,13 M5.1,16C6.2,18.8 17.8,18.8 18.9,16 M8.1,15V19.9 M12,15.3V20.9 M15.9,15V19.9"/>
+</vector>

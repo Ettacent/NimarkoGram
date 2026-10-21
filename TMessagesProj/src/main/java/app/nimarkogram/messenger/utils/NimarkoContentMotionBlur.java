@@ -59,7 +59,8 @@ public final class NimarkoContentMotionBlur {
             STATES.put(view, state);
             view.addOnAttachStateChangeListener(state);
         }
-        float cap = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH ? 16f : 8f;
+        float cap = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH
+                ? NimarkoMotionBlurState.MAX_SPAN_PX : NimarkoMotionBlurState.REDUCED_MAX_SPAN_PX;
         float scale = (float) Math.min(1d, cap / maximum);
         for (int i = 0; i < 8; i++) state.span[i] = span[i] * scale;
         state.active = true;
@@ -92,7 +93,6 @@ public final class NimarkoContentMotionBlur {
         if (state.active) state.stop();
         state.active = false;
         state.display.node = null;
-        if (state.capture != null) state.capture.node = null;
         view.invalidate();
     }
 
@@ -101,6 +101,7 @@ public final class NimarkoContentMotionBlur {
     }
 
     public static Canvas begin(View view, Canvas destination, boolean capture) {
+        if (capture) return null;
         if (!canUse(view) || !(view instanceof Target) || !((Target) view).canBlurMotionContent()) {
             clear(view);
             return null;
@@ -108,7 +109,7 @@ public final class NimarkoContentMotionBlur {
         if (destination == null || !destination.isHardwareAccelerated()) return null;
         State state = STATES.get(view);
         if (state == null || !state.active) return null;
-        Recording slot = state.slot(capture);
+        Recording slot = state.display;
         if (slot.recording) return null;
         int width = view.getWidth();
         int height = view.getHeight();
@@ -117,8 +118,8 @@ public final class NimarkoContentMotionBlur {
         float haloX = 0f;
         float haloY = 0f;
         for (int i = 0; i < 8; i += 2) {
-            haloX = Math.max(haloX, Math.abs(state.span[i]) * .5f);
-            haloY = Math.max(haloY, Math.abs(state.span[i + 1]) * .5f);
+            haloX = Math.max(haloX, Math.abs(state.span[i]));
+            haloY = Math.max(haloY, Math.abs(state.span[i + 1]));
         }
         int paddingX = (int) Math.ceil(haloX);
         int paddingY = (int) Math.ceil(haloY);
@@ -153,12 +154,13 @@ public final class NimarkoContentMotionBlur {
     }
 
     public static void end(View view, Canvas destination, boolean capture) {
+        if (capture) return;
         if (view == null || Build.VERSION.SDK_INT < 31
                 || Looper.myLooper() != Looper.getMainLooper()) return;
         State state = STATES.get(view);
         if (state == null) return;
-        Recording slot = capture ? state.capture : state.display;
-        if (slot == null || !slot.recording) return;
+        Recording slot = state.display;
+        if (!slot.recording) return;
         slot.node.endRecording();
         slot.recording = false;
         if (!state.active || !canUse(view)) {
@@ -181,18 +183,11 @@ public final class NimarkoContentMotionBlur {
     private static final class State implements View.OnAttachStateChangeListener {
         final float[] span = new float[8];
         final Recording display = new Recording();
-        Recording capture;
         boolean active;
 
-        Recording slot(boolean capturing) {
-            if (!capturing) return display;
-            if (capture == null) capture = new Recording();
-            return capture;
-        }
 
         void stop() {
             display.stop();
-            if (capture != null) capture.stop();
         }
 
         @Override

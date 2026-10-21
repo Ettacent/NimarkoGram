@@ -4,33 +4,52 @@
  * You should have received a copy of the license in this archive (see LICENSE).
  *
  * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent.
+ */
+
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.ActionBar;
 
 import android.graphics.Canvas;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
-import android.graphics.Rect;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class BackDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint prevPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private Paint packPaint;              
-    private android.graphics.PorterDuffColorFilter packColorFilter;
-    private int packColorFilterColor;
-    private final Rect packDst = new Rect();
+    private final Paint packPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint packTintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF packDst = new RectF();
+    private int alpha = 255;
+    private float animationStartRotation;
+    private float currentAnimationDuration;
     private boolean reverseAngle;
     private long lastFrameTime;
     private boolean animationInProgress;
@@ -55,6 +74,7 @@ public class BackDrawable extends Drawable {
         paint.setStrokeCap(Paint.Cap.ROUND);
         prevPaint.setStrokeWidth(AndroidUtilities.dp(2));
         prevPaint.setColor(Color.RED);
+        packTintPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
         alwaysClose = close;
     }
 
@@ -74,29 +94,32 @@ public class BackDrawable extends Drawable {
     }
 
     public void setRotation(float rotation, boolean animated) {
-        lastFrameTime = 0;
+        long now = SystemClock.uptimeMillis();
+        updateRotation(now);
+        if (Float.isNaN(rotation) || Float.isInfinite(rotation)) return;
+        rotation = Math.max(0f, Math.min(1f, rotation));
+        animated = animated && SharedConfig.animationsEnabled();
+        if (animated && rotation == finalRotation && currentRotation != finalRotation) return;
         if (currentRotation == 1) {
             reverseAngle = true;
         } else if (currentRotation == 0) {
             reverseAngle = false;
         }
-        lastFrameTime = 0;
-        if (animated) {
-            if (currentRotation < rotation) {
-                currentAnimationTime = (int) (currentRotation * animationTime);
-            } else {
-                currentAnimationTime = (int) ((1.0f - currentRotation) * animationTime);
-            }
-            lastFrameTime = System.currentTimeMillis();
-            finalRotation = rotation;
+        finalRotation = rotation;
+        animationStartRotation = currentRotation;
+        currentAnimationTime = 0;
+        currentAnimationDuration = animationTime * Math.abs(finalRotation - animationStartRotation);
+        if (animated && currentAnimationDuration > 0) {
+            lastFrameTime = now;
         } else {
-            finalRotation = currentRotation = rotation;
+            currentRotation = rotation;
+        lastFrameTime = 0;
         }
         invalidateSelf();
     }
 
     public void setAnimationTime(float value) {
-        animationTime = value;
+        animationTime = Float.isNaN(value) || Float.isInfinite(value) ? 0f : Math.max(0f, value);
     }
 
     public void setRotated(boolean value) {
@@ -107,52 +130,57 @@ public class BackDrawable extends Drawable {
 
     public BackDrawable setTranslationX(float translationX) {
         this.translationX = translationX;
+        invalidateSelf();
         return this;
     }
 
+    private void updateRotation(long now) {
+        if (currentRotation == finalRotation) return;
+        if (!SharedConfig.animationsEnabled() || currentAnimationDuration <= 0) {
+            currentRotation = finalRotation;
+        } else {
+            currentAnimationTime += (int) Math.max(0L, Math.min((long) Integer.MAX_VALUE - currentAnimationTime, now - lastFrameTime));
+            float progress = Math.min(1f, currentAnimationTime / currentAnimationDuration);
+            currentRotation = progress >= 1f ? finalRotation : animationStartRotation
+                    + (finalRotation - animationStartRotation) * interpolator.getInterpolation(progress);
+        }
+        lastFrameTime = now;
+    }
     @Override
     public void draw(@NonNull Canvas canvas) {
-        if (currentRotation != finalRotation) {
-            if (lastFrameTime != 0) {
-                long dt = System.currentTimeMillis() - lastFrameTime;
-
-                currentAnimationTime += (int) dt;
-                if (currentAnimationTime >= animationTime) {
-                    currentRotation = finalRotation;
-                } else {
-                    if (currentRotation < finalRotation) {
-                        currentRotation = interpolator.getInterpolation(currentAnimationTime / animationTime) * finalRotation;
-                    } else {
-                        currentRotation = 1.0f - interpolator.getInterpolation(currentAnimationTime / animationTime);
-                    }
-                }
-            }
-            lastFrameTime = System.currentTimeMillis();
-            invalidateSelf();
-        }
-
-        float packAlpha = 0f;
-        android.graphics.Bitmap packBmp = null;
-        if (!alwaysClose && arrowRotation == 0) {
-            packAlpha = 1f - Math.min(1f, currentRotation / 0.35f);
-            if (packAlpha > 0.001f) {
-                packBmp = app.nimarkogram.messenger.icons.NimarkoIconResources.activeBackArrowBitmap();
-                if (packBmp == null || packBmp.isRecycled()) {
-                    packBmp = null;
-                    packAlpha = 0f;
-                }
-            }
-        }
-
-        paint.setColor(ColorUtils.blendARGB(color, rotatedColor, currentRotation));
-        final int fullAlpha = paint.getAlpha();
-        if (packAlpha < 0.999f) {   
-            paint.setAlpha((int) (fullAlpha * (1f - packAlpha)));
+        updateRotation(SystemClock.uptimeMillis());
+        if (currentRotation != finalRotation) invalidateSelf();
+        final int tint = ColorUtils.blendARGB(color, rotatedColor, currentRotation);
+        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        if (icons != null && icons.close != null && !icons.close.isRecycled()
+                && (alwaysClose || icons.back != null && !icons.back.isRecycled())) {
+            int packAlpha = (alpha * Color.alpha(tint) + 127) / 255;
+            if (packAlpha <= 0) return;
             canvas.save();
             canvas.translate(getIntrinsicWidth() / 2f + translationX, getIntrinsicHeight() / 2f);
-            if (arrowRotation != 0) {
                 canvas.rotate(arrowRotation);
+            float extent = getIntrinsicWidth();
+            int layer = packAlpha == 255 ? canvas.save() : canvas.saveLayerAlpha(-extent, -extent, extent, extent, packAlpha);
+            int packTint = tint | 0xff000000;
+            if (alwaysClose) {
+                drawPackIcon(canvas, icons.close, icons.closeNoTint, 1f,
+                        currentRotation * (reverseAngle ? -180f : 180f), packTint);
+            } else {
+                float turn = reverseAngle ? -225f : 135f;
+                float glyphProgress = Math.max(0f, Math.min(1f, (currentRotation - .2f) / .6f));
+                glyphProgress = glyphProgress * glyphProgress * (3f - 2f * glyphProgress);
+                drawPackIcon(canvas, icons.back, icons.backNoTint, 1f - glyphProgress, currentRotation * turn, packTint);
+                drawPackIcon(canvas, icons.close, icons.closeNoTint, glyphProgress, (currentRotation - 1f) * turn, packTint);
             }
+            canvas.restoreToCount(layer);
+            canvas.restore();
+            return;
+        }
+        paint.setColor(tint);
+        paint.setAlpha((Color.alpha(tint) * alpha + 127) / 255);
+        canvas.save();
+        canvas.translate(getIntrinsicWidth() / 2f + translationX, getIntrinsicHeight() / 2f);
+        if (arrowRotation != 0) canvas.rotate(arrowRotation);
             float rotation = currentRotation;
             canvas.translate(-AndroidUtilities.dp(0.66f) , 0);
             if (!alwaysClose) {
@@ -165,37 +193,43 @@ public class BackDrawable extends Drawable {
             float startYDiff = AndroidUtilities.dp(-0.25f);
             float endYDiff = AndroidUtilities.dp(AndroidUtilities.lerp(7f, 8f, rotation)) - (paint.getStrokeWidth() / 4f) * (1f - rotation);
             float startXDiff = AndroidUtilities.dp(AndroidUtilities.lerp(-7f - 0.25f, 0f, rotation));
-            float endXDiff = 0;
-            canvas.drawLine(startXDiff, -startYDiff, endXDiff, -endYDiff, paint);
-            canvas.drawLine(startXDiff, startYDiff, endXDiff, endYDiff, paint);
+        canvas.drawLine(startXDiff, -startYDiff, 0, -endYDiff, paint);
+        canvas.drawLine(startXDiff, startYDiff, 0, endYDiff, paint);
             canvas.restore();
-            paint.setAlpha(fullAlpha);
-        }
+    }
 
-        if (packBmp != null && packAlpha > 0.001f) {
-            if (packPaint == null) {
-                packPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            }
-            if (packColorFilter == null || packColorFilterColor != color) {
-                packColorFilterColor = color;
-                packColorFilter = new android.graphics.PorterDuffColorFilter(
-                        color, android.graphics.PorterDuff.Mode.SRC_IN);
-                packPaint.setColorFilter(packColorFilter);
-            }
-            packPaint.setAlpha((int) (fullAlpha * packAlpha));
-            packDst.set(0, 0, getIntrinsicWidth(), getIntrinsicHeight());
-            canvas.drawBitmap(packBmp, null, packDst, packPaint);
+    private void drawPackIcon(Canvas canvas, Bitmap bitmap, boolean noTint, float progress, float rotation, int tint) {
+        int iconAlpha = Math.round(255 * progress);
+        if (iconAlpha <= 0) return;
+        canvas.save();
+        canvas.rotate(rotation);
+        packDst.set(-getIntrinsicWidth() / 2f, -getIntrinsicHeight() / 2f,
+                getIntrinsicWidth() / 2f, getIntrinsicHeight() / 2f);
+        if (noTint) {
+            packPaint.setAlpha((iconAlpha * Color.alpha(tint) + 127) / 255);
+            canvas.drawBitmap(bitmap, null, packDst, packPaint);
+        } else {
+            int layer = canvas.saveLayerAlpha(packDst.left, packDst.top, packDst.right, packDst.bottom, iconAlpha);
+            packPaint.setAlpha(255);
+            canvas.drawBitmap(bitmap, null, packDst, packPaint);
+            packTintPaint.setColor(tint);
+            canvas.drawRect(packDst, packTintPaint);
+            canvas.restoreToCount(layer);
         }
+        canvas.restore();
     }
 
     @Override
     public void setAlpha(int alpha) {
-        paint.setAlpha(alpha);
+        this.alpha = Math.max(0, Math.min(255, alpha));
+        invalidateSelf();
     }
 
     @Override
     public void setColorFilter(ColorFilter cf) {
         paint.setColorFilter(cf);
+        packTintPaint.setColorFilter(cf);
+        invalidateSelf();
     }
 
     @Override

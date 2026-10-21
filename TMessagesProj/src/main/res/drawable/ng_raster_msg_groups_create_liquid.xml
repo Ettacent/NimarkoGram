@@ -1,0 +1,26 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="30dp" android:height="24dp"
+    android:viewportWidth="30" android:viewportHeight="24">
+    <path android:name="people" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M16.8,6.5A3.3,3.3 0,1 1,10.2,6.5A3.3,3.3 0,1 1,16.8,6.5 M27,7.8A2.7,2.7 0,1 1,21.6,7.8A2.7,2.7 0,1 1,27,7.8 M7.5,20V18.3C7.5,15.4 10.1,13.7 13.5,13.7C16.9,13.7 19.5,15.4 19.5,18.3V20 M21.5,14.8C25.5,14.2 28.8,15.9 28.8,18.6V20">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="28" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="add" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M1.2,12H6.8 M4,9.2V14.8">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="28" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

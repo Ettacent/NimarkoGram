@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -22,6 +24,7 @@ import org.telegram.messenger.R;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.ButtonBounce;
+import org.telegram.ui.Components.CompactChevronRenderer;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Stories.recorder.StoryPrivacyBottomSheet;
 
@@ -41,6 +44,7 @@ public class StoryPrivacyButton extends View {
     private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path arrowPath = new Path();
 
+    private final CompactChevronRenderer arrowRenderer = new CompactChevronRenderer();
     private final ButtonBounce bounce = new ButtonBounce(this, .6f, 5f);
 
     public StoryPrivacyButton(Context context) {
@@ -200,7 +204,9 @@ public class StoryPrivacyButton extends View {
             arrowPath.lineTo(AndroidUtilities.rectTmp.right - dpf2(12), AndroidUtilities.rectTmp.centerY() + dpf2(2.33f));
             arrowPath.lineTo(AndroidUtilities.rectTmp.right - dpf2(8.16f), AndroidUtilities.rectTmp.centerY() - dpf2(1.33f));
             arrowPaint.setStrokeWidth(dpf2(1.33f));
+            if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, CompactChevronRenderer.DOWN)) {
             canvas.drawPath(arrowPath, arrowPaint);
+            }
         }
 
         canvas.restore();

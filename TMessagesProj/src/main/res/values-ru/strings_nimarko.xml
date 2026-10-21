@@ -55,7 +55,9 @@
     <string name="NimarkoDisableProximity">Отключить датчик приближения</string>
     <string name="NimarkoDisableProxyAds">Не показывать спонсора прокси</string>
     <string name="NimarkoDisableUnarchiveSwipe">Отключить свайп разархивации</string>
-    <string name="NimarkoDisableVMAutoplay">Отключить автовоспроизведение голосовых</string>
+    <string name="NimarkoDisableVMAutoplay">Отключить автопереход</string>
+    <string name="NM_DisableVoiceAutoNext_Desc">После окончания голосового сообщения или видеокружка не включать следующее. Запускайте его вручную.</string>
+    <string name="NM_DisableVoiceAutoNext_SearchTerms">гс голосовое голосовые кружок кружки видеокружок видеокружки автовоспроизведение</string>
     <string name="NimarkoDoubleTapEdit">Изменить</string>
     <string name="NimarkoDoubleTapIn">Двойной тап по входящему</string>
     <string name="NimarkoDoubleTapNone">Ничего</string>
@@ -397,7 +399,7 @@
     <string name="NM_SettingsSummaryChatView">Шапка, фон и вид сообщений</string>
     <string name="NM_SettingsSummaryInputText">Эмодзи, редактирование и разметка</string>
     <string name="NM_SettingsSummaryGesturesActions">Нажатия, свайпы и быстрые действия</string>
-    <string name="NM_SettingsSummaryMediaPlayback">Фото, видео и GIF</string>
+    <string name="NM_SettingsSummaryMediaPlayback">Голосовые, видеокружки, фото, видео и GIF</string>
     <string name="NM_SettingsSummaryReactionsEffects">Реакции и эффекты стикеров</string>
     <string name="NM_SettingsSummaryChatNotifications">Звук и вибрация</string>
     <string name="NM_SettingsSummaryChatTools">Поделиться, меню сообщения и фильтры</string>
@@ -479,6 +481,10 @@
     <string name="NM_SettingsDesc_CardsEnable">Показывать информационные карточки над списком чатов</string>
     <string name="NM_SettingsDesc_CardsInfinite">Повторять карточки при прокрутке списка</string>
     <string name="NM_SettingsDesc_CardsAutoScroll">Автоматически переключать информационные карточки</string>
+    <string name="NM_CARDS_Side">Расположение карточек</string>
+    <string name="NM_CARDS_SideRight">Справа</string>
+    <string name="NM_CARDS_SideLeft">Слева</string>
+    <string name="NM_SettingsDesc_CardsSide">Указать расположение</string>
     <string name="NM_SettingsDesc_ShowAccounts">Показывать аккаунты прямо в настройках</string>
     <string name="NM_SettingsDesc_OldTime">Использовать классический формат времени посещения</string>
     <string name="NM_SettingsDesc_ReplacePunctuation">Заменять знаки при вводе на типографские варианты</string>

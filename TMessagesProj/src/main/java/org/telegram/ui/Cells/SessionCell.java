@@ -4,6 +4,17 @@
  * You should have received a copy of the license in this archive (see LICENSE).
  *
  * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent.
+ */
+
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
+ * This is the source code of Telegram for Android v. 5.x.x
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Cells;
@@ -13,6 +24,7 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
@@ -35,6 +47,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
@@ -407,8 +420,28 @@ public class SessionCell extends FrameLayout {
         CombinedDrawable drawable = new CombinedDrawable(bgDrawable, iconDrawable);
         if (platform != null && platform.contains("fragment")) {
             drawable.setIconSize((int) (iconDrawable.getIntrinsicWidth() / 44.0f * sz), (int) (iconDrawable.getIntrinsicHeight() / 44.0f * sz));
+        } else {
+            setReplacementIconSize(drawable, iconId);
         }
         return drawable;
+    }
+
+    private static void setReplacementIconSize(CombinedDrawable drawable, int iconId) {
+        Resources resources = ApplicationLoader.applicationContext.getResources();
+        if (!(resources instanceof NimarkoIconResources) || !((NimarkoIconResources) resources).hasReplacement(iconId)) {
+            return;
+        }
+        int maxSize = Math.max(1, (int) Math.min(24f * resources.getDisplayMetrics().density,
+                Math.min(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight()) * 24f / 42f));
+        Drawable icon = drawable.getIcon();
+        int width = icon.getIntrinsicWidth();
+        int height = icon.getIntrinsicHeight();
+        if (width <= 0 || height <= 0) {
+            drawable.setIconSize(maxSize, maxSize);
+        } else {
+            float scale = Math.min(1f, (float) maxSize / Math.max(width, height));
+            drawable.setIconSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+        }
     }
 
     public static class CircleGradientDrawable extends Drawable {
@@ -500,9 +533,11 @@ public class SessionCell extends FrameLayout {
         this.globalGradient = globalGradient;
         showStub = true;
 
-        Drawable iconDrawable = ContextCompat.getDrawable(ApplicationLoader.applicationContext, AndroidUtilities.isTablet() ? R.drawable.device_tablet_android : R.drawable.device_phone_android).mutate();
+        int iconId = AndroidUtilities.isTablet() ? R.drawable.device_tablet_android : R.drawable.device_phone_android;
+        Drawable iconDrawable = ContextCompat.getDrawable(ApplicationLoader.applicationContext, iconId).mutate();
         iconDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_avatar_text), PorterDuff.Mode.SRC_IN));
         CombinedDrawable combinedDrawable = new CombinedDrawable(Theme.createCircleDrawable(dp(42), Theme.getColor(Theme.key_avatar_backgroundGreen)), iconDrawable);
+        setReplacementIconSize(combinedDrawable, iconId);
         if (placeholderImageView != null) {
             placeholderImageView.setImageDrawable(combinedDrawable);
         } else {

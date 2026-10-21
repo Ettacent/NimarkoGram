@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram menu_feature_withdrawals source artwork; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="ATM_housing" android:pathData="M6.5 12.3 H3.3 Q1.4 12.3 1.4 10.5 V4.6 Q1.4 3.1 3.3 3.1 H20.7 Q22.6 3.1 22.6 4.6 V10.5 Q22.6 12.3 20.7 12.3 H17.5" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="cash_slot" android:pathData="M5.2 7.7 H18.8" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="dispensed_banknote" android:pathData="M6.5 7.7 V20.6 Q6.5 22.3 8.2 22.3 H15.8 Q17.5 22.3 17.5 20.6 V7.7" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="withdrawal_arrow_down" android:pathData="M12 10.4 V17.1 M9.3 14.4 L12 17.1 L14.7 14.4" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="banknote_bottom_rule" android:pathData="M7.3 19.2 H16.7" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

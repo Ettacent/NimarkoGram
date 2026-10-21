@@ -241,6 +241,7 @@ import org.telegram.ui.Stories.recorder.StoryEntry;
 import org.telegram.ui.Stories.recorder.StoryRecorder;
 import org.telegram.ui.Stories.LiveStoryPipOverlay;
 import org.telegram.ui.TON.TONIntroActivity;
+import org.telegram.ui.Wallet.GramWalletStorageAuth;
 import org.telegram.ui.bots.BotWebViewAttachedSheet;
 import org.telegram.ui.bots.BotWebViewSheet;
 import org.telegram.ui.bots.WebViewRequestProps;
@@ -287,12 +288,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private long fragmentPresentationGeneration;
     private Bundle pendingProfileRestore;
     private java.util.function.BooleanSupplier pendingProfileRestoreCurrent;
+    private Bundle pendingChatRestore;
+    private java.util.function.BooleanSupplier pendingChatRestoreCurrent;
+    private Runnable pendingChatRestoreReady;
     private Runnable pendingInAppNotificationNavigation;
 
     public void invalidateFragmentPresentationRequests() {
         fragmentPresentationGeneration++;
         pendingProfileRestore = null;
         pendingProfileRestoreCurrent = null;
+        clearPendingChatRestore();
         pendingInAppNotificationNavigation = null;
     }
 
@@ -701,10 +706,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         switch (fragmentName) {
                             case "chat":
                                 if (args != null) {
-                                    ChatActivity chat = new ChatActivity(args);
-                                    if (actionBarLayout.addFragmentToStack(chat)) {
-                                        chat.restoreSelfArgs(savedInstanceState);
-                                    }
+                                    restoreChat(savedInstanceState);
                                 }
                                 break;
                             case "settings": {
@@ -871,6 +873,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                     @Override
                     public void onBackInvoked() {
+                        nmIconBackInProgress = false;
                         if (appResumeFade != null) appResumeFade.onUserInteraction();
                         invoked = true;
                         if (locked) {
@@ -893,6 +896,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                     @Override
                     public void onBackStarted(@NonNull BackEvent backEvent) {
+                        nmIconBackInProgress = true;
                         if (appResumeFade != null) appResumeFade.onUserInteraction();
                         started = true;
                         invoked = false;
@@ -936,6 +940,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
                     @Override
                     public void onBackCancelled() {
+                        nmIconBackInProgress = false;
                         started = false;
                         invoked = false;
                         if (locked) {
@@ -1648,13 +1653,22 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         pendingPasscodeShow = null;
         if (passcodeDialog == null) {
-            passcodeDialog = new PasscodeViewDialog(this);
+            passcodeDialog = new PasscodeViewDialog(this) {
+                @Override
+                protected void onHidden() {
+                    if (passcodeDialog == this && instance == LaunchActivity.this
+                            && !finished && !isFinishing() && !isDestroyed()) {
+                        resumePendingChatRestore();
+                    }
+                }
+            };
         }
         if (selectAnimatedEmojiDialog != null) {
             selectAnimatedEmojiDialog.dismiss();
             selectAnimatedEmojiDialog = null;
         }
         SharedConfig.appLocked = true;
+        GramWalletStorageAuth.onAppLocked(this);
         if (SecretMediaViewer.hasInstance() && SecretMediaViewer.getInstance().isVisible()) {
             SecretMediaViewer.getInstance().closePhoto(false, false);
         } else if (PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()) {
@@ -1705,6 +1719,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 rightActionBarLayout.getView().setVisibility(View.VISIBLE);
             }
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.passcodeDismissed, view);
+            resumePendingChatRestore();
             try {
                 NotificationsController.getInstance(UserConfig.selectedAccount).showNotifications();
             } catch (Exception e) {
@@ -1738,6 +1753,99 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (rightActionBarLayout != null && rightActionBarLayout.getView() != null
                     && rightActionBarLayout.getView().getVisibility() != View.GONE) {
                 rightActionBarLayout.getView().setVisibility(View.INVISIBLE);
+            }
+        }
+    }
+
+    private void clearPendingChatRestore() {
+        pendingChatRestore = null;
+        pendingChatRestoreCurrent = null;
+        pendingChatRestoreReady = null;
+    }
+
+    private void restoreChat(Bundle savedInstanceState) {
+        final Bundle restoreState = new Bundle(savedInstanceState);
+        final Bundle args = new Bundle(restoreState.getBundle("args"));
+        restoreState.putBundle("args", args);
+        final ChatActivity chat = new ChatActivity(new Bundle(args));
+        final int account = currentAccount;
+        final long selfId = UserConfig.getInstance(account).getClientUserId();
+        chat.setCurrentAccount(account);
+        final ActionBarLayout layout = actionBarLayout;
+        final BaseFragment source = layout.getLastFragmentIncludeMainTabs();
+        final java.util.function.BooleanSupplier ownerCurrent = layout.captureNavigationRequest();
+        final java.util.function.BooleanSupplier restoreCurrent = () -> {
+            if (pendingChatRestore != restoreState) {
+                return false;
+            }
+            StoryViewer storyViewer = source == null ? null : source.getLastStoryViewer();
+            if (PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()
+                    || storyViewer != null && storyViewer.isShown()) {
+                clearPendingChatRestore();
+                return false;
+            }
+            return instance == this && !finished && !isFinishing() && !isDestroyed()
+                    && actionBarLayout == layout && currentAccount == account && UserConfig.selectedAccount == account
+                    && UserConfig.getInstance(account).isClientActivated()
+                    && UserConfig.getInstance(account).getClientUserId() == selfId && ownerCurrent.getAsBoolean();
+        };
+        pendingChatRestore = restoreState;
+        pendingChatRestoreCurrent = restoreCurrent;
+        completeChatRestore(chat, restoreState, false);
+    }
+
+    private void completeChatRestore(ChatActivity chat, Bundle restoreState, boolean showLastFragment) {
+        if (pendingChatRestore != restoreState || pendingChatRestoreCurrent == null
+                || !pendingChatRestoreCurrent.getAsBoolean()) {
+            return;
+        }
+        pendingChatRestoreReady = null;
+        if (chat.prepareForRestore(pendingChatRestoreCurrent, () -> {
+            pendingChatRestoreReady = () -> completeChatRestore(chat, restoreState, true);
+            resumePendingChatRestore();
+        }, () -> {
+            if (pendingChatRestore == restoreState) {
+                clearPendingChatRestore();
+            }
+        })) {
+            return;
+        }
+        if (isPasscodeBlockingContent() || AndroidUtilities.needShowPasscode()
+                || showLastFragment && ApplicationLoader.mainInterfacePaused) {
+            pendingChatRestoreReady = () -> completeChatRestore(chat, restoreState, true);
+            return;
+        }
+        clearPendingChatRestore();
+        boolean added = actionBarLayout.addFragmentToStack(chat);
+        INavigationLayout ownerLayout = chat.getParentLayout();
+        if (added || ownerLayout != null && ownerLayout.getFragmentStack().contains(chat)) {
+            chat.restoreSelfArgs(restoreState);
+            if (showLastFragment && ownerLayout != null && ownerLayout.getLastFragment() == chat) {
+                ownerLayout.showLastFragment();
+            }
+        }
+    }
+
+    private void resumePendingChatRestore() {
+        if (pendingChatRestoreCurrent == null || !pendingChatRestoreCurrent.getAsBoolean()) {
+            clearPendingChatRestore();
+            return;
+        }
+        if (pendingChatRestoreReady != null && !ApplicationLoader.mainInterfacePaused
+                && !isPasscodeBlockingContent() && !AndroidUtilities.needShowPasscode()) {
+            pendingChatRestoreReady.run();
+        }
+    }
+
+    private void savePendingChatRestore(Bundle outState) {
+        if (pendingChatRestore != null && pendingChatRestoreCurrent != null
+                && pendingChatRestoreCurrent.getAsBoolean()) {
+            outState.putString("fragment", "chat");
+            outState.putBundle("args", new Bundle(pendingChatRestore.getBundle("args")));
+            if (pendingChatRestore.containsKey("path")) {
+                outState.putString("path", pendingChatRestore.getString("path"));
+            } else {
+                outState.remove("path");
             }
         }
     }
@@ -1776,21 +1884,34 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 && UserConfig.selectedAccount == targetAccount;
     }
 
+    private static boolean isIntentAccountAvailable(Intent intent) {
+        if (intent == null || !intent.hasExtra("currentAccount")) {
+            return true;
+        }
+        final int account = intent.getIntExtra("currentAccount", -1);
+        return account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT
+                && (account == UserConfig.selectedAccount || UserConfig.isValidAccount(account));
+    }
     @SuppressLint("Range")
-    private boolean handleIntent(Intent intent, boolean isNew, boolean restore, boolean fromPassword, Browser.Progress progress, boolean rebuildFragments, boolean openedTelegram) {
+    private boolean handleIntent(Intent incomingIntent, boolean isNew, boolean restore, boolean fromPassword, Browser.Progress progress, boolean rebuildFragments, boolean openedTelegram) {
+        final boolean rejectedAccount = !isIntentAccountAvailable(incomingIntent);
+        final Intent intent = rejectedAccount || incomingIntent == null ? new Intent(Intent.ACTION_MAIN) : incomingIntent;
         if (intent != null && intent.hasExtra("nm_banner_owner")
                 && !app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.isCurrent(
                     intent.getIntExtra("currentAccount", -1), intent.getLongExtra("nm_banner_owner", 0),
                     intent.getLongExtra("nm_banner_session", -1))) return false;
-        if (GiftInfoBottomSheet.handleIntent(intent, progress)) {
+        if (!rejectedAccount && isNew && !restore) {
+            invalidateFragmentPresentationRequests();
+        }
+        if (!rejectedAccount && GiftInfoBottomSheet.handleIntent(intent, progress)) {
             return true;
         }
-        if (UserSelectorBottomSheet.handleIntent(intent, progress)) {
+        if (!rejectedAccount && UserSelectorBottomSheet.handleIntent(intent, progress)) {
             return true;
         }
         // NimarkoGram: tapping the OTA download notification opens the app on the update sheet (progress /
         // install / cancel) so the user never has to force-kill to retry. Doesn't consume the intent.
-        if (intent != null && intent.getBooleanExtra("nm_open_update", false)) {
+        if (!rejectedAccount && intent.getBooleanExtra("nm_open_update", false)) {
             intent.removeExtra("nm_open_update");
             AndroidUtilities.runOnUIThread(() -> {
                 try {
@@ -1806,10 +1927,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 } catch (Throwable ignore) {}
             }, 350);
         }
-        if (AndroidUtilities.handleProxyIntent(this, intent, true)) {
+        if (!rejectedAccount && AndroidUtilities.handleProxyIntent(this, intent, true)) {
             return true;
         }
-        if (app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance().dispatchIntent(intent)) {
+        if (!rejectedAccount && app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance().dispatchIntent(intent)) {
             return true;
         }
         if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction())) {
@@ -1819,22 +1940,24 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             StoryRecorder.destroyInstance();
 //            dismissAllWeb();
         }
-        if (webviewShareAPIDoneListener != null) {
+        if (!rejectedAccount && webviewShareAPIDoneListener != null) {
             webviewShareAPIDoneListener.run(true);
             webviewShareAPIDoneListener = null;
         }
         int flags = intent.getFlags();
         String action = intent.getAction();
         final int[] intentAccount = new int[]{intent.getIntExtra("currentAccount", UserConfig.selectedAccount)};
-        if (isNew && !restore) {
-            invalidateFragmentPresentationRequests();
-        }
+        if (!rejectedAccount) {
         switchToAccount(intentAccount[0], true);
-        final long intentNavigationGeneration = navigationRequestGeneration.incrementAndGet();
+        }
+        final long intentNavigationGeneration = rejectedAccount
+                ? navigationRequestGeneration.get() : navigationRequestGeneration.incrementAndGet();
+        if (!rejectedAccount) {
         bannerNavigationOwner = intent.getLongExtra("nm_banner_owner", 0);
         bannerNavigationSession = intent.getLongExtra("nm_banner_session", -1);
         bannerNavigationGeneration = intentNavigationGeneration;
-        final boolean animateInAppNavigation = bannerNavigationOwner != 0 && isNew && !restore;
+        }
+        final boolean animateInAppNavigation = !rejectedAccount && bannerNavigationOwner != 0 && isNew && !restore;
         final boolean isVoipIntent = action != null && action.equals("voip");
         final boolean isVoipAnswerIntent = action != null && action.equals("voip_answer");
         if ((isVoipIntent || isVoipAnswerIntent) && !isNew && ApplicationLoader.mainInterfacePaused) {
@@ -1844,9 +1967,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             showPasscodeActivity(true, false, -1, -1, null, null);
             UserConfig.getInstance(currentAccount).saveConfig(false);
             if (!isVoipIntent && !isVoipAnswerIntent) {
+                if (!rejectedAccount) {
                 passcodeSaveIntent = intent;
                 passcodeSaveIntentIsNew = isNew;
                 passcodeSaveIntentIsRestore = restore;
+                }
                 return false;
             }
         }
@@ -3772,7 +3897,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         intent.setAction(null);
 
         if (pendingSharedFileCopy != null) pendingSharedFileCopy.run();
-        return pushOpened;
+        return !rejectedAccount && pushOpened;
     }
 
     public void openEmailSettings(TL_account.Password currentPassword) {
@@ -7021,6 +7146,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         } else {
             boolean notify = dialogsFragment == null || dialogsFragment.notify || _notify;
             int scheduleDate = _scheduleDate != 0 ? _scheduleDate : dialogsFragment == null ? 0 : dialogsFragment.scheduleDate;
+            final boolean forceDocument = dialogsFragment != null && dialogsFragment.forceDocument;
             final ChatActivity fragment;
             if (dids.size() <= 1) {
                 final long did = dids.get(0).dialogId;
@@ -7183,7 +7309,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 photoPathsArray.get(0).caption = m[0].toString();
                                 sendingText = null;
                             }
-                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
+                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, forceDocument, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
                         }
                     } else {
                         if (videoPath != null) {
@@ -7202,7 +7328,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 photoPathsArray.get(0).caption = m[0].toString();
                                 sendingText = null;
                             }
-                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, false, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
+                            SendMessagesHelper.prepareSendingMedia(accountInstance, photoPathsArray, did, replyToMsg, replyToMsg, null, null, forceDocument, photoPathsArray.size() > 1, null, notify, scheduleDate, scheduleRepeatPeriod, 0, false, null, null, 0, false, 0, 0, null);
                         }
                     }
                     if (documentsPathsArray != null || documentsUrisArray != null) {
@@ -7321,6 +7447,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onFinish() {
+        nmIconRefreshResumed = false;
+        nmPendingIconRebuildGeneration = 0;
+        stopIconRefreshWatch();
         accountSwitchTransition.cancel();
         if (lockRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(lockRunnable);
@@ -7418,6 +7547,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
+        if (GramWalletStorageAuth.onActivityResult(this, requestCode, resultCode)) return;
         if (requestCode == SCREEN_CAPTURE_REQUEST_CODE) {
             if (resultCode == Activity.RESULT_OK) {
                 VoIPService service = VoIPService.getSharedInstance();
@@ -7529,6 +7659,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            nmIconTouchInProgress = true;
+        }
         app.nimarkogram.messenger.notifications.NimarkoInAppNotifications.onContentTouch(event);
         if (appResumeFade != null && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
             appResumeFade.onTouchInteraction();
@@ -7539,11 +7673,18 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             return super.dispatchTouchEvent(event);
         } finally {
             dispatchingResumeFadeTouch = wasDispatching;
+            if (action == android.view.MotionEvent.ACTION_UP || action == android.view.MotionEvent.ACTION_CANCEL) {
+                nmIconTouchInProgress = false;
+            }
         }
     }
 
     @Override
     protected void onPause() {
+        nmIconRefreshResumed = false;
+        nmIconTouchInProgress = false;
+        nmIconBackInProgress = false;
+        stopIconRefreshWatch();
         if (appResumeFade != null) appResumeFade.onPause(captureAppResumeFadeValidity());
         accountSwitchTransition.cancel();
         super.onPause();
@@ -7643,6 +7784,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         // genuinely no longer visible (onStop, NOT onPause — onPause fires on transient excursions like the
         // photo picker / share sheet and would wrongly wipe the configurable locked-chats TTL grace). So
         // locked chats / archive / delete re-prompt after real backgrounding while in-session grace survives.
+        GramWalletStorageAuth.onActivityStopped(this);
         try { app.nimarkogram.messenger.security.NimarkoBiometricPrompt.onAppBackgrounded(); } catch (Throwable ignore) {}
         // NimarkoGram plugin engine event hook.
         try {
@@ -7709,6 +7851,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onDestroy() {
+        clearPendingChatRestore();
+        nmIconRefreshResumed = false;
+        nmPendingIconRebuildGeneration = 0;
+        stopIconRefreshWatch();
+        GramWalletStorageAuth.onActivityDestroyed(this);
         pendingInAppNotificationNavigation = null;
         if (appResumeFade != null) appResumeFade.cancel();
         accountSwitchTransition.cancel();
@@ -7914,6 +8061,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 overlay.onResume();
             }
         }
+        resumePendingChatRestore();
         ConnectionsManager.getInstance(currentAccount).setAppPaused(false, false);
         updateCurrentConnectionState(currentAccount);
         if (PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()) {
@@ -7958,6 +8106,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         //if (refreshRateController != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         //    refreshRateController.start();
         //}
+        nmIconRefreshResumed = true;
+        startIconRefreshWatch();
     }
 
     private boolean isAppResumeFadeSafe() {
@@ -9321,6 +9471,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     outState.remove("path");
                 }
             }
+            savePendingChatRestore(outState);
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -9771,6 +9922,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     public void onRebuildAllFragments(INavigationLayout layout, boolean last) {
+        if (nmIconRebuildDispatching) {
+            return;
+        }
         if (AndroidUtilities.isTablet()) {
             if (layout == layersActionBarLayout) {
                 rightActionBarLayout.rebuildAllFragmentViews(last, last);
@@ -10206,6 +10360,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     private final java.util.concurrent.atomic.AtomicLong nmIconReloadGeneration =
             new java.util.concurrent.atomic.AtomicLong();
 
+    private long nmPendingIconRebuildGeneration;
+    private boolean nmIconRefreshResumed;
+    private boolean nmIconTouchInProgress;
+    private boolean nmIconBackInProgress;
+    private boolean nmIconRebuildDispatching;
+    private View nmIconRefreshView;
+    private ViewTreeObserver nmIconRefreshObserver;
+    private final ViewTreeObserver.OnPreDrawListener nmIconRefreshListener = this::refreshPendingIconViews;
     @Override
     public Resources getResources() {
         Resources base = super.getResources();
@@ -10247,15 +10409,121 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 org.telegram.ui.ActionBar.Theme.reloadAllResources(this);
             } catch (Throwable ignore) {}
             if (requestGeneration != nmIconReloadGeneration.get()
+                    || resources != nmIconResources
                     || !resources.isReplacementGenerationCurrent(replacementGeneration)) {
                 return;
             }
-            if (layersActionBarLayout != null) {
-                layersActionBarLayout.rebuildAllFragmentViewsForIconPack(requestGeneration);
-            } else if (actionBarLayout != null) {
-                actionBarLayout.rebuildAllFragmentViewsForIconPack(requestGeneration);
-            }
+            invalidateTabIconViews();
+            queueIconRebuild(requestGeneration);
         });
+    }
+
+    private void invalidateTabIconViews() {
+        if (finished || isFinishing() || isDestroyed()) {
+            return;
+        }
+        for (ActionBarLayout layout : new ActionBarLayout[]{actionBarLayout, rightActionBarLayout, layersActionBarLayout}) {
+            final BottomSheetTabs tabs = layout == null ? null : layout.getBottomSheetTabs();
+            if (tabs != null) {
+                tabs.invalidate();
+            }
+        }
+        if (bottomSheetTabsOverlay != null) {
+            bottomSheetTabsOverlay.invalidate();
+        }
+    }
+
+    private void queueIconRebuild(long generation) {
+        if (finished || isFinishing() || isDestroyed() || generation != nmIconReloadGeneration.get()
+                || generation < nmPendingIconRebuildGeneration) {
+            return;
+        }
+        nmPendingIconRebuildGeneration = generation;
+        startIconRefreshWatch();
+    }
+
+    private void startIconRefreshWatch() {
+        if (!nmIconRefreshResumed || nmPendingIconRebuildGeneration == 0 || nmIconRefreshObserver != null
+                || finished || isFinishing() || isDestroyed()) {
+            return;
+        }
+        nmIconRefreshView = getWindow().getDecorView();
+        nmIconRefreshObserver = nmIconRefreshView.getViewTreeObserver();
+        nmIconRefreshObserver.addOnPreDrawListener(nmIconRefreshListener);
+    }
+
+    private void stopIconRefreshWatch() {
+        if (nmIconRefreshObserver != null) {
+            if (nmIconRefreshObserver.isAlive()) {
+                nmIconRefreshObserver.removeOnPreDrawListener(nmIconRefreshListener);
+            }
+            if (nmIconRefreshView != null) {
+                ViewTreeObserver currentObserver = nmIconRefreshView.getViewTreeObserver();
+                if (currentObserver != nmIconRefreshObserver && currentObserver.isAlive()) {
+                    currentObserver.removeOnPreDrawListener(nmIconRefreshListener);
+                }
+            }
+        }
+        nmIconRefreshObserver = null;
+        nmIconRefreshView = null;
+    }
+
+    private boolean canRebuildIconViews() {
+        if (!nmIconRefreshResumed || finished || isFinishing() || isDestroyed() || !hasWindowFocus()
+                || nmIconTouchInProgress || dispatchingResumeFadeTouch || nmIconBackInProgress
+                || isPasscodeBlockingContent() || accountSwitchTransition.isRunning()
+                || org.telegram.ui.Components.IconPackRebuildSafety.hasVisibleMediaViewer()
+                || StoryRecorder.isVisible()) {
+            return false;
+        }
+        for (Dialog dialog : visibleDialogs) {
+            if (dialog != null && dialog.isShowing()) {
+                return false;
+            }
+        }
+        return org.telegram.ui.Components.IconPackRebuildSafety.canRebuildLayout(actionBarLayout, true)
+                && org.telegram.ui.Components.IconPackRebuildSafety.canRebuildLayout(rightActionBarLayout, true)
+                && org.telegram.ui.Components.IconPackRebuildSafety.canRebuildLayout(layersActionBarLayout, true);
+    }
+
+    private boolean refreshPendingIconViews() {
+        if (!nmIconRefreshResumed || finished || isFinishing() || isDestroyed()
+                || nmPendingIconRebuildGeneration == 0) {
+            stopIconRefreshWatch();
+            return true;
+        }
+        final long generation = nmPendingIconRebuildGeneration;
+        if (generation != nmIconReloadGeneration.get()) {
+            nmPendingIconRebuildGeneration = 0;
+            stopIconRefreshWatch();
+            return true;
+        }
+        final ActionBarLayout layers = layersActionBarLayout;
+        final ActionBarLayout right = rightActionBarLayout;
+        final ActionBarLayout main = actionBarLayout;
+        boolean rebuilt = false;
+        for (ActionBarLayout layout : new ActionBarLayout[]{layers, right, main}) {
+            if (generation != nmPendingIconRebuildGeneration || generation != nmIconReloadGeneration.get()
+                    || layers != layersActionBarLayout || right != rightActionBarLayout || main != actionBarLayout
+                    || !canRebuildIconViews()) {
+                return !rebuilt;
+            }
+            if (layout != null) {
+                nmIconRebuildDispatching = true;
+                try {
+                    layout.rebuildAllFragmentViewsForIconPack(generation);
+                    rebuilt = true;
+                } finally {
+                    nmIconRebuildDispatching = false;
+                }
+            }
+        }
+        if (generation == nmPendingIconRebuildGeneration && generation == nmIconReloadGeneration.get()
+                && layers == layersActionBarLayout && right == rightActionBarLayout && main == actionBarLayout) {
+            nmPendingIconRebuildGeneration = 0;
+            stopIconRefreshWatch();
+        }
+        return !rebuilt;
     }
 
     private int reasonsToHideMainContent = 0;

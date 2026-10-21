@@ -8,8 +8,7 @@ import android.content.pm.PackageInfo;
 import android.os.Debug;
 import android.os.SystemClock;
 import android.util.Log;
-import java.lang.reflect.Field;
-import java.util.Map;
+import app.nimarkogram.messenger.diagnostics.CrashDiagnostics;
 import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
@@ -44,6 +43,7 @@ public final class NimarkoCrashHandler {
         if (installed || appContext == null) return;
         final Thread.UncaughtExceptionHandler prior = Thread.getDefaultUncaughtExceptionHandler();
         Thread.UncaughtExceptionHandler handler = (thread, throwable) -> {
+            try { CrashDiagnostics.beginFatal(); } catch (Throwable ignored) {}
             String pluginId = null;
             try {
                 if (!isOom(throwable)) {
@@ -80,6 +80,8 @@ public final class NimarkoCrashHandler {
 
     private static void dump(Thread thread, Throwable t, String pluginId) {
         final boolean oom = isOom(t);
+        String legacyReportId = "unavailable";
+        File writtenReport = null;
         try {
             File dir = getLogDir();
             if (dir == null) return;
@@ -91,6 +93,7 @@ public final class NimarkoCrashHandler {
             long threadId = thread != null ? thread.getId() : Thread.currentThread().getId();
             String reportId = ts + "-p" + android.os.Process.myPid()
                     + "-t" + threadId + "-" + reportSequence.incrementAndGet();
+            legacyReportId = reportId;
             File f = new File(dir, (pluginId == null ? "crash-" : "plugin-crash-") + reportId + ".txt");
 
             try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(f)))) {
@@ -132,41 +135,7 @@ public final class NimarkoCrashHandler {
                         pw.println("GC: count=" + Debug.getRuntimeStat("art.gc.gc-count")
                                 + ", freed=" + Debug.getRuntimeStat("art.gc.bytes-freed")
                                 + ", blocking=" + Debug.getRuntimeStat("art.gc.blocking-gc-count"));
-                        try {
-                            Class<?> fr = Class.forName("java.lang.ref.FinalizerReference");
-                            Field head = fr.getDeclaredField("head");
-                            head.setAccessible(true);
-                            Field next = fr.getDeclaredField("next");
-                            next.setAccessible(true);
-                            int n = 0;
-                            Object cur = head.get(null);
-                            while (cur != null && n < 200000) {
-                                n++;
-                                cur = next.get(cur);
-                            }
-                            pw.println("Finalizer queue: "
-                                    + (n >= 200000 ? ">=200000" : String.valueOf(n)) + " pending");
-                        } catch (Throwable ignored) {
-                        }
-                        try {
-                            StringBuilder sb = new StringBuilder(128);
-                            Map<String, ?> all = appContext
-                                    .getSharedPreferences("plugin_settings", 0).getAll();
-                            for (Map.Entry<String, ?> e : all.entrySet()) {
-                                String key = e.getKey();
-                                if (key.startsWith("plugin_enabled_")
-                                        && Boolean.TRUE.equals(e.getValue())) {
-                                    if (sb.length() > 0) sb.append(", ");
-                                    if (sb.length() < 512) {
-                                        sb.append(key.substring("plugin_enabled_".length()));
-                                    }
-                                }
-                            }
-                            pw.println("Enabled plugins: " + (sb.length() > 0 ? sb : "(none)"));
-                        } catch (Throwable ignored) {
-                        }
-                        pw.println("Heap dump: nimarko-logs/oom-" + reportId
-                                + ".hprof (пришлите и его, если создался)");
+                        pw.println("Heap dump: private diagnostic package; completion status follows below.");
                     } catch (Throwable ignored) {
                     }
                 }
@@ -188,21 +157,16 @@ public final class NimarkoCrashHandler {
                 } else {
                     pw.println("(throwable was null)");
                 }
+                CrashDiagnostics.writeContext(pw);
                 pw.println("=== End ===");
                 pw.flush();
                 if (pw.checkError()) {
                     throw new IllegalStateException("Unable to write crash report");
                 }
             }
+            writtenReport = f;
             if (pluginId != null) PluginCrashReports.rememberFatalReport(pluginId, f);
 
-            if (oom) {
-                try {
-                    File hp = new File(dir, "oom-" + reportId + ".hprof");
-                    Debug.dumpHprofData(hp.getAbsolutePath());
-                    Log.e("nimarko-crash", "hprof dumped: " + hp.getAbsolutePath());
-                } catch (Throwable ignored) {}
-            }
             Log.e("nimarko-crash", "report written to " + f.getAbsolutePath());
 
             if (!oom) {
@@ -216,6 +180,15 @@ public final class NimarkoCrashHandler {
             try {
                 Log.e("nimarko-crash", "failed to dump", ignored);
             } catch (Throwable ignored2) {}
+        } finally {
+            try {
+                String result = CrashDiagnostics.captureFatal(legacyReportId, t, oom);
+                if (writtenReport != null) {
+                    try (PrintWriter output = new PrintWriter(new FileWriter(writtenReport, true))) {
+                        output.println("Diagnostic package: " + result);
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
     }
 

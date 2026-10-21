@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -196,7 +198,7 @@ public class PremiumFeatureBottomSheet extends BottomSheet implements Notificati
         closeLayout = new FrameLayout(getContext());
         closeLayout.setContentDescription(getString(R.string.Close));
         ImageView closeImage = new ImageView(getContext());
-        closeImage.setImageResource(R.drawable.msg_close);
+        closeImage.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(getContext(), R.drawable.msg_close));
         closeImage.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(12), ColorUtils.setAlphaComponent(Color.WHITE, 40), ColorUtils.setAlphaComponent(Color.WHITE, 100)));
         closeLayout.addView(closeImage, LayoutHelper.createFrame(24, 24, Gravity.CENTER));
         closeLayout.setOnClickListener(v -> dismiss());

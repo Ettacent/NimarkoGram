@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 6.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -9,10 +11,13 @@
 package org.telegram.ui;
 
 import android.content.Intent;
+import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.RelativeLayout;
@@ -33,6 +38,7 @@ import org.telegram.ui.ActionBar.DrawerLayoutContainer;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ActivityWindowEmptyBackgroundDrawable;
+import org.telegram.ui.Components.IconPackRebuildSafety;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.PasscodeView;
 import org.telegram.ui.Components.ThemeEditorView;
@@ -41,6 +47,21 @@ import java.util.ArrayList;
 
 public class BubbleActivity extends BasePermissionsActivity implements INavigationLayout.INavigationLayoutDelegate {
 
+    private app.nimarkogram.messenger.icons.NimarkoActivityIconResources nmIconResources;
+    private boolean nmIconRebuildPending;
+    private boolean nmIconRefreshResumed;
+    private boolean nmIconTouchInProgress;
+    private ViewTreeObserver nmIconRefreshObserver;
+    private final ViewTreeObserver.OnPreDrawListener nmIconRefreshListener = this::refreshPendingIconViews;
+
+    @Override
+    public synchronized Resources getResources() {
+        Resources base = super.getResources();
+        if (nmIconResources == null) {
+            nmIconResources = new app.nimarkogram.messenger.icons.NimarkoActivityIconResources();
+        }
+        return nmIconResources.getResources(base);
+    }
     public static BubbleActivity instance;
 
     private boolean finished;
@@ -192,6 +213,8 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onFinish() {
+        nmIconRefreshResumed = false;
+        stopIconRefreshWatch();
         if (finished) {
             return;
         }
@@ -213,6 +236,9 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onPause() {
+        nmIconRefreshResumed = false;
+        nmIconTouchInProgress = false;
+        stopIconRefreshWatch();
         super.onPause();
         actionBarLayout.onPause();
         ApplicationLoader.externalInterfacePaused = true;
@@ -225,6 +251,8 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
 
     @Override
     protected void onDestroy() {
+        nmIconRefreshResumed = false;
+        stopIconRefreshWatch();
         super.onDestroy();
         if (currentAccount != -1) {
             AccountInstance.getInstance(currentAccount).getNotificationsController().setOpenedInBubble(dialogId, false);
@@ -263,6 +291,8 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
     @Override
     protected void onResume() {
         super.onResume();
+        Resources installedResources = getResources();
+        nmIconRebuildPending |= nmIconResources.onResume(installedResources);
         actionBarLayout.onResume();
         ApplicationLoader.externalInterfacePaused = false;
         onPasscodeResume();
@@ -273,6 +303,71 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
             passcodeView.onResume();
         }
         instance = this;
+        nmIconRefreshResumed = true;
+        if (nmIconRebuildPending && nmIconRefreshObserver == null && !finished && !isFinishing()) {
+            nmIconRefreshObserver = actionBarLayout.getView().getViewTreeObserver();
+            nmIconRefreshObserver.addOnPreDrawListener(nmIconRefreshListener);
+        }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            nmIconTouchInProgress = true;
+        }
+        try {
+            return super.dispatchTouchEvent(event);
+        } finally {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                nmIconTouchInProgress = false;
+            }
+        }
+    }
+
+    private void stopIconRefreshWatch() {
+        if (nmIconRefreshObserver == null) {
+            return;
+        }
+        if (nmIconRefreshObserver.isAlive()) {
+            nmIconRefreshObserver.removeOnPreDrawListener(nmIconRefreshListener);
+        }
+        if (actionBarLayout != null) {
+            ViewTreeObserver currentObserver = actionBarLayout.getView().getViewTreeObserver();
+            if (currentObserver != nmIconRefreshObserver && currentObserver.isAlive()) {
+                currentObserver.removeOnPreDrawListener(nmIconRefreshListener);
+            }
+        }
+        nmIconRefreshObserver = null;
+    }
+
+    private boolean canRebuildIconViews() {
+        if (!nmIconRefreshResumed || finished || isFinishing() || isDestroyed()
+                || !hasWindowFocus() || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
+                || passcodeView != null && passcodeView.getVisibility() == View.VISIBLE
+                || nmIconTouchInProgress || IconPackRebuildSafety.hasVisibleMediaViewer()) {
+            return false;
+        }
+        return IconPackRebuildSafety.canRebuildLayout(actionBarLayout, false);
+    }
+
+    private boolean refreshPendingIconViews() {
+        if (!nmIconRefreshResumed || !nmIconRebuildPending || finished || isFinishing() || isDestroyed()) {
+            stopIconRefreshWatch();
+            return true;
+        }
+        if (!canRebuildIconViews()) {
+            return true;
+        }
+        Resources installedResources = getResources();
+        nmIconRebuildPending |= nmIconResources.onResume(installedResources);
+        if (!canRebuildIconViews()) {
+            return true;
+        }
+        actionBarLayout.rebuildAllFragmentViews(true, true);
+        nmIconRebuildPending = false;
+        stopIconRefreshWatch();
+        return false;
     }
 
     private void onPasscodePause() {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="2dp" android:height="10dp"
+    android:viewportWidth="2" android:viewportHeight="10">
+    <path android:pathData="M1,0 A1,1 0,0 1,2,1 V5.5 A1,1 0,0 1,0,5.5 V1 A1,1 0,0 1,1,0 Z M2,9 A1,1 0,1 1,0,9 A1,1 0,1 1,2,9 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="2" android:endY="10">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

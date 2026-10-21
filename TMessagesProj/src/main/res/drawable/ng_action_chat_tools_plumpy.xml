@@ -1,0 +1,10 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="message" android:fillColor="#59FFFFFF" android:pathData="M12,3A9,9 0,0 0,3,12C3,14.4 3.9,16.4 5.4,18L4,21L8.2,20.2A9,9 0,1 0,12,3Z"/>
+    <path android:name="slider_tracks" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M7,9H17M7,15H17"/>
+    <path android:name="slider_knobs" android:fillColor="#FFFFFFFF" android:pathData="M14,9A2.2,2.2 0,1 1,9.6,9A2.2,2.2 0,1 1,14,9ZM13,15A2.2,2.2 0,1 1,8.6,15A2.2,2.2 0,1 1,13,15Z"/>
+</vector>

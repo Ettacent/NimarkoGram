@@ -166,6 +166,11 @@ public class ReactionsLayoutInBubble {
     }
 
     public void setMessage(MessageObject messageObject, boolean isSmall, boolean isTag, Theme.ResourcesProvider resourcesProvider) {
+        final boolean sameMessage = this.messageObject != null && messageObject != null
+                && this.messageObject.currentAccount == messageObject.currentAccount
+                && this.messageObject.getDialogId() == messageObject.getDialogId()
+                && (this.messageObject == messageObject || this.messageObject.getId() != 0
+                    && this.messageObject.getId() == messageObject.getId());
         this.resourcesProvider = resourcesProvider;
         this.isSmall = isSmall;
         this.tags = isTag;
@@ -242,7 +247,10 @@ public class ReactionsLayoutInBubble {
                     ReactionButton old = null;
                     for (int j = 0; j < oldButtons.size(); ++j) {
                         ReactionButton btn = oldButtons.get(j);
-                        if (btn.reaction.equals(reactionCount.reaction)) {
+                        if (reactionCount.reaction instanceof TLRPC.TL_reactionPaid
+                                ? sameMessage && btn.paid && btn.currentAccount == currentAccount
+                                    && btn.isSmall == isSmall && btn.isTag == isTag
+                                : btn.reaction.equals(reactionCount.reaction)) {
                             old = btn;
                             break;
                         }
@@ -443,7 +451,31 @@ public class ReactionsLayoutInBubble {
         final float currentY = getCurrentY(animationProgress);
         final float currentHeight = isEmpty ? lastDrawTotalHeight
                 : Math.max(height, getCurrentTotalHeight(animationProgress));
-        return currentY <= bottom && currentY + currentHeight >= top;
+        if (currentY <= bottom && currentY + currentHeight >= top) return true;
+        if (animationProgress == 1f) return false;
+
+        for (int i = 0; i < reactionButtons.size(); i++) {
+            ReactionButton button = reactionButtons.get(i);
+            float buttonY = button.y;
+            float scale = 1f;
+            if (button.animationType == ANIMATION_TYPE_MOVE) {
+                buttonY = button.y * animationProgress + button.animateFromY * (1f - animationProgress);
+            } else if (button.animationType == ANIMATION_TYPE_IN) {
+                if (animationProgress <= 0f) continue;
+                scale = 0.5f + 0.5f * animationProgress;
+            }
+            final float buttonTop = currentY + buttonY + button.height * (1f - scale) / 2f;
+            if (buttonTop <= bottom && buttonTop + button.height * scale >= top) return true;
+        }
+        if (animationProgress < 1f) {
+            final float scale = 0.5f + 0.5f * (1f - animationProgress);
+            for (int i = 0; i < outButtons.size(); i++) {
+                ReactionButton button = outButtons.get(i);
+                final float buttonTop = currentY + button.y + button.height * (1f - scale) / 2f;
+                if (buttonTop <= bottom && buttonTop + button.height * scale >= top) return true;
+            }
+        }
+        return false;
     }
 
     public void draw(Canvas canvas, float animationProgress, Integer drawOnlyReaction) {
@@ -1033,8 +1065,8 @@ public class ReactionsLayoutInBubble {
                 if (imageReceiver != null) {
                     imageReceiver.setAlpha(alpha);
                     imageReceiver.setRoundRadius(0);
-                    drawImage(canvas, drawingImageRect, alpha);
                 }
+                    drawImage(canvas, drawingImageRect, alpha);
                 return;
             }
 
@@ -1283,7 +1315,16 @@ public class ReactionsLayoutInBubble {
                     imageReceiver2.draw(canvas);
                 }
                 if (drawStaticImage) {
+                    imageReceiver.setAlpha(alpha);
+                    if (alpha > 0f) {
+                        if (animatedEmojiDrawable != null) {
+                            animatedEmojiDrawable.markMissingDocumentPresented();
+                        }
+                        imageReceiver.markLoadingPlaceholderPresented();
+                    }
+                    if (alpha > 0f || !imageReceiver.hasReadyImage()) {
                     imageReceiver.draw(canvas);
+                    }
                 }
                 lastImageDrawn = true;
             } else {

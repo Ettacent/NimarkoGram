@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram formatting_italic.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M5 19V16.5H9L12 7.5H8V5H18V7.5H14.5L11.5 16.5H15V19H5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAffffff" />
+                <item android:offset="0.32" android:color="#E0ffffff" />
+                <item android:offset="0.56" android:color="#8Fffffff" />
+                <item android:offset="0.78" android:color="#B8ffffff" />
+                <item android:offset="1" android:color="#F5ffffff" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

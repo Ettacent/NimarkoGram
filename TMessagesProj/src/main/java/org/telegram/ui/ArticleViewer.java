@@ -132,7 +132,7 @@ import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BotGuardHelper;
 import org.telegram.messenger.ChatObject;
-import org.telegram.messenger.CodeHighlighting;
+import org.telegram.utils.code.highlight.CodeHighlighting;
 import org.telegram.messenger.DownloadController;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
@@ -15861,6 +15861,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         public boolean preserve;
 
+        private long presentationGeneration;
+
+        @Override
+        public long getPresentationGeneration() {
+            return presentationGeneration;
+        }
         public BottomSheetTabDialog dialog;
         private boolean hadDialog;
 
@@ -15910,6 +15916,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void attachInternal(BaseFragment fragment) {
+            presentationGeneration++;
+            windowView.setDrawingFromOverlay(false);
             this.released = false;
             this.fragment = fragment;
             this.resourcesProvider = fragment.getResourceProvider();
@@ -15994,6 +16002,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public void release() {
+            presentationGeneration++;
             releaseAnimationFrameRate();
             released = true;
             setBannerOverlayVisible(false);
@@ -16121,6 +16130,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void reset() {
+            presentationGeneration++;
+            windowView.setDrawingFromOverlay(false);
             dismissing = false;
             dismissingIntoTabs = false;
             if (openAnimator != null) {

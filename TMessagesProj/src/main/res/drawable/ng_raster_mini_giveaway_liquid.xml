@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="cup" android:fillColor="#FFFFFFFF" android:fillAlpha="0.08"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,3.5H17V9A5,5 0,0 1,7,9Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="handles" android:fillColor="#00000000"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,5.5H3.2V8A4,4 0,0 0,8,12 M17,5.5H20.8V8A4,4 0,0 1,16,12">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="pedestal" android:fillColor="#00000000"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,14V19 M7,21H17 M9,19H15">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

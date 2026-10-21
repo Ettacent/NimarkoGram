@@ -157,6 +157,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -303,9 +304,27 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private int remoteVideoState = Instance.VIDEO_STATE_INACTIVE;
 	private volatile TLRPC.TL_dataJSON myParams;
+	private volatile NmPreparedGroupParamsBatch nmCameraParamsBatch;
 	private final AtomicInteger nmGroupJoinGeneration = new AtomicInteger();
 	private final AtomicInteger nmPresentationJoinGeneration = new AtomicInteger();
 
+	private final AtomicInteger nmPrivateCallGeneration = new AtomicInteger();
+	private static final int NM_MAX_PENDING_SIGNALING_PACKETS = 128;
+	private static final int NM_MAX_PENDING_SIGNALING_BYTES = 1024 * 1024;
+	private NmPendingPrivateCall nmPendingPrivateCall;
+
+	private static final class NmPendingPrivateCall {
+		final long callId;
+		final int generation;
+		final ArrayDeque<byte[]> signaling = new ArrayDeque<>();
+		int signalingPackets;
+		int signalingBytes;
+
+		NmPendingPrivateCall(long callId, int generation) {
+			this.callId = callId;
+			this.generation = generation;
+		}
+	}
 	private int[] mySource = new int[2];
 	private NativeInstance convertingVoip;
 	private NativeInstance[] tgVoip = new NativeInstance[2];
@@ -410,10 +429,14 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				if (audioDeviceCallback != null) {
 					am.unregisterAudioDeviceCallback(audioDeviceCallback);
 				}
+				if (communicationDeviceListener != null) {
+					am.removeOnCommunicationDeviceChangedListener(communicationDeviceListener);
+					communicationDeviceListener = null;
+				}
 				if (!USE_CONNECTION_SERVICE && sharedInstance == null) {
 					if (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting) {
-						am.stopBluetoothSco();
-						am.setBluetoothScoOn(false);
+						VoipAudioManager.get().stopBluetooth();
+						VoipAudioManager.get().setBluetoothOn(false);
 						bluetoothScoActive = false;
 						bluetoothScoConnecting = false;
 					}
@@ -489,6 +512,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private AudioDeviceCallback audioDeviceCallback;
 
+	private AudioManager.OnCommunicationDeviceChangedListener communicationDeviceListener;
 	private BroadcastReceiver receiver = new BroadcastReceiver() {
 
 		@Override
@@ -500,7 +524,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					VoipAudioManager vam = VoipAudioManager.get();
 					if (vam.isSpeakerphoneOn()) {
 						previousAudioOutput = 0;
-					} else if (am.isBluetoothScoOn()) {
+					} else if (VoipAudioManager.get().isBluetoothOn()) {
 						previousAudioOutput = 2;
 					} else {
 						previousAudioOutput = 1;
@@ -527,7 +551,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					FileLog.e("Bluetooth SCO state updated: " + state);
 				}
 				if (state == AudioManager.SCO_AUDIO_STATE_DISCONNECTED && isBtHeadsetConnected) {
-					if (!btAdapter.isEnabled() || !PermissionRequest.hasPermission(Manifest.permission.BLUETOOTH_CONNECT) || btAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) != BluetoothProfile.STATE_CONNECTED) {
+					if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? VoipAudioManager.get().findBluetoothDevice() == null : (!btAdapter.isEnabled() || !PermissionRequest.hasPermission(Manifest.permission.BLUETOOTH_CONNECT) || btAdapter.getProfileConnectionState(BluetoothProfile.HEADSET) != BluetoothProfile.STATE_CONNECTED)) {
 						updateBluetoothHeadsetState(false);
 						return;
 					}
@@ -541,7 +565,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 						AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 						VoipAudioManager vam = VoipAudioManager.get();
 						vam.setSpeakerphoneOn(false);
-						am.setBluetoothScoOn(true);
+						VoipAudioManager.get().setBluetoothOn(true);
 					}
 				}
 				checkIsNear();
@@ -1415,6 +1439,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public void stopScreenCapture() {
+		nmPresentationJoinGeneration.incrementAndGet();
 		if (groupCall == null || videoState[CAPTURE_DEVICE_SCREEN] != Instance.VIDEO_STATE_ACTIVE) {
 			return;
 		}
@@ -1560,9 +1585,27 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public void onSignalingData(TL_update.TL_updatePhoneCallSignalingData data) {
-		if (user == null || tgVoip[CAPTURE_DEVICE_CAMERA] == null || tgVoip[CAPTURE_DEVICE_CAMERA].isGroup() || getCallID() != data.phone_call_id) {
+		NmPendingPrivateCall pending = nmPendingPrivateCall;
+		if (pending != null && !nmIsCurrentPrivateCall(pending.callId, pending.generation)) {
+			nmCancelPrivateCallPreparation();
+			pending = null;
+		}
+		if (user == null || sharedInstance != this || isCallEnded || groupCall != null
+				|| data == null || getCallID() != data.phone_call_id) {
 			return;
 		}
+		if (pending != null) {
+			if (data.data == null || pending.signalingPackets >= NM_MAX_PENDING_SIGNALING_PACKETS
+					|| data.data.length > NM_MAX_PENDING_SIGNALING_BYTES - pending.signalingBytes) {
+				callFailed();
+				return;
+			}
+			pending.signaling.addLast(Arrays.copyOf(data.data, data.data.length));
+			pending.signalingPackets++;
+			pending.signalingBytes += data.data.length;
+			return;
+		}
+		if (tgVoip[CAPTURE_DEVICE_CAMERA] == null || tgVoip[CAPTURE_DEVICE_CAMERA].isGroup()) return;
 		tgVoip[CAPTURE_DEVICE_CAMERA].onSignalingDataReceive(data.data);
 	}
 
@@ -1635,6 +1678,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private TLRPC.GroupCall lastGroupCallUpdate;
 	public void onGroupCallUpdated(TLRPC.GroupCall call) {
+		if (isCallEnded || sharedInstance != this) return;
 		if (groupCall == null || groupCall.call.id != call.id) {
 			lastGroupCallUpdate = call;
 			return;
@@ -1643,10 +1687,12 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			hangUp(2);
 			return;
 		}
+		final NmPreparedGroupParamsBatch paramsBatch = nmCameraParamsBatch;
+		final TLRPC.TL_dataJSON params = paramsBatch != null ? paramsBatch.lastParams() : null;
 		boolean newModeStreaming = false;
-		if (myParams != null) {
+		if (params != null) {
 			try {
-				JSONObject object = new JSONObject(myParams.data);
+				JSONObject object = new JSONObject(params.data);
 				newModeStreaming = object.optBoolean("stream");
 			} catch (Exception e) {
 				FileLog.e(e);
@@ -1656,7 +1702,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			groupCall.processGroupCallUpdate(call);
 		}
 
-		if ((currentState == STATE_WAIT_INIT || newModeStreaming != currentGroupModeStreaming) && myParams != null) {
+		if ((currentState == STATE_WAIT_INIT || newModeStreaming != currentGroupModeStreaming) && params != null) {
 			if (tgVoip[CAPTURE_DEVICE_CAMERA] == null) {
 				lastGroupCallUpdate = call;
 				return;
@@ -1666,12 +1712,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 			currentGroupModeStreaming = newModeStreaming;
 			try {
-				if (newModeStreaming) {
-					tgVoip[CAPTURE_DEVICE_CAMERA].prepareForStream(groupCall.call != null && groupCall.call.rtmp_stream);
-				} else {
-					nmLogGroupParams("group JOIN-RESPONSE [camera]", myParams.data);
-					tgVoip[CAPTURE_DEVICE_CAMERA].setJoinResponsePayload(myParams.data);
-				}
+				if (!nmApplyCameraParams(paramsBatch, newModeStreaming)) return;
 				dispatchStateChanged(STATE_WAIT_INIT_ACK);
 			} catch (Exception e) {
 				FileLog.e(e);
@@ -1705,6 +1746,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		final long key_fingerprint = privateCall.key_fingerprint;
 		privateCall = phoneCall;
 		if (phoneCall instanceof TL_phone.TL_phoneCallDiscarded) {
+			nmCancelPrivateCallPreparation();
 			needSendDebugLog = phoneCall.need_debug;
 			needRateCall = phoneCall.need_rating;
 			if (BuildVars.LOGS_ENABLED) {
@@ -2119,6 +2161,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private boolean inviteUsersToConferenceVideo;
 	private HashSet<Long> inviteUsersToConference;
 	public void convertToConferenceCall(boolean video, HashSet<Long> inviteUserIds) {
+		nmCancelPrivateCallPreparation();
 		convertingFromCallWithUserId = user != null ? user.id : 0;
 		inviteUsersToConferenceVideo = video;
 		inviteUsersToConference = inviteUserIds;
@@ -2698,7 +2741,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void startScreenCapture(int ssrc, String json) {
-		if (getSharedInstance() == null || groupCall == null) {
+		if (getSharedInstance() != this || isCallEnded || groupCall == null) {
 			return;
 		}
 		mySource[CAPTURE_DEVICE_SCREEN] = 0;
@@ -2944,31 +2987,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 	}
 
-	private void nmLogGroupParams(String where, String data) {
-		if (!VoipBypassCore.DEBUG) return;
-		try {
-			if (data == null) { VoipBypassCore.dlog(where + ": params=null"); return; }
-			org.json.JSONObject o = new org.json.JSONObject(data);
-			StringBuilder sb = new StringBuilder(where + ": stream=" + o.optBoolean("stream") + " ufrag=" + (o.optJSONObject("transport") != null ? o.optJSONObject("transport").optString("ufrag") : "?"));
-			org.json.JSONObject transport = o.optJSONObject("transport");
-			org.json.JSONArray cands = transport != null ? transport.optJSONArray("candidates") : null;
-			if (cands != null) {
-				for (int i = 0; i < cands.length(); i++) {
-					org.json.JSONObject c = cands.optJSONObject(i);
-					if (c == null) continue;
-					String cip = c.optString("ip");
-					boolean tgIp = VoipBypassConfig.isTelegramReflectorIp(cip);   // exact CIDR match vs relay.py whitelist
-					sb.append("\n  cand[").append(i).append("] ").append(c.optString("type")).append(" ").append(cip).append(":").append(c.optString("port"))
-						.append(" ").append(c.optString("protocol")).append(tgIp ? " <TG-IP relayable>" : "");
-				}
-			} else {
-				sb.append(" (no candidates[] — raw=").append(data.length() > 200 ? data.substring(0, 200) : data).append(")");
-			}
-			VoipBypassCore.dlog(sb.toString());
-		} catch (Exception e) {
-			VoipBypassCore.dlog(where + ": parse err " + e + " raw=" + (data != null && data.length() > 200 ? data.substring(0, 200) : data));
-		}
-	}
 
 	private boolean nmGroupRelayRequired() {
 		return VoipBypassConfig.captureRelayState().required;
@@ -2976,6 +2994,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private int nmBeginGroupJoin() {
 		int generation = nmGroupJoinGeneration.incrementAndGet();
+		nmCameraParamsBatch = null;
 		if (nmGroupRelayRequired()) {
 			myParams = null;
 		}
@@ -2993,7 +3012,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private boolean nmIsCurrentGroupJoin(int generation, boolean presentation) {
 		AtomicInteger current = presentation
 				? nmPresentationJoinGeneration : nmGroupJoinGeneration;
-		return generation == current.get() && getSharedInstance() == this;
+		return generation == current.get() && getSharedInstance() == this && !isCallEnded;
 	}
 
 	private void nmAbortGroupRelay(String reason, int generation, boolean presentation) {
@@ -3003,6 +3022,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		AndroidUtilities.runOnUIThread(() -> {
 			if (nmIsCurrentGroupJoin(generation, presentation)) {
 				myParams = null;
+				nmCameraParamsBatch = null;
 				AtomicInteger current = presentation
 						? nmPresentationJoinGeneration : nmGroupJoinGeneration;
 				current.compareAndSet(generation, generation + 1);
@@ -3027,12 +3047,14 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		final ArrayList<TL_update.TL_updateGroupCallConnection> suppressed = new ArrayList<>();
 		final VoipBypassConfig.RelayState relayState;
 		final boolean presentation;
+		final int generation;
 		int relevantUpdates;
 
 		NmPreparedGroupParamsBatch(VoipBypassConfig.RelayState relayState,
-				boolean presentation) {
+				boolean presentation, int generation) {
 			this.relayState = relayState;
 			this.presentation = presentation;
+			this.generation = generation;
 		}
 
 		TLRPC.TL_dataJSON lastParams() {
@@ -3046,7 +3068,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (!nmIsCurrentGroupJoin(generation, presentationGeneration)) return null;
 		VoipBypassConfig.RelayState relayState = VoipBypassConfig.captureRelayState();
 		NmPreparedGroupParamsBatch batch = new NmPreparedGroupParamsBatch(
-				relayState, presentation);
+				relayState, presentation, generation);
 		long deadline = relayState.required
 				? android.os.SystemClock.elapsedRealtime() + 1000 : 0;
 
@@ -3058,8 +3080,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 			batch.relevantUpdates++;
 			TLRPC.TL_dataJSON serverParams = update.params;
-			nmLogGroupParams("group JOIN-RESPONSE [" + path + ", server params]",
-					serverParams != null ? serverParams.data : null);
 			if (serverParams == null) {
 				if (relayState.required) {
 					nmAbortGroupRelay(path + " join response has no transport params",
@@ -3071,7 +3091,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 			String payload = serverParams.data;
 			if (relayState.required) {
-				payload = nmRelayGroupParams(payload, deadline);
+				payload = nmRelayGroupParams(payload, deadline, presentation);
 				if (payload == null) {
 					nmAbortGroupRelay(path + " connection update batch could not be relayed",
 							generation, presentationGeneration);
@@ -3116,6 +3136,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 			if (!batch.presentation && batch.lastParams() != null) {
 				myParams = batch.lastParams();
+				nmCameraParamsBatch = batch;
 			}
 			MessagesController.getInstance(currentAccount).processUpdates(updates, false);
 			applied[0] = true;
@@ -3130,10 +3151,36 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		return false;
 	}
 
-	private String nmRelayGroupParams(String data, long deadline) {
+	private boolean nmApplyCameraParams(NmPreparedGroupParamsBatch batch, boolean streaming) {
+		if (batch == null || batch != nmCameraParamsBatch
+				|| !nmIsCurrentGroupJoin(batch.generation)) return false;
+		final boolean[] applied = {false};
+		boolean current = VoipBypassConfig.publishIfRelayStateCurrent(batch.relayState, () -> {
+			if (batch != nmCameraParamsBatch || !nmIsCurrentGroupJoin(batch.generation)
+					|| tgVoip[CAPTURE_DEVICE_CAMERA] == null) return;
+			if (streaming) {
+				tgVoip[CAPTURE_DEVICE_CAMERA].prepareForStream(groupCall.call != null && groupCall.call.rtmp_stream);
+			} else {
+				tgVoip[CAPTURE_DEVICE_CAMERA].setJoinResponsePayload(batch.lastParams().data);
+			}
+			applied[0] = true;
+		});
+		if (current && applied[0]) return true;
+		nmAbortGroupRelay("camera relay state changed before native publication", batch.generation, false);
+		return false;
+	}
+
+	private String nmRelayGroupParams(String data, long deadline, boolean presentation) {
 		if (data == null) return null;
 		try {
-			org.json.JSONObject o = new org.json.JSONObject(data);
+			org.json.JSONTokener tokener = new org.json.JSONTokener(data);
+			org.json.JSONObject o = new org.json.JSONObject(tokener);
+			if (Boolean.TRUE.equals(o.opt("stream"))) {
+				if (presentation || o.has("transport")
+						|| o.has("rtmp") && !(o.opt("rtmp") instanceof Boolean)
+						|| tokener.nextClean() != 0) return null;
+				return data;
+			}
 			org.json.JSONObject transport = o.optJSONObject("transport");
 			org.json.JSONArray cands = transport != null ? transport.optJSONArray("candidates") : null;
 			if (cands == null) return null;
@@ -3141,7 +3188,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			int suppressed = 0;
 			for (int i = 0; i < cands.length(); i++) {
 				org.json.JSONObject c = cands.optJSONObject(i);
-				if (c == null) continue;
+				if (c == null) { cands.remove(i--); suppressed++; continue; }
 				String cip = c.optString("ip");
 				if (!"udp".equalsIgnoreCase(c.optString("protocol", "udp"))) {
 					cands.remove(i--);
@@ -3181,7 +3228,14 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void createGroupInstance(int type, boolean switchAccount, boolean isFirst) {
-		VoipBypassCore.dlog("createGroupInstance(type=" + type + ", first=" + isFirst + "): GROUP call (WebRTC) — group relay = ICE-candidate rewrite at join-response");
+		if (isCallEnded || sharedInstance != this) return;
+		if (type == CAPTURE_DEVICE_CAMERA) {
+			nmGroupJoinGeneration.incrementAndGet();
+			nmCameraParamsBatch = null;
+			myParams = null;
+		} else {
+			nmPresentationJoinGeneration.incrementAndGet();
+		}
 		if (switchAccount) {
 			mySource[type] = 0;
 			if (type == CAPTURE_DEVICE_CAMERA) {
@@ -3211,7 +3265,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			final boolean[] first = new boolean[] { isFirst };
 			final String logFilePath = BuildVars.DEBUG_VERSION ? VoIPHelper.getLogFilePath("voip_" + type + "_" + logId) : VoIPHelper.getLogFilePath(logId, false);
 			tgVoip[type] = NativeInstance.makeGroup(logFilePath, captureDevice[type], type == CAPTURE_DEVICE_SCREEN, type == CAPTURE_DEVICE_CAMERA && SharedConfig.noiseSupression, (ssrc, json) -> {
-				VoipBypassCore.dlog("group LOCAL-OFFER emit type=" + type + " ssrc=" + ssrc + " offerLen=" + (json == null ? 0 : json.length()) + " conference=" + (conference != null) + " -> joinGroupCall");
 				if (type == CAPTURE_DEVICE_CAMERA) {
 					if (conference != null) {
 						startConferenceGroupCall(false, ssrc, json, !first[0]);
@@ -3363,7 +3416,6 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void updateConnectionState(int type, int state, boolean inTransition) {
-		VoipBypassCore.dlog("group CONNECTION-STATE type=" + type + " state=" + state + " (1=connected, else reconnecting) inTransition=" + inTransition);
 		if (type != CAPTURE_DEVICE_CAMERA) {
 			return;
 		}
@@ -3457,7 +3509,173 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		return switchingStream;
 	}
 
+	private Instance.Endpoint[] nmBuildPrivateEndpoints(ArrayList<TLRPC.PhoneConnection> connections,
+			boolean forceTcp, boolean useVoipBypass) {
+		final int endpointType = forceTcp ? Instance.ENDPOINT_TYPE_TCP_RELAY : Instance.ENDPOINT_TYPE_UDP_RELAY;
+		final Instance.Endpoint[] endpoints = new Instance.Endpoint[connections.size()];
+		ArrayList<Long> reflectorIds = new ArrayList<>();
+		final long deadline = android.os.SystemClock.elapsedRealtime() + 600;
+		for (int i = 0; i < endpoints.length; i++) {
+			final TLRPC.PhoneConnection connection = connections.get(i);
+			String ip = connection.ip;
+			String ipv6 = connection.ipv6;
+			int port = connection.port;
+			if (useVoipBypass) {
+				String target = VoipBypassConfig.relayProtocolTarget(ip);
+				if (target == null) target = VoipBypassConfig.relayProtocolTarget(ipv6);
+				VoipBypassCore.RelayEndpoint relay = null;
+				if (!forceTcp && !connection.tcp && target != null) {
+					relay = VoipBypassCore.getInstance().allocateRelay(target, port,
+							currentAccount, (int) (deadline - android.os.SystemClock.elapsedRealtime()));
+				}
+				if (relay == null) {
+					ip = "";
+					ipv6 = "";
+					port = 0;
+				} else {
+					ip = relay.host.indexOf(':') >= 0 ? "" : relay.host;
+					ipv6 = relay.host.indexOf(':') >= 0 ? relay.host : "";
+					port = relay.port;
+				}
+			}
+			endpoints[i] = new Instance.Endpoint(connection instanceof TLRPC.TL_phoneConnectionWebrtc,
+					connection.id, ip, ipv6, port, endpointType, connection.peer_tag,
+					connection.turn, connection.stun, connection.username, connection.password, connection.tcp);
+			if (connection instanceof TLRPC.TL_phoneConnection) {
+				reflectorIds.add(connection.id);
+			}
+		}
+		if (!reflectorIds.isEmpty()) {
+			Collections.sort(reflectorIds);
+			HashMap<Long, Integer> reflectorIdMapping = new HashMap<>();
+			for (int i = 0; i < reflectorIds.size(); i++) {
+				reflectorIdMapping.put(reflectorIds.get(i), i + 1);
+			}
+			for (Instance.Endpoint endpoint : endpoints) {
+				endpoint.reflectorId = reflectorIdMapping.getOrDefault(endpoint.id, 0);
+			}
+		}
+		return endpoints;
+	}
+
+	private Instance.Proxy nmCallProxy(SharedPreferences preferences) {
+		if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
+			final org.telegram.utils.proxy.ProxySettings settings = org.telegram.utils.proxy.ProxySettings.fromSharedPreferences(preferences);
+			if (settings.isValid() && settings.getType() == org.telegram.utils.proxy.ProxySettings.Type.SOCKS5) {
+				return new Instance.Proxy(settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword());
+			}
+		}
+		return null;
+	}
+
+	private boolean nmIsCurrentPrivateCall(long callId, int generation) {
+		return sharedInstance == this && !isCallEnded && groupCall == null
+				&& currentState != STATE_HANGING_UP && currentState != STATE_ENDED && currentState != STATE_BUSY
+				&& privateCall != null && privateCall.id == callId
+				&& nmPrivateCallGeneration.get() == generation;
+	}
+
+	private void nmCancelPrivateCallPreparation() {
+		nmPrivateCallGeneration.incrementAndGet();
+		NmPendingPrivateCall pending = nmPendingPrivateCall;
+		nmPendingPrivateCall = null;
+		if (pending != null) {
+			pending.signaling.clear();
+			pending.signalingBytes = 0;
+			pending.signalingPackets = 0;
+		}
+	}
+
+	private boolean nmFlushPendingPrivateSignaling(long callId, int generation) {
+		NmPendingPrivateCall pending = nmPendingPrivateCall;
+		NativeInstance instance = tgVoip[CAPTURE_DEVICE_CAMERA];
+		if (pending == null || pending.callId != callId || pending.generation != generation) return false;
+		if (!nmIsCurrentPrivateCall(callId, generation)) {
+			nmCancelPrivateCallPreparation();
+			return false;
+		}
+		if (instance == null || instance.isGroup()) {
+			callFailed();
+			return false;
+		}
+		while (!pending.signaling.isEmpty()) {
+			if (nmPendingPrivateCall != pending || !nmIsCurrentPrivateCall(callId, generation)
+					|| tgVoip[CAPTURE_DEVICE_CAMERA] != instance) {
+				if (nmPendingPrivateCall == pending) nmCancelPrivateCallPreparation();
+				return false;
+			}
+			instance.onSignalingDataReceive(pending.signaling.removeFirst());
+		}
+		if (nmPendingPrivateCall != pending || !nmIsCurrentPrivateCall(callId, generation)
+				|| tgVoip[CAPTURE_DEVICE_CAMERA] != instance) {
+			if (nmPendingPrivateCall == pending) nmCancelPrivateCallPreparation();
+			return false;
+		}
+		nmPendingPrivateCall = null;
+		pending.signalingBytes = 0;
+		pending.signalingPackets = 0;
+		return true;
+	}
 	private void initiateActualEncryptedCall() {
+		if (sharedInstance != this || isCallEnded || privateCall == null || groupCall != null) return;
+		if (currentState == STATE_HANGING_UP || currentState == STATE_ENDED || currentState == STATE_BUSY) return;
+		if (nmPendingPrivateCall != null && nmIsCurrentPrivateCall(nmPendingPrivateCall.callId, nmPendingPrivateCall.generation)) return;
+		if (timeoutRunnable != null) {
+			AndroidUtilities.cancelRunOnUIThread(timeoutRunnable);
+			timeoutRunnable = null;
+		}
+		final long callId = privateCall.id;
+		nmCancelPrivateCallPreparation();
+		final int generation = nmPrivateCallGeneration.get();
+		nmPendingPrivateCall = new NmPendingPrivateCall(callId, generation);
+		final VoipBypassConfig.RelayState relayState = VoipBypassConfig.captureRelayState();
+		final boolean forceTcp = MessagesController.getGlobalMainSettings().getBoolean("dbg_force_tcp_in_calls", false);
+		final ArrayList<TLRPC.PhoneConnection> connections = new ArrayList<>(privateCall.connections);
+		Runnable prepare = () -> {
+			if (!nmIsCurrentPrivateCall(callId, generation)) {
+				AndroidUtilities.runOnUIThread(() -> {
+					if (nmPendingPrivateCall != null && nmPendingPrivateCall.callId == callId
+							&& nmPendingPrivateCall.generation == generation) nmCancelPrivateCallPreparation();
+				});
+				return;
+			}
+			try {
+				Instance.Endpoint[] endpoints = nmBuildPrivateEndpoints(connections, forceTcp, relayState.required);
+				if (relayState.required) {
+					AndroidUtilities.runOnUIThread(() -> initiateActualEncryptedCall(callId, generation, relayState, endpoints, forceTcp));
+				} else {
+					initiateActualEncryptedCall(callId, generation, relayState, endpoints, forceTcp);
+				}
+			} catch (Exception error) {
+				AndroidUtilities.runOnUIThread(() -> {
+					if (nmIsCurrentPrivateCall(callId, generation)) callFailed();
+				});
+			}
+		};
+		if (relayState.required) {
+			Utilities.globalQueue.postRunnable(prepare);
+		} else {
+			prepare.run();
+		}
+	}
+
+	private void initiateActualEncryptedCall(long callId, int generation,
+			VoipBypassConfig.RelayState relayState, Instance.Endpoint[] endpoints, boolean forceTcp) {
+		if (!nmIsCurrentPrivateCall(callId, generation)) {
+			if (nmPendingPrivateCall != null && nmPendingPrivateCall.callId == callId
+					&& nmPendingPrivateCall.generation == generation) nmCancelPrivateCallPreparation();
+			return;
+		}
+		if (relayState.required) {
+			boolean usable = false;
+			for (Instance.Endpoint endpoint : endpoints) {
+				if (endpoint.port > 0) usable = true;
+			}
+			if (!usable) {
+				callFailed();
+				return;
+			}
+		}
 		if (timeoutRunnable != null) {
 			AndroidUtilities.cancelRunOnUIThread(timeoutRunnable);
 			timeoutRunnable = null;
@@ -3520,8 +3738,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			final double initializationTimeout = messagesController.callConnectTimeout / 1000.0;
 			final double receiveTimeout = messagesController.callPacketTimeout / 1000.0;
 				final int voipDataSaving = convertDataSavingMode(preferences.getInt("VoipDataSaving", VoIPHelper.getDataSavingDefault()));
-				final boolean useVoipBypass = NimarkoWsBypassConfig.enabled && VoipBypassConfig.isVoipBypassEnabled()
-						&& !app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().blockedByVpn();
+			final boolean useVoipBypass = relayState.required;
 				final Instance.ServerConfig serverConfig = Instance.getGlobalServerConfig();
 			final boolean enableAec = !(sysAecAvailable && serverConfig.useSystemAec);
 			final boolean enableNs = !(sysNsAvailable && serverConfig.useSystemNs);
@@ -3535,81 +3752,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 			final String persistentStateFilePath = new File(ApplicationLoader.applicationContext.getCacheDir(), "voip_persistent_state.json").getAbsolutePath();
 
-			final boolean forceTcp = preferences.getBoolean("dbg_force_tcp_in_calls", false);
-			final int endpointType = forceTcp ? Instance.ENDPOINT_TYPE_TCP_RELAY : Instance.ENDPOINT_TYPE_UDP_RELAY;
-
-			final boolean nmIsVideoCall = privateCall != null && privateCall.video;
-			VoipBypassCore.dlog("buildEndpoints: video=" + nmIsVideoCall + " p2p=" + privateCall.p2p_allowed
-					+ " connections=" + privateCall.connections.size() + " useVoipBypass=" + useVoipBypass);
-
-			final Instance.Endpoint[] endpoints = new Instance.Endpoint[privateCall.connections.size()];
-			ArrayList<Long> reflectorIds = new ArrayList<>();
-			final long nmRelayDeadline = android.os.SystemClock.elapsedRealtime() + 600;
-			for (int i = 0; i < endpoints.length; i++) {
-				final TLRPC.PhoneConnection connection = privateCall.connections.get(i);
-				String ip = connection.ip;
-				int port = connection.port;
-				String ipv6 = connection.ipv6;
-
-				final boolean nmIsWebrtc = connection instanceof TLRPC.TL_phoneConnectionWebrtc;
-				final boolean nmIsReflector = connection instanceof TLRPC.TL_phoneConnection;
-				boolean nmRelayed = false;
-
-					if (useVoipBypass) {
-						String relayTarget = VoipBypassConfig.relayProtocolTarget(ip);
-						if (relayTarget == null) relayTarget = VoipBypassConfig.relayProtocolTarget(ipv6);
-						boolean isTelegramIp = relayTarget != null;
-						if (!forceTcp && !connection.tcp && isTelegramIp) {
-						VoipBypassCore.RelayEndpoint relay = VoipBypassCore.getInstance().allocateRelay(relayTarget, connection.port,
-								currentAccount, (int) (nmRelayDeadline - android.os.SystemClock.elapsedRealtime()));
-						if (relay != null) {
-							if (relay.host.indexOf(':') >= 0) {
-								ip = "";
-								ipv6 = relay.host;
-							} else {
-								ip = relay.host;
-								ipv6 = "";
-							}
-							port = relay.port;
-							nmRelayed = true;
-						}
-					}
-						if (!nmRelayed) {
-							ip = "";
-							ipv6 = "";
-							port = 0;
-						}
-					}
-
-				VoipBypassCore.dlog("  endpoint[" + i + "] type=" + (nmIsWebrtc ? "WEBRTC(turn=" + connection.turn + ",stun=" + connection.stun + ")" : nmIsReflector ? "REFLECTOR" : "OTHER")
-						+ " " + connection.ip + ":" + connection.port + " tcp=" + connection.tcp + " video=" + nmIsVideoCall + " relayed=" + nmRelayed);
-
-				endpoints[i] = new Instance.Endpoint(connection instanceof TLRPC.TL_phoneConnectionWebrtc, connection.id, ip, ipv6, port, endpointType, connection.peer_tag, connection.turn, connection.stun, connection.username, connection.password, connection.tcp);
-				if (connection instanceof TLRPC.TL_phoneConnection) {
-					reflectorIds.add(((TLRPC.TL_phoneConnection) connection).id);
-				}
-			}
-			if (!reflectorIds.isEmpty()) {
-				Collections.sort(reflectorIds);
-				HashMap<Long, Integer> reflectorIdMapping = new HashMap<>();
-				for (int i = 0; i < reflectorIds.size(); i++) {
-					reflectorIdMapping.put(reflectorIds.get(i), i + 1);
-				}
-				for (int i = 0; i < endpoints.length; i++) {
-					endpoints[i].reflectorId = reflectorIdMapping.getOrDefault(endpoints[i].id, 0);
-				}
-			}
 			if (forceTcp) {
 				AndroidUtilities.runOnUIThread(() -> Toast.makeText(VoIPService.this, "This call uses TCP which will degrade its quality.", Toast.LENGTH_SHORT).show());
 			}
 
-			Instance.Proxy proxy = null;
-			if (preferences.getBoolean("proxy_enabled", false) && preferences.getBoolean("proxy_enabled_calls", false)) {
-				final org.telegram.utils.proxy.ProxySettings settings = org.telegram.utils.proxy.ProxySettings.fromSharedPreferences(preferences);
-				if (settings.isValid() && settings.getType() == org.telegram.utils.proxy.ProxySettings.Type.SOCKS5) {
-					proxy = new Instance.Proxy(settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword());
-				}
-			}
+			final Instance.Proxy proxy = nmCallProxy(preferences);
 			final Instance.EncryptionKey encryptionKey = new Instance.EncryptionKey(authKey, isOutgoing);
 
 			boolean newAvailable = "2.7.7".compareTo(privateCall.protocol.library_versions.get(0)) <= 0;
@@ -3626,17 +3773,27 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					videoState[CAPTURE_DEVICE_CAMERA] = Instance.VIDEO_STATE_INACTIVE;
 				}
 			}
+			final boolean[] initialized = {false};
+			boolean current = VoipBypassConfig.publishIfRelayStateCurrent(relayState, () -> {
+				if (!nmIsCurrentPrivateCall(callId, generation)) return;
 			tgVoip[CAPTURE_DEVICE_CAMERA] = Instance.makeInstance(privateCall.protocol.library_versions.get(0), config, persistentStateFilePath, endpoints, proxy, getNetworkType(), encryptionKey, remoteSink[CAPTURE_DEVICE_CAMERA], captureDevice[CAPTURE_DEVICE_CAMERA], (uids, levels, voice) -> {
-				if (sharedInstance == null || privateCall == null) {
+					if (!nmIsCurrentPrivateCall(callId, generation)) {
 					return;
 				}
 				NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.webRtcMicAmplitudeEvent, levels[0]);
 				NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.webRtcSpeakerAmplitudeEvent, levels[1]);
 			});
+				initialized[0] = true;
+			});
+			if (!current || !initialized[0]) {
+				if (nmIsCurrentPrivateCall(callId, generation)) callFailed();
+				return;
+			}
 			tgVoip[CAPTURE_DEVICE_CAMERA].setOnStateUpdatedListener(this::onConnectionStateChanged);
 			tgVoip[CAPTURE_DEVICE_CAMERA].setOnSignalBarsUpdatedListener(this::onSignalBarCountChanged);
 			tgVoip[CAPTURE_DEVICE_CAMERA].setOnSignalDataListener(this::onSignalingData);
 			tgVoip[CAPTURE_DEVICE_CAMERA].setOnRemoteMediaStateUpdatedListener((audioState, videoState) -> AndroidUtilities.runOnUIThread(() -> {
+				if (!nmIsCurrentPrivateCall(callId, generation)) return;
 				remoteAudioState = audioState;
 				remoteVideoState = videoState;
 				checkIsNear();
@@ -3657,10 +3814,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 			destroyCaptureDevice[CAPTURE_DEVICE_CAMERA] = false;
 
+			if (!nmFlushPendingPrivateSignaling(callId, generation)) return;
 			AndroidUtilities.runOnUIThread(new Runnable() {
 				@Override
 				public void run() {
-					if (tgVoip[CAPTURE_DEVICE_CAMERA] != null) {
+					if (nmIsCurrentPrivateCall(callId, generation) && tgVoip[CAPTURE_DEVICE_CAMERA] != null) {
 						updateTrafficStats(tgVoip[CAPTURE_DEVICE_CAMERA], null);
 						AndroidUtilities.runOnUIThread(this, 5000);
 					}
@@ -3984,8 +4142,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				vam.setSpeakerphoneOn(speakerOn);
 				audioRouteToSet = speakerOn ? AUDIO_ROUTE_SPEAKER : AUDIO_ROUTE_EARPIECE;
 			} else {
-				boolean bluetoothOn = !am.isBluetoothScoOn();
-				am.setBluetoothScoOn(bluetoothOn);
+				boolean bluetoothOn = !VoipAudioManager.get().isBluetoothOn();
+				VoipAudioManager.get().setBluetoothOn(bluetoothOn);
 				audioRouteToSet = bluetoothOn ? AUDIO_ROUTE_BLUETOOTH : AUDIO_ROUTE_EARPIECE;
 			}
 			checkIsNear();
@@ -4039,12 +4197,12 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					if (!bluetoothScoActive) {
 						needSwitchToBluetoothAfterScoActivates = true;
 						try {
-							am.startBluetoothSco();
+							vam.startBluetooth();
 						} catch (Throwable e) {
 							FileLog.e(e);
 						}
 					} else {
-						am.setBluetoothScoOn(true);
+						vam.setBluetoothOn(true);
 						vam.setSpeakerphoneOn(false);
 					}
 					audioRouteToSet = AUDIO_ROUTE_BLUETOOTH;
@@ -4052,22 +4210,22 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				case 1:
 					needSwitchToBluetoothAfterScoActivates = false;
 					if (bluetoothScoActive || bluetoothScoConnecting) {
-						am.stopBluetoothSco();
+						vam.stopBluetooth();
 						bluetoothScoActive = false;
 						bluetoothScoConnecting = false;
 					}
 					vam.setSpeakerphoneOn(false);
-					am.setBluetoothScoOn(false);
+					vam.setBluetoothOn(false);
 					audioRouteToSet = AUDIO_ROUTE_EARPIECE;
 					break;
 				case 0:
 					needSwitchToBluetoothAfterScoActivates = false;
 					if (bluetoothScoActive || bluetoothScoConnecting) {
-						am.stopBluetoothSco();
+						vam.stopBluetooth();
 						bluetoothScoActive = false;
 						bluetoothScoConnecting = false;
 					}
-					am.setBluetoothScoOn(false);
+					vam.setBluetoothOn(false);
 					vam.setSpeakerphoneOn(true);
 					audioRouteToSet = AUDIO_ROUTE_SPEAKER;
 					break;
@@ -4100,9 +4258,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			int route = systemCallConnection.getCallAudioState().getRoute();
 			return hasEarpiece() ? route == CallAudioState.ROUTE_SPEAKER : route == CallAudioState.ROUTE_BLUETOOTH;
 		} else if (audioConfigured && !USE_CONNECTION_SERVICE) {
-			AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 			VoipAudioManager vam = VoipAudioManager.get();
-			return hasEarpiece() ? vam.isSpeakerphoneOn() : am.isBluetoothScoOn();
+			return hasEarpiece() ? vam.isSpeakerphoneOn() : vam.isBluetoothOn();
 		}
 		return speakerphoneStateToSet;
 	}
@@ -4123,9 +4280,8 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			return audioRouteToSet;
 		}
 		if (audioConfigured) {
-			AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 			VoipAudioManager vam = VoipAudioManager.get();
-			if (am.isBluetoothScoOn()) {
+			if (vam.isBluetoothOn()) {
 				return AUDIO_ROUTE_BLUETOOTH;
 			} else if (vam.isSpeakerphoneOn()) {
 				return AUDIO_ROUTE_SPEAKER;
@@ -4313,6 +4469,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	@Override
 	public void onDestroy() {
 		isCallEnded = true;
+		nmCancelPrivateCallPreparation();
 		if (delayedStartOutgoingCall != null) {
 			AndroidUtilities.cancelRunOnUIThread(delayedStartOutgoingCall);
 			delayedStartOutgoingCall = null;
@@ -4320,6 +4477,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		nmGroupJoinGeneration.incrementAndGet();
 		nmPresentationJoinGeneration.incrementAndGet();
 		myParams = null;
+		nmCameraParamsBatch = null;
 		if (BuildVars.LOGS_ENABLED) {
 			FileLog.d("=============== VoIPService STOPPING ===============");
 		}
@@ -4402,9 +4560,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (!playingSound) {
 			VoipAudioManager vam = VoipAudioManager.get();
 			if (!USE_CONNECTION_SERVICE) {
-				if (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting) {
-					am.stopBluetoothSco();
-					am.setBluetoothScoOn(false);
+				if (sharedInstance == null && (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting)) {
+					VoipAudioManager.get().stopBluetooth();
+					VoipAudioManager.get().setBluetoothOn(false);
 					vam.setSpeakerphoneOn(false);
 					bluetoothScoActive = false;
 					bluetoothScoConnecting = false;
@@ -4413,12 +4571,18 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				am.abandonAudioFocus(this);
 			}
 			try {
+				if (sharedInstance == null) {
 				am.unregisterMediaButtonEventReceiver(new ComponentName(this, VoIPMediaButtonReceiver.class));
+				}
 			} catch (Exception e) {
 				FileLog.e(e);
 			}
 			if (audioDeviceCallback != null) {
 				am.unregisterAudioDeviceCallback(audioDeviceCallback);
+			}
+			if (communicationDeviceListener != null) {
+				am.removeOnCommunicationDeviceChangedListener(communicationDeviceListener);
+				communicationDeviceListener = null;
 			}
 
 			Utilities.globalQueue.postRunnable(() -> {
@@ -4562,6 +4726,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public void declineIncomingCall(int reason, final Runnable onDone) {
+		nmCancelPrivateCallPreparation();
 		if (groupCall != null) {
 			stopScreenCapture();
 		}
@@ -4840,6 +5005,22 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			if (audioDeviceCallback != null) {
 				am.registerAudioDeviceCallback(audioDeviceCallback, new Handler(Looper.getMainLooper()));
 			}
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && communicationDeviceListener == null) {
+				communicationDeviceListener = device -> {
+					if (isCallEnded || sharedInstance != this) return;
+					bluetoothScoConnecting = false;
+					bluetoothScoActive = VoipAudioManager.isBluetoothDevice(device);
+					if (bluetoothScoActive) {
+						needSwitchToBluetoothAfterScoActivates = false;
+						currentBluetoothDeviceName = device.getProductName().toString();
+					}
+					checkIsNear();
+					for (StateListener l : stateListeners) {
+						l.onAudioSettingsChanged();
+					}
+				};
+				am.addOnCommunicationDeviceChangedListener(AndroidUtilities::runOnUIThread, communicationDeviceListener);
+			}
 			am.registerMediaButtonEventReceiver(new ComponentName(this, VoIPMediaButtonReceiver.class));
 
 			checkUpdateBluetoothHeadset();
@@ -4887,7 +5068,16 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			try {
 				MediaRouter mr = (MediaRouter) getSystemService(Context.MEDIA_ROUTER_SERVICE);
 				AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-				if (Build.VERSION.SDK_INT < 24) {
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+					AudioDeviceInfo device = VoipAudioManager.get().findBluetoothDevice();
+					if (device != null) {
+						currentBluetoothDeviceName = device.getProductName().toString();
+					}
+					updateBluetoothHeadsetState(device != null);
+					for (StateListener l : stateListeners) {
+						l.onAudioSettingsChanged();
+					}
+				} else if (Build.VERSION.SDK_INT < 24) {
 					int headsetState = btAdapter.getProfileConnectionState(BluetoothProfile.HEADSET);
 					updateBluetoothHeadsetState(headsetState == BluetoothProfile.STATE_CONNECTED);
 					for (StateListener l : stateListeners) {
@@ -4996,7 +5186,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				try {
 					if (hasRtmpStream()) {
 						am.setMode(AudioManager.MODE_NORMAL);
-						am.setBluetoothScoOn(false);
+						VoipAudioManager.get().setBluetoothOn(false);
 						AndroidUtilities.runOnUIThread(() -> {
 							if (isCallEnded || sharedInstance != this) {
 								return;
@@ -5025,26 +5215,26 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 								if (!bluetoothScoActive) {
 									needSwitchToBluetoothAfterScoActivates = true;
 									try {
-										am.startBluetoothSco();
+										VoipAudioManager.get().startBluetooth();
 									} catch (Throwable e) {
 										FileLog.e(e);
 									}
 								} else {
-									am.setBluetoothScoOn(true);
+									VoipAudioManager.get().setBluetoothOn(true);
 									vam.setSpeakerphoneOn(false);
 								}
 								break;
 							case AUDIO_ROUTE_EARPIECE:
-								am.setBluetoothScoOn(false);
+								VoipAudioManager.get().setBluetoothOn(false);
 								vam.setSpeakerphoneOn(false);
 								break;
 							case AUDIO_ROUTE_SPEAKER:
-								am.setBluetoothScoOn(false);
+								VoipAudioManager.get().setBluetoothOn(false);
 								vam.setSpeakerphoneOn(true);
 								break;
 						}
 					} else if (isBluetoothHeadsetConnected()) {
-						am.setBluetoothScoOn(speakerphoneStateToSet);
+						VoipAudioManager.get().setBluetoothOn(speakerphoneStateToSet);
 						} else {
 							vam.setSpeakerphoneOn(speakerphoneStateToSet);
 							if (speakerphoneStateToSet) {
@@ -5154,7 +5344,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				VoipAudioManager vam = VoipAudioManager.get();
 				return !vam.isSpeakerphoneOn()
 						&& !(isBluetoothHeadsetConnected()
-						&& (am.isBluetoothScoOn() || bluetoothScoActive
+						&& (VoipAudioManager.get().isBluetoothOn() || bluetoothScoActive
 						|| bluetoothScoConnecting || needSwitchToBluetoothAfterScoActivates));
 			}
 		} catch (Throwable error) {
@@ -5267,6 +5457,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 		isBtHeadsetConnected = connected;
 		final AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+		final VoipAudioManager vam = VoipAudioManager.get();
 		if (connected && !isRinging() && currentState != 0) {
 			if (bluetoothScoActive) {
 				if (BuildVars.LOGS_ENABLED) {
@@ -5274,7 +5465,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				}
 				if (!hasRtmpStream()) {
 					am.setSpeakerphoneOn(false);
-					am.setBluetoothScoOn(true);
+					vam.setBluetoothOn(true);
 				}
 			} else {
 				if (BuildVars.LOGS_ENABLED) {
@@ -5284,7 +5475,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					needSwitchToBluetoothAfterScoActivates = true;
 					AndroidUtilities.runOnUIThread(() -> {
 						try {
-							am.startBluetoothSco();
+							vam.startBluetooth();
 						} catch (Throwable ignore) {
 
 						}
@@ -5295,7 +5486,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			bluetoothScoActive = false;
 			bluetoothScoConnecting = false;
 
-			am.setBluetoothScoOn(false);
+			VoipAudioManager.get().setBluetoothOn(false);
 		}
 		checkIsNear();
 		for (StateListener l : stateListeners) {
@@ -5636,6 +5827,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	private void callFailed(String error) {
 		isCallEnded = true;
+		nmCancelPrivateCallPreparation();
 		forceProximityFar();
 		if (privateCall != null) {
 			if (BuildVars.LOGS_ENABLED) {
@@ -5768,8 +5960,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public boolean isBluetoothOn() {
-		final AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
-		return am.isBluetoothScoOn();
+		return VoipAudioManager.get().isBluetoothOn();
 	}
 
 	public boolean isBluetoothWillOn() {
@@ -5785,6 +5976,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			FileLog.d("Call " + getCallID() + " ended");
 		}
 		isCallEnded = true;
+		nmCancelPrivateCallPreparation();
 		forceProximityFar();
 		if (groupCall != null && (!playedConnectedSound || onDestroyRunnable != null)) {
 			needPlayEndSound = false;

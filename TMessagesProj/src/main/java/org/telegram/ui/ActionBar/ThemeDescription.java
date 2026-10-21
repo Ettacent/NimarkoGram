@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -33,6 +35,7 @@ import androidx.viewpager.widget.ViewPager;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.ui.Components.AnimatedArrowDrawable;
+import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.AudioPlayerAlert;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
@@ -367,6 +370,8 @@ public class ThemeDescription {
                     ((TextView) viewToInvalidate).setTextColor(color);
                 } else if (viewToInvalidate instanceof NumberTextView) {
                     ((NumberTextView) viewToInvalidate).setTextColor(color);
+                } else if (viewToInvalidate instanceof AnimatedTextView) {
+                    ((AnimatedTextView) viewToInvalidate).setTextColor(color);
                 } else if (viewToInvalidate instanceof SimpleTextView) {
                     ((SimpleTextView) viewToInvalidate).setTextColor(color);
                 } else if (viewToInvalidate instanceof ChatBigEmptyView) {
@@ -575,6 +580,8 @@ public class ThemeDescription {
         } else if ((changeFlags & FLAG_TEXTCOLOR) != 0) {
             if (child instanceof TextView) {
                 ((TextView) child).setTextColor(color);
+            } else if (child instanceof AnimatedTextView) {
+                ((AnimatedTextView) child).setTextColor(color);
             } else if (child instanceof AudioPlayerAlert.ClippingTextViewSwitcher) {
                 for (int i = 0; i < 2; i++) {
                     TextView textView = i == 0 ? ((AudioPlayerAlert.ClippingTextViewSwitcher) child).getTextView() : ((AudioPlayerAlert.ClippingTextViewSwitcher) child).getNextTextView();
@@ -617,6 +624,10 @@ public class ThemeDescription {
                 ((EditTextCaption) object).setCursorColor(color);
             } else {
                 ((EditTextCaption) object).setTextColor(color);
+            }
+        } else if (object instanceof AnimatedTextView) {
+            if ((changeFlags & FLAG_LINKCOLOR) == 0) {
+                ((AnimatedTextView) object).setTextColor(color);
             }
         } else if (object instanceof SimpleTextView) {
             if ((changeFlags & FLAG_LINKCOLOR) != 0) {

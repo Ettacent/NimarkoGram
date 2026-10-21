@@ -1,0 +1,24 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <group>
+        <clip-path android:fillType="evenOdd"
+            android:pathData="M0,0H16V16H0Z M0,0H2.6L16,13.4V16H13.4L0,2.6Z"/>
+        <path android:name="flame_body" android:fillAlpha="0.5"
+            android:strokeColor="#70FFFFFF" android:strokeWidth="0.55" android:strokeLineJoin="round"
+            android:pathData="M8.2,2C8.6,4.1 10.1,4.8 10.5,6.8C11.3,6.2 11.7,5.5 11.7,4.8C13,6.8 13.2,8.4 12.6,10.2C12,12.1 10.3,13.6 8.2,13.6C5.6,13.6 3.7,11.8 3.7,9.5C3.7,7.8 4.6,6.4 5.3,5.3C5.4,6.5 5.7,7 6.2,7.4C6,5.5 6.7,3.5 8.2,2Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="4" android:startY="2"
+                    android:endX="12" android:endY="14" android:startColor="#FAFFFFFF"
+                    android:centerColor="#BAFFFFFF" android:endColor="#E6FFFFFF"/>
+            </aapt:attr>
+        </path>
+    </group>
+    <path android:name="off_slash" android:fillColor="#00000000"
+        android:strokeColor="#B3FFFFFF" android:strokeWidth="1.25" android:strokeLineCap="round"
+        android:pathData="M3,3L13,13"/>
+</vector>

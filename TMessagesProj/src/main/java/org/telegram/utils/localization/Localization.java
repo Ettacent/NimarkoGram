@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.utils.localization;
 
 import android.content.Context;
@@ -12,6 +14,9 @@ import org.telegram.tgnet.SerializedData;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -84,6 +89,12 @@ public class Localization {
         public Builder addLocalization(HashMap<String, String> localization) {
             if (localizations == null) {
                 localizations = new SparseArray<>(localization.size());
+                final ArrayList<Map.Entry<String, String>> entries = new ArrayList<>(localization.entrySet());
+                Collections.sort(entries, Comparator.comparingInt(a -> a.getKey().hashCode()));
+                for (Map.Entry<String, String> entry : entries) {
+                    localizations.append(entry.getKey().hashCode(), entry.getValue());
+                }
+                return this;
             }
             for (Map.Entry<String, String> entry : localization.entrySet()) {
                 localizations.put(entry.getKey().hashCode(), entry.getValue());

@@ -77,7 +77,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             disableSendHintsRow = 41;
 
     private static final int largePhotosRow = 50, playVideoOnVolumeBtnRow = 51, autoPauseVideoRow = 52,
-            gifSpoilersRow = 53, videoSeekSliderRow = 54, multiMicrophoneRow = 55;
+            gifSpoilersRow = 53, videoSeekSliderRow = 54, multiMicrophoneRow = 55, disableVoiceAutoNextRow = 56;
 
     private static final int reactionsOverlayRow = 60, reactionAnimationRow = 61, premStickAnimRow = 62,
             premStickAutoplayRow = 63;
@@ -103,7 +103,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             case doubleTapRow, slideActionRow, leftBottomBtnRow, forwardWithoutAuthorRow,
                     disableSwipeToNextRow, deleteForAllRow, disableVibrationRow -> PAGE_GESTURES;
             case largePhotosRow, playVideoOnVolumeBtnRow, autoPauseVideoRow,
-                    gifSpoilersRow, videoSeekSliderRow, multiMicrophoneRow -> PAGE_MEDIA;
+                    gifSpoilersRow, videoSeekSliderRow, multiMicrophoneRow, disableVoiceAutoNextRow -> PAGE_MEDIA;
             case reactionsOverlayRow, reactionAnimationRow, premStickAnimRow,
                     premStickAutoplayRow -> PAGE_REACTIONS;
             case notificationSoundRow, vibrateInChatsRow -> PAGE_NOTIFICATIONS;
@@ -280,6 +280,10 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     }
 
     private void fillMedia(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(disableVoiceAutoNextRow,
+                        getString(R.string.NimarkoDisableVMAutoplay),
+                        getString(R.string.NM_DisableVoiceAutoNext_Desc))
+                .setChecked(NimarkoConfig.disableVoiceMessagesAutoNext));
         items.add(SettingsHelper.asSwitchCG(multiMicrophoneRow,
                         getString(R.string.NM_CAM_MultiMicrophone), getString(R.string.NM_CAM_MultiMicrophoneDesc))
                 .setChecked(NimarkoConfig.cameraXMultiMicrophone));
@@ -435,6 +439,10 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             updateCheckState(view, NimarkoConfig.disableVibration);
             showRestartBulletin();
 
+        } else if (id == disableVoiceAutoNextRow) {
+            NimarkoConfig.toggleDisableVoiceMessagesAutoNext();
+            item.checked = NimarkoConfig.disableVoiceMessagesAutoNext;
+            updateCheckState(view, item.checked);
         } else if (id == multiMicrophoneRow) {
             NimarkoConfig.toggleCameraXMultiMicrophone();
             item.checked = NimarkoConfig.cameraXMultiMicrophone;

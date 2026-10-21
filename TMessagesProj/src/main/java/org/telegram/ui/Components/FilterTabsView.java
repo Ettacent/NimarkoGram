@@ -1553,6 +1553,7 @@ public class FilterTabsView extends FrameLayout {
         backgroundColorKey = background;
         activeTextColorKey = active;
         unactiveTextColorKey = unactive;
+        selectorColorKey = selector;
         selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
         listView.setSelectorDrawableColor(Theme.getColor(selector, resourcesProvider));
 
@@ -1740,7 +1741,7 @@ public class FilterTabsView extends FrameLayout {
         }
         if (app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) {
             selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
-            selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey), 50));
+            selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey, resourcesProvider), 50));
         }
         if (indicatorWidth != 0) {
 
@@ -1789,6 +1790,12 @@ public class FilterTabsView extends FrameLayout {
         if (blurredBackgroundDrawable != null) {
             blurredBackgroundDrawable.updateColors();
         }
+        final int lineColor = Theme.getColor(tabLineColorKey, resourcesProvider);
+        selectorDrawable.setColor(aTabLineColorKey < 0 ? lineColor : ColorUtils.blendARGB(
+                lineColor, Theme.getColor(aTabLineColorKey, resourcesProvider), animationValue));
+        listView.setSelectorDrawableColor(Theme.getColor(selectorColorKey, resourcesProvider));
+        listView.invalidateViews();
+        listView.invalidate();
         invalidate();
     }
 
@@ -1873,7 +1880,8 @@ public class FilterTabsView extends FrameLayout {
     private int pageScrollStart, pageScrollEnd;
     private float pageScrollProgressStart;
     private int trailingOverlayInset;
-    private boolean trailingOverlayRtl;
+    private boolean trailingOverlayOnLeft;
+    private boolean trailingLayoutRtl = LocaleController.isRTL;
     private boolean trailingInsetLayoutPending;
     private Tab trailingInsetAnchor;
     private int trailingInsetAnchorOffset;
@@ -1883,23 +1891,31 @@ public class FilterTabsView extends FrameLayout {
     private float pendingPageScrollProgress;
     public int getTrailingOverlayEdge() {
         int inset = Math.min(getWidth(), trailingOverlayInset);
-        return trailingOverlayRtl ? inset : getWidth() - inset;
+        return trailingOverlayOnLeft ? inset : getWidth() - inset;
     }
-    public void setTrailingOverlayInset(int inset, boolean rtl) {
+
+    public boolean isTrailingOverlayOnLeft() {
+        return trailingOverlayOnLeft;
+    }
+
+    public void setTrailingOverlayInset(int inset, boolean onLeft) {
         inset = Math.max(0, inset);
-        final boolean directionChanged = trailingOverlayRtl != rtl;
-        if (directionChanged) {
+        final boolean rtl = LocaleController.isRTL;
+        final boolean directionChanged = trailingLayoutRtl != rtl;
+        trailingLayoutRtl = rtl;
+        if (directionChanged) trailingInsetAnchor = null;
+        if (directionChanged || trailingOverlayOnLeft != onLeft) {
             pageScrollFrom = pageScrollTo = -1;
             pendingPageScrollTab = null;
         }
-        if (trailingOverlayInset != inset || trailingOverlayRtl != rtl) {
+        if (trailingOverlayInset != inset || trailingOverlayOnLeft != onLeft) {
             trailingOverlayInset = inset;
-            trailingOverlayRtl = rtl;
+            trailingOverlayOnLeft = onLeft;
             invalidate();
         }
         int trailing = listViewPaddingH + Math.max(0, inset - dp(6.666f));
-        int left = rtl ? trailing : listViewPaddingH;
-        int right = rtl ? listViewPaddingH : trailing;
+        int left = onLeft ? trailing : listViewPaddingH;
+        int right = onLeft ? listViewPaddingH : trailing;
         if (listView.getPaddingLeft() == left && listView.getPaddingRight() == right) return;
         if (!trailingInsetLayoutPending) {
             trailingInsetAnchor = null;

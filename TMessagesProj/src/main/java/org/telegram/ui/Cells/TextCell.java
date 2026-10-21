@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -35,6 +37,8 @@ import androidx.annotation.Nullable;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.UserConfig;
+import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
@@ -80,11 +84,11 @@ public class TextCell extends FrameLayout {
     private int lastWidth;
 
     public TextCell(Context context) {
-        this(context, 23, false, false, null);
+        this(context, 20, false, false, null);
     }
 
     public TextCell(Context context, Theme.ResourcesProvider resourcesProvider) {
-        this(context, 23, false, false, resourcesProvider);
+        this(context, 20, false, false, resourcesProvider);
     }
 
     public TextCell(Context context, int left, boolean dialog) {
@@ -481,7 +485,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueAndColorfulIcon(String text, CharSequence value, boolean animated, int resId, int colorTop, int colorBottom, boolean divider) {
-        imageLeft = 16;
+        imageLeft = 21;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
         textView.setRightDrawable(null);
@@ -501,7 +505,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndCheckAndColorfulIcon(CharSequence text, boolean checked, int resId, int color, boolean divider) {
-        imageLeft = 16;
+        imageLeft = 21;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
         textView.setRightDrawable(null);
@@ -604,6 +608,11 @@ public class TextCell extends FrameLayout {
 
     public static CharSequence applyNewSpan(CharSequence str) {
         return applyNewSpan(str, false);
+    }
+    public static CharSequence applyNewSpanTimed(CharSequence str, int since) {
+        if (ConnectionsManager.getInstance(UserConfig.selectedAccount).getCurrentTime() - since > 4 * 7 * 24 * 60 * 60)
+            return str;
+        return applyNewSpan(str);
     }
     public static CharSequence applyNewSpan(CharSequence str, boolean usePaintAlpha) {
         SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(str);

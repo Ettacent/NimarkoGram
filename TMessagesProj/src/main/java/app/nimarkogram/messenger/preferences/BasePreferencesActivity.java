@@ -51,7 +51,7 @@ import org.telegram.ui.Components.UniversalRecyclerView;
 public abstract class BasePreferencesActivity extends BaseFragment {
     protected LinearLayoutManager layoutManager;
     protected UniversalRecyclerView listView;
-    private int initialSearchItemId;
+    private Integer initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
     private int listWorkGeneration;
     private Runnable initialSearchScroll;
@@ -110,7 +110,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         this.actionBar.setAdaptiveBackground(this.listView);
         this.layoutManager = universalRecyclerView.layoutManager;
         frameLayout.addView(this.listView, LayoutHelper.createFrame(-1, -1.0f));
-        if (initialSearchItemId != 0) {
+        if (initialSearchItemId != null) {
             initialSearchScroll.run();
         }
         this.fragmentView = frameLayout;
@@ -197,16 +197,12 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     }
 
     public void scrollToItem(final int i) {
+        if (searchHighlight != null) searchHighlight.run();
+        searchHighlight = null;
         if (listView == null || listView.adapter == null || layoutManager == null) {
             return;
         }
-        int iFindPositionByItemId = listView.findPositionByItemId(i);
-        if (iFindPositionByItemId < 0 || iFindPositionByItemId >= listView.adapter.getItemCount()) {
-            return;
-        }
-        if (searchHighlight != null) searchHighlight.run();
         searchHighlight = new SettingsSearchHighlight(listView, i);
-        layoutManager.scrollToPositionWithOffset(iFindPositionByItemId, AndroidUtilities.dp(80.0f));
     }
     protected void updateItemsAfterToggle() {
         if (toggleRowsRefreshPending || listView == null) return;
@@ -216,7 +212,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     private void prepareListCallbacks() {
         final int generation = listWorkGeneration;
         initialSearchScroll = () -> {
-            if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
+            if (generation == listWorkGeneration && initialSearchItemId != null) scrollToItem(initialSearchItemId);
         };
     }
     private void cancelPendingListWork() {
@@ -239,8 +235,12 @@ public abstract class BasePreferencesActivity extends BaseFragment {
     }
 
     public BasePreferencesActivity openAtSetting(int itemId) {
+        prepareSettingsSearch(itemId);
         initialSearchItemId = itemId;
         return this;
+    }
+
+    protected void prepareSettingsSearch(int itemId) {
     }
 
     public void showCopyLinkOptions(View view, final String str) {

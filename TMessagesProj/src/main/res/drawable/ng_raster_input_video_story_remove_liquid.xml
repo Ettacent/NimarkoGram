@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="story_frame" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,3H16A5,5 0,0 1,21,8V16 M16,21H8A5,5 0,0 1,3,16V8">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="round_video" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M10,7.5A4.8,4.8 0,0 1,16.5,14 M14,16.5A4.8,4.8 0,0 1,7.5,10">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="remove_slash" android:fillColor="#00000000"
+        android:strokeWidth="1.80" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3,3L21,21">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

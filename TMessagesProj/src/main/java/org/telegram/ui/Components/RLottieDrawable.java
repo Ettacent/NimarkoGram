@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -59,6 +61,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import me.vkryl.core.reference.ReferenceList;
 
+import app.nimarkogram.messenger.icons.NimarkoAnimatedCallIcons;
+import app.nimarkogram.messenger.icons.NimarkoAnimatedIconCatalog;
+import app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer;
+import app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec;
 public class RLottieDrawable extends BitmapDrawable implements Animatable, BitmapsCache.Cacheable {
 
     public boolean skipFrameUpdate;
@@ -96,6 +102,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     protected Runnable loadFrameTask;
     private volatile Bitmap renderingBitmap;
     private volatile Bitmap nextRenderingBitmap;
+    private int nextRenderingFrame;
+    private volatile int renderingFrame;
     private volatile Bitmap backgroundBitmap;
 
     protected boolean waitingForNextTask;
@@ -141,6 +149,11 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     private NativePtrArgs args;
 
+    private NimarkoAnimatedIconSpec packIconSpec;
+    private NimarkoAnimatedIconRenderer[] packIconRenderers;
+    private volatile long packLayerColor;
+    private volatile long packLaterLayerColor;
+    private ColorFilter packDefaultColorFilter;
     private final Runnable uiRunnableNoFrame = this::uiRunnableNoFrameImpl;
 
     private void uiRunnableNoFrameImpl() {
@@ -384,11 +397,12 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     protected int loadFrameRunnableImpl(Bitmap bitmap, boolean needClearBitmap) {
         applyPendingColorsUpdates();
         final RLottieNative ptrToUse = nativePtr;
+        final int frameToRender = currentFrame;
         int result = -1;
         int framesPerUpdates = shouldLimitFps ? 2 : 1;
         if (precache && bitmapsCache != null && !cacheReadFailed) {
             try {
-                result = bitmapsCache.getFrame(currentFrame / framesPerUpdates, bitmap);
+                result = bitmapsCache.getFrame(frameToRender / framesPerUpdates, bitmap);
                 if (result >= 0 && !bitmapsCache.needGenCache()
                         && (allowDrawFramesWhileCacheGenerating || cacheGenerationFailed) && nativePtr != null) {
                     nativePtr.recycle();
@@ -402,7 +416,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                 allowDrawFramesWhileCacheGenerating = true;
             }
         } else if (bitmapsCache == null) {
-            result = ptrToUse.getFrame(currentFrame, bitmap, needClearBitmap);
+            result = ptrToUse.getFrame(frameToRender, bitmap, needClearBitmap);
         }
         if (bitmapsCache != null && (cacheReadFailed || bitmapsCache.needGenCache())) {
             if (!cacheReadFailed && !genCacheSend) {
@@ -420,7 +434,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
                         layerColors
                     );
                 }
-                result = nativePtr != null ? nativePtr.getFrame(currentFrame, bitmap, needClearBitmap) : -1;
+                result = nativePtr != null ? nativePtr.getFrame(frameToRender, bitmap, needClearBitmap) : -1;
             } else {
                 result = -1;
             }
@@ -428,6 +442,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         if (result < 0) {
             return LOAD_FRAME_RESULT_ERROR;
         }
+        nextRenderingFrame = frameToRender;
         return LOAD_FRAME_RESULT_OK;
     }
     @WorkerThread
@@ -661,6 +676,12 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     public RLottieDrawable(@RawRes int rawRes, int w, int h, boolean startDecode, int[] colorReplacement) {
         width = w;
         height = h;
+        packIconSpec = NimarkoAnimatedIconCatalog.get(rawRes);
+        if (packIconSpec == null) packIconSpec = NimarkoAnimatedCallIcons.get(rawRes);
+        if (packIconSpec != null) {
+            packIconRenderers = new NimarkoAnimatedIconRenderer[DrawingInBackgroundThreadDrawable.THREAD_COUNT + 1];
+            for (int i = 0; i < packIconRenderers.length; i++) packIconRenderers[i] = new NimarkoAnimatedIconRenderer();
+        }
         autoRepeat = 0;
         getPaint().setFlags(Paint.FILTER_BITMAP_FLAG);
         args = new NativePtrArgs();
@@ -691,7 +712,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         }
 
         if (isSingleChannel) {
-            setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
+            packDefaultColorFilter = new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+            setColorFilter(packDefaultColorFilter);
         }
 
         if (startDecode) {
@@ -907,6 +929,13 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     }
 
     public final void setLayerColor(String layerName, int color) {
+        if (packIconSpec != null) {
+            if (packIconSpec.acceptsLaterColorLayer(layerName)) {
+                packLaterLayerColor = 0x100000000L | (color & 0xffffffffL);
+            } else if (packIconSpec.acceptsColorLayer(layerName)) {
+                packLayerColor = 0x100000000L | (color & 0xffffffffL);
+            }
+        }
         newColorUpdates.put(layerName, color);
         requestRedrawColors();
     }
@@ -1070,7 +1099,14 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     @UiThread
     private void swapBuffers() {
         backgroundBitmap = renderingBitmap;
+        if (packIconRenderers != null) {
+            synchronized (packIconRenderers) {
+                renderingFrame = nextRenderingFrame;
         renderingBitmap = nextRenderingBitmap;
+            }
+        } else {
+            renderingBitmap = nextRenderingBitmap;
+        }
         nextRenderingBitmap = null;
         swapBuffersAllowedByChoreographer = false;
     }
@@ -1152,6 +1188,21 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
         if (isInvalid || renderingBitmap == null) {
             return;
+        }
+
+        if (packIconSpec != null) {
+            final int displayedFrame;
+            synchronized (packIconRenderers) {
+                if (isInvalid || renderingBitmap == null) return;
+                displayedFrame = renderingFrame;
+            }
+            if (!drawInBackground) rect.set(getBounds());
+            long color = packIconSpec.usesLaterColor(displayedFrame) ? packLaterLayerColor : packLayerColor;
+            boolean explicitFilter = paint.getColorFilter() != null && paint.getColorFilter() != packDefaultColorFilter;
+            if (explicitFilter) color = 0;
+            boolean sourceForeground = explicitFilter || paint.getShader() != null || (color & 0x100000000L) != 0;
+            if (packIconRenderers[drawInBackground ? threadIndex + 1 : 0].draw(canvas, packIconSpec,
+                    displayedFrame, getFramesCount(), rect, paint, color, sourceForeground)) return;
         }
 
         float scaleX, scaleY;

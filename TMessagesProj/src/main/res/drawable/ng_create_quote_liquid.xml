@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="quote_card"
+        android:pathData="M7,3.5H17C20,3.5 21.5,5 21.5,8V16C21.5,19 20,20.5 17,20.5H7C4,20.5 2.5,19 2.5,16V8C2.5,5 4,3.5 7,3.5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="3" android:startY="4"
+                android:endX="21" android:endY="20" android:startColor="#90FFFFFF"
+                android:centerColor="#78FFFFFF" android:endColor="#60FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="glass_highlight" android:fillColor="#00000000"
+        android:strokeColor="#40FFFFFF" android:strokeWidth="0.75"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4.5,9V8C4.5,6.15 5.3,5.5 7,5.5H11"/>
+    <path android:name="quotation_marks" android:fillColor="#F5FFFFFF"
+        android:pathData="M7.5,8H10.5V11.5C10.5,13.55 9.4,14.8 7.5,15.25V13.65C8.4,13.35 8.9,12.75 9,11.5H7.5C7.22,11.5 7,11.28 7,11V8.5C7,8.22 7.22,8 7.5,8Z M13.5,8H16.5V11.5C16.5,13.55 15.4,14.8 13.5,15.25V13.65C14.4,13.35 14.9,12.75 15,11.5H13.5C13.22,11.5 13,11.28 13,11V8.5C13,8.22 13.22,8 13.5,8Z"/>
+    <path android:name="attribution" android:fillColor="#00000000"
+        android:strokeColor="#D9FFFFFF" android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:pathData="M14,17H17"/>
+</vector>

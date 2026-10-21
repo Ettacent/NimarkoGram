@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -12,6 +14,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -28,7 +31,6 @@ import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -92,6 +94,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
@@ -137,6 +140,10 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
 
     private static SpannableStringBuilder[] arrowSpan = new SpannableStringBuilder[3];
 
+    private static Resources arrowResources;
+    private static long arrowGeneration;
+    private static int arrowDensity;
+    private static boolean arrowDark;
     private int photoViewerClassGuid;
 
     private final MessageHashId messageHashIdTmp = new MessageHashId(0, 0);
@@ -471,6 +478,36 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         return createFromInfoString(messageObject, includeChat, arrowType, null);
     }
 
+    private static synchronized SpannableStringBuilder getFromInfoArrow(int arrowType) {
+        if (arrowType < 0 || arrowType >= arrowSpan.length) {
+            return null;
+        }
+        final Context context = ApplicationLoader.applicationContext;
+        final Resources resources = context.getResources();
+        final int density = resources.getDisplayMetrics().densityDpi;
+        final long generation = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final boolean dark = Theme.isCurrentThemeDark();
+        if (arrowResources != resources || arrowGeneration != generation || arrowDensity != density || arrowDark != dark) {
+            arrowSpan = new SpannableStringBuilder[3];
+            arrowResources = resources;
+            arrowGeneration = generation;
+            arrowDensity = density;
+            arrowDark = dark;
+        }
+        if (arrowSpan[arrowType] == null) {
+            final int resId = arrowType == 0 ? R.drawable.attach_arrow_right
+                    : arrowType == 1 ? R.drawable.msg_mini_arrow_mediathin : R.drawable.msg_mini_arrow_mediabold;
+            final Drawable arrowDrawable = resources.getDrawable(resId, context.getTheme()).mutate();
+            final ColoredImageSpan span = new ColoredImageSpan(arrowDrawable, arrowType == 0 ? ColoredImageSpan.ALIGN_CENTER : ColoredImageSpan.ALIGN_BASELINE);
+            if (arrowType == 1 || arrowType == 2) {
+                span.setScale(.85f);
+            }
+            arrowSpan[arrowType] = new SpannableStringBuilder(">");
+            arrowSpan[arrowType].setSpan(span, 0, arrowSpan[arrowType].length(), 0);
+        }
+        return arrowSpan[arrowType];
+    }
     public static CharSequence createFromInfoString(MessageObject messageObject, boolean includeChat, int arrowType, TextPaint textPaint) {
         if (messageObject == null || messageObject.messageOwner == null) {
             return "";
@@ -488,25 +525,9 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
                 return getString(R.string.SponsoredMessage2);
             }
         }
-        if (arrowSpan[arrowType] == null) {
-            arrowSpan[arrowType] = new SpannableStringBuilder(">");
-            int resId;
-            if (arrowType == 0) {
-                resId = R.drawable.attach_arrow_right;
-            } else if (arrowType == 1) {
-                resId = R.drawable.msg_mini_arrow_mediathin;
-            } else if (arrowType == 2) {
-                resId = R.drawable.msg_mini_arrow_mediabold;
-            } else {
+        final SpannableStringBuilder fromInfoArrow = getFromInfoArrow(arrowType);
+        if (fromInfoArrow == null) {
                 return "";
-            }
-            Drawable arrowDrawable = ContextCompat.getDrawable(ApplicationLoader.applicationContext, resId).mutate();
-            ColoredImageSpan span = new ColoredImageSpan(arrowDrawable, arrowType == 0 ? ColoredImageSpan.ALIGN_CENTER : ColoredImageSpan.ALIGN_BASELINE);
-//            arrowDrawable.setBounds(0, 0, AndroidUtilities.dp(13), AndroidUtilities.dp(13));
-            if (arrowType == 1 || arrowType == 2) {
-                span.setScale(.85f);
-            }
-            arrowSpan[arrowType].setSpan(span, 0, arrowSpan[arrowType].length(), 0);
         }
         CharSequence fromName = null;
         TLRPC.User user = null;
@@ -548,7 +569,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
             spannableStringBuilder
                     .append(Emoji.replaceEmoji(UserObject.getFirstName(user), textPaint == null ? null : textPaint.getFontMetricsInt(), false))
                     .append(' ')
-                    .append(arrowSpan[arrowType])
+                    .append(fromInfoArrow)
                     .append(' ')
                     .append(chatTitle);
             fromName = spannableStringBuilder;

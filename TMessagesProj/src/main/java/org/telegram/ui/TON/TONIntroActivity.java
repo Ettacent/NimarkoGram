@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.TON;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -36,6 +38,7 @@ import org.telegram.messenger.BirthdayController;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -56,9 +59,6 @@ import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.FireworksOverlay;
 import org.telegram.ui.Components.LayoutHelper;
-import org.telegram.ui.Components.Premium.GLIcon.GLIconRenderer;
-import org.telegram.ui.Components.Premium.GLIcon.GLIconTextureView;
-import org.telegram.ui.Components.Premium.GLIcon.Icon3D;
 import org.telegram.ui.Components.Premium.StarParticlesView;
 import org.telegram.ui.Components.Premium.boosts.UserSelectorBottomSheet;
 import org.telegram.ui.Components.RecyclerListView;
@@ -75,12 +75,13 @@ import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 import org.telegram.ui.Stories.recorder.HintView2;
 import org.telegram.ui.bots.ChannelAffiliateProgramsFragment;
 
+import org.telegram.ui.Wallet.WalletDiamondView;
 import java.util.ArrayList;
 
 public class TONIntroActivity extends GradientHeaderActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private FrameLayout aboveTitleView;
-    private GLIconTextureView iconTextureView;
+    private WalletDiamondView iconTextureView;
 
     private StarsIntroActivity.StarsTransactionsLayout transactionsLayout;
     private View emptyLayout;
@@ -207,14 +208,11 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
 
         aboveTitleView = new FrameLayout(context);
         aboveTitleView.setClickable(true);
-        iconTextureView = new GLIconTextureView(context, GLIconRenderer.DIALOG_STYLE, Icon3D.TYPE_DIAMOND);
-        iconTextureView.mRenderer.colorKey1 = Theme.key_starsGradient1;
-        iconTextureView.mRenderer.colorKey2 = Theme.key_starsGradient2;
-        iconTextureView.mRenderer.updateColors();
+        iconTextureView = WalletDiamondView.createInline(context, 170);
         iconTextureView.setStarParticlesView(particlesView);
-        aboveTitleView.addView(iconTextureView, LayoutHelper.createFrame(170, 170, Gravity.CENTER, 0, 32, 0, 24));
-        configureHeader(getString(R.string.TONBalanceTitle), AndroidUtilities.replaceArrows(AndroidUtilities.replaceSingleTag(getString(R.string.TONBalanceText), () -> {
-            new ExplainStarsSheet(context, currentAccount).show();
+        aboveTitleView.addView(iconTextureView, LayoutHelper.createFrame(170, 170, Gravity.CENTER, 0, 32, 0, 12));
+        configureHeader(getString(R.string.GramEarningsTitle), AndroidUtilities.replaceArrows(AndroidUtilities.replaceSingleTag(getString(R.string.GramEarningsText), () -> {
+            new ExplainStarsSheet(context, UserConfig.selectedAccount).show();
         }), true), aboveTitleView, null);
 
         listView.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -248,7 +246,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
 
         starBalanceIcon = new SpannableStringBuilder("S");
         final ColoredImageSpan starBalanceIconSpan = new ColoredImageSpan(R.drawable.mini_gram_72);
-        starBalanceIconSpan.setOverrideColor(0xFF3391D4);
+        starBalanceIconSpan.recolorDrawable = false;
         starBalanceIconSpan.setScale(0.5f, 0.5f);
         starBalanceIconSpan.translate(-dp(3), 0);
         starBalanceIcon.setSpan(starBalanceIconSpan, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -391,6 +389,12 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         return new NestedFrameLayout(getContext());
     }
 
+    @Override
+    protected void onHeaderCollapseProgress(float progress) {
+        if (iconTextureView != null) {
+            iconTextureView.setHeaderTilt(70f * progress);
+        }
+    }
     private class NestedFrameLayout extends ContentView implements NestedScrollingParent3 {
 
         private NestedScrollingParentHelper nestedScrollingParentHelper;
@@ -570,7 +574,6 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         super.onResume();
         if (iconTextureView != null) {
             iconTextureView.setPaused(false);
-            iconTextureView.setDialogVisible(false);
         }
     }
 
@@ -579,7 +582,6 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         super.onPause();
         if (iconTextureView != null) {
             iconTextureView.setPaused(true);
-            iconTextureView.setDialogVisible(true);
         }
     }
 
@@ -623,7 +625,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         items.add(UItem.asFullyCustom(getHeader(getContext())));
         items.add(UItem.asCustom(balanceLayout));
         if (allowTopUp) {
-            items.add(UItem.asShadow(getString(R.string.TopUpViaFragmentInfo)));
+            items.add(UItem.asShadow(getString(R.string.GramEarningsHint)));
         }
 
         if (hadTransactions = c.hasTransactions()) {
@@ -810,7 +812,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
         public static class HeaderView extends LinearLayout {
             private final FrameLayout topView;
             public final StarParticlesView particlesView;
-            public final GLIconTextureView iconView;
+            public final WalletDiamondView iconView;
             public final TextView titleView;
             public final TextView subtitleView;
 
@@ -825,10 +827,7 @@ public class TONIntroActivity extends GradientHeaderActivity implements Notifica
                 particlesView = makeParticlesView(context, 70, 0);
                 topView.addView(particlesView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-                iconView = new GLIconTextureView(context, GLIconRenderer.DIALOG_STYLE, Icon3D.TYPE_DIAMOND);
-                iconView.mRenderer.colorKey1 = Theme.key_starsGradient1;
-                iconView.mRenderer.colorKey2 = Theme.key_starsGradient2;
-                iconView.mRenderer.updateColors();
+                iconView = WalletDiamondView.createInline(context, 170);
                 iconView.setStarParticlesView(particlesView);
                 topView.addView(iconView, LayoutHelper.createFrame(170, 170, Gravity.CENTER, 0, 32, 0, 24));
                 iconView.setPaused(false);

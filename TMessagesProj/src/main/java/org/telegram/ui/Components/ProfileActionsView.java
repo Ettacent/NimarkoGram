@@ -6,8 +6,12 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -34,6 +38,7 @@ import android.view.accessibility.AccessibilityManager;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityNodeProvider;
 
+import android.view.animation.LinearInterpolator;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -56,6 +61,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 @SuppressLint("ViewConstructor")
 public class ProfileActionsView extends View {
 
@@ -458,6 +464,7 @@ public class ProfileActionsView extends View {
             return;
         }
 
+        action.refreshPackIcons();
         final boolean isButtonColorLight = isButtonColorLight();
         float useFilledWhiteIcon = !isButtonColorLight ? 1 : MathUtils.clamp((parentExpanded - 0.75f) / 0.25f, 0, 1);
         if (isButtonColorLight && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -498,7 +505,9 @@ public class ProfileActionsView extends View {
         if (!isAnimatingCallAction || action.key != KEY_CALL) {
             final float outlineAlpha = (1f - useFilledWhiteIcon) * alpha;
             final float filledAlpha = useFilledWhiteIcon * alpha;
-            if (action.drawableAnimated != null) {
+            if (action.packAnimationRes != 0) {
+                action.drawPackAnimation(canvas, outlineAlpha, filledAlpha);
+            } else if (action.drawableAnimated != null) {
                 if (action.key == KEY_NOTIFICATION) {
                     drawActionDrawable(canvas, action.drawableOutline, outlineAlpha);
                     drawActionDrawable(canvas, action.drawableAnimated, filledAlpha);
@@ -640,6 +649,18 @@ public class ProfileActionsView extends View {
         return super.verifyDrawable(who) || who instanceof LoadingDrawable;
     }
 
+    @Override
+    protected void onDetachedFromWindow() {
+        for (Action action : actions) {
+            action.finishPackAnimation();
+        }
+        super.onDetachedFromWindow();
+    }
+
+    private boolean canAnimatePackIcons() {
+        return isAttachedToWindow() && SharedConfig.animationsEnabled()
+                && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled());
+    }
     public void beginApplyingActions() {
         isApplying = true;
     }
@@ -1056,6 +1077,17 @@ public class ProfileActionsView extends View {
         private Drawable drawableFilled;
         private Drawable drawableOutline;
         private RLottieDrawable drawableAnimated;
+        private int filledIconRes;
+        private int outlineIconRes;
+        private Resources iconResources;
+        private long iconGeneration;
+        private int iconDensityDpi;
+        private Drawable[] notificationFilled;
+        private Drawable[] notificationOutline;
+        private ValueAnimator packAnimator;
+        private int packAnimationRes;
+        private float packProgress = 1f;
+        private float notificationProgress;
         private Text text;
         private float textScale = 1.0f;
 
@@ -1073,6 +1105,12 @@ public class ProfileActionsView extends View {
             }
             if (drawableOutline != null) {
                 drawableOutline.setBounds(bounds);
+            }
+            if (notificationFilled != null) {
+                for (int i = 0; i < 2; i++) {
+                    notificationFilled[i].setBounds(bounds);
+                    notificationOutline[i].setBounds(bounds);
+                }
             }
         }
 
@@ -1116,6 +1154,7 @@ public class ProfileActionsView extends View {
         }
 
         public void delete() {
+            finishPackAnimation();
             if (loadingDrawable != null) {
                 loadingDrawable.disappear();
                 supportsLoading = false;
@@ -1219,18 +1258,182 @@ public class ProfileActionsView extends View {
 
         @SuppressLint("UseCompatLoadingForDrawables")
         public void updateDrawable(@RawRes int animatedRes, @DrawableRes int filledRes, @DrawableRes int outlineRes) {
-            if (animatedRes != 0) {
+            Resources resources = getResources();
+            long generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            int densityDpi = resources.getDisplayMetrics().densityDpi;
+            boolean sameResources = iconResources == resources && iconGeneration == generation && iconDensityDpi == densityDpi;
+            boolean notification = animatedRes == R.raw.profile_muting || animatedRes == R.raw.profile_unmuting;
+            int targetFilled = filledRes;
+            int targetOutline = outlineRes;
+            if (animatedRes == R.raw.profile_leave) {
+                targetFilled = ActionButton.LEAVE.filledIcon;
+                targetOutline = ActionButton.LEAVE.outlineIcon;
+            } else if (animatedRes == R.raw.profile_voicechat) {
+                targetFilled = ActionButton.VOICE_CHAT.filledIcon;
+                targetOutline = ActionButton.VOICE_CHAT.outlineIcon;
+            }
+            boolean usePack = (notification || animatedRes == R.raw.profile_leave || animatedRes == R.raw.profile_voicechat)
+                    && resources instanceof NimarkoIconResources
+                    && (((NimarkoIconResources) resources).hasReplacement(targetFilled)
+                    || ((NimarkoIconResources) resources).hasReplacement(targetOutline));
+            float previousPackProgress = sameResources && packAnimationRes == animatedRes ? packProgress : 0f;
+            cancelPackAnimation();
+            if (drawableAnimated != null) {
+                drawableAnimated.stop();
+                drawableAnimated.setMasterParent(null);
+                drawableAnimated = null;
+            }
+            if (!sameResources) {
+                notificationFilled = null;
+                notificationOutline = null;
+            }
+            float targetProgress = targetFilled == ActionButton.NOTIFICATION_MUTE.filledIcon ? 0f : 1f;
+            if (usePack && notification) {
+                if (notificationFilled == null) {
+                    notificationFilled = new Drawable[2];
+                    notificationOutline = new Drawable[2];
+                    ActionButton[] buttons = {ActionButton.NOTIFICATION_MUTE, ActionButton.NOTIFICATION_UNMUTE};
+                    for (int i = 0; i < buttons.length; i++) {
+                        notificationFilled[i] = resolvePackIcon(resources, buttons[i].filledIcon,
+                                filledIconRes, drawableFilled, sameResources);
+                        notificationOutline[i] = resolvePackIcon(resources, buttons[i].outlineIcon,
+                                outlineIconRes, drawableOutline, sameResources);
+                    }
+                }
+                if (!sameResources || !isNotificationIcon(filledIconRes)) {
+                    notificationProgress = targetProgress;
+                }
+                drawableFilled = notificationFilled[(int) targetProgress];
+                drawableOutline = notificationOutline[(int) targetProgress];
+            } else if (usePack) {
+                drawableFilled = resolvePackIcon(resources, targetFilled, filledIconRes, drawableFilled, sameResources);
+                drawableOutline = resolvePackIcon(resources, targetOutline, outlineIconRes, drawableOutline, sameResources);
+            } else {
+                drawableFilled = filledRes != 0 ? resources.getDrawable(filledRes).mutate() : null;
+                drawableOutline = outlineRes != 0 ? resources.getDrawable(outlineRes).mutate() : null;
+                notificationProgress = targetProgress;
+                notificationFilled = null;
+                notificationOutline = null;
+            }
+            if (animatedRes != 0 && !usePack) {
                 RLottieDrawable drawable = new RLottieDrawable(animatedRes, dp(56), dp(56), false, null);
                 drawable.setMasterParent(ProfileActionsView.this);
                 drawable.start();
                 drawableAnimated = drawable;
-            } else {
-                drawableAnimated = null;
             }
-            drawableFilled = filledRes != 0 ? getResources().getDrawable(filledRes).mutate() : null;
-            drawableOutline = outlineRes != 0 ? getResources().getDrawable(outlineRes).mutate() : null;
+            filledIconRes = targetFilled;
+            outlineIconRes = targetOutline;
+            iconResources = resources;
+            iconGeneration = generation;
+            iconDensityDpi = densityDpi;
 
             checkBounds();
+            if (usePack && canAnimatePackIcons() && (!notification || notificationProgress != targetProgress)) {
+                packAnimationRes = animatedRes;
+                packProgress = previousPackProgress;
+                packAnimator = ValueAnimator.ofFloat(notification ? notificationProgress : packProgress, targetProgress);
+                packAnimator.setDuration(animatedRes == R.raw.profile_muting ? 616 : animatedRes == R.raw.profile_unmuting ? 950 : 800);
+                packAnimator.setInterpolator(new LinearInterpolator());
+                packAnimator.addUpdateListener(animation -> {
+                    if (notification) {
+                        notificationProgress = (float) animation.getAnimatedValue();
+                    } else {
+                        packProgress = (float) animation.getAnimatedValue();
+                    }
+                    invalidate();
+                });
+                packAnimator.addListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (packAnimator == animation) {
+                            packAnimator = null;
+                            packAnimationRes = 0;
+                            packProgress = 1f;
+                            notificationProgress = targetProgress;
+                            invalidate();
+                        }
+                    }
+                });
+                packAnimator.start();
+            } else {
+                notificationProgress = targetProgress;
+            }
+        }
+
+        private boolean isNotificationIcon(int res) {
+            return res == ActionButton.NOTIFICATION_MUTE.filledIcon || res == ActionButton.NOTIFICATION_UNMUTE.filledIcon;
+        }
+
+        private boolean hasCurrentIconResources(Resources resources) {
+            return iconResources == resources && iconDensityDpi == resources.getDisplayMetrics().densityDpi
+                    && iconGeneration == (resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L);
+        }
+
+        private Drawable resolvePackIcon(Resources resources, int res, int previousRes, Drawable previous, boolean sameResources) {
+            return sameResources && res == previousRes && previous != null
+                    ? previous : resources.getDrawable(res).mutate();
+        }
+
+        private void refreshPackIcons() {
+            if (isNotificationIcon(filledIconRes) || filledIconRes == ActionButton.LEAVE.filledIcon
+                    || filledIconRes == ActionButton.VOICE_CHAT.filledIcon) {
+                if (!hasCurrentIconResources(getResources())) {
+                    updateDrawable(0, filledIconRes, outlineIconRes);
+                } else if (packAnimator != null && !canAnimatePackIcons()) {
+                    finishPackAnimation();
+                }
+            }
+        }
+
+        private void cancelPackAnimation() {
+            if (packAnimator != null) {
+                packAnimator.removeAllListeners();
+                packAnimator.removeAllUpdateListeners();
+                packAnimator.cancel();
+                packAnimator = null;
+            }
+            packAnimationRes = 0;
+            packProgress = 1f;
+        }
+
+        private void finishPackAnimation() {
+            if (packAnimator != null) {
+                cancelPackAnimation();
+                notificationProgress = filledIconRes == ActionButton.NOTIFICATION_MUTE.filledIcon ? 0f : 1f;
+                invalidate();
+            }
+        }
+
+        private void drawPackAnimation(Canvas canvas, float outlineAlpha, float filledAlpha) {
+            if (packAnimationRes == R.raw.profile_muting || packAnimationRes == R.raw.profile_unmuting) {
+                drawNotificationLayer(canvas, notificationOutline, outlineAlpha);
+                drawNotificationLayer(canvas, notificationFilled, filledAlpha);
+            } else {
+                float motion = (float) Math.sin(Math.PI * packProgress);
+                float rotation = (packAnimationRes == R.raw.profile_leave ? -20f : 20f) * motion;
+                drawPackGlyph(canvas, drawableOutline, outlineAlpha, motion, rotation);
+                drawPackGlyph(canvas, drawableFilled, filledAlpha, motion, rotation);
+            }
+        }
+
+        private void drawNotificationLayer(Canvas canvas, Drawable[] icons, float alpha) {
+            drawPackGlyph(canvas, icons[0], alpha * (1f - notificationProgress), notificationProgress, 20f * notificationProgress);
+            drawPackGlyph(canvas, icons[1], alpha * notificationProgress, 1f - notificationProgress, -20f * (1f - notificationProgress));
+        }
+
+        private void drawPackGlyph(Canvas canvas, Drawable drawable, float alpha, float motion, float rotation) {
+            if (drawable == null || alpha <= 0f) {
+                return;
+            }
+            int save = canvas.save();
+            canvas.clipRect(bounds);
+            float scale = 1f - 0.35f * motion;
+            canvas.scale(scale, scale, bounds.exactCenterX(), bounds.exactCenterY());
+            canvas.rotate(rotation, bounds.exactCenterX(), bounds.exactCenterY());
+            drawActionDrawable(canvas, drawable, alpha);
+            canvas.restoreToCount(save);
         }
     }
 

@@ -1,0 +1,10 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="camera" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M14.5,20H5A2.5,2.5 0,0 1,2.5,17.5V8A2.5,2.5 0,0 1,5,5.5H7L8.5,3.5H14L15.5,5.5H18.5A2.5,2.5 0,0 1,21,8V12.5"/>
+    <path android:name="lens" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M14,11.8A3.3,3.3 0,1 1,7.4,11.8A3.3,3.3 0,1 1,14,11.8Z"/>
+    <path android:name="add" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M19,15V21M16,18H22"/>
+</vector>

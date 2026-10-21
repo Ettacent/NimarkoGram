@@ -19,8 +19,11 @@ public final class NimarkoTextMotionBlur {
 
         public void start() {
             if (!isMainThread()) return;
-            time = System.nanoTime();
+            final long now = NimarkoAppMotionBlur.frameTimeNanos();
+            if (time != now) {
+                time = now;
             layers = pixels = 0;
+            }
         }
     }
 
@@ -30,16 +33,12 @@ public final class NimarkoTextMotionBlur {
         boolean moving;
         final float[] spans = new float[8];
         final float[] observed = new float[8];
-        final float[] idleSpans = new float[8];
         float strength;
-        float idleStrength;
-        long idleNs;
 
         boolean sample(long now, float nx, float ny, float nsx, float nsy,
                        float npx, float npy, int left, int top, int width, int height, float cap) {
             long elapsed = now - time;
-            if (time != 0 && elapsed == 0 && nx == x && ny == y
-                    && nsx == sx && nsy == sy && npx == px && npy == py) return moving;
+            if (time != 0 && elapsed == 0) return moving;
             boolean continuous = time != 0 && elapsed > 0 && elapsed <= 120_000_000L
                     && nsx > .01f && nsy > .01f && Float.isFinite(nx) && Float.isFinite(ny)
                     && Float.isFinite(nsx) && Float.isFinite(nsy);
@@ -51,7 +50,7 @@ public final class NimarkoTextMotionBlur {
                         - (x + px + (cx - px) * sx)) / nsx : 0;
                 float dy = continuous ? ((ny + npy + (cy - npy) * nsy)
                         - (y + py + (cy - py) * sy)) / nsy : 0;
-                float shutter = continuous ? (float) (8_000_000d / elapsed) : 0;
+                float shutter = continuous ? NimarkoMotionBlurState.exposureScale(elapsed) : 0;
                 observed[i * 2] = dx * shutter;
                 observed[i * 2 + 1] = dy * shutter;
                 maximum = Math.max(maximum, Math.hypot(observed[i * 2], observed[i * 2 + 1]));
@@ -60,22 +59,17 @@ public final class NimarkoTextMotionBlur {
             x = nx; y = ny; sx = nsx; sy = nsy; px = npx; py = npy;
             if (!continuous || !Double.isFinite(maximum)) {
                 strength = 0f;
-                idleNs = 0L;
                 for (int i = 0; i < 8; i++) spans[i] = 0f;
             } else if (maximum > 0d) {
-                idleNs = 0L;
+                double direction = 0d;
+                for (int i = 0; i < 8; i++) direction += (double) spans[i] * observed[i];
+                if (direction < 0d) strength = 0f;
                 strength = NimarkoMotionBlurState.smoothLength(strength, (float) Math.min(cap, maximum), elapsed);
                 float factor = (float) (strength / maximum);
                 for (int i = 0; i < 8; i++) spans[i] = observed[i] * factor;
             } else {
-                if (idleNs == 0L) {
-                    idleStrength = strength;
-                    System.arraycopy(spans, 0, idleSpans, 0, 8);
-                }
-                idleNs += elapsed;
-                float factor = NimarkoMotionBlurState.releaseFraction(idleNs);
-                strength = idleStrength * factor;
-                for (int i = 0; i < 8; i++) spans[i] = idleSpans[i] * factor;
+                strength = 0f;
+                for (int i = 0; i < 8; i++) spans[i] = 0f;
             }
             moving = strength >= NimarkoMotionBlurEffect.MIN_SPAN_PX;
             return moving;
@@ -88,6 +82,7 @@ public final class NimarkoTextMotionBlur {
     private NimarkoMotionBlurEffect.ContentEffect contentEffect;
     private RenderEffect installedEffect;
 
+    private long recordedFrameNs;
     public static boolean enabled(Canvas canvas) {
         return isMainThread() && featureEnabled() && canvas.isHardwareAccelerated();
     }
@@ -109,14 +104,17 @@ public final class NimarkoTextMotionBlur {
             return null;
         }
         if (!destination.isHardwareAccelerated()) return null;
-        float cap = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH ? 16f : 8f;
+        if (recordedFrameNs == budget.time && nodeActive) return null;
+        float cap = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH
+                ? NimarkoMotionBlurState.MAX_SPAN_PX : NimarkoMotionBlurState.REDUCED_MAX_SPAN_PX;
         if (width <= 0 || height <= 0 || width > 4096 || height > 4096
                 || !motion.sample(budget.time, x, y, sx, sy, pivotX, pivotY, left, top, width, height, cap)) {
             releaseNode();
             return null;
         }
         long area = (long) width * height;
-        if (budget.layers >= 12 || area > 262144 - budget.pixels) {
+        final boolean high = SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH;
+        if (budget.layers >= (high ? 4 : 2) || area > (high ? 131072 : 65536) - budget.pixels) {
             releaseNode();
             return null;
         }
@@ -134,6 +132,7 @@ public final class NimarkoTextMotionBlur {
             installedEffect = effect;
         }
         Canvas recording = node.beginRecording(width, height);
+        recordedFrameNs = budget.time;
         nodeActive = true;
         recording.translate(-left, -top);
         budget.layers++;
@@ -149,6 +148,7 @@ public final class NimarkoTextMotionBlur {
     public void reset() {
         motion.time = 0;
         motion.moving = false;
+        recordedFrameNs = 0L;
         releaseNode();
     }
 

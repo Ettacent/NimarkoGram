@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -83,6 +85,8 @@ import org.telegram.ui.Components.TextViewSwitcher;
 import org.telegram.ui.Components.TransformableLoginButtonView;
 import org.telegram.ui.Components.VerticalPositionAutoAnimator;
 
+import org.telegram.ui.Wallet.GramWallet;
+import org.telegram.ui.Wallet.GramWalletStorage;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.nio.charset.StandardCharsets;
@@ -92,13 +96,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class PasscodeActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
     public final static int TYPE_MANAGE_CODE_SETTINGS = 0,
             TYPE_SETUP_CODE = 1,
-            TYPE_ENTER_CODE_TO_MANAGE_SETTINGS = 2;
+            TYPE_ENTER_CODE_TO_MANAGE_SETTINGS = 2,
+            TYPE_ENTER_CODE_TO_GRAM_WALLET = 3;
 
     @Retention(RetentionPolicy.SOURCE)
     @IntDef({
             TYPE_MANAGE_CODE_SETTINGS,
             TYPE_SETUP_CODE,
-            TYPE_ENTER_CODE_TO_MANAGE_SETTINGS
+            TYPE_ENTER_CODE_TO_MANAGE_SETTINGS,
+            TYPE_ENTER_CODE_TO_GRAM_WALLET
     })
     public @interface PasscodeActivityType {}
 
@@ -139,6 +145,10 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
     private int autoLockRow;
     private int autoLockDetailRow;
 
+    private int walletHeaderRow;
+    private int walletPasscodeRow;
+    private int walletFingerprintRow;
+    private int walletInfoRow;
     private int captureHeaderRow;
     private int captureRow;
     private int captureDetailRow;
@@ -299,7 +309,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         alertDialog.show();
                         ((TextView)alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_text_RedBold));
                     } else if (position == changePasscodeRow) {
-                        presentFragment(new PasscodeActivity(TYPE_SETUP_CODE));
+                        presentFragment(createPasscodeActivity(TYPE_SETUP_CODE));
                     } else if (position == autoLockRow) {
                         if (getParentActivity() == null) {
                             return;
@@ -364,12 +374,29 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         if (!SharedConfig.allowScreenCapture) {
                             AlertsCreator.showSimpleAlert(PasscodeActivity.this, LocaleController.getString(R.string.ScreenCaptureAlert));
                         }
+                    } else if (position == walletPasscodeRow) {
+                        final GramWallet wallet = GramWallet.getInstance(currentAccount);
+                        wallet.setNeedsPasscode(!wallet.needsPasscode());
+                        UserConfig.getInstance(currentAccount).saveConfig(false);
+                        ((TextCheckCell) view).setChecked(wallet.needsPasscode());
+                    } else if (position == walletFingerprintRow) {
+                        final GramWallet wallet = GramWallet.getInstance(currentAccount);
+                        final java.util.function.BooleanSupplier requestCurrent = captureNavigationRequest();
+                        final ListAdapter adapter = listAdapter;
+                        final View sourceView = fragmentView;
+                        final boolean isLocked = wallet.needsFingerprint();
+                        wallet.setNeedsFingerprint(!isLocked, success -> {
+                            if (!success || !wallet.isCurrentSession() || !requestCurrent.getAsBoolean()
+                                    || fragmentView != sourceView || listAdapter != adapter) return;
+                            adapter.notifyItemChanged(walletFingerprintRow);
+                        });
                     }
                 });
                 break;
             }
             case TYPE_SETUP_CODE:
-            case TYPE_ENTER_CODE_TO_MANAGE_SETTINGS: {
+            case TYPE_ENTER_CODE_TO_MANAGE_SETTINGS:
+            case TYPE_ENTER_CODE_TO_GRAM_WALLET: {
                 if (actionBar != null) {
                     actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
 
@@ -649,7 +676,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         } else {
                             processDone();
                         }
-                    } else if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS) {
+                    } else if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS || type == TYPE_ENTER_CODE_TO_GRAM_WALLET) {
                         processDone();
                     }
                 });
@@ -733,6 +760,11 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         return new ActionIntroActivity(ActionIntroActivity.ACTION_TYPE_SET_PASSCODE);
     }
 
+    private PasscodeActivity createPasscodeActivity(@PasscodeActivityType int type) {
+        final PasscodeActivity fragment = new PasscodeActivity(type);
+        fragment.setCurrentAccount(currentAccount);
+        return fragment;
+    }
     private void animateSuccessAnimation(Runnable callback) {
         if (!isPinCode()) {
             callback.run();
@@ -801,7 +833,11 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
     }
 
     private void updateRows() {
+        walletHeaderRow = -1;
+        walletPasscodeRow = -1;
         fingerprintRow = -1;
+        walletFingerprintRow = -1;
+        walletInfoRow = -1;
         rowCount = 0;
         utyanRow = rowCount++;
         hintRow = rowCount++;
@@ -820,6 +856,14 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         }
         autoLockRow = rowCount++;
         autoLockDetailRow = rowCount++;
+        if (getMessagesController().config.walletAvailable.get()) {
+            walletHeaderRow = rowCount++;
+            walletPasscodeRow = rowCount++;
+            if (GramWalletStorage.deviceHasFingerprint(ApplicationLoader.applicationContext)) {
+                walletFingerprintRow = rowCount++;
+            }
+            walletInfoRow = rowCount++;
+        }
         captureHeaderRow = rowCount++;
         captureRow = rowCount++;
         captureDetailRow = rowCount++;
@@ -849,6 +893,8 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         String text;
         if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS) {
             text = LocaleController.getString(R.string.EnterYourPasscodeInfo);
+        } else if (type == TYPE_ENTER_CODE_TO_GRAM_WALLET) {
+            text = LocaleController.getString(R.string.WalletAuthorizeTransactionPasscode);
         } else if (passcodeSetStep == 0) {
             text = LocaleController.getString(currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN ? R.string.CreatePasscodeInfoPIN : R.string.CreatePasscodeInfoPassword);
         } else text = descriptionTextSwitcher.getCurrentView().getText().toString();
@@ -856,6 +902,8 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         boolean animate = !(descriptionTextSwitcher.getCurrentView().getText().equals(text) || TextUtils.isEmpty(descriptionTextSwitcher.getCurrentView().getText()));
         if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS) {
             descriptionTextSwitcher.setText(LocaleController.getString(R.string.EnterYourPasscodeInfo), animate);
+        } else if (type == TYPE_ENTER_CODE_TO_GRAM_WALLET) {
+            descriptionTextSwitcher.setText(LocaleController.getString(R.string.WalletAuthorizeTransactionPasscode));
         } else if (passcodeSetStep == 0) {
             descriptionTextSwitcher.setText(LocaleController.getString(currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN ? R.string.CreatePasscodeInfoPIN : R.string.CreatePasscodeInfoPassword), animate);
         }
@@ -910,12 +958,12 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
 
     private boolean isPinCode() {
         return type == TYPE_SETUP_CODE && currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN ||
-                type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS && SharedConfig.passcodeType == SharedConfig.PASSCODE_TYPE_PIN;
+                (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS || type == TYPE_ENTER_CODE_TO_GRAM_WALLET) && SharedConfig.passcodeType == SharedConfig.PASSCODE_TYPE_PIN;
     }
 
     private boolean isPassword() {
         return type == TYPE_SETUP_CODE && currentPasswordType == SharedConfig.PASSCODE_TYPE_PASSWORD ||
-                type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS && SharedConfig.passcodeType == SharedConfig.PASSCODE_TYPE_PASSWORD;
+                (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS || type == TYPE_ENTER_CODE_TO_GRAM_WALLET) && SharedConfig.passcodeType == SharedConfig.PASSCODE_TYPE_PASSWORD;
     }
 
     private void processDone() {
@@ -972,7 +1020,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
             animateSuccessAnimation(() -> {
                 getMediaDataController().buildShortcuts();
                 if (isFirst) {
-                    presentFragment(new PasscodeActivity(TYPE_MANAGE_CODE_SETTINGS), true);
+                    presentFragment(createPasscodeActivity(TYPE_MANAGE_CODE_SETTINGS), true);
                     if (openedSettings != null) {
                         AndroidUtilities.runOnUIThread(openedSettings);
                         openedSettings = null;
@@ -982,7 +1030,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 }
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetPasscode);
             });
-        } else if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS) {
+        } else if (type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS || type == TYPE_ENTER_CODE_TO_GRAM_WALLET) {
             if (SharedConfig.passcodeRetryInMs > 0) {
                 int value = Math.max(1, (int) Math.ceil(SharedConfig.passcodeRetryInMs / 1000.0));
                 Toast.makeText(getParentActivity(), LocaleController.formatString("TooManyTries", R.string.TooManyTries, LocaleController.formatPluralString("Seconds", value)), Toast.LENGTH_SHORT).show();
@@ -1020,8 +1068,26 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
             }
             keyboardView.setEditText(null);
 
+            if (type == TYPE_ENTER_CODE_TO_GRAM_WALLET) {
+                final java.util.function.BooleanSupplier requestCurrent = enteredCodeNavigationCurrent != null
+                        ? enteredCodeNavigationCurrent : captureNavigationRequest();
+                final View sourceView = fragmentView;
+                final long generation = GramWallet.getLifecycleGeneration(currentAccount);
             animateSuccessAnimation(() -> {
-                presentFragment(new PasscodeActivity(TYPE_MANAGE_CODE_SETTINGS), true);
+                    if (!requestCurrent.getAsBoolean() || fragmentView != sourceView
+                            || !GramWallet.isLifecycleGenerationCurrent(currentAccount, generation)) return;
+                    if (enteredCode != null) {
+                        final Runnable callback = enteredCode;
+                        enteredCode = null;
+                        callback.run();
+                    }
+                    if (requestCurrent.getAsBoolean() && fragmentView == sourceView) {
+                        finishFragment();
+                    }
+                });
+            } else {
+                animateSuccessAnimation(() -> {
+                    presentFragment(createPasscodeActivity(TYPE_MANAGE_CODE_SETTINGS), true);
                 if (openedSettings != null) {
                     AndroidUtilities.runOnUIThread(openedSettings);
                     openedSettings = null;
@@ -1030,9 +1096,22 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         }
     }
 
+    }
     private Runnable openedSettings;
     public void setOnOpenedSettings(Runnable openedSettings) {
         this.openedSettings = openedSettings;
+    }
+
+    private Runnable enteredCode;
+    private java.util.function.BooleanSupplier enteredCodeNavigationCurrent;
+    public PasscodeActivity setOnEnteredCode(Runnable enteredCode) {
+        return setOnEnteredCode(enteredCode, null);
+    }
+
+    public PasscodeActivity setOnEnteredCode(Runnable enteredCode, java.util.function.BooleanSupplier navigationCurrent) {
+        this.enteredCode = enteredCode;
+        this.enteredCodeNavigationCurrent = navigationCurrent;
+        return this;
     }
 
     private void onPasscodeError() {
@@ -1075,7 +1154,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
             return position == fingerprintRow || position == autoLockRow || position == captureRow ||
-                    position == changePasscodeRow || position == disablePasscodeRow;
+                    position == changePasscodeRow || position == disablePasscodeRow || position == walletPasscodeRow || position == walletFingerprintRow;
         }
 
         @Override
@@ -1118,6 +1197,10 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                         textCell.setTextAndCheck(LocaleController.getString(R.string.UnlockFingerprint), SharedConfig.useFingerprintLock, false);
                     } else if (position == captureRow) {
                         textCell.setTextAndCheck(LocaleController.getString(R.string.ScreenCaptureShowContent), SharedConfig.allowScreenCapture, false);
+                    } else if (position == walletFingerprintRow) {
+                        textCell.setTextAndCheck(LocaleController.getString(R.string.WalletConfirmWithFingerprint), GramWallet.getInstance(currentAccount).canSend() && GramWallet.getInstance(currentAccount).needsFingerprint(), false);
+                    } else if (position == walletPasscodeRow) {
+                        textCell.setTextAndCheck(LocaleController.getString(R.string.WalletConfirmWithPasscode), GramWallet.getInstance(currentAccount).needsPasscode(), false);
                     }
                     break;
                 }
@@ -1158,6 +1241,8 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                     cell.setHeight(46);
                     if (position == captureHeaderRow) {
                         cell.setText(LocaleController.getString(R.string.ScreenCaptureHeader));
+                    } else if (position == walletHeaderRow) {
+                        cell.setText(LocaleController.getString(R.string.WalletLock));
                     }
                     break;
                 }
@@ -1176,6 +1261,9 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                     } else if (position == autoLockDetailRow) {
                         cell.setText(LocaleController.getString(R.string.AutoLockInfo));
                         cell.getTextView().setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+                    } else if (position == walletInfoRow) {
+                        cell.setText(LocaleController.getString(R.string.WalletLockInfo));
+                        cell.getTextView().setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
                     } else if (position == captureDetailRow) {
                         cell.setText(LocaleController.getString(R.string.ScreenCaptureInfo));
                         cell.getTextView().setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
@@ -1187,13 +1275,13 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
 
         @Override
         public int getItemViewType(int position) {
-            if (position == fingerprintRow || position == captureRow) {
+            if (position == fingerprintRow || position == captureRow || position == walletFingerprintRow || position == walletPasscodeRow) {
                 return VIEW_TYPE_CHECK;
             } else if (position == changePasscodeRow || position == autoLockRow || position == disablePasscodeRow) {
                 return VIEW_TYPE_SETTING;
-            } else if (position == autoLockDetailRow || position == captureDetailRow || position == hintRow) {
+            } else if (position == autoLockDetailRow || position == captureDetailRow || position == hintRow || position == walletInfoRow) {
                 return VIEW_TYPE_INFO;
-            } else if (position == captureHeaderRow) {
+            } else if (position == captureHeaderRow || position == walletHeaderRow) {
                 return VIEW_TYPE_HEADER;
             } else if (position == utyanRow) {
                 return VIEW_TYPE_UTYAN;

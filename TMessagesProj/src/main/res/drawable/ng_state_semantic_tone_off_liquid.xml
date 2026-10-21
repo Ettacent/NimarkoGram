@@ -1,0 +1,24 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group>
+        <clip-path android:fillType="evenOdd"
+            android:pathData="M0,0H24V24H0Z M0,0H3L24,21V24H21L0,3Z"/>
+        <path android:name="note_body"
+            android:strokeColor="#70FFFFFF" android:strokeWidth="0.65" android:strokeLineJoin="round"
+            android:pathData="M8.3,3.6H17.8Q20,3.6 20,5.8V17.2C20,19.5 18.2,21 16.1,21C14.2,21 12.9,19.9 12.9,18.3C12.9,16.5 14.8,15.1 17.2,15.3V8H9.1V17.2C9.1,19.5 7.3,21 5.2,21C3.3,21 2,19.9 2,18.3C2,16.5 3.9,15.1 6.3,15.3V5.6Q6.3,3.6 8.3,3.6Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="5" android:startY="3"
+                    android:endX="19" android:endY="22" android:startColor="#C4FFFFFF"
+                    android:centerColor="#68FFFFFF" android:endColor="#96FFFFFF"/>
+            </aapt:attr>
+        </path>
+    </group>
+    <path android:name="off_slash" android:fillColor="#00000000"
+        android:strokeColor="#B3FFFFFF" android:strokeWidth="1.7" android:strokeLineCap="round"
+        android:pathData="M3,3L21,21"/>
+</vector>

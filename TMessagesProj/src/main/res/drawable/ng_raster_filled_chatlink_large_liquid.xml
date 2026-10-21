@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="80dp" android:height="80dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="chat" android:fillColor="#00000000"
+        android:strokeWidth="1.30" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M2,8A5.7,5.7 0,1 1,11.5,12.4L12.2,15L8.9,13.3A5.7,5.7 0,0 1,2,8Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="link_badge" android:fillColor="#00000000"
+        android:strokeWidth="1.30" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M15,11.5H20.2A2.3,2.3 0,0 1,22.5,13.8V19A2.3,2.3 0,0 1,20.2,21.3H15A2.3,2.3 0,0 1,12.7,19V13.8A2.3,2.3 0,0 1,15,11.5Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="chain" android:fillColor="#00000000"
+        android:strokeWidth="1.30" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M16.3,16.9L18.7,14.5 M16.3,14.7L17.2,13.8A1.8,1.8 0,0 1,19.8,16.4L18.9,17.3 M18.1,17L17.2,17.9A1.8,1.8 0,0 1,14.6,15.3L15.5,14.4">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

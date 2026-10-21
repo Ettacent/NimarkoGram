@@ -45,6 +45,7 @@ public class BotFullscreenButtons extends View {
     private final Paint downloadPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path downloadPath = new Path();
 
+    private final BotFullscreenIconRenderer packIcons = new BotFullscreenIconRenderer();
     private final RectF insets = new RectF();
 
     private final RectF leftMenu = new RectF();
@@ -113,6 +114,7 @@ public class BotFullscreenButtons extends View {
         iconStrokePaint.setColor(0xFFFFFFFF);
         iconStrokePaint.setStrokeWidth(dp(2));
 
+        packIcons.update();
         backgroundPath.rewind();
 
         rightMenu.set(getWidth() - insets.right - dp(8 + 71.66f), insets.top + dp(8), getWidth() - insets.right - dp(8), insets.top + dp(8 + 30));
@@ -167,10 +169,12 @@ public class BotFullscreenButtons extends View {
         canvas.scale(s, s);
         canvas.translate(back * -dp(6.5f), 0);
         final float backR = lerp((float) dp(4.66f), (float) dp(5.5f), back);
+        if (!packIcons.drawCloseBack(canvas, iconStrokePaint, back, backR, dp(11.6f))) {
         canvas.drawLine(lerp(-backR, 0, back), lerp(-backR, 0, back), +backR, +backR, iconStrokePaint);
         canvas.drawLine(lerp(-backR, 0, back), lerp(+backR, 0, back), +backR, -backR, iconStrokePaint);
         if (back > 0) {
             canvas.drawLine(0, 0, dp(11.6f) * back, 0, iconStrokePaint);
+            }
         }
         canvas.restore();
 
@@ -214,24 +218,30 @@ public class BotFullscreenButtons extends View {
         s = collapseBounce.getScale(0.1f);
         canvas.scale(s, s);
         final float collapseW = dp(6), collapseH = dp(3f);
+        if (!packIcons.drawCollapse(canvas, iconStrokePaint, collapseW, collapseH)) {
         canvas.drawLine(-collapseW, -collapseH, 0, collapseH, iconStrokePaint);
         canvas.drawLine(0, collapseH, collapseW, -collapseH, iconStrokePaint);
+        }
         canvas.restore();
 
         canvas.save();
         canvas.translate(menuRect.centerX() + dp(1), menuRect.centerY());
         s = menuBounce.getScale(0.1f);
         canvas.scale(s, s);
+        if (!packIcons.drawOverflow(canvas, iconPaint, dp(1.66f), dp(5))) {
         canvas.drawCircle(0, -dp(5), dp(1.66f), iconPaint);
         canvas.drawCircle(0, 0, dp(1.66f), iconPaint);
         canvas.drawCircle(0, +dp(5), dp(1.66f), iconPaint);
+        }
         final float downloadAlpha = this.animatedDownloading.set(downloading);
         if (downloadAlpha > 0) {
             canvas.translate(-dpf2(8.166f), dpf2(3.5f));
             s = .5f + .5f * downloadAlpha;
             canvas.scale(s, s);
             downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 0.4f));
-            canvas.drawPath(downloadPath, downloadPaint);
+            if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                canvas.drawPath(downloadPath, downloadPaint);
+            }
             final float t = ((System.currentTimeMillis() - start) % 450 / 450.0f);
 
             float from = t, to = .5f + t;
@@ -239,7 +249,9 @@ public class BotFullscreenButtons extends View {
             canvas.save();
             canvas.clipRect(-dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), from), dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), to));
             downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 1.0f));
-            canvas.drawPath(downloadPath, downloadPaint);
+            if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                canvas.drawPath(downloadPath, downloadPaint);
+            }
             canvas.restore();
 
             if (to > 1) {
@@ -249,7 +261,9 @@ public class BotFullscreenButtons extends View {
                 canvas.save();
                 canvas.clipRect(-dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), from), dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), to));
                 downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 1.0f));
-                canvas.drawPath(downloadPath, downloadPaint);
+                if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                    canvas.drawPath(downloadPath, downloadPaint);
+                }
                 canvas.restore();
             }
 
@@ -380,6 +394,7 @@ public class BotFullscreenButtons extends View {
         private final Paint downloadPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path downloadPath = new Path();
 
+        private final BotFullscreenIconRenderer packIcons = new BotFullscreenIconRenderer();
         private boolean downloading = false;
         private final AnimatedFloat animatedDownloading = new AnimatedFloat(this::invalidateSelf, 0, 420, CubicBezierInterpolator.EASE_OUT_QUINT);
 
@@ -401,6 +416,7 @@ public class BotFullscreenButtons extends View {
 
         @Override
         public void draw(@NonNull Canvas canvas) {
+            packIcons.update();
             drawable.setBounds(getBounds());
             drawable.draw(canvas);
 
@@ -413,7 +429,9 @@ public class BotFullscreenButtons extends View {
                 float s = .5f + .5f * downloadAlpha;
                 canvas.scale(s, s);
                 downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 0.4f));
-                canvas.drawPath(downloadPath, downloadPaint);
+                if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                    canvas.drawPath(downloadPath, downloadPaint);
+                }
                 final float t = ((System.currentTimeMillis() - start) % 450 / 450.0f);
 
                 float from = t, to = .5f + t;
@@ -421,7 +439,9 @@ public class BotFullscreenButtons extends View {
                 canvas.save();
                 canvas.clipRect(-dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), from), dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), to));
                 downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 1.0f));
-                canvas.drawPath(downloadPath, downloadPaint);
+                if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                    canvas.drawPath(downloadPath, downloadPaint);
+                }
                 canvas.restore();
 
                 if (to > 1) {
@@ -431,7 +451,9 @@ public class BotFullscreenButtons extends View {
                     canvas.save();
                     canvas.clipRect(-dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), from), dp(5), lerp(-dpf2(3.5f), dpf2(3.5f), to));
                     downloadPaint.setColor(Theme.multAlpha(0xFFFFFFFF, 1.0f));
-                    canvas.drawPath(downloadPath, downloadPaint);
+                    if (!packIcons.drawDownload(canvas, downloadPaint)) {
+                        canvas.drawPath(downloadPath, downloadPaint);
+                    }
                     canvas.restore();
                 }
                 canvas.restore();

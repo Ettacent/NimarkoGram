@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright (C) 2015 The Android Open Source Project
  *
@@ -23,7 +25,9 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
@@ -35,12 +39,14 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Region;
 import android.graphics.Shader;
 import android.graphics.drawable.AnimatedVectorDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Size;
@@ -99,6 +105,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 @RequiresApi(23)
 public final class FloatingToolbar {
 
@@ -214,6 +221,11 @@ public final class FloatingToolbar {
 
     public void hide() {
         mPopup.hide();
+    }
+
+    public FloatingToolbar setPreserveForwardedTouch(boolean preserve) {
+        mPopup.mPreserveForwardedTouch = preserve;
+        return this;
     }
 
     public boolean isShowing() {
@@ -332,6 +344,9 @@ public final class FloatingToolbar {
         private final View mParent;
         private final PopupWindow mPopupWindow;
 
+        private final ForwardingPopupContent mPopupContentHolder;
+        private boolean mPreserveForwardedTouch;
+        private long mWindowGeneration;
         private final int mMarginHorizontal;
         private final int mMarginVertical;
 
@@ -341,7 +356,7 @@ public final class FloatingToolbar {
         private final OverflowPanel mOverflowPanel;
         private final FrameLayout mOverflowButton;
         private final View mOverflowButtonShadow;
-        private final ImageView mOverflowButtonIcon;
+        private final OverflowIconButton mOverflowButtonIcon;
         private final TextView mOverflowButtonText;
 
         private final Drawable mArrow;
@@ -377,9 +392,10 @@ public final class FloatingToolbar {
         private final Runnable mPreparePopupContentRTLHelper = new Runnable() {
             @Override
             public void run() {
+                if (!isShowing()) return;
                 setPanelsStatesAtRestingPosition();
                 setContentAreaAsTouchableSurface();
-                mContentContainer.setAlpha(1);
+                if (!mShowAnimation.isRunning()) mContentContainer.setAlpha(1);
             }
         };
         private boolean mDismissed = true; // tracks whether this popup is dismissed or dismissing.
@@ -409,7 +425,8 @@ public final class FloatingToolbar {
             mParent = parent;
             mContext = context;
             mContentContainer = createContentContainer(context);
-            mPopupWindow = createPopupWindow(mContentContainer);
+            mPopupContentHolder = new ForwardingPopupContent(context);
+            mPopupWindow = createPopupWindow(mContentContainer, mPopupContentHolder);
             mMarginHorizontal = dp(16);
             mMarginVertical = dp(8);
             mLineHeight = dp(48);
@@ -420,25 +437,17 @@ public final class FloatingToolbar {
             mLinearOutSlowInInterpolator = AnimationUtils.loadInterpolator(mContext, android.R.interpolator.linear_out_slow_in);
             mFastOutLinearInInterpolator = AnimationUtils.loadInterpolator(mContext, android.R.interpolator.fast_out_linear_in);
 
-            mArrow = mContext.getDrawable(R.drawable.ft_avd_tooverflow).mutate();
+            mArrow = NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow).mutate();
             mArrow.setAutoMirrored(true);
-            mOverflow = mContext.getDrawable(R.drawable.ft_avd_toarrow).mutate();
+            mOverflow = NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow).mutate();
             mOverflow.setAutoMirrored(true);
-            mToArrow = (AnimatedVectorDrawable) mContext.getDrawable(R.drawable.ft_avd_toarrow_animation).mutate();
+            mToArrow = (AnimatedVectorDrawable) NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow_animation).mutate();
             mToArrow.setAutoMirrored(true);
-            mToOverflow = (AnimatedVectorDrawable) mContext.getDrawable(R.drawable.ft_avd_tooverflow_animation).mutate();
+            mToOverflow = (AnimatedVectorDrawable) NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow_animation).mutate();
             mToOverflow.setAutoMirrored(true);
 
             mOverflowButton = new FrameLayout(mContext);
-            mOverflowButtonIcon = new ImageButton(mContext) {
-                @Override
-                public boolean dispatchTouchEvent(MotionEvent event) {
-                    if (mIsOverflowOpen) {
-                        return false;
-                    }
-                    return super.dispatchTouchEvent(event);
-                }
-            };
+            mOverflowButtonIcon = new OverflowIconButton(mContext);
             mOverflowButtonIcon.setLayoutParams(new ViewGroup.LayoutParams(dp(56), dp(48)));
             mOverflowButtonIcon.setPaddingRelative(dp(16), dp(12), dp(16), dp(12));
             mOverflowButtonIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
@@ -485,23 +494,188 @@ public final class FloatingToolbar {
             mCloseOverflowAnimation = new AnimationSet(true);
             mCloseOverflowAnimation.setAnimationListener(mOverflowAnimationListener);
             mShowAnimation = createEnterAnimation(mContentContainer);
-            mDismissAnimation = createExitAnimation(mContentContainer, 150, new AnimatorListenerAdapter() {
+            mDismissAnimation = createExitAnimation(mContentContainer, 150, createWindowExitListener(true));
+            mHideAnimation = createExitAnimation(mContentContainer, 0, createWindowExitListener(false));
+        }
+
+        private AnimatorListenerAdapter createWindowExitListener(boolean dismiss) {
+            return new AnimatorListenerAdapter() {
+                private long generation;
+                private boolean cancelled;
+
+                @Override
+                public void onAnimationStart(Animator animation) {
+                    generation = mWindowGeneration;
+                    cancelled = false;
+                }
+
+                @Override
+                public void onAnimationCancel(Animator animation) {
+                    cancelled = true;
+                }
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    NotificationCenter.getInstance(UserConfig.selectedAccount).doOnIdle(() -> {
-                        mPopupWindow.dismiss();
-                        mContentContainer.removeAllViews();
-                    });
+                    if (cancelled) return;
+                    final long finishedGeneration = generation;
+                    NotificationCenter.getInstance(UserConfig.selectedAccount).doOnIdle(
+                            () -> closeWindowIfCurrent(finishedGeneration, dismiss));
                 }
-            });
-            mHideAnimation = createExitAnimation(mContentContainer, 0, new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    NotificationCenter.getInstance(UserConfig.selectedAccount).doOnIdle(() -> {
+            };
+        }
+
+        private boolean isWindowExitCurrent(long generation, boolean dismiss) {
+            return generation == mWindowGeneration && (dismiss ? mDismissed : mHidden && !mDismissed);
+        }
+
+        private void closeWindowIfCurrent(long generation, boolean dismiss) {
+            if (!isWindowExitCurrent(generation, dismiss)) return;
+            Runnable close = () -> {
+                if (!isWindowExitCurrent(generation, dismiss)) return;
+                mPopupContentHolder.cancelPendingClose();
                         mPopupWindow.dismiss();
-                    });
+                if (dismiss && isWindowExitCurrent(generation, true)) mContentContainer.removeAllViews();
+            };
+            if (!dismiss && mPreserveForwardedTouch) {
+                mPopupContentHolder.runAfterForwarding(close);
+            } else {
+                close.run();
+            }
+        }
+
+        private final class OverflowIconButton extends ImageButton {
+            private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+            private final RectF iconBounds = new RectF();
+            private PorterDuffColorFilter iconTint;
+            private int iconColor;
+            private float progress;
+            private float transitionFrom;
+            private float transitionTarget;
+            private int transitionGeneration;
+
+            private OverflowIconButton(Context context) {
+                super(context);
+            }
+
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                if (mIsOverflowOpen) {
+                    return false;
                 }
-            });
+                return super.dispatchTouchEvent(event);
+            }
+
+            @Override
+            public void setImageDrawable(Drawable drawable) {
+                transitionGeneration++;
+                transitionFrom = progress;
+                if (drawable == mArrow || drawable == mToArrow) {
+                    transitionTarget = 1f;
+                } else {
+                    transitionTarget = 0f;
+                }
+                if (drawable != mToArrow && drawable != mToOverflow) {
+                    progress = transitionTarget;
+                }
+                super.setImageDrawable(drawable);
+            }
+
+            private int getTransitionGeneration() {
+                return transitionGeneration;
+            }
+
+            private void setTransitionProgress(float fraction, int generation) {
+                if (generation != transitionGeneration
+                        || (getDrawable() != mToArrow && getDrawable() != mToOverflow)) {
+                    return;
+                }
+                if (!canAnimateIcons()) {
+                    finishTransition();
+                    return;
+                }
+                progress = transitionFrom + (transitionTarget - transitionFrom) * Math.max(0f, Math.min(1f, fraction));
+                invalidate();
+            }
+
+            private boolean canAnimateIcons() {
+                return isAttachedToWindow() && SharedConfig.animationsEnabled()
+                        && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled());
+            }
+
+            private void finishTransition() {
+                transitionGeneration++;
+                progress = transitionTarget;
+                invalidate();
+            }
+
+            @Override
+            protected void onDetachedFromWindow() {
+                finishTransition();
+                super.onDetachedFromWindow();
+            }
+
+            @Override
+            protected void onDraw(Canvas canvas) {
+                if (progress != transitionTarget && !canAnimateIcons()) {
+                    finishTransition();
+                }
+                Drawable drawable = getDrawable();
+                NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+                NimarkoIconResources.PreparedIcon back = icons == null ? null : icons.getIcon(R.drawable.ic_ab_back);
+                NimarkoIconResources.PreparedIcon more = icons == null ? null : icons.getIcon(R.drawable.ic_ab_other);
+                Resources resources = getResources();
+                boolean current = icons != null && icons.densityDpi == resources.getDisplayMetrics().densityDpi;
+                if (current && resources instanceof NimarkoIconResources) {
+                    current = icons.generation == ((NimarkoIconResources) resources).getReplacementGeneration()
+                            && icons.selection == ((NimarkoIconResources) resources).getAppliedSelection();
+                }
+                if (!current || back == null || more == null || back.bitmap == null || more.bitmap == null
+                        || back.bitmap.isRecycled() || more.bitmap.isRecycled()
+                        || (drawable != mArrow && drawable != mOverflow && drawable != mToArrow && drawable != mToOverflow)) {
+                    super.onDraw(canvas);
+                    return;
+                }
+                int hidden = canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), 0);
+                super.onDraw(canvas);
+                canvas.restoreToCount(hidden);
+
+                float width = getWidth() - getPaddingLeft() - getPaddingRight();
+                float height = getHeight() - getPaddingTop() - getPaddingBottom();
+                float size = Math.min(24f * resources.getDisplayMetrics().density, Math.min(width, height));
+                if (size <= 0f) {
+                    return;
+                }
+                float cx = getPaddingLeft() + width / 2f;
+                float cy = getPaddingTop() + height / 2f;
+                iconBounds.set(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f);
+                int color = mOverflowButtonText.getCurrentTextColor();
+                if (iconTint == null || iconColor != color) {
+                    iconColor = color;
+                    iconTint = new PorterDuffColorFilter(color | 0xff000000, PorterDuff.Mode.SRC_IN);
+                }
+                int save = canvas.save();
+                canvas.clipRect(iconBounds);
+                if (mArrow.isAutoMirrored() && getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
+                    canvas.scale(-1f, 1f, cx, cy);
+                }
+                drawIcon(canvas, more, 1f - progress, progress, 20f * progress);
+                drawIcon(canvas, back, progress, 1f - progress, -20f * (1f - progress));
+                canvas.restoreToCount(save);
+            }
+
+            private void drawIcon(Canvas canvas, NimarkoIconResources.PreparedIcon icon, float alpha, float motion, float rotation) {
+                int opacity = Math.round(alpha * getImageAlpha() * Color.alpha(iconColor) / 255f);
+                if (opacity <= 0) {
+                    return;
+                }
+                int save = canvas.save();
+                float scale = 1f - 0.35f * motion;
+                canvas.scale(scale, scale, iconBounds.centerX(), iconBounds.centerY());
+                canvas.rotate(rotation, iconBounds.centerX(), iconBounds.centerY());
+                iconPaint.setAlpha(opacity);
+                iconPaint.setColorFilter(icon.noTint ? null : iconTint);
+                canvas.drawBitmap(icon.bitmap, null, iconBounds, iconPaint);
+                canvas.restoreToCount(save);
+            }
         }
 
         private void onBackPressed() {
@@ -556,13 +730,20 @@ public final class FloatingToolbar {
             if (isShowing()) {
                 return;
             }
+            mWindowGeneration++;
+            mPopupContentHolder.cancelPendingClose();
+            mPopupContentHolder.setContentTouchable(true);
             mHidden = false;
             mDismissed = false;
             cancelDismissAndHideAnimations();
             cancelOverflowAnimations();
             refreshCoordinatesAndOverflowDirection(contentRectOnScreen);
             preparePopupContent();
+            if (mPopupWindow.isShowing()) {
+                mPopupWindow.update(mCoordsOnWindow.x, mCoordsOnWindow.y, mPopupWindow.getWidth(), mPopupWindow.getHeight());
+            } else {
             mPopupWindow.showAtLocation(mParent, Gravity.NO_GRAVITY, mCoordsOnWindow.x, mCoordsOnWindow.y);
+            }
             setTouchableSurfaceInsetsComputer();
             runShowAnimation();
         }
@@ -571,8 +752,13 @@ public final class FloatingToolbar {
             if (mDismissed) {
                 return;
             }
+            final long generation = ++mWindowGeneration;
+            mPopupContentHolder.cancelPendingClose();
+            mPopupContentHolder.setContentTouchable(false);
             mHidden = false;
             mDismissed = true;
+            mPopupContentHolder.cancelForwardedTouch();
+            if (generation != mWindowGeneration || !mDismissed) return;
             mHideAnimation.cancel();
             runDismissAnimation();
             setZeroTouchableSurface();
@@ -582,6 +768,9 @@ public final class FloatingToolbar {
             if (!isShowing()) {
                 return;
             }
+            mWindowGeneration++;
+            mPopupContentHolder.cancelPendingClose();
+            mPopupContentHolder.setContentTouchable(false);
             mHidden = true;
             runHideAnimation();
             setZeroTouchableSurface();
@@ -666,10 +855,16 @@ public final class FloatingToolbar {
         }
 
         private void runDismissAnimation() {
+            mShowAnimation.cancel();
+            mContentContainer.removeCallbacks(mPreparePopupContentRTLHelper);
+            ((ObjectAnimator) mDismissAnimation.getChildAnimations().get(0)).setFloatValues(mContentContainer.getAlpha(), 0f);
             mDismissAnimation.start();
         }
 
         private void runHideAnimation() {
+            mShowAnimation.cancel();
+            mContentContainer.removeCallbacks(mPreparePopupContentRTLHelper);
+            ((ObjectAnimator) mHideAnimation.getChildAnimations().get(0)).setFloatValues(mContentContainer.getAlpha(), 0f);
             mHideAnimation.start();
         }
 
@@ -684,9 +879,11 @@ public final class FloatingToolbar {
             mOverflowPanel.animate().cancel();
             mToArrow.stop();
             mToOverflow.stop();
+            mOverflowButtonIcon.finishTransition();
         }
 
         private void openOverflow() {
+            final int iconTransition = mOverflowButtonIcon.getTransitionGeneration();
             final int targetWidth = mOverflowPanelSize.getWidth();
             final int targetHeight = mOverflowPanelSize.getHeight();
             final int startWidth = mContentContainer.getWidth();
@@ -733,6 +930,7 @@ public final class FloatingToolbar {
                     mOverflowButton.setX(actualOverflowButtonX);
                     mOverflowButtonText.setAlpha(interpolatedTime);
                     mOverflowButtonShadow.setAlpha(interpolatedTime);
+                    mOverflowButtonIcon.setTransitionProgress(interpolatedTime, iconTransition);
                 }
             };
             widthAnimation.setInterpolator(mLogAccelerateInterpolator);
@@ -756,6 +954,7 @@ public final class FloatingToolbar {
         }
 
         private void closeOverflow() {
+            final int iconTransition = mOverflowButtonIcon.getTransitionGeneration();
             final int targetWidth = mMainPanelSize.getWidth();
             final int startWidth = mContentContainer.getWidth();
             final float left = mContentContainer.getX();
@@ -801,6 +1000,7 @@ public final class FloatingToolbar {
                     mOverflowButton.setX(actualOverflowButtonX);
                     mOverflowButtonText.setAlpha(1f - interpolatedTime);
                     mOverflowButtonShadow.setAlpha(1f - interpolatedTime);
+                    mOverflowButtonIcon.setTransitionProgress(interpolatedTime, iconTransition);
                 }
             };
             widthAnimation.setInterpolator(mFastOutSlowInInterpolator);
@@ -1092,6 +1292,7 @@ public final class FloatingToolbar {
         }
 
         private void preparePopupContent() {
+            mContentContainer.removeCallbacks(mPreparePopupContentRTLHelper);
             mContentContainer.removeAllViews();
             if (hasOverflow()) {
                 mContentContainer.addView(mOverflowPanel);
@@ -1522,66 +1723,158 @@ public final class FloatingToolbar {
         return Theme.getColor(key, resourcesProvider);
     }
 
-    private static PopupWindow createPopupWindow(ViewGroup content) {
-        ViewGroup popupContentHolder = new LinearLayout(content.getContext()) {
-            @Override
-            public boolean onInterceptTouchEvent(MotionEvent ev) {
-                return super.onInterceptTouchEvent(ev);
+    private static final class ForwardingPopupContent extends LinearLayout {
+        private final int[] popupLocation = new int[2];
+        private final int[] rootLocation = new int[2];
+        private View downRootView;
+        private MotionEvent lastForwardedEvent;
+        private boolean contentTouchable = true;
+        private int dispatchDepth;
+        private long forwardingGeneration;
+        private Runnable pendingClose;
+        private final Runnable finishPendingClose = () -> {
+            if (downRootView == null && dispatchDepth == 0) {
+                Runnable close = pendingClose;
+                pendingClose = null;
+                if (close != null) close.run();
+            }
+        };
+
+        ForwardingPopupContent(Context context) {
+            super(context);
+        }
+
+        void setContentTouchable(boolean value) {
+            contentTouchable = value;
+        }
+
+        void runAfterForwarding(Runnable close) {
+            pendingClose = close;
+            removeCallbacks(finishPendingClose);
+            if (downRootView == null && dispatchDepth == 0) {
+                finishPendingClose.run();
+            }
+        }
+
+        void cancelPendingClose() {
+            pendingClose = null;
+            removeCallbacks(finishPendingClose);
+        }
+
+        private void clearForwardedTouch() {
+            downRootView = null;
+            if (lastForwardedEvent != null) {
+                lastForwardedEvent.recycle();
+                lastForwardedEvent = null;
+            }
+        }
+
+        void cancelForwardedTouch() {
+            View owner = downRootView;
+            int lastAction = lastForwardedEvent == null ? -1 : lastForwardedEvent.getActionMasked();
+            MotionEvent cancel = lastForwardedEvent == null || lastAction == MotionEvent.ACTION_UP
+                    || lastAction == MotionEvent.ACTION_CANCEL ? null : MotionEvent.obtain(lastForwardedEvent);
+            forwardingGeneration++;
+            clearForwardedTouch();
+            if (cancel != null) {
+                cancel.setAction(MotionEvent.ACTION_CANCEL);
+                try {
+                    if (owner != null && owner.isAttachedToWindow()) owner.dispatchTouchEvent(cancel);
+                } finally {
+                    cancel.recycle();
+                }
+            }
+        }
+
+        private boolean dispatchToRoot(View root, MotionEvent event) {
+            getLocationOnScreen(popupLocation);
+            root.getLocationOnScreen(rootLocation);
+            MotionEvent local = MotionEvent.obtain(event);
+            try {
+                local.offsetLocation(popupLocation[0] - rootLocation[0], popupLocation[1] - rootLocation[1]);
+                if (lastForwardedEvent != null) lastForwardedEvent.recycle();
+                lastForwardedEvent = MotionEvent.obtain(local);
+                return root.dispatchTouchEvent(local);
+            } finally {
+                local.recycle();
+            }
             }
             private boolean isParent(View child, View parent) {
                 if (child == parent) return true;
                 if (child.getParent() == null) return false;
                 if (child.getParent() instanceof View) {
                     return isParent((View) child.getParent(), parent);
-                } else if (child.getParent() == parent) {
-                    return true;
-                } else if (child.getRootView() == parent) {
+            }
+            return child.getParent() == parent || child.getRootView() == parent;
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            final int action = event.getActionMasked();
+            final long generation = action == MotionEvent.ACTION_DOWN
+                    ? forwardingGeneration + 1 : forwardingGeneration;
+            dispatchDepth++;
+            try {
+                if (action == MotionEvent.ACTION_DOWN) {
+                    cancelForwardedTouch();
+                    if (generation != forwardingGeneration) return true;
+                } else if (downRootView != null) {
+                    if (downRootView.isAttachedToWindow()) {
+                        dispatchToRoot(downRootView, event);
+                    } else {
+                        clearForwardedTouch();
+                    }
                     return true;
                 }
-                return false;
-            }
-
-            private final int[] p = new int[2];
-            private View downRootView = null;
-            @Override
-            public boolean dispatchTouchEvent(MotionEvent ev) {
-                boolean r = super.dispatchTouchEvent(ev);
-                if (!r) {
-                    getLocationOnScreen(p);
-                    ev.offsetLocation(p[0], p[1]);
-                    if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-                        final List<View> views = allGlobalViews();
-                        if (views != null && views.size() > 1) {
-                            for (int i = views.size() - 2; i >= 0; --i) {
-                                final View view = views.get(i);
-                                if (isParent(this, view)) continue;
-                                view.getLocationOnScreen(p);
-                                ev.offsetLocation(-p[0], -p[1]);
-                                r = view.dispatchTouchEvent(ev);
-                                if (r) {
-                                    downRootView = view;
-                                    return true;
-                                }
-                                ev.offsetLocation(p[0], p[1]);
+                boolean handled = (contentTouchable || action != MotionEvent.ACTION_DOWN)
+                        && super.dispatchTouchEvent(event);
+                if (handled || generation != forwardingGeneration) return true;
+                if (action == MotionEvent.ACTION_DOWN) {
+                    final List<View> views = allGlobalViews();
+                    if (views != null) {
+                        int below = views.size() - 2;
+                        for (int i = views.size() - 1; i >= 0; --i) {
+                            if (isParent(this, views.get(i))) {
+                                below = i - 1;
+                                break;
                             }
                         }
-                    } else if (downRootView != null) {
-                        View view = downRootView;
-                        view.getLocationOnScreen(p);
-                        ev.offsetLocation(-p[0], -p[1]);
-                        r = view.dispatchTouchEvent(ev);
+                        for (int i = below; i >= 0; --i) {
+                            View view = views.get(i);
+                            if (isParent(this, view) || !view.isAttachedToWindow()) continue;
+                            downRootView = view;
+                            boolean accepted = dispatchToRoot(view, event);
+                            if (accepted || generation != forwardingGeneration) return true;
+                            clearForwardedTouch();
+                        }
                     }
                 }
-                if (ev.getAction() == MotionEvent.ACTION_UP || ev.getAction() == MotionEvent.ACTION_CANCEL) {
-                    downRootView = null;
+                return false;
+            } catch (RuntimeException | Error error) {
+                if (generation == forwardingGeneration) clearForwardedTouch();
+                throw error;
+            } finally {
+                if (generation == forwardingGeneration
+                        && (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL)) {
+                    clearForwardedTouch();
                 }
-                return r;
+                dispatchDepth--;
+                if (dispatchDepth == 0 && downRootView == null && pendingClose != null) {
+                    removeCallbacks(finishPendingClose);
+                    post(finishPendingClose);
+                }
             }
-            @Override
-            public boolean onTouchEvent(MotionEvent event) {
-                return super.onTouchEvent(event);
-            }
-        };
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            cancelPendingClose();
+            cancelForwardedTouch();
+            super.onDetachedFromWindow();
+        }
+    }
+
+    private static PopupWindow createPopupWindow(ViewGroup content, ForwardingPopupContent popupContentHolder) {
         PopupWindow popupWindow = new PopupWindow(popupContentHolder);
         popupWindow.setClippingEnabled(false);
         popupWindow.setAnimationStyle(0);

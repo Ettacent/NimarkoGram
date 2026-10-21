@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram large_sms_code source artwork; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="65dp" android:height="65dp" android:viewportWidth="65" android:viewportHeight="65">
+    <path android:name="phone_frame_top" android:pathData="M19.5 28.5 V15 Q19.5 10.2 24.3 10.2 H40.4 Q43.7 10.2 44.8 13" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="phone_frame_bottom" android:pathData="M44.9 30.8 V50.8 Q44.9 55.7 40 55.7 H24.5 Q19.5 55.7 19.5 51 V49.8" android:fillType="evenOdd" android:fillColor="#00000000" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="verification_star_badge" android:pathData="M19.2 31.3 Q20.1 31.3 20.6 32.5 L23.3 37 L28.6 37.7 Q30 37.9 29.4 39.3 L25.5 43 L26.2 48 Q26.4 49.4 25 48.9 L19.1 46.3 L14.5 48.9 Q13.1 49.5 13.3 48 L14.2 42.9 L10.3 39.3 Q9.3 38.1 10.7 37.7 L16 36.9 L18.1 32.4 Q18.6 31.3 19.2 31.3 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="message_trail_and_notification_dots" android:pathData="M1.8499999999999999 42.3 a1.45 1.45 0 1 0 2.9 0 a1.45 1.45 0 1 0 -2.9 0 ZM7.249999999999999 42.3 a1.45 1.45 0 1 0 2.9 0 a1.45 1.45 0 1 0 -2.9 0 ZM30.55 21.1 a1.45 1.45 0 1 0 2.9 0 a1.45 1.45 0 1 0 -2.9 0 ZM35.15 21.1 a1.45 1.45 0 1 0 2.9 0 a1.45 1.45 0 1 0 -2.9 0 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:name="verification_bubble_123_cutouts" android:pathData="M44 13.8 H55.2 Q59 13.8 59 17.6 V24.6 Q59 28.3 55.2 28.3 H38.1 L40.4 25.2 V17.5 Q40.4 13.8 44 13.8 ZM43 19.2 L45 18.1 H45.6 V24.3 H44.8 V19.2 L43.4 20 ZM47 19.5 C47.2 18.4 48 18 48.8 18 C50.2 18 50.8 18.7 50.8 19.7 C50.8 20.6 50.1 21.2 49.4 21.8 L47.9 23.4 H50.8 V24.2 H46.8 V23.5 L49 21.2 C49.7 20.5 50 20.2 50 19.7 C50 19.1 49.6 18.8 48.9 18.8 C48.3 18.8 47.9 19.2 47.8 19.7 ZM52 19.4 C52.1 18.4 52.9 18 53.9 18 C55.1 18 55.8 18.6 55.8 19.6 C55.8 20.3 55.4 20.7 54.9 20.9 C55.6 21.1 56 21.6 56 22.4 C56 23.6 55.1 24.4 53.9 24.4 C52.7 24.4 51.9 23.7 51.8 22.7 H52.7 C52.8 23.3 53.2 23.6 53.9 23.6 C54.6 23.6 55.1 23.2 55.1 22.5 C55.1 21.8 54.5 21.4 53.4 21.4 V20.6 C54.4 20.6 54.9 20.3 54.9 19.7 C54.9 19.1 54.5 18.8 53.9 18.8 C53.3 18.8 52.9 19.1 52.9 19.5 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

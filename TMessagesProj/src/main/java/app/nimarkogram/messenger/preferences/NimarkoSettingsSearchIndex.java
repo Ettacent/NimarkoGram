@@ -3,13 +3,23 @@
 package app.nimarkogram.messenger.preferences;
 
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
+import app.nimarkogram.messenger.infocards.InfoCardsConfig;
+import app.nimarkogram.messenger.banners.NimarkoBannerConfig;
+import app.nimarkogram.messenger.banners.NimarkoBannerController;
+import app.nimarkogram.messenger.camera.CameraXUtils;
+import app.nimarkogram.messenger.plugins.ui.PluginsInfoActivity;
+import app.nimarkogram.messenger.utils.VibrateUtils;
+import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
 import app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity;
 import android.os.Build;
 import android.text.TextUtils;
 
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.SettingsActivity;
+import org.telegram.ui.Components.InstantCameraViewBase;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -18,6 +28,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
+import java.io.File;
+import java.text.Normalizer;
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
 
@@ -43,6 +55,8 @@ final class NimarkoSettingsSearchIndex {
     static final int SCREEN_MESSAGE_FILTERS = 18;
     static final int SCREEN_RECENT = 19;
     static final int SCREEN_MESSAGE_MENU_ORDER = 20;
+    static final int SCREEN_WHITELIST = 21;
+    static final int SCREEN_PLUGIN_SETTINGS = 22;
     static final int ACTION_UPDATES = 100;
     static final int ACTION_SOURCE = 101;
     static final int ACTION_RESTART = 102;
@@ -57,7 +71,7 @@ final class NimarkoSettingsSearchIndex {
         final int pathFirstRes;
         final int pathSecondRes;
         final boolean featured;
-        private String indexedLocale;
+        private String indexedSource;
         private String normalizedSearchText;
         private String transliteratedSearchText;
 
@@ -89,15 +103,20 @@ final class NimarkoSettingsSearchIndex {
             return pathFirstRes == 0 ? null : new String[]{LocaleController.getString(pathFirstRes)};
         }
 
-        boolean matches(String normalizedQuery, String[] queryTokens) {
+        boolean matches(String normalizedQuery, String[] queryTokens, String[] transliteratedTokens) {
             if (TextUtils.isEmpty(normalizedQuery)) {
                 return featured;
             }
             ensureSearchText();
-            for (String token : queryTokens) {
+            for (int i = 0; i < queryTokens.length; i++) {
+                String token = queryTokens[i];
+                String transliteratedToken = transliteratedTokens[i];
                 if (!token.isEmpty()
                         && !normalizedSearchText.contains(token)
-                        && !transliteratedSearchText.contains(token)) {
+                        && !transliteratedSearchText.contains(token)
+                        && (transliteratedToken.isEmpty()
+                        || !normalizedSearchText.contains(transliteratedToken)
+                        && !transliteratedSearchText.contains(transliteratedToken))) {
                     return false;
                 }
             }
@@ -105,15 +124,6 @@ final class NimarkoSettingsSearchIndex {
         }
 
         private void ensureSearchText() {
-            LocaleController.LocaleInfo localeInfo =
-                    LocaleController.getInstance().getCurrentLocaleInfo();
-            String locale = localeInfo != null
-                    ? localeInfo.shortName : Locale.getDefault().toLanguageTag();
-            if (TextUtils.equals(indexedLocale, locale)
-                    && normalizedSearchText != null
-                    && transliteratedSearchText != null) {
-                return;
-            }
             StringBuilder text = new StringBuilder(title());
             if (summaryRes != 0) {
                 text.append(' ').append(LocaleController.getString(summaryRes));
@@ -124,11 +134,19 @@ final class NimarkoSettingsSearchIndex {
             if (pathSecondRes != 0) {
                 text.append(' ').append(LocaleController.getString(pathSecondRes));
             }
+            if (titleRes == R.string.NimarkoDisableVMAutoplay) {
+                text.append(' ').append(LocaleController.getString(R.string.NM_DisableVoiceAutoNext_SearchTerms));
+            }
             String source = text.toString();
+            if (TextUtils.equals(indexedSource, source)
+                    && normalizedSearchText != null
+                    && transliteratedSearchText != null) {
+                return;
+            }
             normalizedSearchText = normalize(source);
             transliteratedSearchText = normalize(
-                    LocaleController.getInstance().getTranslitString(source));
-            indexedLocale = locale;
+                    LocaleController.getInstance().getTranslitString(normalizedSearchText));
+            indexedSource = source;
         }
     }
 
@@ -179,6 +197,8 @@ final class NimarkoSettingsSearchIndex {
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 21, R.string.NM_InAppNotifications, R.string.NM_InAppNotificationsDesc,
                 R.drawable.msg_notifications, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
+        row(entries, guid, SCREEN_GENERAL, 22, R.string.NM_InAppNotificationsPreview, 0,
+                R.drawable.msg_notifications, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 6, R.string.NM_ResidentNotification, R.string.NotificationsService,
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSectionNotificationsStories);
         row(entries, guid, SCREEN_GENERAL, 17, R.string.NM_NotificationReactions, R.string.NM_NotificationReactions_Desc,
@@ -226,14 +246,12 @@ final class NimarkoSettingsSearchIndex {
                 16, R.string.NM_MediaGlow,
                 3, R.string.NM_SnowInHeader,
                 28, R.string.NM_SnowflakesInChat);
-        if (Build.VERSION.SDK_INT >= 31) {
             row(entries, guid, SCREEN_APPEARANCE, 31, R.string.NM_EnhancedGlassBlur,
                     R.string.NM_EnhancedGlassBlur_Desc, R.drawable.msg_theme_solar,
                     R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionInterfaceEffects);
             row(entries, guid, SCREEN_APPEARANCE, 32, R.string.NM_MotionBlur,
                     R.string.NM_MotionBlur_Desc, R.drawable.msg_theme_solar,
                     R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionInterfaceEffects);
-        }
         row(entries, guid, SCREEN_APPEARANCE, 12, R.string.NM_ForumAvatarsLikeChats,
                 R.string.NM_ForumAvatarsLikeChats_Desc, R.drawable.msg_theme_solar,
                 R.string.NM_Cat_Appearance, R.string.NM_SettingsSectionAvatarsStickers);
@@ -317,6 +335,20 @@ final class NimarkoSettingsSearchIndex {
                 R.string.NM_Cat_Camera, R.string.NM_Category_Camera);
         row(entries, guid, SCREEN_CHATS, 55, R.string.NM_CAM_MultiMicrophone, R.string.NM_CAM_MultiMicrophoneDesc,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
+        row(entries, guid, SCREEN_CHATS, 56, R.string.NimarkoDisableVMAutoplay, R.string.NM_DisableVoiceAutoNext_Desc,
+                R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
+        row(entries, guid, SCREEN_CAMERA, 1, R.string.NM_DisableCam, R.string.NM_DisableCam_Desc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Category_Camera);
+        row(entries, guid, SCREEN_CAMERA, 23, R.string.NM_CAM_ControlsSide, 0,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Category_Camera);
+        row(entries, guid, SCREEN_CAMERA, 19, R.string.RoundVideoSettings, 0,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 20, R.string.NM_CAM_SmoothModules, R.string.NM_CAM_SmoothModulesDesc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 22, R.string.NM_CAM_RoundZoomScale, R.string.NM_CAM_RoundZoomScaleDesc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
+        row(entries, guid, SCREEN_CAMERA, 24, R.string.NM_CAM_RoundVideoTapFocus, R.string.NM_CAM_RoundVideoTapFocusDesc,
+                R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
         row(entries, guid, SCREEN_CAMERA, 4, R.string.NM_CAM_RoundCamera, R.string.NM_CAM_RoundCameraDesc,
                 R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Header_Videomessages);
         row(entries, guid, SCREEN_CAMERA, 3, R.string.NM_CameraDualCamera, R.string.NM_CameraDualCamera_Desc,
@@ -394,6 +426,12 @@ final class NimarkoSettingsSearchIndex {
         row(entries, guid, SCREEN_PLUGINS, 2, R.string.PluginsEngine, 0,
                 R.drawable.msg_plugins, R.string.Plugins, 0);
 
+        rows(entries, guid, SCREEN_PLUGIN_SETTINGS, R.drawable.msg_plugins,
+                R.string.Plugins, R.string.PluginsEngine,
+                PluginsInfoActivity.PreferenceItem.COMPACT_VIEW.getId(), R.string.PluginsCompactView,
+                PluginsInfoActivity.PreferenceItem.SAFE_MODE.getId(), R.string.PluginsSafeMode,
+                PluginsInfoActivity.PreferenceItem.PLUGINS_DISABLE_ART_OPTS.getId(), R.string.PluginsDisableArt,
+                PluginsInfoActivity.PreferenceItem.DOCUMENTATION.getId(), R.string.PluginsDocumentation);
         rows(entries, guid, SCREEN_MESSAGES_PROFILES, R.drawable.msg_customize,
                 R.string.NM_ProfileReplyBackground, R.string.NM_MP_CustomizeMessage,
                 MessagesAndProfilesPreferencesActivity.SETTING_SHOW_SECONDS, R.string.NM_MP_ShowSeconds,
@@ -449,11 +487,21 @@ final class NimarkoSettingsSearchIndex {
                 R.string.NM_WSB_Title, R.string.NM_WSB_MiscHeader,
                 204, R.string.NM_WSB_VoIP_Enable,
                 205, R.string.NM_WSB_SuspendOnVpn);
+        pageRow(entries, guid, SCREEN_WHITELIST, R.string.NM_WL_Title, R.drawable.msg_satellite_solar,
+                R.string.NM_WSB_Title, R.string.NM_WL_Network);
+        row(entries, guid, SCREEN_WHITELIST, 301, R.string.NM_WL_Enable, R.string.NM_WL_About,
+                R.drawable.msg_satellite_solar, R.string.NM_WSB_Title, R.string.NM_WL_Title);
+        rows(entries, guid, SCREEN_WHITELIST, R.drawable.msg_satellite_solar,
+                R.string.NM_WSB_Title, R.string.NM_WL_Title,
+                302, R.string.NM_WL_Status,
+                304, R.string.NM_WL_Expiry,
+                305, R.string.NM_WL_Price);
         rows(entries, guid, SCREEN_INFO_CARDS, R.drawable.msg_search_solar,
                 R.string.NM_CARDS_Title, R.string.NM_CARDS_GeneralHeader,
                 100, R.string.NM_CARDS_Enable,
                 101, R.string.NM_CARDS_InfiniteScroll,
-                102, R.string.NM_CARDS_AutoScroll);
+                102, R.string.NM_CARDS_AutoScroll,
+                103, R.string.NM_CARDS_Side);
         rows(entries, guid, SCREEN_INFO_CARDS, R.drawable.msg_search_solar,
                 R.string.NM_CARDS_Title, R.string.NM_SettingsSectionContent,
                 1001, R.string.NM_CARDS_NameWeather,
@@ -499,7 +547,7 @@ final class NimarkoSettingsSearchIndex {
                 0, R.string.NM_MF_Exclusions,
                 0, R.string.NM_MF_Entities,
                 0, R.string.NM_MF_HideAll,
-                0, R.string.NM_MF_Collapse,
+                0, R.string.NM_Message_Filtering_Collapse,
                 0, R.string.NM_MF_Transparent,
                 0, R.string.NM_MF_UseRegex,
                 0, R.string.NM_MF_RegexPatterns,
@@ -531,28 +579,105 @@ final class NimarkoSettingsSearchIndex {
     }
 
     static List<Entry> search(String query) {
+        return search(query, UserConfig.selectedAccount);
+    }
+
+    static List<Entry> search(String query, int account) {
         ArrayList<Entry> result = new ArrayList<>();
         String normalizedQuery = normalize(query);
         String[] queryTokens = TextUtils.isEmpty(normalizedQuery)
                 ? new String[0] : normalizedQuery.split("\\s+");
+        String[] transliteratedTokens = new String[queryTokens.length];
+        for (int i = 0; i < queryTokens.length; i++) {
+            transliteratedTokens[i] = normalize(LocaleController.getInstance().getTranslitString(queryTokens[i]));
+        }
         for (Entry entry : ENTRIES) {
-            if (entry.screen == SCREEN_PLUGINS && !PluginsController.isPluginEngineSupported()) {
+            if (!isAvailable(entry, account)) {
                 continue;
             }
-            if (entry.screen == SCREEN_GENERAL && entry.itemId == 3
-                    && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                continue;
-            }
-            if (entry.screen == SCREEN_PRIVACY
-                    && ((entry.itemId == 6 || entry.itemId == 11) && !NimarkoConfig.askBiometricsToOpenChat
-                    || entry.itemId == 14 && !NimarkoConfig.hideArchiveFromChatsList)) {
-                continue;
-            }
-            if (entry.matches(normalizedQuery, queryTokens)) {
+            if (entry.matches(normalizedQuery, queryTokens, transliteratedTokens)) {
                 result.add(entry);
             }
         }
         return result;
+    }
+
+    static boolean isAvailable(Entry entry) {
+        return isAvailable(entry, UserConfig.selectedAccount);
+    }
+
+    static boolean isAvailable(Entry entry, int account) {
+        if (entry == null) return false;
+        int id = entry.itemId;
+        if (entry.screen == SCREEN_PLUGINS || entry.screen == SCREEN_PLUGIN_SETTINGS) {
+            return PluginsController.isPluginEngineSupported();
+        }
+        if (id == 0) return true;
+        switch (entry.screen) {
+            case SCREEN_GENERAL:
+                if (id == 3) return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
+                if (id == 6) return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                        && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM;
+                if (id == 18) return NimarkoConfig.notificationReactions;
+                if (id == 22) return NimarkoConfig.inAppNotifications;
+                break;
+            case SCREEN_APPEARANCE:
+                if (id == 31 || id == 32) return Build.VERSION.SDK_INT >= 31;
+                break;
+            case SCREEN_CHATS:
+                if (id == 37 || id == 71) return VibrateUtils.hasVibrator();
+                break;
+            case SCREEN_CAMERA:
+                boolean cameraX = CameraXUtils.isCurrentCameraCameraX();
+                boolean advanced = cameraX || NimarkoConfig.cameraType == NimarkoConfig.CAMERA_2;
+                boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
+                if (id == 1) return BuildVars.DEBUG_VERSION;
+                if (id == 2) return CameraXUtils.isCameraXSupported();
+                if (id == 3) return advanced && !upstreamRoundCamera2;
+                if (id == 4 || id == 17 || id == 18) return !upstreamRoundCamera2;
+                if (id == 5 || id == 20 || id == 24) return cameraX;
+                if (id == 6 || id == 7 || id == 8 || id >= 11 && id <= 16) return advanced;
+                if (id == 19) return upstreamRoundCamera2;
+                if (id == 22) return cameraX && !upstreamRoundCamera2;
+                if (id == 23) return !NimarkoConfig.centerCameraControlButtons;
+                break;
+            case SCREEN_PRIVACY:
+                if (id == 6 || id == 11) return NimarkoConfig.askBiometricsToOpenChat;
+                if (id == 14) return NimarkoConfig.hideArchiveFromChatsList;
+                break;
+            case SCREEN_BOTTOM_TABS:
+                if (id != 1) return NimarkoConfig.showMainTabs;
+                break;
+            case SCREEN_MEDIA:
+                if (id == 101) return NimarkoConfig.nimarkoMediaAuto;
+                if (id == 102 || id == 103) return NimarkoConfig.nimarkoMediaAuto && !NimarkoConfig.nimarkoMediaYtAsk;
+                break;
+            case SCREEN_TEXT_ANIMATION:
+                if (id != 200) return NimarkoConfig.nimarkoTextAnim;
+                break;
+            case SCREEN_BANNERS:
+                if (id == 100) return true;
+                if (!NimarkoBannerConfig.enabled) return false;
+                String status = NimarkoBannerController.getInstance().statusString();
+                if (id == 102 || id == 104) return "approved".equals(status);
+                if (id == 103) return !"approved".equals(status) && !"pending".equals(status) && !"blocked".equals(status);
+                if (id == 108) return !"approved".equals(status);
+                if (id == 107) {
+                    String path = NimarkoBannerConfig.getLocalBannerPath();
+                    return !"approved".equals(status) && path != null && new File(path).exists();
+                }
+                break;
+            case SCREEN_INFO_CARDS:
+                if (id != 100 && id != 103) return InfoCardsConfig.isEnabled();
+                break;
+            case SCREEN_ADVANCED:
+                if (id == 2) return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+                break;
+            case SCREEN_MESSAGE_MENU:
+                if (id == MessageMenuPreferencesActivity.SETTING_HAPTIC) return VibrateUtils.hasVibrator();
+                break;
+        }
+        return true;
     }
 
     static void applyDescriptions(Object owner, ArrayList<UItem> items) {
@@ -618,6 +743,8 @@ final class NimarkoSettingsSearchIndex {
         if (owner instanceof RecentEmojisStickersPreferencesActivity) return SCREEN_RECENT;
         if (owner instanceof WsBypassPreferencesActivity) return SCREEN_BYPASS;
         if (owner instanceof InfoCardsPreferencesActivity) return SCREEN_INFO_CARDS;
+        if (owner instanceof WlPreferencesActivity) return SCREEN_WHITELIST;
+        if (owner instanceof PluginsInfoActivity) return SCREEN_PLUGIN_SETTINGS;
         return 0;
     }
 
@@ -729,6 +856,8 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_MP_ProfileBackgroundColor) return R.string.NM_MP_ProfileBackgroundColor_Desc;
         if (titleRes == R.string.NM_MP_ProfileBackgroundEmoji) return R.string.NM_MP_ProfileBackgroundEmoji_Desc;
         if (titleRes == R.string.NM_NM_AutoDownload) return R.string.NM_NM_AutoDownload_Desc;
+        if (titleRes == R.string.PluginsSafeMode) return R.string.PluginsSafeModeInfo2;
+        if (titleRes == R.string.PluginsDisableArt) return R.string.PluginsDisableArtInfo;
         if (titleRes == R.string.NM_TA_Appear) return R.string.NM_TA_Appear_Desc;
         if (titleRes == R.string.NM_TA_Cursor) return R.string.NM_TA_Cursor_Desc;
         if (titleRes == R.string.NM_TA_Delete) return R.string.NM_TA_Delete_Desc;
@@ -747,6 +876,7 @@ final class NimarkoSettingsSearchIndex {
         if (titleRes == R.string.NM_CARDS_Enable) return R.string.NM_SettingsDesc_CardsEnable;
         if (titleRes == R.string.NM_CARDS_InfiniteScroll) return R.string.NM_SettingsDesc_CardsInfinite;
         if (titleRes == R.string.NM_CARDS_AutoScroll) return R.string.NM_SettingsDesc_CardsAutoScroll;
+        if (titleRes == R.string.NM_CARDS_Side) return R.string.NM_SettingsDesc_CardsSide;
         if (titleRes == R.string.NM_DBG_ShowAccounts) return R.string.NM_SettingsDesc_ShowAccounts;
         if (titleRes == R.string.NM_DBG_OldTimeStyle) return R.string.NM_SettingsDesc_OldTime;
         if (titleRes == R.string.NM_DBG_ReplacePunctuation) return R.string.NM_SettingsDesc_ReplacePunctuation;
@@ -798,8 +928,24 @@ final class NimarkoSettingsSearchIndex {
                 pathFirstRes, pathSecondRes, false));
     }
 
-    private static String normalize(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT).replace('ё', 'е').trim();
+    static String normalize(String value) {
+        if (value == null) return "";
+        String source = Normalizer.normalize(value, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT).replace('ё', 'е');
+        StringBuilder result = new StringBuilder(source.length());
+        boolean space = false;
+        for (int i = 0; i < source.length();) {
+            int codePoint = source.codePointAt(i);
+            i += Character.charCount(codePoint);
+            if (Character.getType(codePoint) == Character.FORMAT) continue;
+            if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) {
+                space = result.length() > 0;
+            } else {
+                if (space) result.append(' ');
+                result.appendCodePoint(codePoint);
+                space = false;
+            }
+        }
+        return result.toString();
     }
 
     private NimarkoSettingsSearchIndex() {

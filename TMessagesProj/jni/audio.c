@@ -11,6 +11,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <string.h>
+#include <rnnoise.h>
 #include "c_utils.h"
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
@@ -126,7 +127,7 @@ int opus_header_to_packet(const OpusHeader *h, unsigned char *packet, int len) {
     int i;
     Packet p;
     unsigned char ch;
-    
+
     p.data = packet;
     p.maxlen = len;
     p.pos = 0;
@@ -141,40 +142,40 @@ int opus_header_to_packet(const OpusHeader *h, unsigned char *packet, int len) {
     if (!write_chars(&p, &ch, 1)) {
         return 0;
     }
-    
+
     ch = h->channels;
     if (!write_chars(&p, &ch, 1)) {
         return 0;
     }
-    
+
     if (!write_uint16(&p, h->preskip)) {
         return 0;
     }
-    
+
     if (!write_uint32(&p, h->input_sample_rate)) {
         return 0;
     }
-    
+
     if (!write_uint16(&p, h->gain)) {
         return 0;
     }
-    
+
     ch = h->channel_mapping;
     if (!write_chars(&p, &ch, 1)) {
         return 0;
     }
-    
+
     if (h->channel_mapping != 0) {
         ch = h->nb_streams;
         if (!write_chars(&p, &ch, 1)) {
             return 0;
         }
-        
+
         ch = h->nb_coupled;
         if (!write_chars(&p, &ch, 1)) {
             return 0;
         }
-        
+
         /* Multi-stream support */
         for (i = 0; i < h->channels; i++) {
             if (!write_chars(&p, &h->stream_map[i], 1)) {
@@ -182,7 +183,7 @@ int opus_header_to_packet(const OpusHeader *h, unsigned char *packet, int len) {
             }
         }
     }
-    
+
     return p.pos;
 }
 
@@ -260,7 +261,6 @@ ogg_int64_t last_granulepos;
 int size_segments;
 int last_segments;
 int serialno;
-
 static pthread_mutex_t recorderMutex = PTHREAD_MUTEX_INITIALIZER;
 static int recorderReady;
 static int recorderStreamInitialized;
@@ -275,27 +275,27 @@ static void cleanupRecorderLocked() {
     } else if (recorderStreamInitialized) {
         ogg_stream_flush(&os, &og);
     }
-    
+
     if (_encoder) {
         opus_encoder_destroy(_encoder);
         _encoder = 0;
     }
-    
+
     if (recorderStreamInitialized) ogg_stream_clear(&os);
     recorderStreamInitialized = 0;
     free(inopt.comments);
     inopt.comments = 0;
-    
+
     if (_packet) {
         free(_packet);
         _packet = 0;
     }
-    
+
     if (_fileOs) {
         fclose(_fileOs);
         _fileOs = 0;
     }
-    
+
     _packetId = -1;
     bytes_written = 0;
     pages_out = 0;
@@ -336,7 +336,7 @@ static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
         LOGE("error cannot open file: %s", path);
         goto fail;
     }
-    
+
     inopt.rate = rate;
     inopt.gain = 0;
     inopt.endianness = 0;
@@ -346,62 +346,62 @@ static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
     inopt.samplesize = 16;
     inopt.channels = 1;
     inopt.skip = 0;
-    
+
     if (!comment_init(&inopt.comments, &inopt.comments_length, opus_get_version_string())) goto fail;
-    
+
     if (rate != coding_rate) {
         LOGE("Invalid rate");
         goto fail;
     }
-    
+
     header.channels = 1;
     header.channel_mapping = 0;
     header.input_sample_rate = rate;
     header.gain = inopt.gain;
     header.nb_streams = 1;
-    
+
     int result = OPUS_OK;
     _encoder = opus_encoder_create(coding_rate, 1, OPUS_APPLICATION_VOIP, &result);
     if (result != OPUS_OK || !_encoder) {
         LOGE("Error cannot create encoder: %s", opus_strerror(result));
         goto fail;
     }
-    
+
     min_bytes = max_frame_bytes = (1275 * 3 + 7) * header.nb_streams;
     _packet = malloc(max_frame_bytes);
-    
     if (!_packet) goto fail;
+
     result = opus_encoder_ctl(_encoder, OPUS_SET_BITRATE(bitrate));
     //result = opus_encoder_ctl(_encoder, OPUS_SET_COMPLEXITY(10));
     if (result != OPUS_OK) {
         LOGE("Error OPUS_SET_BITRATE returned: %s", opus_strerror(result));
         goto fail;
     }
-    
+
 #ifdef OPUS_SET_LSB_DEPTH
     result = opus_encoder_ctl(_encoder, OPUS_SET_LSB_DEPTH(MAX(8, MIN(24, inopt.samplesize))));
     if (result != OPUS_OK) {
         LOGE("Warning OPUS_SET_LSB_DEPTH returned: %s", opus_strerror(result));
     }
 #endif
-    
+
     opus_int32 lookahead;
     result = opus_encoder_ctl(_encoder, OPUS_GET_LOOKAHEAD(&lookahead));
     if (result != OPUS_OK) {
         LOGE("Error OPUS_GET_LOOKAHEAD returned: %s", opus_strerror(result));
         goto fail;
     }
-    
+
     inopt.skip += lookahead;
     header.preskip = (int)(inopt.skip * (48000.0 / coding_rate));
     inopt.extraout = (int)(header.preskip * (rate / 48000.0));
-    
+
     if (ogg_stream_init(&os, serialno = rand()) == -1) {
         LOGE("Error: stream init failed");
         goto fail;
     }
-    
     recorderStreamInitialized = 1;
+
     unsigned char header_data[100];
     int packet_size = opus_header_to_packet(&header, header_data, 100);
     op.packet = header_data;
@@ -411,12 +411,12 @@ static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
     op.granulepos = 0;
     op.packetno = 0;
     if (ogg_stream_packetin(&os, &op) != 0) goto fail;
-    
+
     while ((result = ogg_stream_flush(&os, &og))) {
         if (!result) {
             break;
         }
-        
+
         int pageBytesWritten = writeOggPage(&og, _fileOs);
         if (pageBytesWritten != og.header_len + og.body_len) {
             LOGE("Error: failed writing header to output stream");
@@ -425,7 +425,7 @@ static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
         bytes_written += pageBytesWritten;
         pages_out++;
     }
-    
+
     if (!comment_pad(&inopt.comments, &inopt.comments_length, comment_padding)) goto fail;
     op.packet = (unsigned char *)inopt.comments;
     op.bytes = inopt.comments_length;
@@ -434,26 +434,26 @@ static int initRecorderLocked(const char *path, opus_int32 sampleRate) {
     op.granulepos = 0;
     op.packetno = 1;
     if (ogg_stream_packetin(&os, &op) != 0) goto fail;
-    
+
     while ((result = ogg_stream_flush(&os, &og))) {
         if (result == 0) {
             break;
         }
-        
+
         int writtenPageBytes = writeOggPage(&og, _fileOs);
         if (writtenPageBytes != og.header_len + og.body_len) {
             LOGE("Error: failed writing header to output stream");
             goto fail;
         }
-        
+
         bytes_written += writtenPageBytes;
         pages_out++;
     }
-    
+
     free(inopt.comments);
-    
     inopt.comments = 0;
     recorderReady = 1;
+
     return 1;
 fail:
     cleanupRecorderLocked();
@@ -466,13 +466,13 @@ static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int
             || (frameByteCount != 0 && !framePcmBytes)) return 0;
     size_t cur_frame_size = frame_size;
     _packetId++;
-    
+
     opus_int32 nb_samples = frameByteCount / 2;
     total_samples += nb_samples;
     op.e_o_s = end;
-    
+
     int nbBytes = 0;
-    
+
     if (nb_samples != 0) {
         uint8_t *paddedFrameBytes = framePcmBytes;
         int freePaddedFrameBytes = 0;
@@ -484,27 +484,27 @@ static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int
             memcpy(paddedFrameBytes, framePcmBytes, frameByteCount);
             memset(paddedFrameBytes + nb_samples * 2, 0, cur_frame_size * 2 - nb_samples * 2);
         }
-        
+
         nbBytes = opus_encode(_encoder, (opus_int16 *)paddedFrameBytes, cur_frame_size, _packet, max_frame_bytes / 10);
         if (freePaddedFrameBytes) {
             free(paddedFrameBytes);
         }
-        
+
         if (nbBytes < 0) {
             LOGE("Encoding failed: %s. Aborting.", opus_strerror(nbBytes));
             return 0;
         }
-        
+
         enc_granulepos += cur_frame_size * 48000 / coding_rate;
         size_segments = (nbBytes + 255) / 255;
         min_bytes = MIN(nbBytes, min_bytes);
     }
-    
+
     while ((((size_segments <= 255) && (last_segments + size_segments > 255)) || (enc_granulepos - last_granulepos > max_ogg_delay)) && ogg_stream_flush_fill(&os, &og, 255 * 255)) {
         if (ogg_page_packets(&og) != 0) {
             last_granulepos = ogg_page_granulepos(&og);
         }
-        
+
         last_segments -= og.header[26];
         int writtenPageBytes = writeOggPage(&og, _fileOs);
         if (writtenPageBytes != og.header_len + og.body_len) {
@@ -514,7 +514,7 @@ static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int
         bytes_written += writtenPageBytes;
         pages_out++;
     }
-    
+
     op.packet = _packet;
     op.bytes = nbBytes;
     op.b_o_s = 0;
@@ -525,7 +525,7 @@ static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int
     op.packetno = 2 + _packetId;
     if (ogg_stream_packetin(&os, &op) != 0) return 0;
     last_segments += size_segments;
-    
+
     while ((op.e_o_s || (enc_granulepos + (frame_size * 48000 / coding_rate) - last_granulepos > max_ogg_delay) || (last_segments >= 255)) ? ogg_stream_flush_fill(&os, &og, 255 * 255) : ogg_stream_pageout_fill(&os, &og, 255 * 255)) {
         if (ogg_page_packets(&og) != 0) {
             last_granulepos = ogg_page_granulepos(&og);
@@ -539,7 +539,7 @@ static int writeFrameLocked(uint8_t *framePcmBytes, uint32_t frameByteCount, int
         bytes_written += writtenPageBytes;
         pages_out++;
     }
-    
+
     return 1;
 }
 
@@ -562,11 +562,12 @@ int writeFrame(uint8_t *framePcmBytes, uint32_t frameByteCount, int end) {
     pthread_mutex_unlock(&recorderMutex);
     return result;
 }
+
 JNIEXPORT jint Java_org_telegram_messenger_MediaController_startRecord(JNIEnv *env, jclass class, jstring path, jint sampleRate) {
     if (!path) return 0;
     const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
-
     if (!pathStr) return 0;
+
     int32_t result = initRecorder(pathStr, sampleRate);
 
     if (pathStr != 0) {
@@ -593,9 +594,9 @@ JNIEXPORT void Java_org_telegram_messenger_MediaController_stopRecord(JNIEnv *en
 
 JNIEXPORT jint Java_org_telegram_messenger_MediaController_isOpusFile(JNIEnv *env, jclass class, jstring path) {
     const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
-    
+
     int32_t result = 0;
-    
+
     int32_t error = OPUS_OK;
     OggOpusFile *file = op_test_file(pathStr, &error);
     if (file != NULL) {
@@ -603,11 +604,11 @@ JNIEXPORT jint Java_org_telegram_messenger_MediaController_isOpusFile(JNIEnv *en
         op_free(file);
         result = error == OPUS_OK;
     }
-    
+
     if (pathStr != 0) {
         (*env)->ReleaseStringUTFChars(env, path, pathStr);
     }
-    
+
     return result;
 }
 
@@ -685,10 +686,9 @@ JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform2(JN
         }
     }
     free(samples);
-    
+
     return result;
 }
-
 
 JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform(JNIEnv *env, jclass class, jstring path) {
     const char *pathStr = (*env)->GetStringUTFChars(env, path, 0);
@@ -696,7 +696,7 @@ JNIEXPORT jbyteArray Java_org_telegram_messenger_MediaController_getWaveform(JNI
         return NULL;
     }
     jbyteArray result = 0;
-    
+
     int error = OPUS_OK;
     OggOpusFile *opusFile = op_open_file(pathStr, &error);
     if (opusFile != NULL && error == OPUS_OK) {
@@ -1021,6 +1021,7 @@ static int isMonoOpusFile(OggOpusFile *of) {
     }
     return 1;
 }
+
 static int cropOpusAudioLocked(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
     if (!inputPath || !outputPath || !isfinite(startTimeMs) || !isfinite(endTimeMs)) return 0;
     int error;
@@ -1120,6 +1121,7 @@ static int joinOpusAudiosLocked(const char* file1, const char* file2, const char
         op_free(opusFile2);
         return 0;
     }
+
     opus_int32 rate = 48000;
 
     if (!initRecorderLocked(dest, rate)) {
@@ -1164,6 +1166,7 @@ int joinOpusAudios(const char *file1, const char *file2, const char *dest) {
     pthread_mutex_unlock(&recorderMutex);
     return result;
 }
+
 JNIEXPORT jboolean Java_org_telegram_messenger_MediaController_cropOpusFile(JNIEnv *env, jclass class, jstring src, jstring dst, jlong startMs, jlong endMs) {
     if (!src || !dst) return JNI_FALSE;
     const char* srcStr = (*env)->GetStringUTFChars(env, src, 0);
@@ -1199,4 +1202,839 @@ JNIEXPORT jboolean Java_org_telegram_messenger_MediaController_joinOpusFiles(JNI
     (*env)->ReleaseStringUTFChars(env, file2, file2Str);
     (*env)->ReleaseStringUTFChars(env, dest, destStr);
     return result == 1;
+}
+
+#include <stdint.h>
+
+typedef struct {
+    DenoiseState *state;
+    float *input;
+    float *output;
+    int frame_size;
+} AudioNoiseSuppressorContext;
+
+static void destroyAudioNoiseSuppressorContext(AudioNoiseSuppressorContext *context) {
+    if (!context) {
+        return;
+    }
+    if (context->state) {
+        rnnoise_destroy(context->state);
+    }
+    free(context->input);
+    free(context->output);
+    free(context);
+}
+
+static AudioNoiseSuppressorContext *createAudioNoiseSuppressorContext() {
+    AudioNoiseSuppressorContext *context = calloc(1, sizeof(AudioNoiseSuppressorContext));
+    if (!context) {
+        return NULL;
+    }
+    context->frame_size = rnnoise_get_frame_size();
+    if (context->frame_size <= 0) {
+        destroyAudioNoiseSuppressorContext(context);
+        return NULL;
+    }
+    context->input = malloc(sizeof(float) * context->frame_size);
+    context->output = malloc(sizeof(float) * context->frame_size);
+    context->state = rnnoise_create(NULL);
+    if (!context->input || !context->output || !context->state) {
+        destroyAudioNoiseSuppressorContext(context);
+        return NULL;
+    }
+    return context;
+}
+
+static int processAudioNoiseSuppressor(
+        AudioNoiseSuppressorContext *context,
+        int16_t *samples,
+        int sampleCount
+) {
+    if (!context || !samples || sampleCount < 0) {
+        return 0;
+    }
+    int sampleOffset = 0;
+    while (sampleOffset < sampleCount) {
+        int blockSamples = MIN(context->frame_size, sampleCount - sampleOffset);
+        for (int index = 0; index < blockSamples; index++) {
+            context->input[index] = samples[sampleOffset + index];
+        }
+        for (int index = blockSamples; index < context->frame_size; index++) {
+            context->input[index] = 0.0f;
+        }
+        rnnoise_process_frame(context->state, context->output, context->input);
+        for (int index = 0; index < blockSamples; index++) {
+            if (!isfinite(context->output[index])) {
+                return 0;
+            }
+        }
+        for (int index = 0; index < blockSamples; index++) {
+            float sample = fmaxf(-32768.0f, fminf(32767.0f, context->output[index]));
+            samples[sampleOffset + index] = (int16_t) lrintf(sample);
+        }
+        sampleOffset += blockSamples;
+    }
+    return 1;
+}
+
+typedef struct {
+    opus_int32 rate;
+    opus_int32 coding_rate;
+    ogg_int32_t packet_id;
+    OpusEncoder *encoder;
+    uint8_t *packet;
+    ogg_stream_state stream;
+    int stream_initialized;
+    FILE *file;
+    oe_enc_opt options;
+    OpusHeader header;
+    opus_int32 min_bytes;
+    int max_frame_bytes;
+    ogg_packet ogg_packet;
+    ogg_page page;
+    opus_int64 bytes_written;
+    opus_int64 pages_out;
+    opus_int64 total_samples;
+    ogg_int64_t encoded_granule_position;
+    ogg_int64_t last_granule_position;
+    int last_segments;
+    int16_t pending_frame[960];
+    int pending_samples;
+} AudioRecorderContext;
+
+static volatile int32_t recorder_serial = 1;
+
+static void destroyAudioRecorderContext(AudioRecorderContext *recorder) {
+    if (!recorder) {
+        return;
+    }
+
+    if (recorder->stream_initialized) {
+        while (ogg_stream_flush(&recorder->stream, &recorder->page)) {
+            if (recorder->file) {
+                writeOggPage(&recorder->page, recorder->file);
+            }
+        }
+        ogg_stream_clear(&recorder->stream);
+    }
+    if (recorder->encoder) {
+        opus_encoder_destroy(recorder->encoder);
+    }
+    if (recorder->packet) {
+        free(recorder->packet);
+    }
+    if (recorder->options.comments) {
+        free(recorder->options.comments);
+    }
+    if (recorder->file) {
+        fclose(recorder->file);
+    }
+    free(recorder);
+}
+
+static AudioRecorderContext *createAudioRecorderContext(const char *path, opus_int32 sampleRate) {
+    if (!path) {
+        LOGE("path is null");
+        return NULL;
+    }
+
+    AudioRecorderContext *recorder = calloc(1, sizeof(AudioRecorderContext));
+    if (!recorder) {
+        LOGE("Unable to allocate audio recorder context");
+        return NULL;
+    }
+
+    recorder->packet_id = -1;
+    recorder->coding_rate = sampleRate;
+    recorder->rate = sampleRate;
+
+    recorder->file = fopen(path, "w");
+    if (!recorder->file) {
+        LOGE("error cannot open file: %s", path);
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    recorder->options.rate = recorder->rate;
+    recorder->options.gain = 0;
+    recorder->options.endianness = 0;
+    recorder->options.copy_comments = 0;
+    recorder->options.rawmode = 0;
+    recorder->options.ignorelength = 0;
+    recorder->options.samplesize = 16;
+    recorder->options.channels = 1;
+    recorder->options.skip = 0;
+
+    comment_init(
+            &recorder->options.comments,
+            &recorder->options.comments_length,
+            opus_get_version_string()
+    );
+    if (!recorder->options.comments) {
+        LOGE("Unable to allocate Opus comments");
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    if (recorder->rate != recorder->coding_rate) {
+        LOGE("Invalid rate");
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    recorder->header.channels = 1;
+    recorder->header.channel_mapping = 0;
+    recorder->header.input_sample_rate = recorder->rate;
+    recorder->header.gain = recorder->options.gain;
+    recorder->header.nb_streams = 1;
+
+    int result = OPUS_OK;
+    recorder->encoder = opus_encoder_create(
+            recorder->coding_rate,
+            1,
+            OPUS_APPLICATION_VOIP,
+            &result
+    );
+    if (result != OPUS_OK) {
+        LOGE("Error cannot create encoder: %s", opus_strerror(result));
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    recorder->min_bytes = recorder->max_frame_bytes =
+            (1275 * 3 + 7) * recorder->header.nb_streams;
+    recorder->packet = malloc(recorder->max_frame_bytes);
+    if (!recorder->packet) {
+        LOGE("Unable to allocate Opus packet buffer");
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    result = opus_encoder_ctl(recorder->encoder, OPUS_SET_BITRATE(bitrate));
+    if (result != OPUS_OK) {
+        LOGE("Error OPUS_SET_BITRATE returned: %s", opus_strerror(result));
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+#ifdef OPUS_SET_LSB_DEPTH
+    result = opus_encoder_ctl(
+            recorder->encoder,
+            OPUS_SET_LSB_DEPTH(MAX(8, MIN(24, recorder->options.samplesize)))
+    );
+    if (result != OPUS_OK) {
+        LOGE("Warning OPUS_SET_LSB_DEPTH returned: %s", opus_strerror(result));
+    }
+#endif
+
+    opus_int32 lookahead;
+    result = opus_encoder_ctl(recorder->encoder, OPUS_GET_LOOKAHEAD(&lookahead));
+    if (result != OPUS_OK) {
+        LOGE("Error OPUS_GET_LOOKAHEAD returned: %s", opus_strerror(result));
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+
+    recorder->options.skip += lookahead;
+    recorder->header.preskip = (int) (
+            recorder->options.skip * (48000.0 / recorder->coding_rate)
+    );
+    recorder->options.extraout = (int) (
+            recorder->header.preskip * (recorder->rate / 48000.0)
+    );
+
+    int serial = __sync_fetch_and_add(&recorder_serial, 1)
+            ^ (int) time(NULL)
+            ^ (int) (uintptr_t) recorder;
+    if (ogg_stream_init(&recorder->stream, serial) == -1) {
+        LOGE("Error: stream init failed");
+        destroyAudioRecorderContext(recorder);
+        return NULL;
+    }
+    recorder->stream_initialized = 1;
+
+    unsigned char header_data[100];
+    int packet_size = opus_header_to_packet(&recorder->header, header_data, 100);
+    recorder->ogg_packet.packet = header_data;
+    recorder->ogg_packet.bytes = packet_size;
+    recorder->ogg_packet.b_o_s = 1;
+    recorder->ogg_packet.e_o_s = 0;
+    recorder->ogg_packet.granulepos = 0;
+    recorder->ogg_packet.packetno = 0;
+    ogg_stream_packetin(&recorder->stream, &recorder->ogg_packet);
+
+    while ((result = ogg_stream_flush(&recorder->stream, &recorder->page))) {
+        if (!result) {
+            break;
+        }
+
+        int pageBytesWritten = writeOggPage(&recorder->page, recorder->file);
+        if (pageBytesWritten != recorder->page.header_len + recorder->page.body_len) {
+            LOGE("Error: failed writing header to output stream");
+            destroyAudioRecorderContext(recorder);
+            return NULL;
+        }
+        recorder->bytes_written += pageBytesWritten;
+        recorder->pages_out++;
+    }
+
+    comment_pad(
+            &recorder->options.comments,
+            &recorder->options.comments_length,
+            comment_padding
+    );
+    recorder->ogg_packet.packet = (unsigned char *) recorder->options.comments;
+    recorder->ogg_packet.bytes = recorder->options.comments_length;
+    recorder->ogg_packet.b_o_s = 0;
+    recorder->ogg_packet.e_o_s = 0;
+    recorder->ogg_packet.granulepos = 0;
+    recorder->ogg_packet.packetno = 1;
+    ogg_stream_packetin(&recorder->stream, &recorder->ogg_packet);
+
+    while ((result = ogg_stream_flush(&recorder->stream, &recorder->page))) {
+        if (result == 0) {
+            break;
+        }
+
+        int writtenPageBytes = writeOggPage(&recorder->page, recorder->file);
+        if (writtenPageBytes != recorder->page.header_len + recorder->page.body_len) {
+            LOGE("Error: failed writing header to output stream");
+            destroyAudioRecorderContext(recorder);
+            return NULL;
+        }
+
+        recorder->bytes_written += writtenPageBytes;
+        recorder->pages_out++;
+    }
+
+    free(recorder->options.comments);
+    recorder->options.comments = NULL;
+
+    return recorder;
+}
+
+static int writeAudioRecorderContextFrame(
+        AudioRecorderContext *recorder,
+        uint8_t *framePcmBytes,
+        uint32_t frameByteCount,
+        int end
+) {
+    if (!recorder || !recorder->encoder || !recorder->file) {
+        return 0;
+    }
+    size_t cur_frame_size = frame_size;
+    recorder->packet_id++;
+
+    opus_int32 nb_samples = frameByteCount / 2;
+    recorder->total_samples += nb_samples;
+    recorder->ogg_packet.e_o_s = end;
+
+    int nbBytes = 0;
+    int size_segments = 0;
+
+    if (nb_samples != 0) {
+        uint8_t *paddedFrameBytes = framePcmBytes;
+        int freePaddedFrameBytes = 0;
+
+        if (nb_samples < cur_frame_size) {
+            paddedFrameBytes = malloc(cur_frame_size * 2);
+            freePaddedFrameBytes = 1;
+            memcpy(paddedFrameBytes, framePcmBytes, frameByteCount);
+            memset(paddedFrameBytes + nb_samples * 2, 0, cur_frame_size * 2 - nb_samples * 2);
+        }
+
+        nbBytes = opus_encode(
+                recorder->encoder,
+                (opus_int16 *) paddedFrameBytes,
+                cur_frame_size,
+                recorder->packet,
+                recorder->max_frame_bytes / 10
+        );
+        if (freePaddedFrameBytes) {
+            free(paddedFrameBytes);
+        }
+
+        if (nbBytes < 0) {
+            LOGE("Encoding failed: %s. Aborting.", opus_strerror(nbBytes));
+            return 0;
+        }
+
+        recorder->encoded_granule_position +=
+                cur_frame_size * 48000 / recorder->coding_rate;
+        size_segments = (nbBytes + 255) / 255;
+        recorder->min_bytes = MIN(nbBytes, recorder->min_bytes);
+    }
+
+    while ((((size_segments <= 255)
+            && (recorder->last_segments + size_segments > 255))
+            || (recorder->encoded_granule_position
+            - recorder->last_granule_position > max_ogg_delay))
+            && ogg_stream_flush_fill(
+                    &recorder->stream,
+                    &recorder->page,
+                    255 * 255
+            )) {
+        if (ogg_page_packets(&recorder->page) != 0) {
+            recorder->last_granule_position = ogg_page_granulepos(&recorder->page);
+        }
+
+        recorder->last_segments -= recorder->page.header[26];
+        int writtenPageBytes = writeOggPage(&recorder->page, recorder->file);
+        if (writtenPageBytes != recorder->page.header_len + recorder->page.body_len) {
+            LOGE("Error: failed writing data to output stream");
+            return 0;
+        }
+        recorder->bytes_written += writtenPageBytes;
+        recorder->pages_out++;
+    }
+
+    recorder->ogg_packet.packet = recorder->packet;
+    recorder->ogg_packet.bytes = nbBytes;
+    recorder->ogg_packet.b_o_s = 0;
+    recorder->ogg_packet.granulepos = recorder->encoded_granule_position;
+    if (recorder->ogg_packet.e_o_s) {
+        recorder->ogg_packet.granulepos = (
+                (recorder->total_samples * 48000 + recorder->rate - 1)
+                / recorder->rate
+        ) + recorder->header.preskip;
+    }
+    recorder->ogg_packet.packetno = 2 + recorder->packet_id;
+    ogg_stream_packetin(&recorder->stream, &recorder->ogg_packet);
+    recorder->last_segments += size_segments;
+
+    while ((recorder->ogg_packet.e_o_s
+            || (recorder->encoded_granule_position
+            + (frame_size * 48000 / recorder->coding_rate)
+            - recorder->last_granule_position > max_ogg_delay)
+            || (recorder->last_segments >= 255))
+            ? ogg_stream_flush_fill(&recorder->stream, &recorder->page, 255 * 255)
+            : ogg_stream_pageout_fill(&recorder->stream, &recorder->page, 255 * 255)) {
+        if (ogg_page_packets(&recorder->page) != 0) {
+            recorder->last_granule_position = ogg_page_granulepos(&recorder->page);
+        }
+        recorder->last_segments -= recorder->page.header[26];
+        int writtenPageBytes = writeOggPage(&recorder->page, recorder->file);
+        if (writtenPageBytes != recorder->page.header_len + recorder->page.body_len) {
+            LOGE("Error: failed writing data to output stream");
+            return 0;
+        }
+        recorder->bytes_written += writtenPageBytes;
+        recorder->pages_out++;
+    }
+
+    return 1;
+}
+
+static jlong flushAudioRecorderContext(AudioRecorderContext *recorder) {
+    if (!recorder || !recorder->file || fflush(recorder->file) != 0) {
+        return -1;
+    }
+    long position = ftell(recorder->file);
+    return position < 0 ? -1 : (jlong) position;
+}
+
+static int cropAudioRecorderOpusAudio(const char *inputPath, const char *outputPath, float startTimeMs, float endTimeMs) {
+    if (!inputPath || !outputPath || strcmp(inputPath, outputPath) == 0
+            || !isfinite(startTimeMs) || !isfinite(endTimeMs)
+            || startTimeMs < 0 || endTimeMs <= startTimeMs) return 0;
+    int error;
+    OggOpusFile *opusFile = op_open_file(inputPath, &error);
+    if (!opusFile || error != OPUS_OK) {
+        LOGE("Failed to open input opus file: %s", opus_strerror(error));
+        return 0;
+    }
+
+    const OpusHead *head = op_head(opusFile, -1);
+    if (!isMonoOpusFile(opusFile)) {
+        op_free(opusFile);
+        return 0;
+    }
+    if (!head) {
+        LOGE("Failed to read Opus header");
+        op_free(opusFile);
+        return 0;
+    }
+
+    int channels = head->channel_count;
+    opus_int64 total_source_samples = op_pcm_total(opusFile, -1);
+    if (total_source_samples < 0) {
+        LOGE("Failed to get source sample count: %lld", (long long) total_source_samples);
+        op_free(opusFile);
+        return 0;
+    }
+
+    opus_int32 rate = 48000;
+
+    opus_int64 start_sample = MAX(0, MIN(total_source_samples, (opus_int64) ((startTimeMs / 1000.0) * rate)));
+    opus_int64 end_sample = MAX(0, MIN(total_source_samples, (opus_int64) ((endTimeMs / 1000.0) * rate)));
+    opus_int64 crop_length = end_sample - start_sample;
+
+    if (start_sample >= total_source_samples || end_sample > total_source_samples || start_sample >= end_sample) {
+        LOGE("Invalid crop range");
+        op_free(opusFile);
+        return 0;
+    }
+
+    if (op_pcm_seek(opusFile, start_sample) != 0) {
+        LOGE("Failed to seek to start sample");
+        op_free(opusFile);
+        return 0;
+    }
+
+    AudioRecorderContext *recorder = createAudioRecorderContext(outputPath, rate);
+    if (!recorder) {
+        LOGE("Failed to init recorder");
+        op_free(opusFile);
+        return 0;
+    }
+
+    int16_t *buffer = malloc(sizeof(int16_t) * frame_size * channels);
+    if (!buffer) {
+        LOGE("Out of memory");
+        destroyAudioRecorderContext(recorder);
+        op_free(opusFile);
+        return 0;
+    }
+
+    int success = 1;
+    opus_int64 remaining_samples = crop_length;
+    while (remaining_samples > 0) {
+        int max_samples = (int) MIN(960, remaining_samples / channels);
+        if (max_samples <= 0) {
+            break;
+        }
+        int samples_read = op_read(opusFile, buffer, max_samples * channels, NULL);
+        if (samples_read < 0) {
+            LOGE("Decoding error from op_read(): %d", samples_read);
+            success = 0;
+            break;
+        }
+        if (samples_read == 0) {
+            break;
+        }
+        remaining_samples -= samples_read;
+
+        int end = remaining_samples <= 0;
+
+        size_t byte_count = samples_read * sizeof(int16_t);
+        if (!writeAudioRecorderContextFrame(recorder, (uint8_t *)buffer, byte_count, end)) {
+            LOGE("Failed to write frame");
+            success = 0;
+            break;
+        }
+    }
+
+    free(buffer);
+    destroyAudioRecorderContext(recorder);
+    op_free(opusFile);
+
+    return success;
+}
+
+static int appendRecorderPrefix(
+        AudioRecorderContext *recorder,
+        const char *prefixPath
+) {
+    if (!recorder || !prefixPath) {
+        return 0;
+    }
+
+    int error = OPUS_OK;
+    OggOpusFile *prefixFile = op_open_file(prefixPath, &error);
+    if (!prefixFile || error != OPUS_OK) {
+        LOGE("Failed to open Opus prefix: %s", opus_strerror(error));
+        if (prefixFile) {
+            op_free(prefixFile);
+        }
+        return 0;
+    }
+
+    const OpusHead *head = op_head(prefixFile, -1);
+    if (!head || head->channel_count != 1) {
+        LOGE("Unsupported Opus prefix channel count");
+        op_free(prefixFile);
+        return 0;
+    }
+
+    int16_t *buffer = malloc(sizeof(int16_t) * frame_size);
+    if (!buffer) {
+        LOGE("Out of memory while rebuilding Opus prefix");
+        op_free(prefixFile);
+        return 0;
+    }
+
+    int success = 1;
+    int bufferedSamples = 0;
+    while (1) {
+        int samplesRead = op_read(
+                prefixFile,
+                buffer + bufferedSamples,
+                frame_size - bufferedSamples,
+                NULL
+        );
+        if (samplesRead < 0) {
+            LOGE("Failed to decode Opus prefix: %d", samplesRead);
+            success = 0;
+            break;
+        }
+        if (samplesRead == 0) {
+            break;
+        }
+        bufferedSamples += samplesRead;
+        if (bufferedSamples == frame_size) {
+            if (!writeAudioRecorderContextFrame(
+                    recorder,
+                    (uint8_t *) buffer,
+                    frame_size * sizeof(int16_t),
+                    0
+            )) {
+                success = 0;
+                break;
+            }
+            bufferedSamples = 0;
+        }
+    }
+
+    if (success && bufferedSamples > 0) {
+        memcpy(
+                recorder->pending_frame,
+                buffer,
+                bufferedSamples * sizeof(int16_t)
+        );
+        recorder->pending_samples = bufferedSamples;
+    }
+    free(buffer);
+    op_free(prefixFile);
+    return success;
+}
+
+static int writeAudioRecorderFrame(
+        AudioRecorderContext *recorder,
+        uint8_t *pcmBytes,
+        uint32_t byteCount,
+        int end
+) {
+    if (!recorder || (byteCount > 0 && !pcmBytes)) {
+        return 0;
+    }
+
+    int16_t *samples = (int16_t *) pcmBytes;
+    int sampleCount = (int) byteCount / 2;
+    int sampleOffset = 0;
+
+    while (sampleOffset < sampleCount) {
+        if (recorder->pending_samples == 0
+                && sampleCount - sampleOffset >= frame_size) {
+            int frameEnd = end && sampleOffset + frame_size == sampleCount;
+            if (!writeAudioRecorderContextFrame(
+                    recorder,
+                    (uint8_t *) (samples + sampleOffset),
+                    frame_size * sizeof(int16_t),
+                    frameEnd
+            )) {
+                return 0;
+            }
+            sampleOffset += frame_size;
+            continue;
+        }
+
+        int copySamples = MIN(
+                frame_size - recorder->pending_samples,
+                sampleCount - sampleOffset
+        );
+        memcpy(
+                recorder->pending_frame + recorder->pending_samples,
+                samples + sampleOffset,
+                copySamples * sizeof(int16_t)
+        );
+        recorder->pending_samples += copySamples;
+        sampleOffset += copySamples;
+
+        if (recorder->pending_samples == frame_size) {
+            int frameEnd = end && sampleOffset == sampleCount;
+            if (!writeAudioRecorderContextFrame(
+                    recorder,
+                    (uint8_t *) recorder->pending_frame,
+                    frame_size * sizeof(int16_t),
+                    frameEnd
+            )) {
+                return 0;
+            }
+            recorder->pending_samples = 0;
+        }
+    }
+
+    if (end && recorder->pending_samples > 0) {
+        int result = writeAudioRecorderContextFrame(
+                recorder,
+                (uint8_t *) recorder->pending_frame,
+                recorder->pending_samples * sizeof(int16_t),
+                1
+        );
+        recorder->pending_samples = 0;
+        return result;
+    }
+    return 1;
+}
+
+JNIEXPORT jlong Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nCreate(
+        JNIEnv *env,
+        jclass clazz,
+        jstring path,
+        jint sampleRate,
+        jstring prefixPath
+) {
+    if (!path) return 0;
+    const char *pathString = (*env)->GetStringUTFChars(env, path, 0);
+    if (!pathString) {
+        return 0;
+    }
+
+    AudioRecorderContext *recorder = createAudioRecorderContext(pathString, sampleRate);
+    (*env)->ReleaseStringUTFChars(env, path, pathString);
+    if (!recorder) {
+        return 0;
+    }
+
+    if (prefixPath) {
+        const char *prefixPathString = (*env)->GetStringUTFChars(env, prefixPath, 0);
+        if (!prefixPathString) {
+            destroyAudioRecorderContext(recorder);
+            return 0;
+        }
+        int prefixResult = appendRecorderPrefix(recorder, prefixPathString);
+        (*env)->ReleaseStringUTFChars(env, prefixPath, prefixPathString);
+        if (!prefixResult) {
+            destroyAudioRecorderContext(recorder);
+            return 0;
+        }
+    }
+
+    return (jlong) (intptr_t) recorder;
+}
+
+JNIEXPORT jint Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nWriteFrame(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle,
+        jobject frame,
+        jint length
+) {
+    AudioRecorderContext *recorder = (AudioRecorderContext *) (intptr_t) handle;
+    jbyte *frameBytes = (*env)->GetDirectBufferAddress(env, frame);
+    jlong capacity = (*env)->GetDirectBufferCapacity(env, frame);
+    if (!recorder || !frameBytes || length < 0 || capacity < length) {
+        return 0;
+    }
+    return writeAudioRecorderFrame(
+            recorder,
+            (uint8_t *) frameBytes,
+            (uint32_t) length,
+            length / 2 < frame_size
+    );
+}
+
+JNIEXPORT jlong Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nFlush(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle
+) {
+    AudioRecorderContext *recorder = (AudioRecorderContext *) (intptr_t) handle;
+    return flushAudioRecorderContext(recorder);
+}
+
+JNIEXPORT jboolean Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nFinish(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle
+) {
+    AudioRecorderContext *recorder = (AudioRecorderContext *) (intptr_t) handle;
+    if (!recorder) {
+        return JNI_FALSE;
+    }
+
+    int result = 1;
+    if (recorder->pending_samples > 0) {
+        result = writeAudioRecorderFrame(recorder, NULL, 0, 1);
+    }
+    if (result && flushAudioRecorderContext(recorder) < 0) {
+        result = 0;
+    }
+    destroyAudioRecorderContext(recorder);
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nDestroy(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle
+) {
+    destroyAudioRecorderContext((AudioRecorderContext *) (intptr_t) handle);
+}
+
+JNIEXPORT jboolean Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nCropOpusFile(
+        JNIEnv *env,
+        jclass clazz,
+        jstring source,
+        jstring destination,
+        jlong startMs,
+        jlong endMs
+) {
+    if (!source || !destination) return JNI_FALSE;
+    const char *sourceString = (*env)->GetStringUTFChars(env, source, 0);
+    if (!sourceString) return JNI_FALSE;
+    const char *destinationString = (*env)->GetStringUTFChars(env, destination, 0);
+    if (!destinationString) {
+        (*env)->ReleaseStringUTFChars(env, source, sourceString);
+        return JNI_FALSE;
+    }
+    int result = cropAudioRecorderOpusAudio(sourceString, destinationString, startMs, endMs);
+    (*env)->ReleaseStringUTFChars(env, source, sourceString);
+    (*env)->ReleaseStringUTFChars(env, destination, destinationString);
+    return result == 1;
+}
+
+JNIEXPORT jbyteArray Java_org_telegram_utils_recorder_audio_AudioRecorderNative_nGetWaveform(
+        JNIEnv *env,
+        jclass clazz,
+        jstring path
+) {
+    return Java_org_telegram_messenger_MediaController_getWaveform(env, clazz, path);
+}
+
+JNIEXPORT jlong Java_org_telegram_utils_recorder_audio_AudioNoiseSuppressor_nCreate(
+        JNIEnv *env,
+        jclass clazz
+) {
+    return (jlong) (intptr_t) createAudioNoiseSuppressorContext();
+}
+
+JNIEXPORT jboolean Java_org_telegram_utils_recorder_audio_AudioNoiseSuppressor_nProcess(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle,
+        jobject pcm,
+        jint sampleCount
+) {
+    AudioNoiseSuppressorContext *context =
+            (AudioNoiseSuppressorContext *) (intptr_t) handle;
+    int16_t *samples = (*env)->GetDirectBufferAddress(env, pcm);
+    jlong capacity = (*env)->GetDirectBufferCapacity(env, pcm);
+    if (!context || !samples || sampleCount < 0
+            || capacity < (jlong) sampleCount * sizeof(int16_t)) {
+        return JNI_FALSE;
+    }
+    return processAudioNoiseSuppressor(context, samples, sampleCount)
+            ? JNI_TRUE
+            : JNI_FALSE;
+}
+
+JNIEXPORT void Java_org_telegram_utils_recorder_audio_AudioNoiseSuppressor_nDestroy(
+        JNIEnv *env,
+        jclass clazz,
+        jlong handle
+) {
+    destroyAudioNoiseSuppressorContext(
+            (AudioNoiseSuppressorContext *) (intptr_t) handle
+    );
 }

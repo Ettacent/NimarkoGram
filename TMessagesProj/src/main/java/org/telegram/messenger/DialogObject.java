@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -488,7 +490,7 @@ public class DialogObject {
         return null;
     }
 
-    public static TL_bots.botVerification getBotVerification(TLObject object) {
+    public static TL_bots.BotVerification getBotVerification(TLObject object) {
         if (object instanceof TLRPC.UserFull) {
             return ((TLRPC.UserFull) object).bot_verification;
         } else if (object instanceof TLRPC.ChatFull) {

@@ -23,7 +23,6 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
@@ -90,6 +89,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     };
     private boolean opaqueCards;
     private boolean inlineFolderStyle;
+    private boolean cardsOnLeft;
     private final Path resumeFadeShape = new Path();
     private final Matrix resumeFadeTransform = new Matrix();
     private BlurredBackgroundDrawableViewFactory glassBackgroundFactory;
@@ -110,6 +110,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         super(context);
         this.resourcesProvider = resourcesProvider;
         this.touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        cardsOnLeft = InfoCardsConfig.isOnLeft();
         setClipChildren(false);
         setClipToPadding(false);
     }
@@ -128,6 +129,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     }
 
     public void rebuildIfChanged() {
+        updateCardSide();
         if (!InfoCardsConfig.isEnabled()) {
             setPendingActiveCard(-1);
             if (!pills.isEmpty()) {
@@ -158,7 +160,33 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         rebuild();
     }
 
+    private void updateCardSide() {
+        final boolean onLeft = InfoCardsConfig.isOnLeft();
+        if (cardsOnLeft == onLeft) return;
+        cardsOnLeft = onLeft;
+        if (touchActive) {
+            MotionEvent cancel = AndroidUtilities.emptyMotionEvent();
+            try {
+                onTouchEvent(cancel);
+            } finally {
+                cancel.recycle();
+            }
+        }
+        final int gravity = Gravity.CENTER_VERTICAL | (onLeft ? Gravity.LEFT : Gravity.RIGHT);
+        for (BaseInfoCard pill : pills) {
+            pill.updateLayoutDirection();
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) pill.getLayoutParams();
+            if (lp != null && lp.gravity != gravity) {
+                lp.gravity = gravity;
+                pill.setLayoutParams(lp);
+            }
+            pill.setPivotX(onLeft ? 0f : pill.getWidth());
+        }
+        requestLayout();
+        invalidate();
+    }
     public void rebuild() {
+        updateCardSide();
         for (BaseInfoCard pill : pills) {
             if (pill.isWarmResumePending()) pill.finishResizeAnimation();
         }
@@ -223,7 +251,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 });
                 nextPills.add(pill);
                 if (pill.getParent() == null) {
-                    int g = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+                    int g = Gravity.CENTER_VERTICAL | (InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT);
                     addView(pill, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,
                             LayoutHelper.WRAP_CONTENT, g));
                 }
@@ -429,6 +457,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
         if (pills.isEmpty()) return false;
+        if (ev.getActionMasked() != MotionEvent.ACTION_DOWN && !touchActive) return false;
         switch (ev.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 return true;
@@ -614,7 +643,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
                 int mw = in.getMeasuredWidth(), mh = in.getMeasuredHeight();
                 mw = Math.min(mw, cap);
                 int top = Math.max(0, (sh - mh) / 2);
-                if (LocaleController.isRTL) {
+                if (InfoCardsConfig.isOnLeft()) {
                     in.layout(0, top, mw, top + mh);
                 } else {
                     in.layout(sw - mw, top, sw, top + mh); // right-anchored, may overhang left (clipChildren=false)
@@ -631,6 +660,9 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
+        for (BaseInfoCard pill : pills) {
+            pill.setPivotX(InfoCardsConfig.isOnLeft() ? 0f : pill.getWidth());
+        }
         if (incomingIndex >= 0 || dragProgress > 0f) {
             applyCarouselTransforms(incomingIndex, dragProgress, dragUp, dragHeight());
         }
@@ -672,7 +704,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
         in.setAlpha(p);
     }
     private void setCarouselTransform(BaseInfoCard card, float scale, float centerY) {
-        card.setPivotX(LocaleController.isRTL ? 0f : card.getWidth());
+        card.setPivotX(InfoCardsConfig.isOnLeft() ? 0f : card.getWidth());
         card.setPivotY(card.getHeight() / 2f);
         card.setScaleX(scale);
         card.setScaleY(scale);
@@ -928,6 +960,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
     @Override
     protected void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        updateCardSide();
         for (BaseInfoCard pill : pills) {
             if (pill.isWarmResumePending()) pill.finishResizeAnimation();
         }
@@ -935,13 +968,6 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
 
         for (BaseInfoCard pill : pills) {
             pill.updateLayoutDirection();
-            FrameLayout.LayoutParams lp =
-                    (FrameLayout.LayoutParams) pill.getLayoutParams();
-            int gravity = Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
-            if (lp != null && lp.gravity != gravity) {
-                lp.gravity = gravity;
-                pill.setLayoutParams(lp);
-            }
             InfoCardRegistry.CardInfo info = InfoCardRegistry.get(pill.getCardId());
             if (info != null) pill.setCardAccessibilityLabel(info.getName());
             try { pill.onUpdateData(false); } catch (Throwable ignored) {}

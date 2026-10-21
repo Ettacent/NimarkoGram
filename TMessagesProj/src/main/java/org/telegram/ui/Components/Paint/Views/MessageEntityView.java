@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Paint.Views;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1206,7 +1208,7 @@ public class MessageEntityView extends EntityView {
             } else if (child instanceof ChatActionCell) {
                 ChatActionCell cell = (ChatActionCell) child;
                 float cleft, ctop, cright, cbottom;
-                if (cell.starGiftLayout.has()) {
+                if (cell.hasStarGiftLayout()) {
                     cleft = container.getX() + cell.getX() + cell.getBoundsLeft();
                     cright = container.getX() + cell.getX() + cell.getBoundsRight();
                     ctop = container.getY() + cell.getY();

@@ -725,6 +725,8 @@
     <string name="NM_StickerSizePreviewReply">飞向月球 🚀</string>
     <string name="NM_StickerSizePreviewText">哈哈哈 😂</string>
     <string name="NM_ForceBlur">界面模糊</string>
+    <string name="NM_MotionBlur">动态模糊</string>
+    <string name="NM_MotionBlur_Desc">为应用界面添加动态模糊，可能会增加 GPU 负载。</string>
     <string name="NM_HideActionBarStatus">隐藏标题栏状态</string>
     <string name="NM_DisableSendHints">禁用发送提示</string>
     <string name="NM_DisableSendHints_Desc">隐藏定时发送和静音发送提示。</string>
@@ -1280,6 +1282,16 @@
     <string name="NM_CAM_MultiMicrophone">多麦克风录音</string>
     <string name="NM_CAM_MultiMicrophoneDesc">为语音消息和 CameraX 视频消息提供广域拾音，效果取决于设备。</string>
     <string name="NM_CAM_RoundAudioInfo">适用于新视频消息。麦克风支持取决于设备，必要时使用单声道。</string>
-    <string name="NM_MotionBlur">动态模糊</string>
-    <string name="NM_MotionBlur_Desc">为应用界面添加动态模糊，可能会增加 GPU 负载。</string>
+    <string name="BotTypeAgent">智能体</string>
+    <string name="BotTypeGame">游戏</string>
+    <string name="BotTypeApp">应用</string>
+    <string name="BotTypeAI">人工智能</string>
+    <string name="BotTypeNonBinary">非二元</string>
+    <string name="AudioRecorderSettings">语音消息</string>
+    <string name="AudioRecorderGeneral">录音</string>
+    <string name="AudioRecorderUseNewRecorder">使用新版录音器</string>
+    <string name="AudioRecorderNoiseSuppression">降噪</string>
+    <string name="AudioRecorderNoiseSuppressionOff">关闭</string>
+    <string name="AudioRecorderNoiseSuppressionRNNoise">RNNoise</string>
+    <string name="AudioRecorderGeneralInfo">RNNoise 可消除背景噪声，但可能影响音乐或音量很小的语音。</string>
 </resources>

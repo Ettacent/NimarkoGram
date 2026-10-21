@@ -12,13 +12,12 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
-import org.telegram.messenger.AndroidUtilities;
 
 import java.util.ArrayList;
 
 public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragment {
 
-    private int initialSearchItemId;
+    private Integer initialSearchItemId;
     private SettingsSearchHighlight searchHighlight;
     private int listWorkGeneration;
     private Runnable initialSearchScroll;
@@ -46,15 +45,19 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
         listView.setTranslateSelector(true);
         ViewCompat.setOnApplyWindowInsetsListener(view, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(view);
-        if (initialSearchItemId != 0 && listView != null) {
+        if (initialSearchItemId != null && listView != null) {
             initialSearchScroll.run();
         }
         return view;
     }
 
     public NimarkoUniversalPreferencesActivity openAtSetting(int itemId) {
+        prepareSettingsSearch(itemId);
         initialSearchItemId = itemId;
         return this;
+    }
+
+    protected void prepareSettingsSearch(int itemId) {
     }
 
     @Override
@@ -91,18 +94,11 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
     }
 
     private void scrollToItem(int itemId) {
+        if (searchHighlight != null) searchHighlight.run();
+        searchHighlight = null;
         if (listView == null || listView.adapter == null || listView.layoutManager == null) {
             return;
         }
-        int position = listView.findPositionByItemId(itemId);
-        if (position < 0 || position >= listView.adapter.getItemCount()) {
-            return;
-        }
-        highlightAfterNextLayout(itemId);
-        listView.layoutManager.scrollToPositionWithOffset(position, AndroidUtilities.dp(80));
-    }
-    private void highlightAfterNextLayout(int itemId) {
-        if (searchHighlight != null) searchHighlight.run();
         searchHighlight = new SettingsSearchHighlight(listView, itemId);
     }
     protected void updateItemsAfterToggle() {
@@ -111,7 +107,7 @@ public abstract class NimarkoUniversalPreferencesActivity extends UniversalFragm
     private void prepareListCallbacks() {
         final int generation = listWorkGeneration;
         initialSearchScroll = () -> {
-            if (generation == listWorkGeneration) scrollToItem(initialSearchItemId);
+            if (generation == listWorkGeneration && initialSearchItemId != null) scrollToItem(initialSearchItemId);
         };
     }
     private void cancelPendingListWork() {

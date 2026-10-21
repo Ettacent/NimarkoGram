@@ -230,17 +230,18 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         int top = 0;
         View bar = fragment.getActionBar();
         if (bar != null && bar.isShown()) {
+            if (bar.getParent() != null && bar.getParent() == root.getParent()) {
+                top = Math.max(0, Math.round(bar.getY() + bar.getHeight() - root.getY()));
+            } else {
             bar.getLocationOnScreen(location);
             int bottom = location[1] + bar.getHeight();
             root.getLocationOnScreen(location);
             top = Math.max(0, bottom - location[1]);
         }
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) getLayoutParams();
-        anchorTop = top;
-        if (params.topMargin != top) {
-            params.topMargin = top;
-            setLayoutParams(params);
         }
+        anchorTop = top;
+        float translation = top - getTop();
+        if (getTranslationY() != translation) setTranslationY(translation);
         updateReservedHeight();
         return true;
     }

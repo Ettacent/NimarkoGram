@@ -1,16 +1,16 @@
 diff --git a/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java b/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
-index c728d0945e1335ff1c3a89c02d46327dc4154302..e7a2a82b9101382958807de3469a14c1d75cbd54 100644
 --- a/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
 +++ b/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
  /*
   * Copyright (C) 2016 The Android Open Source Project
-+ * Modifications Copyright (C) 2026 Ettacent
   *
-@@ -255,39 +255,47 @@ public abstract class SimpleDecoder<
+@@ -257,19 +259,21 @@
        flushed = false;
      }
- 
+
 -    if (inputBuffer.isEndOfStream()) {
 -      outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
 -    } else {
@@ -23,79 +23,55 @@ index c728d0945e1335ff1c3a89c02d46327dc4154302..e7a2a82b9101382958807de3469a14c1
 -      if (!isAtLeastOutputStartTimeUs(inputBuffer.timeUs)) {
 +      if (!usesOutputTimestamps() && !isAtLeastOutputStartTimeUs(inputBuffer.timeUs)) {
          outputBuffer.shouldBeSkipped = true;
++      }
        }
--      @Nullable E exception;
--      try {
+       @Nullable E exception;
+       try {
 -        exception = decode(inputBuffer, outputBuffer, resetDecoder);
--      } catch (RuntimeException e) {
--        // This can occur if a sample is malformed in a way that the decoder is not robust against.
--        // We don't want the process to die in this case, but we do want to propagate the error.
--        exception = createUnexpectedDecodeException(e);
--      } catch (OutOfMemoryError e) {
--        // This can occur if a sample is malformed in a way that causes the decoder to think it
--        // needs to allocate a large amount of memory. We don't want the process to die in this
--        // case, but we do want to propagate the error.
--        exception = createUnexpectedDecodeException(e);
--      }
--      if (exception != null) {
--        synchronized (lock) {
--          this.exception = exception;
--        }
--        return false;
-+    }
-+    @Nullable E exception;
-+    try {
 +      exception = endOfStream
 +          ? drain(outputBuffer, resetDecoder)
 +          : decode(inputBuffer, outputBuffer, resetDecoder);
-+    } catch (RuntimeException e) {
-+      // This can occur if a sample is malformed in a way that the decoder is not robust against.
-+      // We don't want the process to die in this case, but we do want to propagate the error.
-+      exception = createUnexpectedDecodeException(e);
-+    } catch (OutOfMemoryError e) {
-+      // This can occur if a sample is malformed in a way that causes the decoder to think it
-+      // needs to allocate a large amount of memory. We don't want the process to die in this
-+      // case, but we do want to propagate the error.
-+      exception = createUnexpectedDecodeException(e);
-+    }
-+    if (exception != null) {
-+      synchronized (lock) {
-+        this.exception = exception;
+       } catch (RuntimeException e) {
+         // This can occur if a sample is malformed in a way that the decoder is not robust against.
+         // We don't want the process to die in this case, but we do want to propagate the error.
+@@ -286,10 +290,15 @@
+         }
+         return false;
        }
-+      return false;
-+    }
-+
+-    }
+-
+-    synchronized (lock) {
+-      if (flushed) {
 +    boolean endOfStreamComplete = endOfStream && outputBuffer.isEndOfStream();
 +    boolean retryInput = endOfStream ? !endOfStreamComplete : shouldRetryInputBuffer();
 +    if (usesOutputTimestamps() && !outputBuffer.isEndOfStream()
 +        && !isAtLeastOutputStartTimeUs(outputBuffer.timeUs)) {
 +      outputBuffer.shouldBeSkipped = true;
-     }
- 
-     synchronized (lock) {
--      if (flushed) {
++    }
++
++    synchronized (lock) {
 +      if (flushed || !hasOutputBuffer()) {
          outputBuffer.release();
        } else if (outputBuffer.shouldBeSkipped) {
          skippedOutputBufferCount++;
-@@ -297,8 +305,11 @@ public abstract class SimpleDecoder<
-         skippedOutputBufferCount = 0;
+@@ -300,7 +309,11 @@
          queuedOutputBuffers.addLast(outputBuffer);
        }
--      // Make the input buffer available again.
--      releaseInputBufferInternal(inputBuffer);
+       // Make the input buffer available again.
 +      if (retryInput && !flushed && !released) {
 +        queuedInputBuffers.addFirst(inputBuffer);
 +      } else {
-+        releaseInputBufferInternal(inputBuffer);
+       releaseInputBufferInternal(inputBuffer);
 +      }
      }
- 
+
      return true;
-@@ -308,6 +319,24 @@ public abstract class SimpleDecoder<
+@@ -308,6 +321,24 @@
+
+   private boolean canDecodeBuffer() {
      return !queuedInputBuffers.isEmpty() && availableOutputBufferCount > 0;
-   }
- 
++  }
++
 +  protected boolean usesOutputTimestamps() {
 +    return false;
 +  }
@@ -112,47 +88,39 @@ index c728d0945e1335ff1c3a89c02d46327dc4154302..e7a2a82b9101382958807de3469a14c1
 +  protected E drain(O outputBuffer, boolean reset) {
 +    outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
 +    return null;
-+  }
-+
+   }
+
    private void releaseInputBufferInternal(I inputBuffer) {
-     inputBuffer.clear();
-     availableInputBuffers[availableInputBufferCount++] = inputBuffer;
 diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java b/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java
-index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62facbb8e1f6 100644
 --- a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java
 +++ b/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java
-@@ -1,3 +1,4 @@
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
  /*
   * Copyright (C) 2019 The Android Open Source Project
-+ * Modifications Copyright (C) 2026 Ettacent
   *
-@@ -31,7 +31,6 @@ import androidx.media3.decoder.SimpleDecoder;
+@@ -31,7 +33,6 @@
  import androidx.media3.decoder.VideoDecoderOutputBuffer;
- 
+
  import java.nio.ByteBuffer;
 -import java.util.ArrayDeque;
  import java.util.List;
- 
+
  /**
-@@ -46,6 +45,7 @@ import java.util.List;
- 
+@@ -46,6 +47,8 @@
+
    // LINT.IfChange
    private static final int VIDEO_DECODER_SUCCESS = 0;
 +  private static final int VIDEO_DECODER_END_OF_STREAM = -5;
++  private static final int VIDEO_DECODER_NEED_INPUT = -6;
    private static final int VIDEO_DECODER_ERROR_INVALID_DATA = -1;
    private static final int VIDEO_DECODER_ERROR_OTHER = -2;
    private static final int VIDEO_DECODER_ERROR_READ_FRAME = -3;
-@@ -61,25 +61,11 @@ import java.util.List;
- 
-   private int degree = 0;
- 
--  /**
--   * Input samples that could not be sent yet because FFmpeg's internal queue was full
--   * (avcodec_send_packet returned EAGAIN, which does NOT consume the packet). A queue is
--   * used because the queue can stay full for several consecutive inputs (e.g. while
--   * FFmpeg's frame threads are still decoding earlier packets); overwriting a single
--   * pending slot would drop the earlier sample and corrupt the reference chain.
--   */
+@@ -68,18 +71,13 @@
+    * FFmpeg's frame threads are still decoding earlier packets); overwriting a single
+    * pending slot would drop the earlier sample and corrupt the reference chain.
+    */
 -  private final ArrayDeque<PendingInput> pendingInputs = new ArrayDeque<>();
 -
 -  /** A copy of an input sample that is waiting to be sent to FFmpeg. */
@@ -168,16 +136,17 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 +  private boolean retryInput;
 +  private boolean drainSent;
 +  private boolean outputBufferAvailable;
++  private static final int MAX_CONSECUTIVE_INVALID_DATA = 32;
++  private int consecutiveInvalidData;
 +  private long lastInputTimeUs;
 +  @Nullable private Format outputFormat;
- 
+
    /**
     * Creates a Ffmpeg video Decoder.
-@@ -159,100 +145,104 @@ import java.util.List;
-     return new VideoDecoderOutputBuffer(this::releaseOutputBuffer);
+@@ -160,99 +158,125 @@
    }
- 
-+  @Override
+
+   @Override
 +  protected boolean usesOutputTimestamps() {
 +    return true;
 +  }
@@ -199,11 +168,12 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 +    drainSent = false;
 +    outputFormat = null;
 +    lastInputTimeUs = 0;
++    consecutiveInvalidData = 0;
 +    return nativeContext == 0
 +        ? new FfmpegDecoderException("Error resetting (see logcat).") : null;
 +  }
 +
-   @Override
++  @Override
    @Nullable
    protected FfmpegDecoderException decode(
        DecoderInputBuffer inputBuffer, VideoDecoderOutputBuffer outputBuffer, boolean reset) {
@@ -217,7 +187,7 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
        }
 -      pendingInputs.clear();
      }
- 
+
      ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
 -    boolean decodeOnly = !isAtLeastOutputStartTimeUs(inputBuffer.timeUs);
 -
@@ -229,11 +199,56 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 -          ffmpegSendPacket(nativeContext, pending.data, pending.data.limit(), pending.timeUs);
 -      if (pendingResult == VIDEO_DECODER_ERROR_READ_FRAME) {
 -        break;
--      }
++    outputBufferAvailable = true;
++    int sendResult =
++        ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
++
++    retryInput = sendResult == VIDEO_DECODER_ERROR_READ_FRAME;
++    if (sendResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++      return invalidData("send", sendResult, Integer.MIN_VALUE);
++    }
++    if (sendResult != VIDEO_DECODER_SUCCESS && !retryInput) {
++      return failure("send", sendResult, sendResult, Integer.MIN_VALUE);
++    }
++    if (!retryInput) {
++      outputFormat = inputBuffer.format;
++      lastInputTimeUs = inputBuffer.timeUs;
++    }
++
++    int receiveResult = receiveFrame(outputBuffer);
++    if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++      return invalidData("receive", sendResult, receiveResult);
++    }
++    if (receiveResult == VIDEO_DECODER_NEED_INPUT && !retryInput) {
++      outputBufferAvailable = false;
++      return null;
++    }
++
++    return receiveResult == VIDEO_DECODER_SUCCESS
++        ? null : failure("receive", receiveResult, sendResult, receiveResult);
++  }
++
++  @Override
++  @Nullable
++  protected FfmpegDecoderException drain(VideoDecoderOutputBuffer outputBuffer, boolean reset) {
++    outputBufferAvailable = true;
++    if (reset) {
++      FfmpegDecoderException error = resetDecoder();
++      if (error != null) {
++        return error;
+       }
 -      pendingInputs.removeFirst();
 -      if (pendingResult == VIDEO_DECODER_ERROR_OTHER) {
 -        return new FfmpegDecoderException("ffmpegDecode error: (see logcat)");
--      }
++    }
++    int sendResult = Integer.MIN_VALUE;
++    if (!drainSent) {
++      sendResult = ffmpegSendPacket(nativeContext, null, 0, 0);
++      if (sendResult == VIDEO_DECODER_SUCCESS || sendResult == VIDEO_DECODER_END_OF_STREAM) {
++        drainSent = true;
++      } else if (sendResult != VIDEO_DECODER_ERROR_READ_FRAME) {
++        return failure("drain_send", sendResult, sendResult, Integer.MIN_VALUE);
+       }
 -      // VIDEO_DECODER_ERROR_INVALID_DATA: drop the invalid sample and continue.
 -    }
 -
@@ -241,9 +256,7 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 -    // (it must never be dropped: avcodec_send_packet EAGAIN means "not consumed") and
 -    // drain one decoded frame into this output buffer instead.
 -    int sendPacketResult =
-+    outputBufferAvailable = true;
-+    int sendResult =
-         ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
+-        ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
 -
 -    if (sendPacketResult == VIDEO_DECODER_ERROR_READ_FRAME) {
 -      pendingInputs.addLast(copyPendingInput(inputData, inputBuffer.timeUs));
@@ -260,76 +273,43 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 -        // The drained frame belongs to the same stream, so the current format applies.
 -        outputBuffer.format = inputBuffer.format;
 -      }
--      return null;
--    }
++    }
++
++    int receiveResult = receiveFrame(outputBuffer);
++    if (receiveResult == VIDEO_DECODER_END_OF_STREAM) {
++      outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
+       return null;
+     }
 -
 -    if (sendPacketResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
-+    retryInput = sendResult == VIDEO_DECODER_ERROR_READ_FRAME;
-+    if (sendResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
-       outputBuffer.shouldBeSkipped = true;
-       return null;
+-      outputBuffer.shouldBeSkipped = true;
+-      return null;
 -    } else if (sendPacketResult == VIDEO_DECODER_ERROR_OTHER) {
 -      return new FfmpegDecoderException("ffmpegDecode error: (see logcat)");
-     }
+-    }
 -
 -    // receive frame
 -    // We need to dequeue the decoded frame from the decoder even when the input data is
 -    // decode-only.
 -    if (!decodeOnly) {
 -      outputBuffer.init(inputBuffer.timeUs, outputMode, null);
-+    if (sendResult != VIDEO_DECODER_SUCCESS && !retryInput) {
-+      return new FfmpegDecoderException("ffmpegSendPacket error: (see logcat)");
-     }
+-    }
 -    int getFrameResult = ffmpegReceiveFrame(nativeContext, outputMode, outputBuffer, decodeOnly);
 -    if (getFrameResult == VIDEO_DECODER_ERROR_OTHER) {
 -      return new FfmpegDecoderException("ffmpegDecode error: (see logcat)");
-+    if (!retryInput) {
-+      outputFormat = inputBuffer.format;
-+      lastInputTimeUs = inputBuffer.timeUs;
-     }
- 
+-    }
+-
 -    if (getFrameResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
 -      outputBuffer.shouldBeSkipped = true;
-+    int receiveResult = receiveFrame(outputBuffer);
-+    if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA && !retryInput) {
-+      outputBufferAvailable = false;
-+      return null;
-     }
-+    return receiveResult == VIDEO_DECODER_SUCCESS
-+        ? null : new FfmpegDecoderException("ffmpegReceiveFrame made no progress: (see logcat)");
-+  }
- 
+-    }
+-
 -    if (!decodeOnly) {
 -      outputBuffer.format = inputBuffer.format;
-+  @Override
-+  @Nullable
-+  protected FfmpegDecoderException drain(VideoDecoderOutputBuffer outputBuffer, boolean reset) {
-+    outputBufferAvailable = true;
-+    if (reset) {
-+      FfmpegDecoderException error = resetDecoder();
-+      if (error != null) {
-+        return error;
-+      }
-+    }
-+    if (!drainSent) {
-+      int sendResult = ffmpegSendPacket(nativeContext, null, 0, 0);
-+      if (sendResult == VIDEO_DECODER_SUCCESS || sendResult == VIDEO_DECODER_END_OF_STREAM) {
-+        drainSent = true;
-+      } else if (sendResult != VIDEO_DECODER_ERROR_READ_FRAME) {
-+        return new FfmpegDecoderException("ffmpeg drain error: (see logcat)");
-+      }
-     }
- 
+-    }
+-
 -    return null;
-+    int receiveResult = receiveFrame(outputBuffer);
-+    if (receiveResult == VIDEO_DECODER_END_OF_STREAM) {
-+      outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
-+      return null;
-+    }
-+    return receiveResult == VIDEO_DECODER_SUCCESS
-+        ? null : new FfmpegDecoderException("ffmpeg drain made no progress: (see logcat)");
-   }
- 
+-  }
+-
 -  /**
 -   * Copies the input sample into a decoder-owned buffer so it survives the return from
 -   * {@link #decode} (the {@link DecoderInputBuffer} is returned to the pool afterwards).
@@ -340,62 +320,158 @@ index bffff1995053c17300d49bfc40148167455c0949..db7d4995b8ed42e4afa8cb27626f62fa
 -    copy.put(inputData);
 -    copy.flip();
 -    return new PendingInput(copy, timeUs);
++    if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++      return invalidData("drain_receive", sendResult, receiveResult);
++    }
++    return receiveResult == VIDEO_DECODER_SUCCESS
++        ? null : failure("drain_receive", receiveResult, sendResult, receiveResult);
++  }
++
++  @Nullable
++  private FfmpegDecoderException invalidData(String operation, int sent, int received) {
++    outputBufferAvailable = false;
++    return ++consecutiveInvalidData <= MAX_CONSECUTIVE_INVALID_DATA ? null
++        : failure(operation, VIDEO_DECODER_ERROR_INVALID_DATA, sent, received);
++  }
++
++  private FfmpegDecoderException failure(String operation, int result, int sent, int received) {
++    return new FfmpegDecoderException(
++        operation, result, sent, received, ffmpegGetLastVideoError(nativeContext));
++  }
++
 +  private int receiveFrame(VideoDecoderOutputBuffer outputBuffer) {
 +    outputBuffer.init(lastInputTimeUs, outputMode, null);
 +    int result = ffmpegReceiveFrame(nativeContext, outputMode, outputBuffer, false);
 +    if (result == VIDEO_DECODER_SUCCESS) {
++      consecutiveInvalidData = 0;
 +      outputBuffer.format = outputFormat;
 +    }
 +    return result;
    }
- 
+
    @Override
-@@ -310,7 +300,7 @@ import java.util.List;
+@@ -294,6 +318,7 @@
+
+   private native long ffmpegReset(long context);
+
++  private native long ffmpegGetLastVideoError(long context);
+   private native void ffmpegRelease(long context);
+
+   private native int ffmpegRenderFrame(
+@@ -310,7 +335,7 @@
     * @return {@link #VIDEO_DECODER_SUCCESS} if successful, {@link #VIDEO_DECODER_ERROR_OTHER} if an
     * error occurred.
     */
 -  private native int ffmpegSendPacket(long context, ByteBuffer encodedData, int length,
 +  private native int ffmpegSendPacket(long context, @Nullable ByteBuffer encodedData, int length,
        long inputTime);
- 
+
    /**
-diff --git a/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc b/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
-index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9db0bad66 100644
---- a/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
-+++ b/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
-@@ -1,3 +1,4 @@
+diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java b/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java
+--- a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java
++++ b/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegDecoderException.java
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
  /*
   * Copyright (C) 2016 The Android Open Source Project
-+ * Modifications Copyright (C) 2026 Ettacent
   *
-@@ -101,6 +101,7 @@ static const int VIDEO_DECODER_SUCCESS = 0;
+@@ -22,11 +24,31 @@
+ @UnstableApi
+ public final class FfmpegDecoderException extends DecoderException {
+
++  public final String operation;
++  public final int decoderResult;
++  public final int sendResult;
++  public final int receiveResult;
++  public final int nativeErrorStage;
++  public final int nativeErrorCode;
+   /* package */ FfmpegDecoderException(String message) {
+-    super(message);
++    this(message, null);
+   }
+
+   /* package */ FfmpegDecoderException(String message, Throwable cause) {
+     super(message, cause);
++    operation = "unspecified";
++    decoderResult = sendResult = receiveResult = Integer.MIN_VALUE;
++    nativeErrorStage = nativeErrorCode = 0;
++  }
++
++  /* package */ FfmpegDecoderException(
++      String operation, int result, int sendResult, int receiveResult, long nativeError) {
++    super("FFmpeg " + operation + " result=" + result);
++    this.operation = operation;
++    this.decoderResult = result;
++    this.sendResult = sendResult;
++    this.receiveResult = receiveResult;
++    nativeErrorStage = (int) (nativeError >>> 32);
++    nativeErrorCode = (int) nativeError;
+   }
+ }
+diff --git a/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc b/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
+--- a/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
++++ b/libraries/decoder_ffmpeg/src/main/jni/ffmpeg_jni.cc
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ /*
+  * Copyright (C) 2016 The Android Open Source Project
+  *
+@@ -101,6 +103,8 @@
  static const int VIDEO_DECODER_ERROR_INVALID_DATA = -1;
  static const int VIDEO_DECODER_ERROR_OTHER = -2;
  static const int VIDEO_DECODER_ERROR_READ_FRAME = -3;
 +static const int VIDEO_DECODER_END_OF_STREAM = -5;
++static const int VIDEO_DECODER_NEED_INPUT = -6;
  // LINT.ThenChange(../java/androidx/media3/decoder/ffmpeg/ExperimentalFfmpegVideoDecoder.java)
- 
+
  static jmethodID growOutputBufferMethod;
-@@ -462,6 +463,7 @@ int decodePacket(AVCodecContext* context,
+@@ -462,6 +466,7 @@
                  av_frame_free(&frame);
                  return AUDIO_DECODER_ERROR_OTHER;
              }
 +            outputBuffer += outSize;
          }
- 
+
          result = swr_convert(
-@@ -589,6 +591,7 @@ struct JniContext {
- 
+@@ -589,6 +594,7 @@
+
      AVCodecContext* codecContext = nullptr;
      SwsContext* swsContext = nullptr;
 +    bool swsFullRange = false;
- 
+
      ANativeWindow* native_window = nullptr;
      jobject surface = nullptr;
-@@ -640,6 +643,19 @@ const int* cvt_colorspace_coefficients(AVColorSpace colorSpace) {
+@@ -598,7 +604,24 @@
+     int native_window_height = 0;
+     int native_window_format = 0;
+     bool use_rgba_fallback = false;
++    int lastVideoErrorStage = 0;
++    int lastVideoErrorCode = 0;
+ };
++
++static int videoError(JniContext* context, int stage, int code) {
++    if (context) {
++        context->lastVideoErrorStage = stage;
++        context->lastVideoErrorCode = code;
++    }
++    return VIDEO_DECODER_ERROR_OTHER;
++}
++
++VIDEO_DECODER_FUNC(jlong, ffmpegGetLastVideoError, jlong jContext) {
++    const JniContext* context = reinterpret_cast<JniContext*>(jContext);
++    if (!context) return 0;
++    return static_cast<jlong>((static_cast<uint64_t>(context->lastVideoErrorStage) << 32)
++            | static_cast<uint32_t>(context->lastVideoErrorCode));
++}
+
+ constexpr int AlignTo16(int value) {
+     return (value + 15) & ~15;
+@@ -640,6 +663,19 @@
      }
  }
- 
+
 +bool is_full_range(const AVFrame* frame) {
 +    switch (static_cast<AVPixelFormat>(frame->format)) {
 +        case AV_PIX_FMT_YUVJ420P:
@@ -412,10 +488,10 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
  /**
   * Converts a decoded frame to the requested pixel format and size.
   */
-@@ -656,6 +672,17 @@ AVFrame* cvt_format(JniContext* jniContext,
+@@ -656,6 +692,17 @@
      const AVPixelFormat src_format =
              static_cast<AVPixelFormat>(src->format);
- 
+
 +    const bool full_range = is_full_range(src);
 +    if (jniContext->swsFullRange != full_range) {
 +        sws_freeContext(jniContext->swsContext);
@@ -430,7 +506,7 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
      SwsContext* swsContext =
              sws_getCachedContext(
                      jniContext->swsContext,
-@@ -666,20 +693,19 @@ AVFrame* cvt_format(JniContext* jniContext,
+@@ -666,20 +713,19 @@
                      dst_height,
                      dst_format,
                      SWS_BILINEAR,
@@ -438,14 +514,14 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
 +                    full_range ? &filter : NULL,
                      NULL,
                      NULL);
- 
-+    jniContext->swsContext = swsContext;
 +
++    jniContext->swsContext = swsContext;
+
      if (!swsContext) {
          LOGE("Failed to allocate swsContext.");
          return nullptr;
      }
- 
+
 -    jniContext->swsContext = swsContext;
 -
 -    // Preserve the decoded frame's matrix/range while changing bit depth/format.
@@ -454,8 +530,8 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
 +            full_range ? 1 : 0;
      const int* coefficients =
              cvt_colorspace_coefficients(src->colorspace);
- 
-@@ -689,7 +715,7 @@ AVFrame* cvt_format(JniContext* jniContext,
+
+@@ -689,7 +735,7 @@
                      coefficients,
                      src_range,
                      coefficients,
@@ -464,25 +540,32 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
                      0,
                      1 << 16,
                      1 << 16);
-@@ -715,6 +741,7 @@ AVFrame* cvt_format(JniContext* jniContext,
+@@ -715,6 +761,7 @@
      dst->width = dst_width;
      dst->height = dst_height;
      dst->format = dst_format;
 +    dst->color_range = AVCOL_RANGE_MPEG;
- 
+
      const int alloc_result = av_frame_get_buffer(dst, 0);
      if (alloc_result < 0) {
-@@ -956,54 +983,55 @@ VIDEO_DECODER_FUNC(
- 
+@@ -953,57 +1000,61 @@
+         jlong inputTimeUs) {
+     JniContext* const jniContext =
+             reinterpret_cast<JniContext*>(jContext);
++    if (jniContext) {
++        jniContext->lastVideoErrorStage = 0;
++        jniContext->lastVideoErrorCode = 0;
++    }
+
      if (!jniContext ||
          !jniContext->codecContext ||
 -        !encodedData ||
 +        (!encodedData && length != 0) ||
          length < 0) {
          LOGE("Invalid context or input buffer.");
-         return VIDEO_DECODER_ERROR_OTHER;
-     }
- 
+-        return VIDEO_DECODER_ERROR_OTHER;
+-    }
+-
 -    uint8_t* inputBuffer =
 -            static_cast<uint8_t*>(
 -                    env->GetDirectBufferAddress(encodedData));
@@ -496,27 +579,13 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
 -             static_cast<long long>(inputCapacity), length);
 -        return VIDEO_DECODER_ERROR_OTHER;
 -    }
-+    AVPacket* packet = nullptr;
-+    if (encodedData) {
-+        uint8_t* inputBuffer =
-+                static_cast<uint8_t*>(
-+                        env->GetDirectBufferAddress(encodedData));
-+        const jlong inputCapacity =
-+                env->GetDirectBufferCapacity(encodedData);
- 
+-
 -    AVPacket* packet = av_packet_alloc();
 -    if (!packet) {
 -        LOGE("Failed to allocate packet.");
 -        return VIDEO_DECODER_ERROR_OTHER;
 -    }
-+        if (!inputBuffer ||
-+            inputCapacity < 0 ||
-+            inputCapacity < static_cast<jlong>(length)) {
-+            LOGE("Invalid direct input buffer: capacity=%lld length=%d",
-+                 static_cast<long long>(inputCapacity), length);
-+            return VIDEO_DECODER_ERROR_OTHER;
-+        }
- 
+-
 -    // Do not point AVPacket directly at Java memory.
 -    //
 -    // The normal DecoderInputBuffer is padded, but PendingInput in the PR is
@@ -530,31 +599,51 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
 -        av_packet_free(&packet);
 -        return VIDEO_DECODER_ERROR_OTHER;
 -    }
-+        packet = av_packet_alloc();
-+        if (!packet) {
-+            LOGE("Failed to allocate packet.");
-+            return VIDEO_DECODER_ERROR_OTHER;
-+        }
- 
+-
 -    if (length > 0) {
 -        std::memcpy(
 -                packet->data,
 -                inputBuffer,
 -                static_cast<size_t>(length));
 -    }
+-
+-    packet->pts = inputTimeUs;
++        return videoError(jniContext, 1, AVERROR(EINVAL));
++    }
++
++    AVPacket* packet = nullptr;
++    if (encodedData) {
++        uint8_t* inputBuffer =
++                static_cast<uint8_t*>(
++                        env->GetDirectBufferAddress(encodedData));
++        const jlong inputCapacity =
++                env->GetDirectBufferCapacity(encodedData);
++
++        if (!inputBuffer ||
++            inputCapacity < 0 ||
++            inputCapacity < static_cast<jlong>(length)) {
++            LOGE("Invalid direct input buffer: capacity=%lld length=%d",
++                 static_cast<long long>(inputCapacity), length);
++            return videoError(jniContext, 2, AVERROR(EINVAL));
++        }
++
++        packet = av_packet_alloc();
++        if (!packet) {
++            LOGE("Failed to allocate packet.");
++            return videoError(jniContext, 3, AVERROR(ENOMEM));
++        }
++
 +        // Do not point AVPacket directly at Java memory.
 +        //
-+        // FFmpeg parsers may legally read AV_INPUT_BUFFER_PADDING_SIZE bytes
 +        // past packet->data + packet->size. av_new_packet() allocates that padding
 +        // and zeroes it.
 +        const int allocationResult = av_new_packet(packet, length);
 +        if (allocationResult < 0) {
 +            logError("av_new_packet", allocationResult);
 +            av_packet_free(&packet);
-+            return VIDEO_DECODER_ERROR_OTHER;
++            return videoError(jniContext, 4, allocationResult);
 +        }
- 
--    packet->pts = inputTimeUs;
++
 +        if (length > 0) {
 +            std::memcpy(
 +                    packet->data,
@@ -564,38 +653,288 @@ index 5ed4d4d9a5cdacde60c29f3c7a002c1b3b151105..1b99fa5ed0e3535962624ede931a16e9
 +
 +        packet->pts = inputTimeUs;
 +    }
- 
+
      const int result =
              avcodec_send_packet(jniContext->codecContext, packet);
-@@ -1023,6 +1051,10 @@ VIDEO_DECODER_FUNC(
+@@ -1016,6 +1067,7 @@
+
+     if (result == AVERROR_INVALIDDATA) {
+         logError("avcodec_send_packet", result);
++        videoError(jniContext, 5, result);
+         return VIDEO_DECODER_ERROR_INVALID_DATA;
+     }
+
+@@ -1023,8 +1075,12 @@
          return VIDEO_DECODER_ERROR_READ_FRAME;
      }
- 
+
 +    if (result == AVERROR_EOF) {
 +        return VIDEO_DECODER_END_OF_STREAM;
 +    }
 +
      logError("avcodec_send_packet", result);
-     return VIDEO_DECODER_ERROR_OTHER;
+-    return VIDEO_DECODER_ERROR_OTHER;
++    return videoError(jniContext, 5, result);
  }
-@@ -1059,6 +1091,11 @@ VIDEO_DECODER_FUNC(
-         return VIDEO_DECODER_ERROR_INVALID_DATA;
+
+ VIDEO_DECODER_FUNC(
+@@ -1036,18 +1092,22 @@
+         jboolean decodeOnly) {
+     JniContext* const jniContext =
+             reinterpret_cast<JniContext*>(jContext);
++    if (jniContext) {
++        jniContext->lastVideoErrorStage = 0;
++        jniContext->lastVideoErrorCode = 0;
++    }
+
+     if (!jniContext ||
+         !jniContext->codecContext ||
+         !jOutputBuffer) {
+         LOGE("Invalid context or output buffer.");
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 6, AVERROR(EINVAL));
      }
- 
+
+     AVFrame* rawFrame = av_frame_alloc();
+     if (!rawFrame) {
+         LOGE("Failed to allocate output frame.");
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 7, AVERROR(ENOMEM));
+     }
+
+     const int receiveResult =
+@@ -1056,25 +1116,37 @@
+
+     if (receiveResult == AVERROR(EAGAIN)) {
+         av_frame_free(&rawFrame);
++        return VIDEO_DECODER_NEED_INPUT;
++    }
++
 +    if (receiveResult == AVERROR_EOF) {
 +        av_frame_free(&rawFrame);
 +        return VIDEO_DECODER_END_OF_STREAM;
 +    }
 +
++    if (receiveResult == AVERROR_INVALIDDATA) {
++        logError("avcodec_receive_frame", receiveResult);
++        av_frame_free(&rawFrame);
++        videoError(jniContext, 8, receiveResult);
+         return VIDEO_DECODER_ERROR_INVALID_DATA;
+     }
+
      if (receiveResult != 0) {
          logError("avcodec_receive_frame", receiveResult);
          av_frame_free(&rawFrame);
-@@ -1074,7 +1111,7 @@ VIDEO_DECODER_FUNC(
- 
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 8, receiveResult);
+     }
+
+     // The frame must still be dequeued from FFmpeg for decode-only input, but
+     // there is no need to allocate/convert/copy it into the Java output buffer.
+     if (decodeOnly) {
+         av_frame_free(&rawFrame);
+-        return VIDEO_DECODER_ERROR_INVALID_DATA;
++        return VIDEO_DECODER_NEED_INPUT;
+     }
+
      AVFrame* frame = rawFrame;
- 
+
 -    if (rawFrame->format != AV_PIX_FMT_YUV420P) {
 +    if (rawFrame->format != AV_PIX_FMT_YUV420P || is_full_range(rawFrame)) {
          frame =
                  cvt_format(
                          jniContext,
+@@ -1086,7 +1158,7 @@
+         if (!frame) {
+             av_frame_free(&rawFrame);
+             LOGW("Convert to YUV420P failed.");
+-            return VIDEO_DECODER_ERROR_OTHER;
++            return videoError(jniContext, 9, AVERROR(EINVAL));
+         }
+
+         av_frame_free(&rawFrame);
+@@ -1099,7 +1171,7 @@
+         LOGE("Invalid decoded frame dimensions: %dx%d",
+              decodedWidth, decodedHeight);
+         av_frame_free(&frame);
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 10, AVERROR(EINVAL));
+     }
+
+     int outputWidth = decodedWidth;
+@@ -1139,12 +1211,12 @@
+
+         if (env->ExceptionCheck()) {
+             av_frame_free(&frame);
+-            return VIDEO_DECODER_ERROR_OTHER;
++            return videoError(jniContext, 11, AVERROR(ENOMEM));
+         }
+
+         if (!initResult) {
+             av_frame_free(&frame);
+-            return VIDEO_DECODER_ERROR_OTHER;
++            return videoError(jniContext, 11, AVERROR(EINVAL));
+         }
+     }
+
+@@ -1163,7 +1235,7 @@
+
+     if (env->ExceptionCheck()) {
+         av_frame_free(&frame);
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 12, AVERROR(EINVAL));
+     }
+
+     jobject dataObject =
+@@ -1174,7 +1246,7 @@
+     if (!dataObject) {
+         LOGE("Output data buffer is null.");
+         av_frame_free(&frame);
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 13, AVERROR(EINVAL));
+     }
+
+     uint8_t* data =
+@@ -1203,7 +1275,7 @@
+
+         env->DeleteLocalRef(dataObject);
+         av_frame_free(&frame);
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 14, AVERROR(EINVAL));
+     }
+
+     const libyuv::RotationMode rotate =
+@@ -1232,7 +1304,7 @@
+
+     if (rotateResult != 0) {
+         LOGE("I420Rotate failed: %d", rotateResult);
+-        return VIDEO_DECODER_ERROR_OTHER;
++        return videoError(jniContext, 15, rotateResult);
+     }
+
+     return VIDEO_DECODER_SUCCESS;
+diff --git a/libraries/muxer/src/main/java/androidx/media3/muxer/MediaMuxerCompat.java b/libraries/muxer/src/main/java/androidx/media3/muxer/MediaMuxerCompat.java
+--- a/libraries/muxer/src/main/java/androidx/media3/muxer/MediaMuxerCompat.java
++++ b/libraries/muxer/src/main/java/androidx/media3/muxer/MediaMuxerCompat.java
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ /*
+  * Copyright 2025 The Android Open Source Project
+  *
+@@ -23,11 +25,9 @@
+ import android.media.MediaCodec;
+ import android.media.MediaFormat;
+ import android.media.MediaMuxer;
+-import android.system.ErrnoException;
+-import android.system.Os;
++import android.os.ParcelFileDescriptor;
+ import androidx.annotation.FloatRange;
+ import androidx.annotation.IntDef;
+-import androidx.annotation.Nullable;
+ import androidx.media3.common.C;
+ import androidx.media3.common.util.MediaFormatUtil;
+ import androidx.media3.common.util.UnstableApi;
+@@ -91,7 +91,7 @@
+   /** The MP4 file format. */
+   public static final int OUTPUT_FORMAT_MP4 = MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4;
+
+-  @Nullable private final FileDescriptor fileDescriptor;
++  private final FileOutputStream outputStream;
+   private final Muxer muxer;
+
+   private boolean startedMuxer;
+@@ -110,12 +110,9 @@
+    */
+   public MediaMuxerCompat(FileDescriptor fileDescriptor, @OutputFormat int outputFormat)
+       throws IOException {
+-    try {
+-      this.fileDescriptor = Os.dup(fileDescriptor);
+-    } catch (ErrnoException e) {
+-      throw new IOException("Failed to create a copy of FileDescriptor", e);
+-    }
+-    muxer = createMuxer(new FileOutputStream(this.fileDescriptor), outputFormat);
++    checkArgument(outputFormat == OUTPUT_FORMAT_MP4);
++    outputStream = duplicateOutputStream(fileDescriptor);
++    muxer = createMuxer(outputStream, outputFormat);
+   }
+
+   /**
+@@ -126,8 +123,9 @@
+    * @throws IOException If an error occurs while performing an I/O operation.
+    */
+   public MediaMuxerCompat(String filePath, @OutputFormat int outputFormat) throws IOException {
+-    fileDescriptor = null;
+-    muxer = createMuxer(new FileOutputStream(filePath), outputFormat);
++    checkArgument(outputFormat == OUTPUT_FORMAT_MP4);
++    outputStream = new FileOutputStream(filePath);
++    muxer = createMuxer(outputStream, outputFormat);
+   }
+
+   /**
+@@ -259,21 +257,58 @@
+   }
+
+   private void closeMuxer() {
++    closedMuxer = true;
++    startedMuxer = false;
++    Throwable failure = null;
+     try {
+       muxer.close();
+-      if (fileDescriptor != null) {
+-        Os.close(fileDescriptor);
+-      }
+-      closedMuxer = true;
+-      startedMuxer = false;
+-    } catch (MuxerException | ErrnoException e) {
+-      throw new RuntimeException(e);
++    } catch (MuxerException e) {
++      RuntimeException wrapped = new RuntimeException(e);
++      failure = wrapped;
++      throw wrapped;
++    } catch (RuntimeException | Error e) {
++      failure = e;
++      throw e;
++    } finally {
++      try {
++        outputStream.close();
++      } catch (IOException e) {
++        if (failure != null) {
++          failure.addSuppressed(e);
++        } else {
++          throw new RuntimeException(e);
++      }
++      }
++    }
++  }
++
++  private static FileOutputStream duplicateOutputStream(FileDescriptor fileDescriptor)
++      throws IOException {
++    ParcelFileDescriptor duplicate = ParcelFileDescriptor.dup(fileDescriptor);
++    try {
++      return new ParcelFileDescriptor.AutoCloseOutputStream(duplicate);
++    } catch (RuntimeException | Error e) {
++      try {
++        duplicate.close();
++      } catch (IOException closeFailure) {
++        e.addSuppressed(closeFailure);
++      }
++      throw e;
+     }
+   }
+
+   private static Muxer createMuxer(
+       FileOutputStream fileOutputStream, @OutputFormat int outputFormat) {
++    try {
+     checkArgument(outputFormat == OUTPUT_FORMAT_MP4);
+     return new Mp4Muxer.Builder(SeekableMuxerOutput.of(fileOutputStream)).build();
++    } catch (RuntimeException | Error e) {
++      try {
++        fileOutputStream.close();
++      } catch (IOException closeFailure) {
++        e.addSuppressed(closeFailure);
++      }
++      throw e;
+   }
+ }
++}

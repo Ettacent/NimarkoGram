@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -29,6 +31,7 @@ import com.google.gson.stream.JsonWriter;
 
 import org.telegram.messenger.time.FastDateFormat;
 import org.telegram.messenger.video.MediaCodecVideoConvertor;
+import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.AnimatedFileDrawable;
@@ -110,19 +113,49 @@ public class FileLog {
 
     private static Gson gson;
     private static ExclusionStrategy exclusionStrategy;
-    private static HashSet<String> excludeRequests;
+    private static final int MAX_PENDING_PROTOCOL_DUMPS = 8;
+    private static final AtomicInteger pendingProtocolDumps = new AtomicInteger();
+
+    private static void postProtocolDump(Runnable dump) {
+        if (pendingProtocolDumps.incrementAndGet() > MAX_PENDING_PROTOCOL_DUMPS) {
+            pendingProtocolDumps.decrementAndGet();
+            return;
+        }
+        try {
+            FileLog logger = getInstance();
+            if (logger.logQueue == null) {
+                pendingProtocolDumps.decrementAndGet();
+                return;
+            }
+            logger.logQueue.postRunnable(() -> {
+                try {
+                    dump.run();
+                } catch (Throwable e) {
+                    Log.e(tag, "Unable to serialize asynchronous protocol dump", e);
+                } finally {
+                    pendingProtocolDumps.decrementAndGet();
+                }
+            });
+        } catch (Throwable e) {
+            pendingProtocolDumps.decrementAndGet();
+            Log.e(tag, "Unable to queue protocol dump", e);
+        }
+    }
 
     public static void dumpResponseAndRequest(int account, TLObject request, TLObject response, TLRPC.TL_error error, long requestMsgId, long startRequestTimeInMillis, int requestToken) {
         if (!BuildVars.DEBUG_PRIVATE_VERSION || !BuildVars.LOGS_ENABLED || request == null) {
             return;
         }
         String requestSimpleName = request.getClass().getSimpleName();
-        checkGson();
-
-        if (excludeRequests.contains(requestSimpleName) && error == null) {
+        if (error == null && ("TL_upload_getFile".equals(requestSimpleName) || "TL_upload_getWebFile".equals(requestSimpleName))) {
             return;
         }
-        try {
+        long time = System.currentTimeMillis();
+        long requestingTime = time - startRequestTimeInMillis;
+        boolean hasError = error != null;
+        postProtocolDump(() -> {
+        checkGson();
+
             String req = "req -> " + requestSimpleName + " : " + gson.toJson(request);
             String res = "null";
             if (response != null) {
@@ -130,58 +163,45 @@ public class FileLog {
             } else if (error != null) {
                 res = "err -> " + error.getClass().getSimpleName() + " : " + gson.toJson(error);
             }
-            String finalRes = res;
-            long time = System.currentTimeMillis();
-            FileLog.getInstance().logQueue.postRunnable(() -> {
-                try {
-                    String metadata = "requestMsgId=" + requestMsgId + " requestingTime=" + (System.currentTimeMillis() - startRequestTimeInMillis) +  " request_token=" + requestToken + " account=" + account;
-                    FileLog.getInstance().tlStreamWriter.write(getInstance().dateFormat.format(time) + " " + metadata);
-                    FileLog.getInstance().tlStreamWriter.write("\n");
-                    FileLog.getInstance().tlStreamWriter.write(req);
-                    FileLog.getInstance().tlStreamWriter.write("\n");
-                    FileLog.getInstance().tlStreamWriter.write(finalRes);
-                    FileLog.getInstance().tlStreamWriter.write("\n\n");
-                    FileLog.getInstance().tlStreamWriter.flush();
+            try {
+                String metadata = "requestMsgId=" + requestMsgId + " requestingTime=" + requestingTime + " request_token=" + requestToken + " account=" + account;
+                FileLog logger = getInstance();
+                logger.tlStreamWriter.write(logger.dateFormat.format(time) + " " + metadata);
+                logger.tlStreamWriter.write("\n");
+                logger.tlStreamWriter.write(req);
+                logger.tlStreamWriter.write("\n");
+                logger.tlStreamWriter.write(res);
+                logger.tlStreamWriter.write("\n\n");
+                logger.tlStreamWriter.flush();
 
-                    if (error != null) {
-                        Log.e(mtproto_tag, metadata);
-                        Log.e(mtproto_tag, req);
-                        Log.e(mtproto_tag, finalRes);
-                        Log.e(mtproto_tag, " ");
-                    } else {
-                        Log.d(mtproto_tag, metadata);
-                        Log.d(mtproto_tag, req);
-                        Log.d(mtproto_tag, finalRes);
-                        Log.d(mtproto_tag, " ");
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-        } catch (Throwable e) {
-            FileLog.e(e, BuildVars.DEBUG_PRIVATE_VERSION);
-        }
+                int priority = hasError ? Log.ERROR : Log.DEBUG;
+                Log.println(priority, mtproto_tag, metadata);
+                Log.println(priority, mtproto_tag, req);
+                Log.println(priority, mtproto_tag, res);
+                Log.println(priority, mtproto_tag, " ");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public static void dumpUnparsedMessage(TLObject message, long messageId, int account) {
         if (!BuildVars.DEBUG_PRIVATE_VERSION || !BuildVars.LOGS_ENABLED || message == null) {
             return;
         }
-        try {
+        long time = System.currentTimeMillis();
+        boolean skipGson = gsonDisabled;
+        postProtocolDump(() -> {
             checkGson();
-            getInstance().dateFormat.format(System.currentTimeMillis());
-            String messageStr = "receive message -> " + message.getClass().getSimpleName() + " : " + (gsonDisabled ? message : gson.toJson(message));
-            String res = "null";
-            long time = System.currentTimeMillis();
-            FileLog.getInstance().logQueue.postRunnable(() -> {
-                try {
-                    String metadata = getInstance().dateFormat.format(time) + " msgId=" + messageId + " account=" + account;
-
-                    FileLog.getInstance().tlStreamWriter.write(metadata);
-                    FileLog.getInstance().tlStreamWriter.write("\n");
-                    FileLog.getInstance().tlStreamWriter.write(messageStr);
-                    FileLog.getInstance().tlStreamWriter.write("\n\n");
-                    FileLog.getInstance().tlStreamWriter.flush();
+            String messageStr = "receive message -> " + message.getClass().getSimpleName() + " : " + (skipGson ? message : gson.toJson(message));
+            try {
+                FileLog logger = getInstance();
+                String metadata = logger.dateFormat.format(time) + " msgId=" + messageId + " account=" + account;
+                logger.tlStreamWriter.write(metadata);
+                logger.tlStreamWriter.write("\n");
+                logger.tlStreamWriter.write(messageStr);
+                logger.tlStreamWriter.write("\n\n");
+                logger.tlStreamWriter.flush();
 
                     Log.d(mtproto_tag, "msgId=" + messageId + " account=" + account);
                     Log.d(mtproto_tag, messageStr);
@@ -190,11 +210,9 @@ public class FileLog {
                     e.printStackTrace();
                 }
             });
-        } catch (Throwable e) {
-        }
     }
 
-    private static boolean gsonDisabled;
+    private static volatile boolean gsonDisabled;
     public static void disableGson(boolean disable) {
         gsonDisabled = disable;
     }
@@ -224,9 +242,6 @@ public class FileLog {
                 privateFields.add("FLAG_" + i);
             }
 
-            excludeRequests = new HashSet<>();
-            excludeRequests.add("TL_upload_getFile");
-            excludeRequests.add("TL_upload_getWebFile");
 
             exclusionStrategy = new ExclusionStrategy() {
 
@@ -240,7 +255,7 @@ public class FileLog {
 
                 @Override
                 public boolean shouldSkipClass(Class<?> clazz) {
-                    return clazz.isInstance(DispatchQueue.class) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class);
+                    return NativeByteBuffer.class.isAssignableFrom(clazz) || clazz.isInstance(DispatchQueue.class) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class);
                 }
             };
             gson = new GsonBuilder()
@@ -299,6 +314,9 @@ public class FileLog {
                     field.setAccessible(true);
                     try {
                         Object value = field.get(src);
+                        if (value instanceof NativeByteBuffer) {
+                            continue;
+                        }
                         if (value != null) {
                             Class clazz = value.getClass();
                             if (clazz.isInstance(DispatchQueue.class) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class)) {
@@ -512,10 +530,8 @@ public class FileLog {
     public void dumpMemory(boolean force) {
         if (!force && System.currentTimeMillis() - dumpedHeap < 30_000) return;
         dumpedHeap = System.currentTimeMillis();
-        try {
-            Debug.dumpHprofData(new File(AndroidUtilities.getLogsDir(), getInstance().dateFormat.format(System.currentTimeMillis()) + "_heap.hprof").getAbsolutePath());
-        } catch (Exception e2) {
-            FileLog.e(e2);
+        if (force || app.nimarkogram.messenger.diagnostics.CrashDiagnostics.isExtendedMemoryDiagnosticsEnabled()) {
+            app.nimarkogram.messenger.diagnostics.CrashDiagnostics.requestManualHeapDump(null);
         }
     }
 
@@ -543,7 +559,7 @@ public class FileLog {
             return;
         }
         if (e instanceof OutOfMemoryError) {
-            getInstance().dumpMemory(false);
+            app.nimarkogram.messenger.diagnostics.CrashDiagnostics.requestObservedOomDump();
         }
         if (logToAppCenter && BuildVars.DEBUG_VERSION && needSent(e)) {
             AndroidUtilities.appCenterLog(e);

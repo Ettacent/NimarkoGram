@@ -48,7 +48,6 @@ import android.text.style.ClickableSpan;
 import android.text.style.MetricAffectingSpan;
 import android.text.style.ReplacementSpan;
 import android.text.style.URLSpan;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -132,6 +131,7 @@ import org.telegram.ui.iv.Latex;
 import org.telegram.ui.PremiumPreviewFragment;
 import org.telegram.ui.web.WebInstantView;
 
+import org.telegram.utils.code.highlight.CodeHighlighting;
 import java.io.File;
 import java.net.URLDecoder;
 import java.util.ArrayList;
@@ -1059,7 +1059,12 @@ public class RichMessageLayout {
             blocks.add(block);
             return block;
         } else if (pageBlock instanceof TL_iv.pageBlockTable) {
-            final RichBlock block = new RichTableBlock(this, padding, maxWidth, (TL_iv.pageBlockTable) pageBlock);
+            final RichBlock block;
+            try {
+                block = new RichTableBlock(this, padding, maxWidth, (TL_iv.pageBlockTable) pageBlock);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
             block.accessibilityLabelResId = R.string.AccDescrIVTable;
             blocks.add(block);
             return block;
@@ -2150,6 +2155,9 @@ public class RichMessageLayout {
                 tel = "+" + tel;
             }
             formatTextAndSetSpan(text.text, out, flags, new URLSpanReplacement("tel:" + tel, getTextStyleRun(TextStyleSpan.FLAG_STYLE_TEXT_URL)));
+        } else if (text instanceof TL_iv.textTonAddress) {
+            final String address = getString(text);
+            formatTextAndSetSpan(text.text, out, flags, new URLSpanNoUnderline("tonaddress:" + address));
         } else if (text instanceof TL_iv.textBankCard) {
             final String bankCard = getString(text);
             formatTextAndSetSpan(text.text, out, flags, new URLSpanNoUnderline("card:" + bankCard));
@@ -9739,6 +9747,24 @@ public class RichMessageLayout {
 
         private RichMessageLayout layout;
 
+        private boolean roundedContent;
+        private final Path contentClipPath = new Path();
+
+        public void setRoundedContent(boolean rounded) {
+            if (roundedContent == rounded) return;
+            roundedContent = rounded;
+            invalidate();
+        }
+
+        @Override
+        public void invalidate(int left, int top, int right, int bottom) {
+            invalidate();
+        }
+
+        @Override
+        public void invalidate(Rect dirty) {
+            invalidate();
+        }
         public PreviewView(Context context) {
             this(context, UserConfig.selectedAccount, null);
         }
@@ -9807,6 +9833,7 @@ public class RichMessageLayout {
 
         private void buildLayout(int width) {
             if (width <= 0 || richMessage == null) {
+                if (layout != null) layout.detach(this);
                 layout = null;
                 return;
             }
@@ -9862,6 +9889,18 @@ public class RichMessageLayout {
             final float clipBottom = getHeight() - insetTop - insetBottom;
             final boolean clip = layout.getHeight() > getHeight() - insetTop - insetBottom;
             canvas.save();
+            if (roundedContent) {
+                final float left = Math.min(dp(2), getWidth() / 2f);
+                final float right = Math.max(left, getWidth() - dp(2));
+                final float top = Math.min(insetTop, getHeight());
+                final float bottom = Math.max(top, getHeight() - insetBottom);
+                final float radius = Math.min(
+                        dp(SharedConfig.bubbleRadius > 2 ? SharedConfig.bubbleRadius - 2 : SharedConfig.bubbleRadius),
+                        Math.min(right - left, bottom - top) / 2f);
+                contentClipPath.rewind();
+                contentClipPath.addRoundRect(left, top, right, bottom, radius, radius, Path.Direction.CW);
+                canvas.clipPath(contentClipPath);
+            }
             if (clip) {
                 canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), 0xFF, Canvas.ALL_SAVE_FLAG);
             }

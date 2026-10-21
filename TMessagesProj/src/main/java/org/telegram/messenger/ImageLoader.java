@@ -784,7 +784,7 @@ public class ImageLoader {
                 }
                 float scaleFactor = Math.min((float) w / size, (float) h / size);
                 if (scaleFactor > 1) {
-                    Bitmap scaledBitmap = Bitmaps.createScaledBitmap(originalBitmap, (int) (w / scaleFactor), (int) (h / scaleFactor), true);
+                    Bitmap scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, (int) (w / scaleFactor), (int) (h / scaleFactor), true);
                     if (scaledBitmap != originalBitmap) {
                         originalBitmap.recycle();
                         originalBitmap = scaledBitmap;
@@ -1411,7 +1411,7 @@ public class ImageLoader {
                                 float bitmapH = image.getHeight();
                                 if (w_filter != 0 && bitmapW != w_filter && bitmapW > w_filter + 20) {
                                     float scaleFactor = bitmapW / w_filter;
-                                    Bitmap scaledBitmap = Bitmaps.createScaledBitmap(image, (int) w_filter, (int) (bitmapH / scaleFactor), true);
+                                    Bitmap scaledBitmap = Bitmap.createScaledBitmap(image, (int) w_filter, (int) (bitmapH / scaleFactor), true);
                                     if (image != scaledBitmap) {
                                         image.recycle();
                                         image = scaledBitmap;
@@ -1517,7 +1517,7 @@ public class ImageLoader {
                                 is.close();
                             }
 
-                            if (image == null) {
+                            if (image == null && (secureDocumentKey != null || inEncryptedFile)) {
                                 try {
                                     RandomAccessFile f = new RandomAccessFile(cacheFileFinal, "r");
                                     int len = (int) f.length();
@@ -1564,14 +1564,14 @@ public class ImageLoader {
                                     if (bitmapW > bitmapH && w_filter > h_filter) {
                                         float scaleFactor = bitmapW / w_filter;
                                         if (scaleFactor > 1) {
-                                            scaledBitmap = Bitmaps.createScaledBitmap(image, (int) w_filter, (int) (bitmapH / scaleFactor), true);
+                                            scaledBitmap = Bitmap.createScaledBitmap(image, (int) w_filter, (int) (bitmapH / scaleFactor), true);
                                         } else {
                                             scaledBitmap = image;
                                         }
                                     } else {
                                         float scaleFactor = bitmapH / h_filter;
                                         if (scaleFactor > 1) {
-                                            scaledBitmap = Bitmaps.createScaledBitmap(image, (int) (bitmapW / scaleFactor), (int) h_filter, true);
+                                            scaledBitmap = Bitmap.createScaledBitmap(image, (int) (bitmapW / scaleFactor), (int) h_filter, true);
                                         } else {
                                             scaledBitmap = image;
                                         }
@@ -1587,7 +1587,7 @@ public class ImageLoader {
                                         int w = image.getWidth();
                                         int h = image.getHeight();
                                         if (w * h > 150 * 150) {
-                                            b = Bitmaps.createScaledBitmap(image, 100, 100, false);
+                                            b = Bitmap.createScaledBitmap(image, 100, 100, false);
                                         }
                                         needInvert = Utilities.needInvert(b) != 0;
                                         if (b != image) {
@@ -1595,7 +1595,7 @@ public class ImageLoader {
                                         }
                                     }
                                     if (blurType != 0 && (bitmapH > 100 || bitmapW > 100)) {
-                                        image = Bitmaps.createScaledBitmap(image, 80, 80, false);
+                                        image = Bitmap.createScaledBitmap(image, 80, 80, false);
                                         bitmapH = 80;
                                         bitmapW = 80;
                                     }
@@ -1816,7 +1816,17 @@ public class ImageLoader {
         return drawable;
     }
 
+    private static Bitmap getStrippedPhotoFallbackBitmap() {
+        Bitmap bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(0xFF000000);
+        return bitmap;
+    }
     public static Bitmap getStrippedPhotoBitmap(byte[] photoBytes, String filter) {
+        if (photoBytes == null || photoBytes.length < 3) {
+            return getStrippedPhotoFallbackBitmap();
+        }
+
+        try {
         int len = photoBytes.length - 3 + Bitmaps.header.length + Bitmaps.footer.length;
         byte[] bytes = bytesLocal.get();
         byte[] data = bytes != null && bytes.length >= len ? bytes : null;
@@ -1835,6 +1845,9 @@ public class ImageLoader {
         final boolean isRound = !TextUtils.isEmpty(filter) && filter.contains("r");
         options.inPreferredConfig = SharedConfig.deviceIsHigh() || isRound ? Bitmap.Config.ARGB_8888 : Bitmap.Config.RGB_565;
         Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, len, options);
+            if (bitmap == null) {
+                return getStrippedPhotoFallbackBitmap();
+            }
         if (isRound) {
             Bitmap nbitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), bitmap.getConfig());
             Canvas canvas = new Canvas(nbitmap);
@@ -1850,10 +1863,15 @@ public class ImageLoader {
             bitmap.recycle();
             bitmap = nbitmap;
         }
-        if (bitmap != null && !TextUtils.isEmpty(filter) && filter.contains("b")) {
+            if (!TextUtils.isEmpty(filter) && filter.contains("b")) {
             Utilities.blurBitmap(bitmap, 3);
         }
         return bitmap;
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+
+        return getStrippedPhotoFallbackBitmap();
     }
 
     private class CacheImage {
@@ -2209,6 +2227,12 @@ public class ImageLoader {
         }
     }
 
+    public static long[] diagnosticCacheSizesIfInitialized() {
+        ImageLoader local = Instance;
+        if (local == null) return null;
+        return new long[]{local.memCache.diagnosticSize(), local.smallImagesMemCache.diagnosticSize(),
+                local.wallpaperMemCache.diagnosticSize(), local.lottieMemCache.diagnosticSize()};
+    }
     public ImageLoader() {
         thumbGeneratingQueue.setPriority(Thread.MIN_PRIORITY);
 
@@ -4173,7 +4197,9 @@ public class ImageLoader {
             try {
                 b = BitmapFactory.decodeFile(path, bmOptions);
                 if (b != null) {
-                    Bitmap newBitmap = Bitmaps.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
+                    int width = b.getWidth();
+                    int height = b.getHeight();
+                    Bitmap newBitmap = Bitmap.createBitmap(b, 0, 0, width, height, matrix, true);
                     if (newBitmap != b) {
                         b.recycle();
                         b = newBitmap;
@@ -4187,7 +4213,9 @@ public class ImageLoader {
                         b = BitmapFactory.decodeFile(path, bmOptions);
                     }
                     if (b != null) {
-                        Bitmap newBitmap = Bitmaps.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
+                        int width = b.getWidth();
+                        int height = b.getHeight();
+                        Bitmap newBitmap = Bitmap.createBitmap(b, 0, 0, width, height, matrix, true);
                         if (newBitmap != b) {
                             b.recycle();
                             b = newBitmap;
@@ -4201,7 +4229,9 @@ public class ImageLoader {
             try {
                 b = BitmapFactory.decodeStream(inputStream, null, bmOptions);
                 if (b != null) {
-                    Bitmap newBitmap = Bitmaps.createBitmap(b, 0, 0, b.getWidth(), b.getHeight(), matrix, true);
+                    int width = b.getWidth();
+                    int height = b.getHeight();
+                    Bitmap newBitmap = Bitmap.createBitmap(b, 0, 0, width, height, matrix, true);
                     if (newBitmap != b) {
                         b.recycle();
                         b = newBitmap;
@@ -4310,7 +4340,7 @@ public class ImageLoader {
     private static TLRPC.PhotoSize scaleAndSaveImageInternal(TLRPC.PhotoSize photoSize, Bitmap bitmap, Bitmap.CompressFormat compressFormat, boolean progressive, int w, int h, float photoW, float photoH, float scaleFactor, int quality, boolean cache, boolean scaleAnyway, boolean forceCacheDir) throws Exception {
         Bitmap scaledBitmap;
         if (scaleFactor > 1 || scaleAnyway) {
-            scaledBitmap = Bitmaps.createScaledBitmap(bitmap, w, h, true);
+            scaledBitmap = Bitmap.createScaledBitmap(bitmap, w, h, true);
         } else {
             scaledBitmap = bitmap;
         }
@@ -4773,7 +4803,7 @@ public class ImageLoader {
                     Bitmap bitmap = ImageLoader.loadBitmap(file.getPath(), null, (int) (point.x / AndroidUtilities.density), (int) (point.y / AndroidUtilities.density), false);
                     if (bitmap != null) {
                         Utilities.blurBitmap(bitmap, 3);
-                        Bitmap scaledBitmap = Bitmaps.createScaledBitmap(bitmap, (int) (point.x / AndroidUtilities.density), (int) (point.y / AndroidUtilities.density), true);
+                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, (int) (point.x / AndroidUtilities.density), (int) (point.y / AndroidUtilities.density), true);
                         if (scaledBitmap != bitmap) {
                             bitmap.recycle();
                             bitmap = scaledBitmap;
@@ -4809,7 +4839,7 @@ public class ImageLoader {
                         Bitmap b = getStrippedPhotoBitmap(size.bytes, null);
                         if (b != null) {
                             Utilities.blurBitmap(b, 3);
-                            Bitmap scaledBitmap = Bitmaps.createScaledBitmap(b, (int) (point.x / AndroidUtilities.density), (int) (point.y / AndroidUtilities.density), true);
+                            Bitmap scaledBitmap = Bitmap.createScaledBitmap(b, (int) (point.x / AndroidUtilities.density), (int) (point.y / AndroidUtilities.density), true);
                             if (scaledBitmap != b) {
                                 b.recycle();
                                 b = scaledBitmap;

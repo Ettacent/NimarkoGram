@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram menu_night_mode_24.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="moon_body" android:pathData="M14.4,2.8C9.4,1.6 4.1,4.6 3,9.8C1.8,15.3 5.6,20.6 11.1,21.3C16.1,22 20.6,18.7 21.5,14C21.7,13.1 21.7,12.2 21.6,11.4C18.9,13.1 15.2,12.5 13.3,9.9C11.7,7.7 12.1,4.8 14.4,2.8Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="5" android:startY="3" android:endX="18" android:endY="22" android:startColor="#DCFFFFFF" android:centerColor="#68FFFFFF" android:endColor="#ACFFFFFF"/></aapt:attr>
+    </path>
+    <path android:name="night_star" android:pathData="M19,2.6L19.7,4.6L21.7,5.3L19.7,6L19,8L18.3,6L16.3,5.3L18.3,4.6Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="5" android:startY="3" android:endX="18" android:endY="22" android:startColor="#DCFFFFFF" android:centerColor="#A0FFFFFF" android:endColor="#ACFFFFFF"/></aapt:attr>
+    </path>
+</vector>

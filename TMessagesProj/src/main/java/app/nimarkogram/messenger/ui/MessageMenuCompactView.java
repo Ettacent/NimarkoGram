@@ -26,6 +26,7 @@ import java.util.List;
 
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.NimarkoMessageMenuInjector;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -393,10 +394,8 @@ public class MessageMenuCompactView extends LinearLayout {
         if (sourceDrawable == null) {
             return null;
         }
-        Drawable.ConstantState state = sourceDrawable.getConstantState();
-        return state == null
-                ? sourceDrawable
-                : state.newDrawable(getResources()).mutate();
+        Drawable copy = NimarkoIconResources.copyDrawable(sourceDrawable, getResources());
+        return copy == null ? sourceDrawable : copy;
     }
 
     private static final class Action {

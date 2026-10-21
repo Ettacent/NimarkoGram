@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Paint;
 
 import android.annotation.SuppressLint;
@@ -29,6 +31,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
@@ -124,7 +127,7 @@ public class ColorPickerBottomSheet extends BottomSheet {
 //        bottomLayout.addView(pipetteView, LayoutHelper.createLinear(28, 28, 0, 0, 16, 0));
 
         doneView = new ImageView(context);
-        doneView.setImageResource(R.drawable.ic_ab_done);
+        doneView.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.ic_ab_done));
         doneView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         doneView.setBackground(Theme.createSelectorDrawable(Theme.ACTION_BAR_WHITE_SELECTOR_COLOR));
         doneView.setOnClickListener(v -> {

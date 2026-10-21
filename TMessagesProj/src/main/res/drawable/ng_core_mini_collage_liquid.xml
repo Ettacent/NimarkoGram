@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram mini_collage.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="16dp" android:height="16dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:strokeWidth="1" android:pathData="M36.0377361,2.71666667 C41.1439385,2.71666667 45.2833333,6.85606153 45.2833333,11.9622639 L45.2833333,36.0377361 C45.2833333,41.1439385 41.1439385,45.2833333 36.0377361,45.2833333 L11.9622639,45.2833333 C6.85606153,45.2833333 2.71666667,41.1439385 2.71666667,36.0377361 L2.71666667,11.9622639 C2.71666667,6.85606153 6.85606153,2.71666667 11.9622639,2.71666667 L36.0377361,2.71666667 Z M36.0377361,6.61666667 L11.9622639,6.61666667 C9.00997206,6.61666667 6.61666667,9.00997206 6.61666667,11.9622639 L6.61666667,36.0377361 C6.61666667,38.9900279 9.00997206,41.3833333 11.9622639,41.3833333 L36.0377361,41.3833333 C38.9900279,41.3833333 41.3833333,38.9900279 41.3833333,36.0377361 L41.3833333,11.9622639 C41.3833333,9.00997206 38.9900279,6.61666667 36.0377361,6.61666667 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeWidth="1" android:pathData="M 4.66666667 25.95 L 43.3333333 25.95 L 43.3333333 22.05 L 4.66666667 22.05 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeWidth="1" android:pathData="M 22.05 24 L 22.05 43.3333333 L 25.95 43.3333333 L 25.95 24 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

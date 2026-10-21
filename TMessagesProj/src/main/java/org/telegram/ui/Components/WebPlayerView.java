@@ -1879,12 +1879,12 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         AndroidUtilities.cancelRunOnUIThread(progressRunnable);
         if (!videoPlayer.isPlaying()) {
             if (isCompleted) {
-                playButton.setImageResource(isInline ? R.drawable.ic_againinline : R.drawable.ic_again);
+                MediaControlIconHelper.setImageResource(playButton, isInline ? R.drawable.ic_againinline : R.drawable.ic_again);
             } else {
-                playButton.setImageResource(isInline ? R.drawable.ic_playinline : R.drawable.ic_play);
+                MediaControlIconHelper.setImageResource(playButton, isInline ? R.drawable.ic_playinline : R.drawable.ic_play);
             }
         } else {
-            playButton.setImageResource(isInline ? R.drawable.ic_pauseinline : R.drawable.ic_pause);
+            MediaControlIconHelper.setImageResource(playButton, isInline ? R.drawable.ic_pauseinline : R.drawable.ic_pause);
             AndroidUtilities.runOnUIThread(progressRunnable, 500);
             checkAudioFocus();
         }
@@ -1936,10 +1936,10 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         }
         fullscreenButton.setVisibility(VISIBLE);
         if (!inFullscreen) {
-            fullscreenButton.setImageResource(R.drawable.ic_gofullscreen);
+            MediaControlIconHelper.setImageResource(fullscreenButton, R.drawable.ic_gofullscreen);
             fullscreenButton.setLayoutParams(LayoutHelper.createFrame(56, 56, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 0, 5));
         } else {
-            fullscreenButton.setImageResource(R.drawable.ic_outfullscreen);
+            MediaControlIconHelper.setImageResource(fullscreenButton, R.drawable.ic_outfullscreen);
             fullscreenButton.setLayoutParams(LayoutHelper.createFrame(56, 56, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 0, 1));
         }
     }

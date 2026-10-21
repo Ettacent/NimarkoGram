@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.REPLACING_TAG_TYPE_LINK_NBSP;
@@ -371,7 +373,7 @@ public class BotStarsActivity extends BaseFragment implements NotificationCenter
         tonBalanceSubtitle.setTextSize(dp(14));
         tonBalanceLayout.addView(tonBalanceSubtitle, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 17, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 22, 4, 22, 0));
 
-        tonBalanceButton = new ButtonWithCounterView(context, resourceProvider);
+        tonBalanceButton = new ButtonWithCounterView(context, resourceProvider).setRound();
         tonBalanceButton.setEnabled(MessagesController.getInstance(currentAccount).channelRevenueWithdrawalEnabled);
         tonBalanceButton.setText(getString(self ? R.string.MonetizationSelfWithdraw : R.string.MonetizationWithdraw), false);
         tonBalanceButton.setVisibility(View.GONE);

@@ -421,10 +421,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 }
             }
 
-            View rootView = getRootView();
-            getWindowVisibleDisplayFrame(rect);
-            int usableViewHeight = rootView.getHeight() - (rect.top != 0 ? AndroidUtilities.statusBarHeight : 0) - AndroidUtilities.getViewInset(rootView);
-            isKeyboardVisible = usableViewHeight - (rect.bottom - rect.top) > 0;
+            isKeyboardVisible = isKeyboardVisibleForNavigation();
             if (waitingForKeyboardCloseRunnable != null && !containerView.isKeyboardVisible && !containerViewBack.isKeyboardVisible) {
                 AndroidUtilities.cancelRunOnUIThread(waitingForKeyboardCloseRunnable);
                 waitingForKeyboardCloseRunnable.run();
@@ -675,6 +672,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private ArrayList<ThemeDescription.ThemeDescriptionDelegate> themeAnimatorDelegate = new ArrayList<>();
     private final ArrayList<Theme.Colorable> themeColorableViews = new ArrayList<>();
     private AnimatorSet themeAnimatorSet;
+    private int themeAnimationGeneration;
     private float themeAnimationValue;
     private boolean animateThemeAfterAnimation;
     private Theme.ThemeInfo animateSetThemeAfterAnimation;
@@ -707,11 +705,13 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private View materialRoundedSurface;
     private ViewOutlineProvider materialOriginalOutline;
     private boolean materialOriginalClip;
+    private int materialGestureOutlineBottom = -1;
     private final ViewOutlineProvider materialGestureOutline = new ViewOutlineProvider() {
         @Override
         public void getOutline(View view, Outline outline) {
             float radius = dp(28) * MaterialSharedAxisMotion.gestureCornerProgress(materialGestureProgress);
-            outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+            materialGestureOutlineBottom = getMaterialGestureOutlineBottom(view);
+            outline.setRoundRect(0, 0, view.getWidth(), materialGestureOutlineBottom, radius);
         }
     };
     private View materialTopSurface;
@@ -904,6 +904,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private int[] measureSpec = new int[2];
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        isKeyboardVisible = isKeyboardVisibleForNavigation();
         BaseFragment lastFragment = null;
         if (!fragmentsStack.isEmpty()) {
             lastFragment = fragmentsStack.get(fragmentsStack.size() - 1);
@@ -922,7 +923,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             widthMeasureSpec = measureSpec[0];
             heightMeasureSpec = measureSpec[1];
         }
-        isKeyboardVisible = measureKeyboardHeight() > dp(20);
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
@@ -1145,6 +1145,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
+        refreshMaterialGestureOutlineBounds();
         if (bottomSheetTabs != null && getBottomTabsHeight(true) > 0) {
             canvas.drawRect(0, getHeight() - (systemAndDisplayInsets.bottom + bottomSheetTabs.getMeasuredHeight()),
                     getWidth(), getHeight(), bottomSheetTabs.getBackgroundPaint());
@@ -1161,7 +1162,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         }
         if (materialTransitionActive) {
 
+            final int transitionSaveCount = canvas.save();
+            if (bottomSheetTabsClip != null) {
+                bottomSheetTabsClip.clip(canvas, false, isKeyboardVisible, getWidth(), (int) getY() + getHeight(), 1.0f);
+            }
             canvas.drawRect(getPaddingLeft(), 0, getWidth() - getPaddingRight(), getHeight(), materialTransitionPaint);
+            canvas.restoreToCount(transitionSaveCount);
         }
         super.dispatchDraw(canvas);
         if (isLayersLayout) {
@@ -2280,6 +2286,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (currentAnimation != null) {
             AnimatorSet animator = currentAnimation;
             currentAnimation = null;
+            retireCustomTransition(animator);
             animator.removeAllListeners();
             animator.cancel();
         }
@@ -2351,6 +2358,21 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         return transitionAnimationInProgress && currentAnimation == animation;
     }
 
+    private final java.util.IdentityHashMap<Animator, Runnable> customTransitionCleanups = new java.util.IdentityHashMap<>();
+
+    public void registerCustomTransitionCleanup(Animator animation, Runnable cleanup) {
+        customTransitionCleanups.put(animation, cleanup);
+    }
+
+    public void unregisterCustomTransitionCleanup(Animator animation) {
+        customTransitionCleanups.remove(animation);
+    }
+
+    private void retireCustomTransition(Animator animation) {
+        final Runnable cleanup = customTransitionCleanups.remove(animation);
+        if (cleanup != null) cleanup.run();
+    }
+
     private void onAnimationEndCheck(boolean byCheck) {
         final boolean closing = transitionAnimationInProgress && onCloseAnimationEndRunnable != null;
         final Runnable endRunnable = !transitionAnimationInProgress ? null
@@ -2381,6 +2403,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             AnimatorSet animation = currentAnimation;
             currentAnimation = null;
             if (byCheck || closing) {
+                retireCustomTransition(animation);
                 animation.cancel();
             }
         }
@@ -2861,7 +2884,29 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (destination != null) destination.onTransitionAnimationProgress(true, materialGestureProgress);
     }
 
+    private int getMaterialGestureOutlineBottom(View view) {
+        int bottom = view.getHeight();
+        if (bottomSheetTabs != null && !isKeyboardVisible
+                && (getBottomTabsHeight(false) > 0 || getBottomTabsHeight(true) > 0)) {
+            bottom = Math.min(bottom, view.getHeight() - view.getPaddingBottom());
+            if (bottomSheetTabsClip != null) {
+                bottom = Math.min(bottom, (int) Math.floor(bottomSheetTabsClip.getClipBottom(false, 1f) - view.getTop()));
+            }
+        }
+        return Math.max(0, bottom);
+    }
+
+    private void refreshMaterialGestureOutlineBounds() {
+        if (materialGestureActive && materialRoundedSurface != null) {
+            int bottom = getMaterialGestureOutlineBottom(materialRoundedSurface);
+            if (bottom != materialGestureOutlineBottom) {
+                materialGestureOutlineBottom = bottom;
+                materialRoundedSurface.invalidateOutline();
+            }
+        }
+    }
     private void restoreMaterialGestureOutline() {
+        materialGestureOutlineBottom = -1;
         if (materialRoundedSurface == null) return;
         materialRoundedSurface.setOutlineProvider(materialOriginalOutline);
         materialRoundedSurface.setClipToOutline(materialOriginalClip);
@@ -4266,19 +4311,35 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         return themeAnimationValue;
     }
 
-    private void addStartDescriptions(ArrayList<ThemeDescription> descriptions) {
-        if (descriptions == null) {
-            return;
-        }
-        themeAnimatorDescriptions.add(descriptions);
-        int[] startColors = new int[descriptions.size()];
-        animateStartColors.add(startColors);
-        for (int a = 0, N = descriptions.size(); a < N; a++) {
-            ThemeDescription description = descriptions.get(a);
-            startColors[a] = description.getSetColor();
+    private static class ThemeAnimationState {
+        final ArrayList<ArrayList<ThemeDescription>> descriptions = new ArrayList<>();
+        final ArrayList<int[]> colors = new ArrayList<>();
+        final ArrayList<ThemeDescription.ThemeDescriptionDelegate> delegates = new ArrayList<>();
+
+        void add(ArrayList<ThemeDescription> values) {
+            if (values == null) {
+                return;
+            }
+            descriptions.add(values);
+            int[] start = new int[values.size()];
+            colors.add(start);
+            for (int i = 0; i < values.size(); i++) {
+                ThemeDescription description = values.get(i);
+                start[i] = description.getSetColor();
             ThemeDescription.ThemeDescriptionDelegate delegate = description.setDelegateDisabled();
-            if (delegate != null && !themeAnimatorDelegate.contains(delegate)) {
-                themeAnimatorDelegate.add(delegate);
+                if (delegate != null && !delegates.contains(delegate)) {
+                    delegates.add(delegate);
+                }
+            }
+        }
+
+        void holdColors() {
+            for (int i = 0; i < descriptions.size(); i++) {
+                ArrayList<ThemeDescription> values = descriptions.get(i);
+                int[] start = colors.get(i);
+                for (int j = 0; j < values.size(); j++) {
+                    values.get(j).setAnimatedColor(start[j]);
+                }
             }
         }
     }
@@ -4315,14 +4376,10 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             }
             return;
         }
-        if (themeAnimatorSet != null) {
-            themeAnimatorSet.cancel();
-            themeAnimatorSet = null;
-        }
+        final int generation = ++themeAnimationGeneration;
         final int fragmentCount = settings.onlyTopFragment ? 1 : fragmentsStack.size();
-        Runnable next = () -> {
-            boolean startAnimation = false;
-            for (int i = 0; i < fragmentCount; i++) {
+        final ThemeAnimationState startState = new ThemeAnimationState();
+        for (int i = 0; i < Math.min(fragmentCount, 2); i++) {
                 BaseFragment fragment;
                 if (i == 0) {
                     fragment = getLastFragment();
@@ -4333,7 +4390,6 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     fragment = fragmentsStack.get(fragmentsStack.size() - 2);
                 }
                 if (fragment != null) {
-                    startAnimation = true;
                     if (settings.resourcesProvider != null) {
                         if (messageDrawableOutStart == null) {
                             messageDrawableOutStart = new MessageDrawable(MessageDrawable.TYPE_TEXT, true, false, startColorsProvider);
@@ -4344,28 +4400,68 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                         startColorsProvider.saveColors(settings.resourcesProvider);
                     }
                     ArrayList<ThemeDescription> descriptions = fragment.getThemeDescriptions();
-                    addStartDescriptions(descriptions);
+                startState.add(descriptions);
                     if (fragment.visibleDialog instanceof BottomSheet) {
                         BottomSheet sheet = (BottomSheet) fragment.visibleDialog;
-                        addStartDescriptions(sheet.getThemeDescriptions());
+                    startState.add(sheet.getThemeDescriptions());
                     } else if (fragment.visibleDialog instanceof AlertDialog) {
                         AlertDialog dialog = (AlertDialog) fragment.visibleDialog;
-                        addStartDescriptions(dialog.getThemeDescriptions());
+                    startState.add(dialog.getThemeDescriptions());
+                }
+            }
+        }
+        if (themeAnimatorSet != null) {
+            themeAnimatorSet.cancel();
+        }
+        if (generation != themeAnimationGeneration) {
+            return;
+        }
+        final boolean holdPalette = settings.applyTheme && settings.applyTrulyTheme && !startState.descriptions.isEmpty();
+        if (holdPalette) {
+            Theme.setAnimatingColor(true);
+            startState.holdColors();
+        }
+        Runnable cancelled = () -> {
+            if (generation == themeAnimationGeneration && holdPalette) {
+                Theme.setAnimatingColor(false);
+                for (ArrayList<ThemeDescription> descriptions : startState.descriptions) {
+                    for (ThemeDescription description : descriptions) {
+                        description.setColor(description.getSetColor(), false, false);
                     }
-                    if (i == 0) {
+                }
+                for (ThemeDescription.ThemeDescriptionDelegate listener : startState.delegates) {
+                    listener.didSetColor();
+                }
+            }
+            if (onCancelled != null) {
+                onCancelled.run();
+            }
+        };
+        Runnable next = () -> {
+            if (generation != themeAnimationGeneration) {
+                cancelled.run();
+                return;
+            }
+            if (holdPalette) {
+                Theme.setAnimatingColor(false);
+            }
+            themeAnimatorDescriptions.clear();
+            themeAnimatorDescriptions.addAll(startState.descriptions);
+            animateStartColors.clear();
+            animateStartColors.addAll(startState.colors);
+            animateEndColors.clear();
+            themeAnimatorDelegate.clear();
+            themeAnimatorDelegate.addAll(startState.delegates);
+            if (!startState.descriptions.isEmpty()) {
                         if (settings.afterStartDescriptionsAddedRunnable != null) {
                             settings.afterStartDescriptionsAddedRunnable.run();
                         }
-                    }
-                    addEndDescriptions(descriptions);
-                    if (fragment.visibleDialog instanceof BottomSheet) {
-                        addEndDescriptions(((BottomSheet) fragment.visibleDialog).getThemeDescriptions());
-                    } else if (fragment.visibleDialog instanceof AlertDialog) {
-                        addEndDescriptions(((AlertDialog) fragment.visibleDialog).getThemeDescriptions());
-                    }
+                if (generation != themeAnimationGeneration) {
+                    return;
                 }
-            }
-            if (startAnimation) {
+                for (ArrayList<ThemeDescription> descriptions : startState.descriptions) {
+                    addEndDescriptions(descriptions);
+                }
                 if (!settings.onlyTopFragment) {
                     int count = fragmentsStack.size() - (inPreviewMode || transitionAnimationPreviewMode ? 2 : 1);
                     for (int a = 0; a < count; a++) {
@@ -4418,6 +4514,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     public void onAnimationEnd(Animator animation) {
                         if (animation.equals(themeAnimatorSet)) {
                             Theme.setAnimatingColor(false);
+                            if (settings.applyTheme && settings.applyTrulyTheme) {
+                                org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory.invalidateGlassSettings();
+                            }
                             updateDetachedThemeViews();
                             themeAnimatorDescriptions.clear();
                             animateStartColors.clear();
@@ -4440,6 +4539,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                     public void onAnimationCancel(Animator animation) {
                         if (animation.equals(themeAnimatorSet)) {
                             Theme.setAnimatingColor(false);
+                            if (settings.applyTheme && settings.applyTrulyTheme) {
+                                org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory.invalidateGlassSettings();
+                            }
                             updateDetachedThemeViews();
                             themeAnimatorDescriptions.clear();
                             animateStartColors.clear();
@@ -4471,9 +4573,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             // Theme files and dynamic Monet palettes require file parsing and may
             // verify/copy bundled assets. Keep that work off the render thread for
             // every switch, not only for callers which happened to pass a callback.
-            Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next, () -> {
-                if (onCancelled != null) {
-                    onCancelled.run();
+            Theme.applyThemeInBackground(settings.theme, settings.nightTheme, next, cancelled, () -> {
+                if (generation == themeAnimationGeneration && holdPalette) {
+                    Theme.setAnimatingColor(false);
                 }
             });
         } else {
@@ -4545,7 +4647,25 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 || predictiveBackInProgress;
     }
 
+    @Override
+    public boolean canRebuildFragmentViewsNow() {
+        return !isFragmentRebuildUnsafe();
+    }
     private void rebuildAllFragmentViewsNow(boolean last, boolean showLastAfter) {
+        rebuildAllFragmentViewsNow(last, showLastAfter, false);
+    }
+
+    private boolean isAttachedIconRefreshTop(BaseFragment fragment) {
+        if (fragment == null || fragment != getLastFragment() || fragment.getFragmentView() == null
+                || fragment.getFragmentView().getParent() != containerView
+                || fragment.getActionBar() != currentActionBar) {
+            return false;
+        }
+        ActionBar bar = fragment.getActionBar();
+        return bar == null || !bar.shouldAddToContainer() || bar.getParent() == containerView;
+    }
+
+    private void rebuildAllFragmentViewsNow(boolean last, boolean showLastAfter, boolean iconPackOnly) {
         int size = fragmentsStack.size();
         if (!last) {
             size--;
@@ -4553,15 +4673,30 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         if (inPreviewMode) {
             size--;
         }
+        BaseFragment retainedTop = null;
         for (int a = 0; a < size; a++) {
-            fragmentsStack.get(a).clearViews();
-            fragmentsStack.get(a).setParentLayout(this);
+            BaseFragment fragment = fragmentsStack.get(a);
+            boolean top = fragment == getLastFragment();
+            if (iconPackOnly && fragment.getFragmentView() != null
+                    && (!top || isAttachedIconRefreshTop(fragment))
+                    && fragment.onIconPackResourcesChanged()) {
+                if (top) retainedTop = fragment;
+                continue;
+            }
+            fragment.clearViews();
+            fragment.setParentLayout(this);
         }
         if (delegate != null) {
             delegate.onRebuildAllFragments(this, last);
         }
         if (showLastAfter) {
+            if (retainedTop == null || !isAttachedIconRefreshTop(retainedTop)) {
+                if (retainedTop != null && retainedTop == getLastFragment()) {
+                    retainedTop.clearViews();
+                    retainedTop.setParentLayout(this);
+                }
             showLastFragment();
+            }
         }
     }
 
@@ -4594,11 +4729,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             return;
         }
         if (pendingIconPackRebuildGeneration > appliedIconPackRebuildGeneration) {
+            final boolean iconPackOnly = !rebuildAfterAnimation;
             appliedIconPackRebuildGeneration = pendingIconPackRebuildGeneration;
             pendingIconPackRebuildGeneration = Long.MIN_VALUE;
             // A full icon rebuild subsumes any older generic rebuild request.
             rebuildAfterAnimation = false;
-            rebuildAllFragmentViewsNow(true, true);
+            rebuildAllFragmentViewsNow(true, true, iconPackOnly);
         } else if (rebuildAfterAnimation) {
             final boolean last = rebuildLastAfterAnimation;
             final boolean showLastAfter = showLastAfterAnimation;
@@ -4795,6 +4931,14 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         attached = false;
     }
 
+    private boolean isKeyboardVisibleForNavigation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && lastWindowInsetsCompat != null) {
+            return lastWindowInsetsCompat.isVisible(WindowInsetsCompat.Type.ime())
+                    && lastWindowInsetsCompat.getInsets(WindowInsetsCompat.Type.ime()).bottom > systemAndDisplayInsets.bottom;
+        }
+        return measureKeyboardHeight() > dp(20);
+    }
+
     public int measureKeyboardHeight() {
         View rootView = getRootView();
         getWindowVisibleDisplayFrame(rect);
@@ -4982,6 +5126,12 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         this.systemAndDisplayAndImeInsets = systemAndImeInsets;
         this.lastWindowInsetsCompat = insets;
 
+        final boolean keyboardVisible = isKeyboardVisibleForNavigation();
+        if (isKeyboardVisible != keyboardVisible) {
+            isKeyboardVisible = keyboardVisible;
+            requestLayout();
+            invalidate();
+        }
         for (int a = 0, N = getChildCount(); a < N; a++) {
             final View child = getChildAt(a);
             dispatchApplyWindowInsetsInternal(child, insets);

@@ -1401,5 +1401,38 @@ public final class PlumpyFullReplace extends BaseIconReplace {
         IconReplaceUtils.put(replaces, R.drawable.widgets_light_badgebg, R.drawable.widgets_light_badgebg_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.zoom_minus, R.drawable.zoom_minus_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.zoom_plus, R.drawable.zoom_plus_plumpy);
+        addAlias(R.drawable.wallet_copy, R.drawable.msg_copy);
+        addAlias(R.drawable.wallet_card_info, R.drawable.msg_info);
+        addAlias(R.drawable.wallet_help, R.drawable.msg_help);
+        addAlias(R.drawable.wallet_card_qr, R.drawable.msg_qrcode);
+        addAlias(R.drawable.wallet_key, R.drawable.msg2_permissions);
+        addAlias(R.drawable.wallet_intro_options, R.drawable.ic_ab_other);
+        addAlias(R.drawable.wallet_lock, R.drawable.ic_lock_white);
+        WalletIconReplacements.apply(this, false);
+        NativeIconReplacements.apply(this, false);
+        RasterNativeIconReplacements.apply(this, false);
+        CoreIconReplacements.apply(this);
+        PlumpySemanticIconReplacements.apply(this);
+        RatingIconReplacements.apply(this, false);
+        FollowupIconReplacements.apply(this, false);
+        ConsumerSemanticIconReplacements.apply(this, false);
+        ReviewedIconReplacements.apply(this, false);
+        FinalIconReplacements.apply(this, false);
+        RecordDeleteIconReplacements.apply(this, R.drawable.ng_record_delete_body_plumpy, R.drawable.ng_record_delete_lid_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.ng_file_download, R.drawable.ng_file_download_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.ng_header_download, R.drawable.ng_header_download_plumpy);
+        CompactTransferIconReplacements.apply(this);
+        CompactSecurityIconReplacements.apply(this);
+        CompactStatusIconReplacements.apply(this);
+        CompactControlIconReplacements.apply(this);
+        DeviceFolderIconReplacements.apply(this);
+        MessageMetaIconReplacements.apply(this);
+        QualityIconReplacements.apply(this, false);
+        PermissionSemanticIconReplacements.apply(this, false);
+        DurationSemanticIconReplacements.apply(this, false);
+        IconReplaceUtils.put(replaces, R.drawable.ng_create_quote, R.drawable.ng_create_quote_plumpy);
+        PlumpyActionIconReplacements.apply(this);
+        CompactInstantViewIconReplacements.apply(this);
+        GramIconReplacements.plumpy(this);
     }
 }

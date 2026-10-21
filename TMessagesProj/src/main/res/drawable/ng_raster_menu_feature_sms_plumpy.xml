@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="sms_bubble" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.6"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,3.5A9,9 0,0 1,16,3.5 M20,7A9,9 0,0 1,20.5,15 M15,20.5A9,9 0,0 1,8,19.7L3.6,21L5.1,16.7A9,9 0,0 1,3,8"/>
+    <path android:name="sms_letters" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.30" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8.9,10C8.1,8.8 5.8,9.3 5.8,10.5C5.8,11.7 8.9,11 8.9,12.6C8.9,14 6.6,14.5 5.7,13.2 M10.5,14V9.3L12.5,12.2L14.5,9.3V14 M19.4,10C18.6,8.8 16.3,9.3 16.3,10.5C16.3,11.7 19.4,11 19.4,12.6C19.4,14 17.1,14.5 16.2,13.2"/>
+    <path android:name="sms_sparkles" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.20" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4.4,3L4.800000000000001,4.1L5.9,4.5L4.800000000000001,4.9L4.4,6L4,4.9L2.9000000000000004,4.5L4,4.1ZM19.1,3.0999999999999996L19.5,4.199999999999999L20.6,4.6L19.5,5L19.1,6.1L18.700000000000003,5L17.6,4.6L18.700000000000003,4.199999999999999ZM18.7,19L19.099999999999998,20.1L20.2,20.5L19.099999999999998,20.9L18.7,22L18.3,20.9L17.2,20.5L18.3,20.1Z"/>
+</vector>

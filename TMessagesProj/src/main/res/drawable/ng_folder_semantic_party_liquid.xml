@@ -1,0 +1,21 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="bowl" android:pathData="M3,5H21C21.8,5 22.2,5.9 21.7,6.5L13.5,14.6C12.7,15.4 11.3,15.4 10.5,14.6L2.3,6.5C1.8,5.9 2.2,5 3,5Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="stem" android:pathData="M11.15,14.9H12.85V20H16.2C16.8,20 17.2,20.4 17.2,21V21.5H6.8V21C6.8,20.4 7.2,20 7.8,20H11.15Z"
+        android:fillColor="#CFFFFFFF"/>
+    <path android:name="rim" android:pathData="M3,5H21C21.8,5 22.2,5.9 21.7,6.5H2.3C1.8,5.9 2.2,5 3,5Z"
+        android:fillColor="#CFFFFFFF"/>
+    <path android:name="pick" android:pathData="M15.1,3L16.4,3.7L12.7,10.2L11.4,9.5Z"
+        android:fillColor="#CFFFFFFF"/>
+</vector>

@@ -9603,7 +9603,7 @@
     <string name="TelegramStarsGift">赠送星星给朋友</string>
     <string name="TelegramStarsInfo2">购买星星以解锁 Telegram 小程序中的内容与服务。 **了解星星 &gt;**</string>
     <string name="TelegramTones">Telegram 提示音</string>
-    <string name="TelegramVersion">Telegram Android 客户端 %1$s</string>
+    <string name="TelegramVersion">NimarkoGram Android 客户端 %1$s</string>
     <string name="Terminate">结束</string>
     <string name="TerminateAllSessions">注销所有其它设备上的会话</string>
     <string name="TerminateAllWebSessions">取消所有网站的授权</string>

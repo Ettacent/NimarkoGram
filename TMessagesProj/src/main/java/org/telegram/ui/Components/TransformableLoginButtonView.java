@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -13,8 +15,10 @@ import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -35,6 +39,7 @@ public class TransformableLoginButtonView extends View {
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
     private TextPaint textPaint;
     private String buttonText;
     private float buttonWidth;
@@ -95,6 +100,9 @@ public class TransformableLoginButtonView extends View {
 
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
+        NimarkoIconResources.PreparedIcon check = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_done);
         if (drawBackground) {
             boolean animateCornerRadius = transformType == TRANSFORM_OPEN_ARROW;
             float rad = AndroidUtilities.dp(BUTTON_RADIUS_DP + (CIRCLE_RADIUS_DP - BUTTON_RADIUS_DP) * (animateCornerRadius ? progress : 1f));
@@ -115,6 +123,12 @@ public class TransformableLoginButtonView extends View {
                 if (arrowProgress != 0) {
                     float endX = AndroidUtilities.dp(ARROW_PADDING) + (getWidth() - AndroidUtilities.dp(ARROW_PADDING) * 2) * arrowProgress;
                     float centerY = getHeight() / 2f;
+                    if (arrow != null) {
+                        packIconRenderer.draw(canvas, arrow, outlinePaint,
+                                (AndroidUtilities.dp(ARROW_PADDING) + endX) / 2f, centerY,
+                                AndroidUtilities.dp(24) * arrowProgress, outlinePaint.getAlpha() / 255f, 180);
+                        break;
+                    }
                     canvas.drawLine(AndroidUtilities.dp(ARROW_PADDING), centerY, endX, centerY, outlinePaint);
 
                     float backSize = AndroidUtilities.dp(ARROW_BACK_SIZE) * arrowProgress;
@@ -134,6 +148,15 @@ public class TransformableLoginButtonView extends View {
                 canvas.translate(-AndroidUtilities.dp(2) * progress, 0);
                 canvas.rotate(90f * progress, getWidth() / 2f, getHeight() / 2f);
 
+                if (arrow != null && check != null) {
+                    float glyphProgress = Math.max(0f, Math.min(1f, progress));
+                    packIconRenderer.draw(canvas, arrow, outlinePaint, getWidth() / 2f, centerY,
+                            AndroidUtilities.dp(24), outlinePaint.getAlpha() / 255f * (1f - glyphProgress), 180);
+                    packIconRenderer.draw(canvas, check, outlinePaint, getWidth() / 2f, centerY,
+                            AndroidUtilities.dp(24), outlinePaint.getAlpha() / 255f * glyphProgress, -90);
+                    canvas.restore();
+                    break;
+                }
                 canvas.drawLine(startX + (endX - startX) * progress, centerY, endX, centerY, outlinePaint);
 
                 int leftSize = AndroidUtilities.dp(ARROW_BACK_SIZE + (LEFT_CHECK_LINE - ARROW_BACK_SIZE) * progress);

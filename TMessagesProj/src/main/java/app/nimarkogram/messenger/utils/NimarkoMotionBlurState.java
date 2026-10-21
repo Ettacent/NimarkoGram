@@ -3,16 +3,13 @@
 package app.nimarkogram.messenger.utils;
 
 public final class NimarkoMotionBlurState {
+    public static final float MAX_SPAN_PX = 24f;
+    public static final float REDUCED_MAX_SPAN_PX = 12f;
+    public static final float MAX_SPAN_DP = 8f;
+    public static final float MIN_SPAN_PX = 0.75f;
+    public static final long EXPOSURE_NS = 12_000_000L;
     private static final long MAX_FRAME_GAP_NS = 120_000_000L;
-    private static final long MOTION_WINDOW_NS = 64_000_000L;
-    private static final long MAX_SETTLE_NS = 96_000_000L;
-    private static final float ATTACK_SECONDS = 0.016f;
-    private static final float RELEASE_SECONDS = 0.024f;
-    private final float[] samplesX = new float[32];
-    private final float[] samplesY = new float[32];
-    private final long[] sampleDurations = new long[32];
-    private int sampleHead;
-    private int sampleCount;
+    private static final float ATTACK_SECONDS = 0.008f;
     private float velocityX;
     private float velocityY;
     private float length;
@@ -20,12 +17,6 @@ public final class NimarkoMotionBlurState {
     private float pendingY;
     private float density = 1f;
     private long lastFrameNs;
-    private float referenceVelocityX;
-    private float referenceVelocityY;
-    private long stationaryNs;
-    private float idleLength;
-    private float idleVelocityX;
-    private float idleVelocityY;
 
     public void prime(long timeNs, float density) {
         if (lastFrameNs == 0L && timeNs > 0L && Float.isFinite(density) && density > 0f) {
@@ -53,95 +44,55 @@ public final class NimarkoMotionBlurState {
 
     public void tick(long timeNs) {
         if (lastFrameNs == 0L || timeNs <= lastFrameNs) return;
-        long elapsed = timeNs - lastFrameNs;
+        final long elapsed = timeNs - lastFrameNs;
         if (elapsed > MAX_FRAME_GAP_NS) {
             reset();
             return;
         }
-        float seconds = elapsed / 1_000_000_000f;
         lastFrameNs = timeNs;
-        float dx = pendingX;
-        float dy = pendingY;
+        final float dx = pendingX;
+        final float dy = pendingY;
         pendingX = pendingY = 0f;
-        if (!Float.isFinite(dx / seconds) || !Float.isFinite(dy / seconds)) {
+        if (dx == 0f && dy == 0f) {
+            stop();
+            return;
+        }
+        final double scale = 1_000_000_000d / elapsed;
+        final double vx = dx * scale;
+        final double vy = dy * scale;
+        if (!Double.isFinite(vx) || !Double.isFinite(vy)
+                || Math.abs(vx) > Float.MAX_VALUE || Math.abs(vy) > Float.MAX_VALUE) {
             reset();
             return;
         }
-        boolean moving = dx != 0f || dy != 0f;
-        double observedSpeed = Math.hypot(dx, dy) / seconds;
-        double previousSpeed = Math.hypot(referenceVelocityX, referenceVelocityY);
-        if ((double) dx * referenceVelocityX + (double) dy * referenceVelocityY < 0d
-                || moving && previousSpeed > observedSpeed * 2d + 1_000_000_000d / MOTION_WINDOW_NS) {
-            sampleHead = sampleCount = 0;
-        }
-        samplesX[sampleHead] = dx;
-        samplesY[sampleHead] = dy;
-        sampleDurations[sampleHead] = elapsed;
-        sampleHead = (sampleHead + 1) % samplesX.length;
-        sampleCount = Math.min(sampleCount + 1, samplesX.length);
-        if (moving) {
-            stationaryNs = 0L;
-            double distance = 0d;
-            long duration = 0L;
-            for (int i = 0; i < sampleCount && duration < MOTION_WINDOW_NS; i++) {
-                int index = (sampleHead - 1 - i + samplesX.length) % samplesX.length;
-                long used = Math.min(sampleDurations[index], MOTION_WINDOW_NS - duration);
-                double fraction = used / (double) sampleDurations[index];
-                distance += Math.hypot(samplesX[index], samplesY[index]) * fraction;
-                duration += used;
-            }
-            double speed = distance * 1_000_000_000d / duration;
-            double displacement = Math.hypot(dx, dy);
-            velocityX = (float) (dx / displacement * speed);
-            velocityY = (float) (dy / displacement * speed);
-            float target = (float) Math.min(Math.min(16d, 14d * density), Math.hypot(velocityX, velocityY) * 0.008d);
+        if ((double) dx * velocityX + (double) dy * velocityY < 0d) length = 0f;
+        velocityX = (float) vx;
+        velocityY = (float) vy;
+        final float target = (float) Math.min(Math.min(MAX_SPAN_PX, MAX_SPAN_DP * density),
+                Math.hypot(dx, dy) * exposureScale(elapsed));
             length = smoothLength(length, target, elapsed);
-            referenceVelocityX = velocityX;
-            referenceVelocityY = velocityY;
-        } else {
-            if (stationaryNs == 0L) {
-                idleLength = length;
-                idleVelocityX = velocityX;
-                idleVelocityY = velocityY;
-            }
-            stationaryNs += elapsed;
-            float decay = releaseFraction(stationaryNs);
-            velocityX = idleVelocityX * decay;
-            velocityY = idleVelocityY * decay;
-            length = idleLength * decay;
-        }
-        if (!Float.isFinite(length) || !Float.isFinite(velocityX) || !Float.isFinite(velocityY)) {
-            reset();
-        }
     }
 
     public boolean isActive() {
-        return pendingX != 0f || pendingY != 0f || length > 0f;
+        return pendingX != 0f || pendingY != 0f || length >= MIN_SPAN_PX;
     }
 
     public float getVelocityX() { return velocityX; }
     public float getVelocityY() { return velocityY; }
-    public float getLength() { return length; }
+    public float getLength() { return length >= MIN_SPAN_PX ? length : 0f; }
 
-    static float smoothLength(float previous, float target, long elapsedNs) {
-        float seconds = elapsedNs / 1_000_000_000f;
-        float response = -(float) Math.expm1(-seconds / (target > previous ? ATTACK_SECONDS : RELEASE_SECONDS));
-        return previous + (target - previous) * response;
+    static float exposureScale(long elapsedNs) {
+        return elapsedNs <= 0L ? 0f : (float) Math.min(0.8d, EXPOSURE_NS / (double) elapsedNs);
     }
 
-    static float releaseFraction(long elapsedNs) {
-        if (elapsedNs >= MAX_SETTLE_NS) return 0f;
-        double u = Math.max(0d, (elapsedNs - 72_000_000d) / 24_000_000d);
-        double taper = 1d - u * u * u * (10d + u * (-15d + 6d * u));
-        return (float) (Math.exp(-elapsedNs / 1_000_000_000d / RELEASE_SECONDS) * taper);
+    static float smoothLength(float previous, float target, long elapsedNs) {
+        if (target <= previous) return target;
+        final float response = -(float) Math.expm1(-elapsedNs / 1_000_000_000d / ATTACK_SECONDS);
+        return previous + (target - previous) * response;
     }
 
     public void stop() {
         velocityX = velocityY = length = pendingX = pendingY = 0f;
-        referenceVelocityX = referenceVelocityY = 0f;
-        sampleHead = sampleCount = 0;
-        stationaryNs = 0L;
-        idleLength = idleVelocityX = idleVelocityY = 0f;
     }
 
     public void reset() {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -396,6 +398,9 @@ public abstract class BaseFragment {
         return true;
     }
 
+    public boolean onIconPackResourcesChanged() {
+        return false;
+    }
     public void clearViews() {
         releaseInAppNotificationPanel();
         if (fragmentView != null) {
@@ -584,6 +589,7 @@ public abstract class BaseFragment {
 
     @CallSuper
     public void onFragmentDestroy() {
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.fragmentDestroyed(this);
         navigationRequestGeneration++;
         releaseInAppNotificationPanel();
         getConnectionsManager().cancelRequestsForGuid(classGuid);
@@ -635,6 +641,7 @@ public abstract class BaseFragment {
 
     @CallSuper
     public void onResume() {
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.screenResumed(this);
         isPaused = false;
         if (actionBar != null) {
             actionBar.onResume();

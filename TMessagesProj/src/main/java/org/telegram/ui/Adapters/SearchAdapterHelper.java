@@ -1,3 +1,12 @@
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent.
+ */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -83,7 +92,7 @@ public class SearchAdapterHelper {
     private ArrayList<Object> localSearchResults;
     private ArrayList<DialogsSearchAdapter.RecentSearchObject> localRecentResults;
 
-    private int currentAccount = UserConfig.selectedAccount;
+    private final int currentAccount;
 
     private String lastFoundChannel;
 
@@ -101,6 +110,11 @@ public class SearchAdapterHelper {
     }
 
     public SearchAdapterHelper(boolean allAsGlobal) {
+        this(UserConfig.selectedAccount, allAsGlobal);
+    }
+
+    public SearchAdapterHelper(int account, boolean allAsGlobal) {
+        currentAccount = account;
         allResultsAreGlobal = allAsGlobal;
     }
 

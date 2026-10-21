@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -142,6 +144,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 public class SelectAnimatedEmojiDialog extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     public final static int TYPE_EMOJI_STATUS = 0;
@@ -2964,7 +2967,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             layoutView.addView(textView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
 
             closeIcon = new ImageView(context);
-            closeIcon.setImageResource(R.drawable.msg_close);
+            closeIcon.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.msg_close));
             closeIcon.setScaleType(ImageView.ScaleType.CENTER);
             closeIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_emojiPanelStickerSetNameIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
             addView(closeIcon, LayoutHelper.createFrame(24, 24, Gravity.RIGHT | Gravity.CENTER_VERTICAL));

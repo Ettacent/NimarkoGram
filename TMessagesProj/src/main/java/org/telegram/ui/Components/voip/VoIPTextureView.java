@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import android.animation.Animator;
@@ -163,7 +165,7 @@ public class VoIPTextureView extends FrameLayout {
         screencastView.setVisibility(GONE);
 
         screencastImage = new ImageView(getContext());
-        screencastImage.setScaleType(ImageView.ScaleType.CENTER);
+        screencastImage.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         screencastImage.setImageResource(R.drawable.screencast_big);
         screencastView.addView(screencastImage, LayoutHelper.createFrame(82, 82, Gravity.CENTER, 0, 0, 0, 60));
 

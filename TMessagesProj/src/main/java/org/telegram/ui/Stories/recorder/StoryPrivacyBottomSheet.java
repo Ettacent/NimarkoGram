@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -90,6 +92,7 @@ import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.CompactChevronRenderer;
 import org.telegram.ui.Components.CreateRtmpStreamBottomSheet;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
@@ -3307,6 +3310,8 @@ public class StoryPrivacyBottomSheet extends BottomSheet implements Notification
         private Path arrowPath;
         private Paint arrowPaint;
 
+        private final CompactChevronRenderer arrowRenderer = new CompactChevronRenderer();
+        private int arrowDirection;
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             super.onMeasure(
@@ -3323,6 +3328,7 @@ public class StoryPrivacyBottomSheet extends BottomSheet implements Notification
                 final float cx = LocaleController.isRTL ? dp(31) : getMeasuredWidth() - dp(31);
                 final float cy = getMeasuredHeight() / 2f;
                 final float m = LocaleController.isRTL ? -1 : 1;
+                arrowDirection = LocaleController.isRTL ? CompactChevronRenderer.LEFT : CompactChevronRenderer.RIGHT;
                 arrowPath.moveTo(cx, cy - dp(6));
                 arrowPath.lineTo(cx + m * dp(6), cy);
                 arrowPath.lineTo(cx, cy + dp(6));
@@ -3348,7 +3354,9 @@ public class StoryPrivacyBottomSheet extends BottomSheet implements Notification
                 }
             }
             if (arrowPath != null && arrowPaint != null && !needCheck && sendAs && drawArrow) {
+                if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, arrowDirection)) {
                 canvas.drawPath(arrowPath, arrowPaint);
+                }
             }
         }
 

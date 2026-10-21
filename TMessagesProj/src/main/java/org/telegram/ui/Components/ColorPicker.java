@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -5,6 +7,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -47,6 +51,8 @@ import org.telegram.ui.ActionBar.ThemeDescription;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class ColorPicker extends FrameLayout {
 
     private final ColorPickerDelegate delegate;
@@ -75,6 +81,13 @@ public class ColorPicker extends FrameLayout {
     private EditTextBoldCursor[] colorEditText;
     private ImageView clearButton;
     private ImageView addButton;
+    private Resources actionIconResources;
+    private Configuration actionIconConfiguration;
+    private long actionIconGeneration;
+    private int actionIconDensity;
+    private float actionIconDensityScale;
+    private int actionIconColor;
+    private boolean actionIconColorSet;
     private TextView resetButton;
     private ActionBarMenuItem menuItem;
 
@@ -393,8 +406,6 @@ public class ColorPicker extends FrameLayout {
 
         addButton = new ImageView(getContext());
         addButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_dialogButtonSelector), 1));
-        addButton.setImageResource(R.drawable.msg_add);
-        addButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.MULTIPLY));
         addButton.setScaleType(ImageView.ScaleType.CENTER);
         addButton.setOnClickListener(v -> {
             if (colorsAnimator != null) {
@@ -487,8 +498,6 @@ public class ColorPicker extends FrameLayout {
             }
         };
         clearButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_dialogButtonSelector), 1));
-        clearButton.setImageResource(R.drawable.msg_close);
-        clearButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.MULTIPLY));
         clearButton.setAlpha(0.0f);
         clearButton.setScaleX(0.0f);
         clearButton.setScaleY(0.0f);
@@ -567,6 +576,7 @@ public class ColorPicker extends FrameLayout {
         clearButton.setContentDescription(LocaleController.getString(R.string.ClearButton));
         addView(clearButton, LayoutHelper.createFrame(30, 30, Gravity.TOP | Gravity.LEFT, 97, 1, 0, 0));
 
+        updateActionIcons();
         resetButton = new TextView(context);
         resetButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         resetButton.setTypeface(AndroidUtilities.bold());
@@ -613,6 +623,39 @@ public class ColorPicker extends FrameLayout {
         return Theme.getColor(key, resourcesProvider);
     }
 
+    private void updateActionIcons() {
+        Resources resources = getContext().getResources();
+        long generation = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        int density = resources.getDisplayMetrics().densityDpi;
+        float densityScale = resources.getDisplayMetrics().density;
+        Configuration configuration = resources.getConfiguration();
+        if (actionIconResources != resources || actionIconGeneration != generation
+                || actionIconDensity != density || actionIconDensityScale != densityScale
+                || !configuration.equals(actionIconConfiguration)) {
+            addButton.setImageDrawable(CompactIconHelper.getDrawable(getContext(), R.drawable.msg_add));
+            clearButton.setImageDrawable(CompactIconHelper.getDrawable(getContext(), R.drawable.msg_close));
+            actionIconResources = resources;
+            actionIconGeneration = generation;
+            actionIconDensity = density;
+            actionIconDensityScale = densityScale;
+            actionIconConfiguration = new Configuration(configuration);
+            actionIconColorSet = false;
+        }
+        int color = getThemedColor(Theme.key_windowBackgroundWhiteBlackText);
+        if (!actionIconColorSet || actionIconColor != color) {
+            addButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+            clearButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+            actionIconColor = color;
+            actionIconColorSet = true;
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        updateActionIcons();
+    }
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
@@ -703,6 +746,7 @@ public class ColorPicker extends FrameLayout {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        updateActionIcons();
         int top = AndroidUtilities.dp(45);
         canvas.drawBitmap(colorWheelBitmap, 0, top, null);
         int y = top + colorWheelBitmap.getHeight();
@@ -1107,6 +1151,7 @@ public class ColorPicker extends FrameLayout {
 
     public void setResourcesProvider(Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
+        updateActionIcons();
     }
 
     @Override

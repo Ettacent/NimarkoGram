@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -411,6 +413,7 @@ public abstract class GradientHeaderActivity extends BaseFragment {
             if (oldProgress != progressToFull) {
                 listView.invalidate();
             }
+            onHeaderCollapseProgress(totalProgress);
             float fromTranslation = currentYOffset - (actionBar.getMeasuredHeight() + backgroundView.getMeasuredHeight() - statusBarHeight) + dp(16);
             float toTranslation = ((actionBar.getMeasuredHeight() - statusBarHeight - backgroundView.titleView.getMeasuredHeight()) / 2f) + statusBarHeight - backgroundView.getTop() - backgroundView.titleView.getTop();
 
@@ -551,6 +554,9 @@ public abstract class GradientHeaderActivity extends BaseFragment {
             particlesView.setPaused(isVisible);
             contentView.invalidate();
         }
+    }
+
+    protected void onHeaderCollapseProgress(float progress) {
     }
 
     private void updateColors() {

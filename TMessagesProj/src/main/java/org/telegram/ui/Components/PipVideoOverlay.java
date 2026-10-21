@@ -460,12 +460,12 @@ public class PipVideoOverlay implements IPipSourceDelegate {
         AndroidUtilities.cancelRunOnUIThread(progressRunnable);
         if (!isPlaying) {
             if (isVideoCompleted) {
-                playPauseButton.setImageResource(R.drawable.pip_replay_large);
+                MediaControlIconHelper.setImageResource(playPauseButton, R.drawable.pip_replay_large);
             } else {
-                playPauseButton.setImageResource(R.drawable.pip_play_large);
+                MediaControlIconHelper.setImageResource(playPauseButton, R.drawable.pip_play_large);
             }
         } else {
-            playPauseButton.setImageResource(R.drawable.pip_pause_large);
+            MediaControlIconHelper.setImageResource(playPauseButton, R.drawable.pip_pause_large);
             AndroidUtilities.runOnUIThread(progressRunnable, 500);
         }
     }
@@ -1064,7 +1064,7 @@ public class PipVideoOverlay implements IPipSourceDelegate {
         int buttonSize = 38;
 
         ImageView closeButton = new ImageView(context);
-        closeButton.setImageResource(R.drawable.pip_video_close);
+        MediaControlIconHelper.setImageResource(closeButton, R.drawable.pip_video_close);
         closeButton.setColorFilter(Theme.getColor(Theme.key_voipgroup_actionBarItems), PorterDuff.Mode.MULTIPLY);
         closeButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
         closeButton.setPadding(padding, padding, padding, padding);
@@ -1072,7 +1072,7 @@ public class PipVideoOverlay implements IPipSourceDelegate {
         controlsView.addView(closeButton, LayoutHelper.createFrame(buttonSize, buttonSize, Gravity.RIGHT, 0, margin, margin, 0));
 
         ImageView expandButton = new ImageView(context);
-        expandButton.setImageResource(R.drawable.pip_video_expand);
+        MediaControlIconHelper.setImageResource(expandButton, R.drawable.pip_video_expand);
         expandButton.setColorFilter(Theme.getColor(Theme.key_voipgroup_actionBarItems), PorterDuff.Mode.MULTIPLY);
         expandButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
         expandButton.setPadding(padding, padding, padding, padding);

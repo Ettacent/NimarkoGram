@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Paint.Views;
 
 import android.content.Context;
@@ -33,6 +35,7 @@ import org.telegram.ui.Components.RLottieImageView;
 import java.util.Arrays;
 import java.util.List;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 public class PaintTextOptionsView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
     public final static int ALIGN_LEFT = 0,
         ALIGN_CENTER = 1,
@@ -87,7 +90,7 @@ public class PaintTextOptionsView extends FrameLayout implements NotificationCen
         addView(outlineView, LayoutHelper.createFrame(28, 28, Gravity.CENTER_VERTICAL, 0, 0, 16, 0));
 
         plusView = new ImageView(context);
-        plusView.setImageResource(R.drawable.msg_add);
+        plusView.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.msg_add));
         plusView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         plusView.setBackground(Theme.createSelectorDrawable(Theme.ACTION_BAR_WHITE_SELECTOR_COLOR));
         plusView.setOnClickListener(v -> delegate.onNewTextSelected());
@@ -168,7 +171,11 @@ public class PaintTextOptionsView extends FrameLayout implements NotificationCen
             icon = R.drawable.msg_add;
         }
         if (plusIcon != icon) {
-            AndroidUtilities.updateImageViewImageAnimated(plusView, plusIcon = icon);
+            plusIcon = icon;
+            Drawable drawable = icon == R.drawable.msg_add
+                    ? CompactIconHelper.getDrawable(getContext(), icon)
+                    : ContextCompat.getDrawable(getContext(), icon);
+            AndroidUtilities.updateImageViewImageAnimated(plusView, drawable);
         }
     }
 

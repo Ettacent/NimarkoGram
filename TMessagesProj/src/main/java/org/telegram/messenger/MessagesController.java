@@ -115,6 +115,8 @@ import org.telegram.ui.Stars.StarsController;
 import org.telegram.ui.Stories.StoriesController;
 import org.telegram.ui.ThemeActivity;
 import org.telegram.ui.TopicsFragment;
+import org.telegram.ui.Wallet.GramWallet;
+import org.telegram.ui.Wallet.GramWalletStorage;
 import org.telegram.ui.bots.BotWebViewAttachedSheet;
 import org.telegram.ui.bots.BotWebViewSheet;
 import org.telegram.ui.bots.WebViewRequestProps;
@@ -124,18 +126,21 @@ import org.telegram.ui.community.CommunityUtils;
 import app.nimarkogram.messenger.NimarkoConfig;
 
 import java.io.File;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -145,6 +150,7 @@ import me.vkryl.core.BitwiseUtils;
 
 public class MessagesController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
+    public volatile boolean downloadImprovementKillswitch;
     public int lastKnownSessionsCount;
     private final ConcurrentHashMap<Long, TLRPC.Chat> chats = new ConcurrentHashMap<>(100, 1.0f, 2);
     private final ConcurrentHashMap<Integer, TLRPC.EncryptedChat> encryptedChats = new ConcurrentHashMap<>(10, 1.0f, 2);
@@ -303,6 +309,9 @@ public class MessagesController extends BaseController implements NotificationCe
     private ArrayList<TLRPC.Updates> updatesQueueSeq = new ArrayList<>();
     private ArrayList<TLRPC.Updates> updatesQueuePts = new ArrayList<>();
     private ArrayList<TLRPC.Updates> updatesQueueQts = new ArrayList<>();
+    private final Map<TLRPC.Updates, IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>>> preparedMessageIdHooks = new WeakHashMap<>();
+    private final Map<TLRPC.Updates, int[]> preparedShortUpdateSequences = new WeakHashMap<>();
+    private final Map<TLRPC.Updates, Long> walletUpdateGenerations = new WeakHashMap<>();
     private long updatesStartWaitTimeSeq;
     private long updatesStartWaitTimePts;
     private long updatesStartWaitTimeQts;
@@ -1661,6 +1670,7 @@ public class MessagesController extends BaseController implements NotificationCe
         saveGifsWithStickers = mainPreferences.getBoolean("saveGifsWithStickers", false);
         filtersEnabled = mainPreferences.getBoolean("filtersEnabled", false);
         getfileExperimentalParams = mainPreferences.getBoolean("getfileExperimentalParams", false);
+        downloadImprovementKillswitch = mainPreferences.getBoolean("android_download_improvement_killswitch", false);
         smsjobsStickyNotificationEnabled = mainPreferences.getBoolean("smsjobsStickyNotificationEnabled", false);
         showFiltersTooltip = mainPreferences.getBoolean("showFiltersTooltip", false);
         autoarchiveAvailable = mainPreferences.getBoolean("autoarchiveAvailable", false);
@@ -2533,38 +2543,6 @@ public class MessagesController extends BaseController implements NotificationCe
         });
     }
 
-    private boolean loggedDeviceStats;
-    public void logDeviceStats() {
-        if (collectDeviceStats && !loggedDeviceStats) {
-            ArrayList<File> storageDirs = AndroidUtilities.getRootDirs();
-            if (!storageDirs.isEmpty()) {
-                String dir = storageDirs.get(0).getAbsolutePath();
-                if (!TextUtils.isEmpty(SharedConfig.storageCacheDir)) {
-                    for (int a = 0, N = storageDirs.size(); a < N; a++) {
-                        String path = storageDirs.get(a).getAbsolutePath();
-                        if (path.startsWith(SharedConfig.storageCacheDir)) {
-                            dir = path;
-                            break;
-                        }
-                    }
-                }
-                final boolean value = dir.contains("/storage/emulated/");
-
-                TLRPC.TL_help_saveAppLog req = new TLRPC.TL_help_saveAppLog();
-                TLRPC.TL_inputAppEvent event = new TLRPC.TL_inputAppEvent();
-                event.time = getConnectionsManager().getCurrentTime();
-                event.type = "android_sdcard_exists";
-                TLRPC.TL_jsonBool bool = new TLRPC.TL_jsonBool();
-                bool.value = value;
-                event.data = bool;
-                event.peer = value ? 1 : 0;
-                req.events.add(event);
-
-                getConnectionsManager().sendRequest(req, (response, error) -> {});
-            }
-            loggedDeviceStats = true;
-        }
-    }
 
     public void selectDialogFilter(DialogFilter filter, int index) {
         if (selectedDialogFilter[index] == filter) {
@@ -2723,6 +2701,7 @@ public class MessagesController extends BaseController implements NotificationCe
         int transcribeAudioTrialWeeklyNumber = 0;
         int transcribeAudioTrialCooldownUntil = 0;
 
+        boolean downloadImprovementKillswitch = false;
         changed = config.apply(editor, object);
 
         for (int a = 0, N = object.value.size(); a < N; a++) {
@@ -3013,6 +2992,12 @@ public class MessagesController extends BaseController implements NotificationCe
                             editor.putBoolean("getfileExperimentalParams", getfileExperimentalParams);
                             changed = true;
                         }
+                    }
+                    break;
+                }
+                case "android_download_improvement_killswitch": {
+                    if (value.value instanceof TLRPC.TL_jsonBool) {
+                        downloadImprovementKillswitch = ((TLRPC.TL_jsonBool) value.value).value;
                     }
                     break;
                 }
@@ -5080,6 +5065,11 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             changed = true;
         }
+        if (downloadImprovementKillswitch != this.downloadImprovementKillswitch) {
+            this.downloadImprovementKillswitch = downloadImprovementKillswitch;
+            editor.putBoolean("android_download_improvement_killswitch", downloadImprovementKillswitch);
+            changed = true;
+        }
         if (transcribeAudioTrialCooldownUntil != this.transcribeAudioTrialCooldownUntil) {
             this.transcribeAudioTrialCooldownUntil = transcribeAudioTrialCooldownUntil;
             editor.putInt("transcribeAudioTrialCooldownUntil", transcribeAudioTrialCooldownUntil);
@@ -5106,7 +5096,6 @@ public class MessagesController extends BaseController implements NotificationCe
                 getNotificationCenter().postNotificationName(NotificationCenter.storiesEnabledUpdate);
             });
         }
-        logDeviceStats();
     }
 
     public void updateTranscribeAudioTrialCurrentNumber(int num) {
@@ -6518,6 +6507,7 @@ public class MessagesController extends BaseController implements NotificationCe
         getColorPalette().cleanup();
         getTranslateController().cleanup();
         getSavedMessagesController().cleanup();
+        GramWallet.cleanup(currentAccount);
         if (storiesController != null) {
             storiesController.cleanup();
         }
@@ -6662,6 +6652,9 @@ public class MessagesController extends BaseController implements NotificationCe
             updatesQueueSeq.clear();
             updatesQueuePts.clear();
             updatesQueueQts.clear();
+            preparedMessageIdHooks.clear();
+            preparedShortUpdateSequences.clear();
+            walletUpdateGenerations.clear();
             gettingUnknownChannels.clear();
             gettingUnknownDialogs.clear();
             updatesStartWaitTimeSeq = 0;
@@ -7633,6 +7626,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                 }
             }
+            return false;
         }
         final TLRPC.ChannelParticipant participant = array.get(uid);
         return participant instanceof TLRPC.TL_channelParticipantAdmin || participant instanceof TLRPC.TL_channelParticipantCreator;
@@ -7653,6 +7647,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                 }
             }
+            return false;
         }
         final TLRPC.ChannelParticipant participant = array.get(uid);
         return participant instanceof TLRPC.TL_channelParticipantCreator;
@@ -16249,6 +16244,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public void performLogout(int type) {
         if (type == 1) {
+            GramWalletStorage.wipeForUser(ApplicationLoader.applicationContext, currentAccount, getUserConfig().getClientUserId());
             unregistedPush();
             TLRPC.TL_auth_logOut req = new TLRPC.TL_auth_logOut();
             getConnectionsManager().sendRequest(req, (response, error) -> {
@@ -16783,7 +16779,9 @@ public class MessagesController extends BaseController implements NotificationCe
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("start getChannelDifference with pts = " + channelPts + " channelId = " + channelId);
         }
+        final long walletLifecycleGeneration = GramWallet.getLifecycleGeneration(currentAccount);
         getConnectionsManager().sendRequest(req, (response, error) -> {
+            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
             if (response != null) {
                 TLRPC.updates_ChannelDifference res = (TLRPC.updates_ChannelDifference) response;
 
@@ -16803,24 +16801,19 @@ public class MessagesController extends BaseController implements NotificationCe
                 TLRPC.Chat channelFinal = channel;
 
                 ArrayList<TL_update.TL_updateMessageID> msgUpdates = new ArrayList<>();
-                if (!res.other_updates.isEmpty()) {
-                    for (int a = 0; a < res.other_updates.size(); a++) {
-                        TLRPC.Update upd = res.other_updates.get(a);
-                        if (upd instanceof TL_update.TL_updateMessageID) {
-                            msgUpdates.add((TL_update.TL_updateMessageID) upd);
-                            res.other_updates.remove(a);
-                            a--;
-                        }
-                    }
-                }
+                final IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> preparedHooks =
+                        extractMessageIdUpdates(res.other_updates, msgUpdates, walletLifecycleGeneration);
+                if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
 
                 getMessagesStorage().putUsersAndChats(res.users, res.chats, true, true);
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                     putUsers(res.users, false);
                     putChats(res.chats, false);
                 });
 
                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                    if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                     if (!msgUpdates.isEmpty()) {
                         SparseArray<long[]> corrected = new SparseArray<>();
                         for (TL_update.TL_updateMessageID update : msgUpdates) {
@@ -16832,6 +16825,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
                         if (corrected.size() != 0) {
                             AndroidUtilities.runOnUIThread(() -> {
+                                if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                                 for (int a = 0; a < corrected.size(); a++) {
                                     int newId = corrected.keyAt(a);
                                     long[] ids = corrected.valueAt(a);
@@ -16844,6 +16838,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
 
                     Utilities.stageQueue.postRunnable(() -> {
+                        if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                         boolean notifyAbountDifference = true;
                         if (res instanceof TLRPC.TL_updates_channelDifference || res instanceof TLRPC.TL_updates_channelDifferenceEmpty) {
                             if (!res.new_messages.isEmpty()) {
@@ -16903,7 +16898,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             }
 
                             if (!res.other_updates.isEmpty()) {
-                                processUpdateArray(res.other_updates, res.users, res.chats, true, 0);
+                                processUpdateArray(res.other_updates, res.users, res.chats, true, 0, preparedHooks, walletLifecycleGeneration);
                             }
                             processChannelsUpdatesQueue(channelId, 1);
                             getMessagesStorage().saveChannelPts(channelId, res.pts);
@@ -17018,7 +17013,9 @@ public class MessagesController extends BaseController implements NotificationCe
             FileLog.d("getDifference: isUpdating = true");
         }
         getConnectionsManager().setIsUpdating(true);
+        final long walletLifecycleGeneration = GramWallet.getLifecycleGeneration(currentAccount);
         getConnectionsManager().sendRequest(req, (response, error) -> {
+            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
             if (error == null) {
                 TLRPC.updates_Difference res = (TLRPC.updates_Difference) response;
                 if (res instanceof TLRPC.TL_updates_differenceTooLong) {
@@ -17045,14 +17042,13 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
 
                     ArrayList<TL_update.TL_updateMessageID> msgUpdates = new ArrayList<>();
+                    final IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> preparedHooks =
+                            extractMessageIdUpdates(res.other_updates, msgUpdates, walletLifecycleGeneration);
+                    if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                     if (!res.other_updates.isEmpty()) {
                         for (int a = 0; a < res.other_updates.size(); a++) {
                             TLRPC.Update upd = res.other_updates.get(a);
-                            if (upd instanceof TL_update.TL_updateMessageID) {
-                                msgUpdates.add((TL_update.TL_updateMessageID) upd);
-                                res.other_updates.remove(a);
-                                a--;
-                            } else if (getUpdateType(upd) == 2) {
+                            if (getUpdateType(upd) == 2) {
                                 long channelId = getUpdateChannelId(upd);
                                 int channelPts = channelsPts.get(channelId);
                                 if (channelPts == 0) {
@@ -17070,6 +17066,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
 
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                         loadedFullUsers.clear();
                         loadedFullChats.clear();
                         putUsers(res.users, false);
@@ -17077,6 +17074,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     });
 
                     getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                        if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                         getMessagesStorage().putUsersAndChats(res.users, res.chats, true, false);
                         if (!msgUpdates.isEmpty()) {
                             SparseArray<long[]> corrected = new SparseArray<>();
@@ -17090,6 +17088,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
                             if (corrected.size() != 0) {
                                 AndroidUtilities.runOnUIThread(() -> {
+                                    if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                                     for (int a = 0; a < corrected.size(); a++) {
                                         int newId = corrected.keyAt(a);
                                         long[] ids = corrected.valueAt(a);
@@ -17102,6 +17101,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
 
                         Utilities.stageQueue.postRunnable(() -> {
+                            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
                             if (!res.new_messages.isEmpty() || !res.new_encrypted_messages.isEmpty()) {
                                 LongSparseArray<ArrayList<MessageObject>> messages = new LongSparseArray<>();
                                 for (int b = 0; b < res.new_encrypted_messages.size(); b++) {
@@ -17187,7 +17187,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             }
 
                             if (!res.other_updates.isEmpty()) {
-                                processUpdateArray(res.other_updates, res.users, res.chats, true, 0);
+                                processUpdateArray(res.other_updates, res.users, res.chats, true, 0, preparedHooks, walletLifecycleGeneration);
                             }
 
                             if (res instanceof TLRPC.TL_updates_difference) {
@@ -17970,8 +17970,57 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     // must be run from Utilities.stageQueue
+    private void processMessageIDUpdate(TL_update.TL_updateMessageID update, long walletLifecycleGeneration) {
+        getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
+            long[] ids = getMessagesStorage().updateMessageStateAndId(
+                    update.random_id, 0, null, update.id, 0, false, -1, 0);
+            if (ids == null) return;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
+                final int oldId = (int) ids[1];
+                getSendMessagesHelper().processSentMessage(oldId);
+                getSendMessagesHelper().removeFromSendingMessages(oldId, false);
+                getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer,
+                        oldId, update.id, null, ids[0], 0L, -1, false);
+                getNotificationCenter().postNotificationName(NotificationCenter.messageReceivedByServer2,
+                        oldId, update.id, null, ids[0], 0L, -1, false);
+            });
+        });
+    }
+
+    private IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> extractMessageIdUpdates(
+            ArrayList<TLRPC.Update> updates, ArrayList<TL_update.TL_updateMessageID> messageIds, long walletLifecycleGeneration) {
+        IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> prepared = null;
+        for (int i = 0; i < updates.size(); i++) {
+            TLRPC.Update update = updates.get(i);
+            if (!(update instanceof TL_update.TL_updateMessageID)) continue;
+            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return prepared;
+            TLRPC.Update hooked = applyIndividualUpdateHook(update);
+            if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return prepared;
+            if (hooked == null) {
+                updates.remove(i--);
+            } else if (hooked instanceof TL_update.TL_updateMessageID) {
+                messageIds.add((TL_update.TL_updateMessageID) hooked);
+                updates.remove(i--);
+            } else {
+                if (prepared == null) prepared = new IdentityHashMap<>();
+                ArrayDeque<TLRPC.Update> replacements = prepared.get(update);
+                if (replacements == null) {
+                    replacements = new ArrayDeque<>();
+                    prepared.put(update, replacements);
+                }
+                replacements.addLast(hooked);
+            }
+        }
+        return prepared;
+    }
     public void processUpdates(final TLRPC.Updates updatesIn, boolean fromQueue) {
         // NimarkoGram: updates hook
+        final long walletLifecycleGeneration = walletUpdateGenerations.getOrDefault(updatesIn, GramWallet.getLifecycleGeneration(currentAccount));
+        final int sequenceStart = updatesIn instanceof TLRPC.TL_updatesCombined ? updatesIn.seq_start : updatesIn.seq;
+        final int sequenceEnd = updatesIn.seq;
+        final int sequenceDate = updatesIn.date;
         TLRPC.Updates hookedUpdates = updatesIn;
         try {
             TLRPC.Updates hooked = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
@@ -17980,12 +18029,82 @@ public class MessagesController extends BaseController implements NotificationCe
                 hookedUpdates = hooked;
             } else {
                 // cancelled
+                preparedMessageIdHooks.remove(updatesIn);
+                preparedShortUpdateSequences.remove(updatesIn);
                 return;
             }
         } catch (Throwable t) {
             FileLog.e("nimarko: executeUpdatesHook threw", t);
         }
-        final TLRPC.Updates updates = hookedUpdates;
+        if (hookedUpdates != updatesIn) {
+            IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> prepared = preparedMessageIdHooks.remove(updatesIn);
+            if (prepared != null) preparedMessageIdHooks.put(hookedUpdates, prepared);
+            int[] sequence = preparedShortUpdateSequences.remove(updatesIn);
+            if (prepared != null && hookedUpdates instanceof TLRPC.TL_updateShort) {
+                if (sequence == null && sequenceEnd != 0
+                        && (updatesIn instanceof TLRPC.TL_updates || updatesIn instanceof TLRPC.TL_updatesCombined)) {
+                    sequence = new int[] {sequenceStart, sequenceEnd, sequenceDate};
+                }
+                if (sequence != null) preparedShortUpdateSequences.put(hookedUpdates, sequence);
+            }
+        }
+        processUpdatesAfterHooks(hookedUpdates, fromQueue, walletLifecycleGeneration);
+    }
+
+    public void processWalletUpdates(TLRPC.Updates updates, long walletLifecycleGeneration) {
+        if (!GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) return;
+        walletUpdateGenerations.put(updates, walletLifecycleGeneration);
+        processUpdates(updates, false);
+    }
+
+    private void processUpdatesAfterHooks(final TLRPC.Updates updates, boolean fromQueue, long walletLifecycleGeneration) {
+        if (GramWallet.getLifecycleGeneration(currentAccount) != walletLifecycleGeneration) {
+            preparedMessageIdHooks.remove(updates);
+            preparedShortUpdateSequences.remove(updates);
+            walletUpdateGenerations.remove(updates);
+            return;
+        }
+        walletUpdateGenerations.put(updates, walletLifecycleGeneration);
+        if (updates instanceof TLRPC.TL_updates || updates instanceof TLRPC.TL_updatesCombined) {
+            boolean hasMessageIdUpdates = false;
+            IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> prepared = preparedMessageIdHooks.get(updates);
+            IdentityHashMap<TLRPC.Update, Integer> retainedOccurrences = new IdentityHashMap<>();
+            for (int i = 0; i < updates.updates.size(); i++) {
+                TLRPC.Update update = updates.updates.get(i);
+                if (update instanceof TL_update.TL_updateMessageID) {
+                    int retained = retainedOccurrences.getOrDefault(update, 0);
+                    ArrayDeque<TLRPC.Update> replacements = prepared == null ? null : prepared.get(update);
+                    if (replacements != null && retained < replacements.size()) {
+                        retainedOccurrences.put(update, retained + 1);
+                        continue;
+                    }
+                    TLRPC.Update hookedUpdate = applyIndividualUpdateHook(update);
+                    if (hookedUpdate == null) {
+                        updates.updates.remove(i--);
+                    } else if (hookedUpdate instanceof TL_update.TL_updateMessageID) {
+                        processMessageIDUpdate((TL_update.TL_updateMessageID) hookedUpdate, walletLifecycleGeneration);
+                        updates.updates.remove(i--);
+                        hasMessageIdUpdates = true;
+                    } else {
+                        if (prepared == null) {
+                            prepared = new IdentityHashMap<>();
+                            preparedMessageIdHooks.put(updates, prepared);
+                        }
+                        if (replacements == null) {
+                            replacements = new ArrayDeque<>();
+                            prepared.put(update, replacements);
+                        }
+                        replacements.addLast(hookedUpdate);
+                        retainedOccurrences.put(update, retained + 1);
+                    }
+                }
+            }
+            if (hasMessageIdUpdates) {
+                getMessagesStorage().getStorageQueue().postRunnable(() ->
+                        Utilities.stageQueue.postRunnable(() -> processUpdatesAfterHooks(updates, fromQueue, walletLifecycleGeneration)));
+                return;
+            }
+        }
         ArrayList<Long> needGetChannelsDiff = null;
         boolean needGetDiff = false;
         boolean needReceivedQueue = false;
@@ -17993,7 +18112,18 @@ public class MessagesController extends BaseController implements NotificationCe
         if (updates instanceof TLRPC.TL_updateShort) {
             ArrayList<TLRPC.Update> arr = new ArrayList<>();
             arr.add(updates.update);
-            processUpdateArray(arr, null, null, false, updates.date);
+            processUpdateArray(arr, null, null, false, updates.date, preparedMessageIdHooks.remove(updates), walletLifecycleGeneration);
+            int[] sequence = preparedShortUpdateSequences.remove(updates);
+            if (sequence != null && GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                int lastSeq = getMessagesStorage().getLastSeqValue();
+                if (sequence[0] <= lastSeq + 1 && sequence[1] >= lastSeq) {
+                    if (sequence[2] != 0) getMessagesStorage().setLastDateValue(sequence[2]);
+                    getMessagesStorage().setLastSeqValue(sequence[1]);
+                } else if (lastSeq < sequence[1]) {
+                    needGetDiff = true;
+                }
+            }
+            walletUpdateGenerations.remove(updates);
         } else if (updates instanceof TLRPC.TL_updateShortChatMessage || updates instanceof TLRPC.TL_updateShortMessage) {
             long userId = updates instanceof TLRPC.TL_updateShortChatMessage ? updates.from_id : updates.user_id;
             TLRPC.User user = getUser(userId);
@@ -18243,6 +18373,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     TLRPC.Update update = updates.updates.get(a);
                     if (getUpdateType(update) == 0) {
                         TLRPC.TL_updates updatesNew = new TLRPC.TL_updates();
+                        walletUpdateGenerations.put(updatesNew, walletLifecycleGeneration);
                         updatesNew.updates.add(update);
                         updatesNew.pts = getUpdatePts(update);
                         updatesNew.pts_count = getUpdatePtsCount(update);
@@ -18261,7 +18392,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             }
                         }
                         if (getMessagesStorage().getLastPtsValue() + updatesNew.pts_count == updatesNew.pts) {
-                            if (!processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date)) {
+                            if (!processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date, null, walletLifecycleGeneration)) {
                                 if (BuildVars.LOGS_ENABLED) {
                                     FileLog.d("need get diff inner TL_updates, pts: " + getMessagesStorage().getLastPtsValue() + " " + updates.seq);
                                 }
@@ -18287,6 +18418,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
                     } else if (getUpdateType(update) == 1) {
                         TLRPC.TL_updates updatesNew = new TLRPC.TL_updates();
+                        walletUpdateGenerations.put(updatesNew, walletLifecycleGeneration);
                         updatesNew.updates.add(update);
                         updatesNew.pts = getUpdateQts(update);
                         for (int b = a + 1; b < updates.updates.size(); b++) {
@@ -18302,7 +18434,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             }
                         }
                         if (getMessagesStorage().getLastQtsValue() == 0 || getMessagesStorage().getLastQtsValue() + updatesNew.updates.size() == updatesNew.pts) {
-                            processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date);
+                            processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date, null, walletLifecycleGeneration);
                             getMessagesStorage().setLastQtsValue(updatesNew.pts);
                             needReceivedQueue = true;
                         } else if (getMessagesStorage().getLastPtsValue() != updatesNew.pts) {
@@ -18341,6 +18473,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             }
                         }
                         TLRPC.TL_updates updatesNew = new TLRPC.TL_updates();
+                        walletUpdateGenerations.put(updatesNew, walletLifecycleGeneration);
                         updatesNew.updates.add(update);
                         updatesNew.pts = getUpdatePts(update);
                         updatesNew.pts_count = getUpdatePtsCount(update);
@@ -18360,7 +18493,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
                         if (!skipUpdate) {
                             if (channelPts + updatesNew.pts_count == updatesNew.pts) {
-                                if (!processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date)) {
+                                if (!processUpdateArray(updatesNew.updates, updates.users, updates.chats, false, updates.date, null, walletLifecycleGeneration)) {
                                     if (BuildVars.LOGS_ENABLED) {
                                         FileLog.d("need get channel diff inner TL_updates, channel_id = " + channelId);
                                     }
@@ -18422,7 +18555,8 @@ public class MessagesController extends BaseController implements NotificationCe
                     processUpdate = getMessagesStorage().getLastSeqValue() + 1 == updates.seq || updates.seq == 0 || updates.seq == getMessagesStorage().getLastSeqValue();
                 }
                 if (processUpdate) {
-                    processUpdateArray(updates.updates, updates.users, updates.chats, false, updates.date);
+                    processUpdateArray(updates.updates, updates.users, updates.chats, false, updates.date, preparedMessageIdHooks.remove(updates), walletLifecycleGeneration);
+                    walletUpdateGenerations.remove(updates);
                     if (updates.seq != 0) {
                         if (updates.date != 0) {
                             getMessagesStorage().setLastDateValue(updates.date);
@@ -18523,7 +18657,21 @@ public class MessagesController extends BaseController implements NotificationCe
         return updated;
     }
 
+    private TLRPC.Update applyIndividualUpdateHook(TLRPC.Update update) {
+        if (update == null) return null;
+        try {
+            return app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+                    .executeUpdateHook(update.getClass().getSimpleName(), currentAccount, update);
+        } catch (Throwable t) {
+            FileLog.e("nimarko: executeUpdateHook threw", t);
+            return update;
+        }
+    }
     public boolean processUpdateArray(ArrayList<TLRPC.Update> updates, ArrayList<TLRPC.User> usersArr, ArrayList<TLRPC.Chat> chatsArr, boolean fromGetDifference, int date) {
+        return processUpdateArray(updates, usersArr, chatsArr, fromGetDifference, date, null, GramWallet.getLifecycleGeneration(currentAccount));
+    }
+
+    private boolean processUpdateArray(ArrayList<TLRPC.Update> updates, ArrayList<TLRPC.User> usersArr, ArrayList<TLRPC.Chat> chatsArr, boolean fromGetDifference, int date, IdentityHashMap<TLRPC.Update, ArrayDeque<TLRPC.Update>> preparedHooks, long walletLifecycleGeneration) {
         if (updates.isEmpty()) {
             if (usersArr != null || chatsArr != null) {
                 AndroidUtilities.runOnUIThread(() -> {
@@ -18610,18 +18758,10 @@ public class MessagesController extends BaseController implements NotificationCe
             TLRPC.Update baseUpdate = updates.get(c);
             // NimarkoGram: per-update plugin hook
             if (baseUpdate != null) {
-                try {
-                    TLRPC.Update hookedUpdate = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
-                            .executeUpdateHook(baseUpdate.getClass().getSimpleName(), currentAccount, baseUpdate);
-                    if (hookedUpdate != null) {
-                        baseUpdate = hookedUpdate;
-                    } else {
-                        // cancelled - skip this update
-                        continue;
-                    }
-                } catch (Throwable t) {
-                    FileLog.e("nimarko: executeUpdateHook threw", t);
-                }
+                ArrayDeque<TLRPC.Update> replacements = preparedHooks == null ? null : preparedHooks.get(baseUpdate);
+                baseUpdate = replacements != null && !replacements.isEmpty()
+                        ? replacements.removeFirst() : applyIndividualUpdateHook(baseUpdate);
+                if (baseUpdate == null) continue;
             }
             if (BuildVars.LOGS_ENABLED && baseUpdate != null) {
                 FileLog.d("process update " + baseUpdate.getClass().getSimpleName());
@@ -19635,7 +19775,18 @@ public class MessagesController extends BaseController implements NotificationCe
                 }
 
                 ImageLoader.saveMessageThumbs(message);
-                AndroidUtilities.runOnUIThread(()-> getSendMessagesHelper().onMessageEdited(message));
+                AndroidUtilities.runOnUIThread(() -> {
+                    getSendMessagesHelper().onMessageEdited(message);
+                    if (!message.out && message.dialog_id == 777000
+                            && message.action instanceof TLRPC.TL_messageActionWalletTonConnectRequest) {
+                        TLRPC.TL_messageActionWalletTonConnectRequest request =
+                                (TLRPC.TL_messageActionWalletTonConnectRequest) message.action;
+                        if ((request.accepted || request.declined)
+                                && GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                            GramWallet.getInstance(currentAccount).tonConnect.markProcessed(request.session_id, message.id);
+                        }
+                    }
+                });
 
                 boolean isDialogCreated = createdDialogIds.contains(message.dialog_id);
                 MessageObject obj = new MessageObject(currentAccount, message, usersDict, chatsDict, isDialogCreated, isDialogCreated);
@@ -20018,7 +20169,9 @@ public class MessagesController extends BaseController implements NotificationCe
                 SharedPreferences.Editor editor = null;
                 for (int a = 0, size = updatesOnMainThreadFinal.size(); a < size; a++) {
                     TLRPC.Update baseUpdate = updatesOnMainThreadFinal.get(a);
-                    if (baseUpdate instanceof TL_update.TL_updatePrivacy) {
+                    if (baseUpdate instanceof TL_update.TL_updateMessageID) {
+                        processMessageIDUpdate((TL_update.TL_updateMessageID) baseUpdate, walletLifecycleGeneration);
+                    } else if (baseUpdate instanceof TL_update.TL_updatePrivacy) {
                         TL_update.TL_updatePrivacy update = (TL_update.TL_updatePrivacy) baseUpdate;
                         if (update.key instanceof TLRPC.TL_privacyKeyStatusTimestamp) {
                             getContactsController().setPrivacyRules(update.rules, ContactsController.PRIVACY_RULES_TYPE_LASTSEEN);
@@ -20471,6 +20624,22 @@ public class MessagesController extends BaseController implements NotificationCe
                         getMediaDataController().loadSavedReactions(true);
                     } else if (baseUpdate instanceof TL_update.TL_updateSavedReactionTags) {
                         getSavedReactionTags(0, true);
+                    } else if (baseUpdate instanceof TL_update.TL_updateSentWalletTransaction) {
+                        if (GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                            GramWallet.getInstance(currentAccount).onUpdate((TL_update.TL_updateSentWalletTransaction) baseUpdate);
+                        }
+                    } else if (baseUpdate instanceof TL_update.TL_updateWalletGaslessInfo) {
+                        if (GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                            GramWallet.getInstance(currentAccount).onUpdate((TL_update.TL_updateWalletGaslessInfo) baseUpdate);
+                        }
+                    } else if (baseUpdate instanceof TL_update.TL_updateWalletState) {
+                        if (GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                            GramWallet.getInstance(currentAccount).onUpdate((TL_update.TL_updateWalletState) baseUpdate);
+                        }
+                    } else if (baseUpdate instanceof TL_update.TL_updateWalletTonConnectSession) {
+                        if (GramWallet.isLifecycleGenerationCurrent(currentAccount, walletLifecycleGeneration)) {
+                            GramWallet.getInstance(currentAccount).tonConnect.onSessionUpdate(((TL_update.TL_updateWalletTonConnectSession) baseUpdate).session);
+                        }
                     } else if (baseUpdate instanceof TL_update.TL_updateFavedStickers) {
                         getMediaDataController().loadRecents(MediaDataController.TYPE_FAVE, false, false, true);
                     } else if (baseUpdate instanceof TL_update.TL_updateContactsReset) {
@@ -22052,6 +22221,18 @@ public class MessagesController extends BaseController implements NotificationCe
         getMediaDataController().loadReplyMessagesForMessages(messages, dialogId, mode, 0, null, 0, null);
         if (mode == ChatActivity.MODE_QUICK_REPLIES) {
             QuickRepliesController.getInstance(currentAccount).checkLocalMessages(messages);
+        }
+        if (mode == ChatActivity.MODE_DEFAULT) {
+            ArrayList<MessageObject> gramMessages = null;
+            for (MessageObject message : messages) {
+                if (message.getId() > 0 && message.messageOwner.action instanceof TLRPC.TL_messageActionGramTransfer) {
+                    if (gramMessages == null) gramMessages = new ArrayList<>();
+                    gramMessages.add(message);
+                }
+            }
+            if (gramMessages != null) {
+                getNotificationCenter().postNotificationName(NotificationCenter.replaceMessagesObjects, dialogId, gramMessages);
+            }
         }
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
 

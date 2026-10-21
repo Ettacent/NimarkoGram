@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -7,6 +9,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.BitmapFactory;
+import android.graphics.Rect;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -32,7 +35,7 @@ import android.widget.TextView;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.CodeHighlighting;
+import org.telegram.utils.code.highlight.CodeHighlighting;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.AppGlobalConfig;
@@ -75,6 +78,10 @@ import java.util.Set;
 
 public class RichEditorListView extends UniversalRecyclerView {
 
+    @Override
+    public boolean hasOverlappingRendering() {
+        return true;
+    }
     public interface Delegate {
         ItemOptions makeMenu(View anchor);
         void onSelectionChanged();
@@ -119,7 +126,16 @@ public class RichEditorListView extends UniversalRecyclerView {
     private Runnable longPressRunnable;
     private boolean pressMoved;
     private boolean longPressConsumed;
+    private boolean selectionHandleGesture;
+    private int selectionHandlePointerId = -1;
+    private final int[] selectionOverlayLocation = new int[2];
+    private final int[] selectionListLocation = new int[2];
+    private int selectionFocusGeneration;
+    private boolean restoringCaretFocus;
+    private final Rect restoredCaretRect = new Rect();
     private boolean cellSelectionDragActive;
+    private boolean cellSelectionDragGesture;
+    private int cellSelectionDragPointerId = -1;
     private boolean clearDraggedMultiCellSelectionOnMenuDismiss;
     private TL_iv.pageTableCell cellSelectionDragAnchor;
     private TL_iv.pageTableCell cellSelectionDragEnd;
@@ -162,6 +178,9 @@ public class RichEditorListView extends UniversalRecyclerView {
         allowReorder(true);
 
         textSelectionHelper = new TextSelectionHelper.ArticleTextSelectionHelper() {
+            @Override
+            protected boolean useStableSelectionDragging() { return true; }
+
             @Override
             protected void onOffsetChanged() {
                 super.onOffsetChanged();
@@ -222,6 +241,7 @@ public class RichEditorListView extends UniversalRecyclerView {
         textSelectionHelper.setCallback(new TextSelectionHelper.Callback() {
             @Override
             public void onStateChanged(boolean isSelected) {
+                final int focusGeneration = ++selectionFocusGeneration;
                 delegate.onSelectionChanged();
                 if (isSelected) {
                     restoreFocusCell = textSelectionHelper.getAnchorCell();
@@ -231,6 +251,8 @@ public class RichEditorListView extends UniversalRecyclerView {
                     hideEditTextActionModes();
                     finishEditTextActionModes();
                 } else {
+                    cancelSelectionPress();
+                    lastTapDownTime = 0;
                     final int cell = restoreFocusCell;
                     final int off = restoreFocusOffset;
                     final int childPos = restoreFocusChildPosition;
@@ -244,16 +266,24 @@ public class RichEditorListView extends UniversalRecyclerView {
                     finishEditTextActionModes();
                     if (tapDismiss) {
                         post(() -> {
-                            if (!restoreFocusAtScreenPoint(tapX, tapY) && cell >= 0) {
-                                restoreFocusAt(cell, childPos, off);
-                            }
+                            if (focusGeneration != selectionFocusGeneration || !isAttachedToWindow()
+                                    || textSelectionHelper.isInSelectionMode()) return;
+                            restoreFocusAtScreenPoint(tapX, tapY);
                         });
                     } else if (cell >= 0) {
-                        post(() -> restoreFocusAt(cell, childPos, off));
+                        post(() -> {
+                            if (focusGeneration != selectionFocusGeneration || !isAttachedToWindow()
+                                    || textSelectionHelper.isInSelectionMode()) return;
+                            restoreFocusAt(cell, childPos, off);
+                        });
                     } else {
                         final View focused = findFocus();
                         if (focused instanceof RichEditText) {
-                            post(((RichEditText) focused)::requestEditFocusRebuild);
+                            post(() -> {
+                                if (focusGeneration != selectionFocusGeneration || !isAttachedToWindow()
+                                        || textSelectionHelper.isInSelectionMode()) return;
+                                ((RichEditText) focused).requestEditFocusRebuild();
+                            });
                         }
                     }
                 }
@@ -295,6 +325,7 @@ public class RichEditorListView extends UniversalRecyclerView {
     };
 
     private void hideKeyboardIfFocusScrolledAway() {
+        if (textSelectionHelper.isInSelectionMode()) return;
         final RichEditText et = focusedEditText;
         if (et == null) return;
         final View child = findContainingItemView(et);
@@ -312,7 +343,7 @@ public class RichEditorListView extends UniversalRecyclerView {
         final int h = b - t;
         final boolean shrunk = lastListHeight > 0 && h < lastListHeight;
         super.onLayout(changed, l, t, r, b);
-        if (shrunk) {
+        if (shrunk && !textSelectionHelper.isInSelectionMode()) {
             // keyboard opened: if the focused field is below the shrunk viewport, reveal it (keeps the field on screen
             // so it retains focus and the keyboard stays open)
             final View focused = findFocus();
@@ -335,6 +366,14 @@ public class RichEditorListView extends UniversalRecyclerView {
 
     @Override
     protected void onDetachedFromWindow() {
+        selectionFocusGeneration++;
+        if (cellSelectionDragActive) finishCellSelectionDrag(false);
+        cellSelectionDragGesture = false;
+        cellSelectionDragPointerId = -1;
+        cancelSelectionPress();
+        selectionHandleGesture = false;
+        selectionHandlePointerId = -1;
+        textSelectionHelper.cancelHandleDrag();
         super.onDetachedFromWindow();
         getViewTreeObserver().removeOnGlobalFocusChangeListener(imeFocusListener);
         doNotDetachViews(false);
@@ -376,6 +415,10 @@ public class RichEditorListView extends UniversalRecyclerView {
 
     public boolean isInSelectionMode() {
         return textSelectionHelper != null && textSelectionHelper.isInSelectionMode();
+    }
+
+    int getSelectionGeneration() {
+        return selectionFocusGeneration;
     }
 
     private ArrayList<BlockRow> initialSelectionRows;
@@ -2235,7 +2278,76 @@ public class RichEditorListView extends UniversalRecyclerView {
         this.emojiPadding = emojiPadding;
     }
 
-    public boolean handleSelectionTouch(MotionEvent ev) {
+    private void cancelSelectionPress() {
+        if (longPressRunnable != null) {
+            removeCallbacks(longPressRunnable);
+            longPressRunnable = null;
+        }
+        pressTarget = null;
+        longPressConsumed = false;
+    }
+
+    public boolean dispatchSelectionHandleTouch(MotionEvent event) {
+        final int action = event.getActionMasked();
+        if (action != MotionEvent.ACTION_DOWN && cellSelectionDragGesture) return false;
+        if (action == MotionEvent.ACTION_DOWN) {
+            if (cellSelectionDragActive) finishCellSelectionDrag(false);
+            cellSelectionDragGesture = false;
+            cellSelectionDragPointerId = -1;
+            textSelectionHelper.cancelHandleDrag();
+            selectionHandleGesture = false;
+            selectionHandlePointerId = event.getPointerId(0);
+            cancelSelectionPress();
+        }
+        final boolean selecting = textSelectionHelper.isInSelectionMode();
+        final boolean owned = selectionHandleGesture || selecting && longPressConsumed;
+        final int pointerIndex = event.findPointerIndex(selectionHandlePointerId);
+        final boolean pointerUp = action == MotionEvent.ACTION_POINTER_UP
+                && event.getPointerId(event.getActionIndex()) == selectionHandlePointerId;
+        boolean handled = false;
+        if (selecting && pointerIndex >= 0 && (action == MotionEvent.ACTION_DOWN || owned)) {
+            textSelectionOverlay.getLocationOnScreen(selectionOverlayLocation);
+            final float x = event.getRawX() - event.getX() + event.getX(pointerIndex) - selectionOverlayLocation[0];
+            final float y = event.getRawY() - event.getY() + event.getY(pointerIndex) - selectionOverlayLocation[1];
+            final int overlayAction = pointerUp ? MotionEvent.ACTION_UP
+                    : action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP
+                    ? MotionEvent.ACTION_MOVE : action;
+            MotionEvent local = MotionEvent.obtain(event.getDownTime(), event.getEventTime(), overlayAction, x, y, event.getMetaState());
+            try {
+                handled = textSelectionOverlay.onTouchEvent(local);
+            } finally {
+                local.recycle();
+            }
+        } else if (owned) {
+            textSelectionHelper.cancelHandleDrag();
+        }
+        final boolean consume = owned || handled;
+        final boolean finished = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+        if (pointerUp || finished || pointerIndex < 0) selectionHandlePointerId = -1;
+        selectionHandleGesture = consume && !finished;
+        if (consume) {
+            cancelSelectionPress();
+            requestDisallowInterceptTouchEvent(!finished);
+        } else if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
+            cancelSelectionPress();
+        }
+        return consume;
+    }
+
+    public boolean handleSelectionTouch(MotionEvent event) {
+        getLocationOnScreen(selectionListLocation);
+        MotionEvent local = MotionEvent.obtain(event);
+        local.offsetLocation(event.getRawX() - event.getX() - selectionListLocation[0] + getLeft(),
+                event.getRawY() - event.getY() - selectionListLocation[1] + getTop());
+        try {
+            return handleSelectionTouchInLayout(local);
+        } finally {
+            local.recycle();
+        }
+    }
+
+    private boolean handleSelectionTouchInLayout(MotionEvent ev) {
+        if (cellSelectionDragGesture) return handleCellSelectionDragTouch(ev);
         switch (ev.getAction()) {
             case MotionEvent.ACTION_DOWN: {
                 pressX = ev.getX();
@@ -2266,6 +2378,7 @@ public class RichEditorListView extends UniversalRecyclerView {
                         if (textSelectionHelper.isInSelectionMode()) return;
                         if (tryStartTextSelection(pressTarget, pressX, pressY)) {
                             longPressConsumed = true;
+                            requestDisallowInterceptTouchEvent(true);
                             return;
                         }
                         int localX = (int) (pressX - pressTarget.getLeft() - getLeft());
@@ -2435,6 +2548,7 @@ public class RichEditorListView extends UniversalRecyclerView {
     }
 
     private View findCellUnder(int x, int y) {
+        int listX = x - getLeft();
         int listY = y - getTop();
         // A table's bottom three-dot handle deliberately draws beyond the table's measured
         // height. Keep that overlay interactive instead of handing its taps to the next block.
@@ -2442,7 +2556,7 @@ public class RichEditorListView extends UniversalRecyclerView {
             ? activeCellSelectionTable : findFocusedTableCell();
         if (overflowTable != null && overflowTable.getParent() == this) {
             final RichTableCell table = overflowTable;
-            final int localX = x - table.getLeft();
+            final int localX = listX - table.getLeft();
             final int localY = listY - table.getTop();
             if (table.findRowHandleAt(localX, localY) >= 0 || table.findColHandleAt(localX, localY) >= 0) {
                 return table;
@@ -2450,7 +2564,7 @@ public class RichEditorListView extends UniversalRecyclerView {
         }
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
-            if (listY >= child.getTop() && listY < child.getBottom() && x >= child.getLeft() && x < child.getRight()) {
+            if (listY >= child.getTop() && listY < child.getBottom() && listX >= child.getLeft() && listX < child.getRight()) {
                 return child;
             }
         }
@@ -2683,22 +2797,45 @@ public class RichEditorListView extends UniversalRecyclerView {
         if (v instanceof RichTextCell) {
             RichTextCell c = (RichTextCell) v;
             final RichEditText et = childPos == 1 && c.isAuthorVisible() ? c.getAuthorEditText() : c.getEditText();
-            et.requestEditFocusRebuild();
-            int len = et.length();
-            et.setSelection(Math.max(0, Math.min(offset, len)));
+            restoreCaretFocus(et, offset);
         } else if (v instanceof RichTableCell) {
             RichTableCell rtc = (RichTableCell) v;
             RichEditText et = rtc.editTextForChildPos(childPos);
             if (et == null) et = rtc.editTextForChildPos(rtc.titleChildPos());
             if (et == null) return;
-            et.requestEditFocusRebuild();
-            et.setSelection(Math.max(0, Math.min(offset, et.length())));
+            restoreCaretFocus(et, offset);
         } else if (v instanceof RichCaptionHost) {
             RichEditText et = ((RichCaptionHost) v).getCaptionEditText();
-            et.requestEditFocusRebuild();
-            int len = et.length();
-            et.setSelection(Math.max(0, Math.min(offset, len)));
+            restoreCaretFocus(et, offset);
         }
+    }
+
+    private void restoreCaretFocus(RichEditText editText, int offset) {
+        final boolean wasRestoring = restoringCaretFocus;
+        restoringCaretFocus = true;
+        try {
+            editText.finishActionMode();
+            editText.setSelection(Math.max(0, Math.min(offset, editText.length())));
+            editText.requestEditFocus();
+            editText.finishActionMode();
+        } finally {
+            restoringCaretFocus = wasRestoring;
+        }
+    }
+
+    @Override
+    protected void requestChildOnScreen(View child, View focused) {
+        if (restoringCaretFocus && focused instanceof RichEditText) {
+            RichEditText editText = (RichEditText) focused;
+            if (editText.getLayout() != null && editText.getSelectionEnd() >= 0) {
+                editText.getFocusedRect(restoredCaretRect);
+                offsetDescendantRectToMyCoords(editText, restoredCaretRect);
+                offsetRectIntoDescendantCoords(child, restoredCaretRect);
+                super.requestChildRectangleOnScreen(child, restoredCaretRect, false);
+            }
+            return;
+        }
+        super.requestChildOnScreen(child, focused);
     }
 
     private boolean restoreFocusAtScreenPoint(float rawX, float rawY) {
@@ -2726,8 +2863,7 @@ public class RichEditorListView extends UniversalRecyclerView {
         if (lx < 0 || ly < 0 || lx > et.getWidth() || ly > et.getHeight()) return false;
         int off = et.getOffsetForPosition(lx, ly);
         if (off < 0) off = 0;
-        et.requestEditFocusRebuild();
-        et.setSelection(Math.max(0, Math.min(off, et.length())));
+        restoreCaretFocus(et, off);
         return true;
     }
 
@@ -3068,9 +3204,41 @@ public class RichEditorListView extends UniversalRecyclerView {
         stopScroll();
         requestDisallowInterceptTouchEvent(true);
         cellSelectionDragActive = true;
+        cellSelectionDragGesture = true;
+        cellSelectionDragPointerId = selectionHandlePointerId;
         cellSelectionDragAnchor = cell;
         cellSelectionDragEnd = cell;
         table.selectCellRectangle(cell, cell);
+    }
+
+    private boolean handleCellSelectionDragTouch(MotionEvent event) {
+        final int action = event.getActionMasked();
+        final boolean finished = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+        if (cellSelectionDragActive) {
+            final int index = event.findPointerIndex(cellSelectionDragPointerId);
+            final boolean ownerUp = action == MotionEvent.ACTION_UP
+                    || action == MotionEvent.ACTION_POINTER_UP
+                    && event.getPointerId(event.getActionIndex()) == cellSelectionDragPointerId;
+            if (action == MotionEvent.ACTION_CANCEL || index < 0) {
+                finishCellSelectionDrag(false);
+                cancelSelectionPress();
+            } else if (action == MotionEvent.ACTION_MOVE || ownerUp) {
+                updateCellSelectionDrag(event.getX(index), event.getY(index));
+                pressMoved = true;
+                if (ownerUp) {
+                    finishCellSelectionDrag(true);
+                    cancelSelectionPress();
+                }
+            }
+        }
+        if (finished) {
+            cellSelectionDragGesture = false;
+            cellSelectionDragPointerId = -1;
+            selectionHandlePointerId = -1;
+            cancelSelectionPress();
+        }
+        requestDisallowInterceptTouchEvent(!finished);
+        return true;
     }
 
     private void updateCellSelectionDrag(float x, float y) {
@@ -3090,6 +3258,7 @@ public class RichEditorListView extends UniversalRecyclerView {
             requestDisallowInterceptTouchEvent(false);
         }
         cellSelectionDragActive = false;
+        cellSelectionDragPointerId = -1;
         cellSelectionDragAnchor = null;
         cellSelectionDragEnd = null;
         clearDraggedMultiCellSelectionOnMenuDismiss = table != null && table.getSelectedCells().size() > 1;
@@ -3131,6 +3300,7 @@ public class RichEditorListView extends UniversalRecyclerView {
             requestDisallowInterceptTouchEvent(false);
         }
         cellSelectionDragActive = false;
+        cellSelectionDragPointerId = -1;
         clearDraggedMultiCellSelectionOnMenuDismiss = false;
         cellSelectionDragAnchor = null;
         cellSelectionDragEnd = null;

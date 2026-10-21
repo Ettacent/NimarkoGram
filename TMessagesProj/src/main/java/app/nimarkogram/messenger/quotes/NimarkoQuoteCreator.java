@@ -1627,7 +1627,7 @@ public final class NimarkoQuoteCreator {
             ));
 
             ImageView quoteIcon = new ImageView(context);
-            quoteIcon.setImageResource(R.drawable.menu_select_quote);
+            quoteIcon.setImageResource(R.drawable.ng_create_quote);
             quoteIcon.setScaleType(ImageView.ScaleType.CENTER);
             quoteIcon.setColorFilter(accentColor);
             quoteIcon.setBackground(Theme.createCircleDrawable(

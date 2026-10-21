@@ -1204,11 +1204,20 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
                             (int) (bcx + fromSourceView.iconSize / 2),
                             (int) (bcy + fromSourceView.iconSize / 2)
                         );
-                        int wasAlpha = fromSourceView.iconDrawable.getAlpha();
-                        fromSourceView.iconDrawable.setAlpha((int) (wasAlpha * alpha));
+                        final int iconSave = canvas.save();
+                        try {
+                            final int iconAlpha = Math.max(0, Math.min(255, (int) (255 * alpha)));
+                            if (iconAlpha > 0) {
+                                if (iconAlpha < 255) {
+                                    final Rect iconBounds = fromSourceView.iconDrawable.getBounds();
+                                    canvas.saveLayerAlpha(iconBounds.left, iconBounds.top, iconBounds.right, iconBounds.bottom, iconAlpha);
+                                }
                         fromSourceView.iconDrawable.draw(canvas);
+                            }
+                        } finally {
+                            canvas.restoreToCount(iconSave);
                         fromSourceView.iconDrawable.setBounds(rect);
-                        fromSourceView.iconDrawable.setAlpha(wasAlpha);
+                        }
                     }
 
                     canvas.save();

@@ -85,6 +85,7 @@ import org.telegram.ui.Components.chat.ViewPositionWatcher;
 import org.telegram.ui.Components.glass.GlassTabView;
 import org.telegram.ui.Stories.recorder.HintView2;
 
+import org.telegram.ui.Wallet.WalletActivity;
 import java.util.ArrayList;
 import java.util.Collections;
 
@@ -1243,6 +1244,10 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (updateLayout != null && LaunchActivity.instance != null) {
                 updateLayout.updateAppUpdateViews(currentAccount, LaunchActivity.instance.getMainFragmentsStackSize() == 1);
             }
+        } else if (id == NotificationCenter.didSetNewTheme) {
+            if (fragmentView != null) {
+                blur3_updateColors();
+            }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
             if (parentLayout == null || parentLayout.getLastFragment() == this) {
                 clearAllHiddenFragments();
@@ -1303,6 +1308,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             .addGlobal(NotificationCenter.appUpdateAvailable)
             .addGlobal(NotificationCenter.appUpdateLoading)
             .addGlobal(NotificationCenter.needSetDayNightTheme)
+            .addGlobal(NotificationCenter.didSetNewTheme)
             .addGlobal(NotificationCenter.cgTabsUpdated);
 
         return super.onFragmentCreate();
@@ -1601,7 +1607,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
         blur3_invalidateBlur();
         if (tabsView != null) {
-            tabsView.invalidate();
+            tabsView.updateColors();
         }
         if (tabs != null) {
             for (GlassTabView tabView : tabs) {

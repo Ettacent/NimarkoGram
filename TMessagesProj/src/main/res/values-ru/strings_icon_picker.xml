@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_IconPicker_Title">Найдите свой стиль</string>
+    <string name="NM_IconPicker_Hint">Листайте наборы и сравнивайте их в интерфейсе.</string>
+    <string name="NM_IconPicker_PreviewHint">Свайп меняет только предпросмотр.</string>
+    <string name="NM_IconPicker_DefaultDescription">Привычные контуры и выверенные детали.</string>
+    <string name="NM_IconPicker_SolarDescription">Тонкие линии и мягкие, округлые формы.</string>
+    <string name="NM_IconPicker_LiquidDescription">Объём, мягкие блики и стеклянные грани.</string>
+    <string name="NM_IconPicker_PlumpyDescription">Выразительные формы и плавные силуэты.</string>
+    <string name="NM_IconPicker_Applied">Используется</string>
+    <string name="NM_IconPicker_Apply">Применить</string>
+    <string name="NM_IconPicker_Previous">Предыдущий набор иконок</string>
+    <string name="NM_IconPicker_Next">Следующий набор иконок</string>
+    <string name="NM_IconPicker_Position">%1$d / %2$d</string>
+    <string name="NM_IconPicker_PageDescription">%1$s, набор %2$d из %3$d</string>
+    <string name="NM_IconPicker_CurrentDescription">%1$s — текущий набор иконок</string>
+    <string name="NM_IconPicker_ApplyDescription">Применить %1$s</string>
+</resources>

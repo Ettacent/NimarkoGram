@@ -909,7 +909,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
-        muteImageView.setImageResource(R.drawable.video_mute);
+        MediaControlIconHelper.setImageResource(muteImageView, R.drawable.video_mute);
         muteImageView.setAlpha(0.0f);
         addView(muteImageView, LayoutHelper.createFrame(48, 48, Gravity.CENTER));
 
@@ -6308,8 +6308,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 videoEditedInfo.iv = iv;
                 videoEditedInfo.estimatedSize = Math.max(1, size);
                 videoEditedInfo.framerate = frameRate;
-                videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = 360;
-                videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = 360;
+                videoEditedInfo.resultWidth = videoEditedInfo.originalWidth = videoWidth;
+                videoEditedInfo.resultHeight = videoEditedInfo.originalHeight = videoHeight;
                 videoEditedInfo.originalPath = pausedPreviewFile.getAbsolutePath();
                 setupVideoPlayer(pausedPreviewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;

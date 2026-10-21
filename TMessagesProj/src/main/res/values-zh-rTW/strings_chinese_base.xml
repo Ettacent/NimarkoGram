@@ -9599,7 +9599,7 @@
     <string name="TelegramStarsGift">贈送星星給朋友</string>
     <string name="TelegramStarsInfo2">購買星星以解鎖 Telegram \n迷你程式中的內容和服務。 **更多關於星星的資訊 &gt;**</string>
     <string name="TelegramTones">Telegram 音效</string>
-    <string name="TelegramVersion">Android 版 Telegram %1$s</string>
+    <string name="TelegramVersion">Android 版 NimarkoGram %1$s</string>
     <string name="Terminate">登出</string>
     <string name="TerminateAllSessions">登出其他裝置</string>
     <string name="TerminateAllWebSessions">斷開與所有網站的連結</string>

@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="12dp" android:height="12dp"
+    android:viewportWidth="12" android:viewportHeight="12">
+    <path android:name="speaker"
+        android:pathData="M1.7,4H3.5L6.3,1.7Q7,1.1 7,2V10Q7,10.9 6.3,10.3L3.5,8H1.7Q1,8 1,7.3V4.7Q1,4 1.7,4Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="2" android:startY="1"
+                android:endX="8" android:endY="11" android:startColor="#EFFFFFFF"
+                android:centerColor="#9AFFFFFF" android:endColor="#D4FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="sound_wave" android:fillColor="#00000000"
+        android:strokeColor="#C4FFFFFF" android:strokeWidth="1"
+        android:strokeLineCap="round" android:pathData="M9.4,3.5C10.8,4.9 10.8,7.1 9.4,8.5"/>
+</vector>

@@ -13,9 +13,9 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
+import android.view.View;
 import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -63,7 +63,9 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
     public static final int STAR_GIFT_SELECT = 35;
     public static final int STAR_GIFT_SHORTER = 36;
 
-    public static final int GROUP_USERS_TYPE = 37;
+    public static final int WALLET_TRANSACTION = 37;
+    public static final int WALLET_COLLECTIBLE = 38;
+    public static final int GROUP_USERS_TYPE = 39;
     private int gradientWidth;
     private LinearGradient gradient;
     private Paint paint = new Paint();
@@ -276,6 +278,42 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
                 canvas.drawLine(dp(textStart), h + getCellHeight(getMeasuredWidth()), getMeasuredWidth(), h + getCellHeight(getMeasuredWidth()), paint);
 
                 h += getCellHeight(getMeasuredWidth());
+                k++;
+                if (isSingleCell && k >= itemsCount) {
+                    break;
+                }
+            }
+        } else if (getViewType() == WALLET_TRANSACTION || getViewType() == WALLET_COLLECTIBLE) {
+            final boolean transaction = getViewType() == WALLET_TRANSACTION;
+            final int cellHeight = getCellHeight(getMeasuredWidth());
+            int k = 0;
+            while (h <= getMeasuredHeight()) {
+                if (transaction) {
+                    canvas.drawCircle(paddingLeft + dp(36), h + dp(35), dp(23), paint);
+                } else {
+                    rectF.set(paddingLeft + dp(15), h + dp(6), paddingLeft + dp(61), h + dp(52));
+                    canvas.drawRoundRect(rectF, dp(8), dp(8), paint);
+                }
+
+                final float textLeft = paddingLeft + dp(71);
+                final float textRight = Math.max(textLeft, getMeasuredWidth() - dp(transaction ? 76 : 20));
+                rectF.set(textLeft, h + dp(14), Math.min(textLeft + dp(100), textRight), h + dp(22));
+                canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+
+                rectF.set(textLeft, h + dp(transaction ? 33 : 36), Math.min(textLeft + dp(140), textRight), h + dp(transaction ? 41 : 44));
+                canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+
+                if (transaction) {
+                    rectF.set(textLeft, h + dp(51), Math.min(textLeft + dp(80), textRight), h + dp(59));
+                    canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+
+                    if (getMeasuredWidth() - dp(68) >= textLeft) {
+                        rectF.set(getMeasuredWidth() - dp(68), h + dp(15), getMeasuredWidth() - dp(20), h + dp(23));
+                        canvas.drawRoundRect(rectF, dp(4), dp(4), paint);
+                    }
+                }
+
+                h += cellHeight;
                 k++;
                 if (isSingleCell && k >= itemsCount) {
                     break;
@@ -1003,6 +1041,10 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
             case USERS_TYPE:
             case CONTACT_TYPE:
                 return dp(64);
+            case WALLET_TRANSACTION:
+                return dp(73);
+            case WALLET_COLLECTIBLE:
+                return dp(58);
             case INVITE_LINKS_TYPE:
                 return dp(66);
             case USERS2_TYPE:

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -99,7 +101,7 @@ public class DialogsHintCell extends FrameLayout {
         addView(chevronView, LayoutHelper.createFrame(16, 16, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, 4, 0, 4, 0));
 
         closeView = new ImageView(context);
-        closeView.setImageResource(R.drawable.msg_close);
+        closeView.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
         closeView.setPadding(dp(6), dp(6), dp(6), dp(6));
         addView(closeView, LayoutHelper.createFrame(36, 36, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, -4, 0, -4, 0));
         closeView.setVisibility(GONE);

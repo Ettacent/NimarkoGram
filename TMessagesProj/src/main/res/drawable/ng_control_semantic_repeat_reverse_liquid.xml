@@ -1,0 +1,24 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="repeat_loop"
+        android:pathData="M8.2,3.8C4.4,4.3 1.8,7.3 1.8,11.5V13.8Q1.8,14.8 2.9,14.8Q4,14.8 4,13.8V11.5C4,8.5 5.8,6.3 8.5,5.9Q9.5,5.75 9.35,4.65Q9.2,3.65 8.2,3.8Z M20.4,14.7Q21.5,14.9 21.2,16C20.2,19.3 17.2,21 13.4,21H8.1V22.1Q8.1,22.9 7.5,22.4L4.5,20.2Q4,19.8 4.5,19.4L7.5,17.2Q8.1,16.7 8.1,17.5V18.8H13.4C16.3,18.8 18.5,17.5 19.1,15.5Q19.4,14.5 20.4,14.7Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="3" android:startY="4"
+                android:endX="20" android:endY="22" android:startColor="#D4FFFFFF"
+                android:centerColor="#82FFFFFF" android:endColor="#B4FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="reverse_up_down_arrows"
+        android:pathData="M12,13.1V5.6L11.1,6.5Q10.4,7.2 9.7,6.5Q9,5.8 9.7,5.1L12.2,2.6Q12.9,1.9 13.6,2.6L16.1,5.1Q16.8,5.8 16.1,6.5Q15.4,7.2 14.7,6.5L13.8,5.6V13.1Q13.8,14.1 12.9,14.1Q12,14.1 12,13.1Z M18.7,2.8Q18.7,1.8 19.7,1.8Q20.7,1.8 20.7,2.8V10.3L21.4,9.6Q22.1,8.9 22.7,9.6Q23.3,10.2 22.7,10.8L20.4,13.1Q19.7,13.8 19,13.1L16.7,10.8Q16.1,10.2 16.7,9.6Q17.3,8.9 17.9,9.5L18.7,10.3Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="10" android:startY="2"
+                android:endX="22" android:endY="14" android:startColor="#F5FFFFFF"
+                android:centerColor="#B8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

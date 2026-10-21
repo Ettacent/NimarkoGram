@@ -1,3 +1,11 @@
+/*
+ * Ported from Cherrygram (uz.unnarsx.cherrygram.core.icons.icon_replaces.SolarIconReplace).
+ * Originally Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.
+ * Ported to Java for NimarkoGram. Four mappings from the CG original are
+ * omitted because NimarkoGram lacks the source drawable:
+ *   ic_upward, msg_channel_14, msg_channel_hw, msg_channel_ny.
+ */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -14,6 +22,13 @@ import org.telegram.messenger.R;
 public class SolarIconReplace extends BaseIconReplace {
 
     public SolarIconReplace() {
+        put(replaces, R.drawable.ic_ab_back, R.drawable.ng_navigation_back_solar);
+        put(replaces, R.drawable.ic_close_white, R.drawable.ng_navigation_close_solar);
+        put(replaces, R.drawable.list_reorder, R.drawable.msg_list_solar);
+        put(replaces, R.drawable.ic_action_play, R.drawable.ng_navigation_play_solar);
+        put(replaces, R.drawable.ic_action_pause, R.drawable.ng_navigation_pause_solar);
+        put(replaces, R.drawable.ic_ab_other, R.drawable.ng_navigation_more_solar);
+        put(replaces, R.drawable.ic_ab_done, R.drawable.ng_navigation_done_solar);
         put(replaces, R.drawable.arrow_more, R.drawable.arrow_more_solar);
         put(replaces, R.drawable.attach_send, R.drawable.attach_send_solar);
         put(replaces, R.drawable.bot_file, R.drawable.msg_round_file_solar);
@@ -393,5 +408,28 @@ public class SolarIconReplace extends BaseIconReplace {
         put(replaces, R.drawable.msg_header_share, R.drawable.msg_share_filled_solar);
         put(replaces, R.drawable.msg_header_draw, R.drawable.msg_header_draw_solar);
         put(replaces, R.drawable.menu_video_chromecast, R.drawable.menu_video_chromecast_solar);
+        addAlias(R.drawable.input_mic, R.drawable.calls_unmute);
+        addAlias(R.drawable.msg_input_attach2, R.drawable.input_attach);
+        put(replaces, R.drawable.settings_features, R.drawable.filter_light_solar);
+        put(replaces, R.drawable.camera, R.drawable.camera_solar);
+        CoreIconReplacements.apply(this);
+        RecordDeleteIconReplacements.apply(this, R.drawable.ng_record_delete_body_solar, R.drawable.ng_record_delete_lid_solar);
+        put(replaces, R.drawable.ng_file_download, R.drawable.ng_file_download_solar);
+        put(replaces, R.drawable.ng_header_download, R.drawable.ng_header_download_solar);
+        CompactTransferIconReplacements.apply(this);
+        CompactSecurityIconReplacements.apply(this);
+        CompactStatusIconReplacements.apply(this);
+        CompactControlIconReplacements.apply(this);
+        DeviceFolderIconReplacements.apply(this);
+        MessageMetaIconReplacements.apply(this);
+        put(replaces, R.drawable.input_mic_pressed, R.drawable.input_mic_pressed_solar);
+        put(replaces, R.drawable.msg_bots, R.drawable.msg_bots_solar);
+        put(replaces, R.drawable.msg_user_search, R.drawable.msg_user_search_solar);
+        SolarAnimatedIconReplacements.apply(this);
+        put(replaces, R.drawable.ng_create_quote, R.drawable.ng_create_quote_solar);
+        SolarActionIconReplacements.apply(this);
+        CompactInstantViewIconReplacements.apply(this);
+        SolarMediaSemanticIconReplacements.apply(this);
+        GramIconReplacements.solar(this);
     }
 }

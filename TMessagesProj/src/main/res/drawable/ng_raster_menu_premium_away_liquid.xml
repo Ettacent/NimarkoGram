@@ -1,0 +1,44 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="umbrella" android:fillColor="#00000000"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3,11C1.5,2.4 11.7,0.2 17.5,7.7C14.1,7.4 13.2,10.6 10.9,9.4C7.9,8 6.1,12.6 3,11Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="umbrella_panels" android:fillColor="#00000000"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8.5,3C7.3,5 7.7,8 8.1,9.7 M8.5,3C11,3.8 13,5.8 13.9,8.2 M10.1,9.2L12.5,17.4">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="beach" android:fillColor="#00000000"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3.4,20C4.7,16.7 14.1,15.9 20.9,19">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="waves" android:fillColor="#00000000"
+        android:strokeWidth="1.40" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7.5,21C8.5,22.2 9.5,22.2 10.5,21C11.5,22.2 12.5,22.2 13.5,21C14.5,22.2 15.5,22.2 16.5,21C17.5,22.2 18.5,22.2 19.5,21C20.3,21.8 21,21.8 21.7,21">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

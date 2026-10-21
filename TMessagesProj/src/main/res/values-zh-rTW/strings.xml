@@ -721,6 +721,8 @@
     <string name="NM_StickerSizePreviewReply">飛向月球 🚀</string>
     <string name="NM_StickerSizePreviewText">哈哈哈 😂</string>
     <string name="NM_ForceBlur">強制模糊</string>
+    <string name="NM_MotionBlur">動態模糊</string>
+    <string name="NM_MotionBlur_Desc">為應用程式介面加入動態模糊，可能會增加 GPU 負載。</string>
     <string name="NM_HideActionBarStatus">隱藏聊天標題列中的狀態</string>
     <string name="NM_DisableSendHints">停用傳送提示</string>
     <string name="NM_DisableSendHints_Desc">不在傳送按鈕上方顯示「按住此按鈕可定時傳送或靜音傳送」的提示。</string>
@@ -1279,6 +1281,16 @@
     <string name="NM_ShowSeconds_Desc" translatable="false">12:34 -&gt; 12:34:56</string>
     <string name="NM_Menu_More">更多操作</string>
     <string name="NM_Menu_Manage">管理</string>
-    <string name="NM_MotionBlur">動態模糊</string>
-    <string name="NM_MotionBlur_Desc">為應用程式介面加入動態模糊，可能會增加 GPU 負載。</string>
+    <string name="BotTypeAgent">智慧代理</string>
+    <string name="BotTypeGame">遊戲</string>
+    <string name="BotTypeApp">應用程式</string>
+    <string name="BotTypeAI">人工智慧</string>
+    <string name="BotTypeNonBinary">非二元</string>
+    <string name="AudioRecorderSettings">語音訊息</string>
+    <string name="AudioRecorderGeneral">錄音</string>
+    <string name="AudioRecorderUseNewRecorder">使用新版錄音器</string>
+    <string name="AudioRecorderNoiseSuppression">降噪</string>
+    <string name="AudioRecorderNoiseSuppressionOff">關閉</string>
+    <string name="AudioRecorderNoiseSuppressionRNNoise">RNNoise</string>
+    <string name="AudioRecorderGeneralInfo">RNNoise 可消除背景雜訊，但可能影響音樂或音量很小的語音。</string>
 </resources>

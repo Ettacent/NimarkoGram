@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -17,8 +19,10 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class CrossOutDrawable extends Drawable {
 
     Drawable iconDrawable;
@@ -35,8 +39,30 @@ public class CrossOutDrawable extends Drawable {
     private float lenOffsetTop;
     private float lenOffsetBottom;
 
+    private final Theme.ResourcesProvider resourcesProvider;
+    private ColorFilter callerColorFilter;
+    private boolean colorFilterDirty;
+    private boolean lastDark;
+    private final boolean preserveBellReversal;
+    private boolean slashFromStart;
     public CrossOutDrawable(Context context, int iconRes, int colorKey) {
+        this(context, iconRes, colorKey, null);
+    }
+
+    public CrossOutDrawable(Context context, int iconRes, int colorKey, Theme.ResourcesProvider resourcesProvider) {
+        this.resourcesProvider = resourcesProvider;
+        preserveBellReversal = (iconRes == R.drawable.input_notify_on || iconRes == R.drawable.input_notify_off)
+                && context.getResources() instanceof NimarkoIconResources
+                && ((NimarkoIconResources) context.getResources()).hasReplacement(iconRes);
         iconDrawable = ContextCompat.getDrawable(context, iconRes);
+        if (resourcesProvider != null && context.getResources() instanceof NimarkoIconResources
+                && ((NimarkoIconResources) context.getResources()).hasReplacement(iconRes)) {
+            Drawable copy = NimarkoIconResources.copyDrawable(iconDrawable, context.getResources(), resourcesProvider::isDark);
+            if (copy != null) {
+                iconDrawable = copy;
+            }
+        }
+        colorFilterDirty = resourcesProvider != null;
         this.colorKey = colorKey;
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(AndroidUtilities.dpf2(1.7f));
@@ -50,9 +76,12 @@ public class CrossOutDrawable extends Drawable {
     public void setCrossOut(boolean cross, boolean animated) {
         if (this.cross != cross) {
             this.cross = cross;
+            if (!animated || !preserveBellReversal || progress == 0f || progress == 1f) {
+                slashFromStart = cross;
+            }
             if (!animated) {
                 progress = cross ? 1f : 0f;
-            } else {
+            } else if (!preserveBellReversal) {
                 progress = cross ? 0f : 1f;
             }
             invalidateSelf();
@@ -74,11 +103,16 @@ public class CrossOutDrawable extends Drawable {
                 progress = 0;
             }
         }
-        int newColor = colorKey < 0 ? Color.WHITE : Theme.getColor(colorKey);
-        if (color != newColor) {
+        int newColor = colorKey < 0 ? Color.WHITE : Theme.getColor(colorKey, resourcesProvider);
+        boolean dark = resourcesProvider != null && resourcesProvider.isDark();
+        if (color != newColor || colorFilterDirty || dark != lastDark) {
             color = newColor;
-            paint.setColor(newColor);
-            iconDrawable.setColorFilter(new PorterDuffColorFilter(newColor, PorterDuff.Mode.MULTIPLY));
+            colorFilterDirty = false;
+            lastDark = dark;
+            paint.setColor(callerColorFilter == null ? newColor : Color.WHITE);
+            paint.setColorFilter(callerColorFilter);
+            iconDrawable.setColorFilter(callerColorFilter == null
+                    ? new PorterDuffColorFilter(newColor, PorterDuff.Mode.MULTIPLY) : callerColorFilter);
         }
         if (progress == 0) {
             iconDrawable.draw(canvas);
@@ -92,7 +126,7 @@ public class CrossOutDrawable extends Drawable {
         float startY = rectF.top + AndroidUtilities.dpf2(4.5f) - AndroidUtilities.dp(1) + lenOffsetTop;
         float stopX = rectF.right - AndroidUtilities.dp(3) + xOffset - lenOffsetBottom;
         float stopY = rectF.bottom - AndroidUtilities.dp(1) - AndroidUtilities.dp(3) - lenOffsetBottom;
-        if (cross) {
+        if (slashFromStart) {
             stopX = startX + (stopX - startX) * progress;
             stopY = startY + (stopY - startY) * progress;
         } else {
@@ -113,6 +147,11 @@ public class CrossOutDrawable extends Drawable {
     @Override
     public void setColorFilter(@Nullable ColorFilter colorFilter) {
 
+        if (resourcesProvider != null) {
+            callerColorFilter = colorFilter;
+            colorFilterDirty = true;
+            invalidateSelf();
+        }
     }
 
     @Override

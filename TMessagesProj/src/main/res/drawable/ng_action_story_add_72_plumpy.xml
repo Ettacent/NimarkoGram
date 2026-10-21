@@ -1,0 +1,9 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp" android:height="72dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="story_ring" android:fillColor="#00000000" android:strokeColor="#59FFFFFF" android:strokeWidth="2.4" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M12,3A9,9 0,1 0,12,21M16,3.95L17.4,4.8M20.1,8.1L20.6,9.6M20.7,13.6L20.3,15.1M18.1,18.6L16.8,19.6"/>
+    <path android:name="add_story" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M8.5,12H15.5M12,8.5V15.5"/>
+</vector>

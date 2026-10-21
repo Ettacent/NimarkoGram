@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Compact adaptation of bundled msg_pin_mini_solar.xml geometry (Cherrygram/NimarkoGram).
+     Original port attribution: github.com/arsLan4k1390, 2022-2026; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="12dp" android:height="12dp"
+    android:viewportWidth="12" android:viewportHeight="12">
+    <group android:scaleX=".75" android:scaleY=".75" android:translateX="0" android:translateY="0">
+        <path android:strokeColor="#BFFFFFFF" android:strokeWidth=".3" android:strokeLineJoin="round" android:pathData="M12.79 5.2L10.8 3.23C9.46 1.87 8.8 1.2 8.06 1.36 7.33 1.52 7.01 2.4 6.35 4.2L5.9 5.43C5.73 5.9 5.64 6.14 5.48 6.33 5.41 6.4 5.33 6.49 5.24 6.55 5.04 6.69 4.8 6.76 4.31 6.9 3.2 7.2 2.65 7.35 2.44 7.7 2.34 7.87 2.3 8.05 2.3 8.23c0 0.42 0.41 0.82 1.22 1.64l0.95 0.94-2.99 2.99c-0.2 0.2-0.2 0.52 0 0.72 0.2 0.2 0.52 0.2 0.72 0l2.99-2.99 0.97 0.98c0.82 0.82 1.23 1.23 1.65 1.23 0.18 0 0.35-0.05 0.5-0.14 0.37-0.2 0.52-0.76 0.83-1.88 0.13-0.49 0.2-0.73 0.34-0.93 0.07-0.09 0.14-0.17 0.22-0.24 0.18-0.15 0.42-0.24 0.9-0.42l1.22-0.46c1.78-0.67 2.67-1 2.82-1.73 0.16-0.72-0.51-1.4-1.85-2.74Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="3" android:startY="2" android:endX="14" android:endY="15">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    </group>
+</vector>

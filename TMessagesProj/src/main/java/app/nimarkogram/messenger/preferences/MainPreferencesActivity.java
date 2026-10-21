@@ -13,9 +13,11 @@ import android.widget.EditText;
 
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.ui.PluginsActivity;
+import app.nimarkogram.messenger.plugins.ui.PluginsInfoActivity;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 import app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity;
 
+import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
 import java.util.ArrayList;
 
 import org.telegram.messenger.LocaleController;
@@ -99,7 +101,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
 
                     @Override
                     public void onTextChanged(EditText editText) {
-                        searchQuery = editText.getText().toString();
+                        searchQuery = NimarkoSettingsSearchIndex.normalize(editText.getText().toString());
                         refreshSearch(true);
                     }
                 });
@@ -174,7 +176,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
             items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsQuickAccess)));
         }
         ArrayList<NimarkoSettingsSearchIndex.Entry> results =
-                new ArrayList<>(NimarkoSettingsSearchIndex.search(searchQuery));
+                new ArrayList<>(NimarkoSettingsSearchIndex.search(searchQuery, currentAccount));
         if (results.isEmpty()) {
             return;
         }
@@ -209,11 +211,14 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
         if (searchRefresh != null || listView == null) return;
         final View host = listView;
         searchRefreshHost = host;
-        searchRefresh = () -> {
-            if (searchRefreshHost != host || listView != host || isFinished) return;
+        searchRefresh = new Runnable() {
+            @Override
+            public void run() {
+                if (searchRefresh != this) return;
             searchRefreshHost = null;
             searchRefresh = null;
-            updateSearchList(true);
+                if (listView == host && !isFinished) updateSearchList(true);
+            }
         };
         host.postOnAnimation(searchRefresh);
     }
@@ -239,68 +244,76 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
     }
 
     private void openSearchEntry(NimarkoSettingsSearchIndex.Entry entry) {
+        if (entry == null || isFinished || !NimarkoSettingsSearchIndex.isAvailable(entry, currentAccount)) {
+            return;
+        }
         BaseFragment fragment = null;
         switch (entry.screen) {
             case NimarkoSettingsSearchIndex.SCREEN_GENERAL:
-                fragment = GeneralPreferencesActivity.forSetting(entry.itemId).openAtSetting(entry.itemId);
+                fragment = GeneralPreferencesActivity.forSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_APPEARANCE:
-                fragment = AppearancePreferencesActivity.forSetting(entry.itemId).openAtSetting(entry.itemId);
+                fragment = AppearancePreferencesActivity.forSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_CHATS:
-                fragment = ChatsPreferencesActivity.forSetting(entry.itemId).openAtSetting(entry.itemId);
+                fragment = ChatsPreferencesActivity.forSetting(entry.itemId);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_CAMERA:
-                fragment = new CameraPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new CameraPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_PRIVACY:
-                fragment = new PrivacyPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new PrivacyPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_PLUGINS:
                 fragment = new PluginsActivity();
                 break;
+            case NimarkoSettingsSearchIndex.SCREEN_PLUGIN_SETTINGS:
+                fragment = new PluginsInfoActivity();
+                break;
             case NimarkoSettingsSearchIndex.SCREEN_MEDIA:
-                fragment = new NimarkoMediaPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new NimarkoMediaPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_BANNERS:
-                fragment = new BannerPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new BannerPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_BYPASS:
-                fragment = new WsBypassPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new WsBypassPreferencesActivity();
+                break;
+            case NimarkoSettingsSearchIndex.SCREEN_WHITELIST:
+                fragment = new WlPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_TEXT_ANIMATION:
-                fragment = new NimarkoTextAnimPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new NimarkoTextAnimPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_INFO_CARDS:
-                fragment = new InfoCardsPreferencesActivity()
-                        .openAtSetting(entry.itemId);
+                fragment = new InfoCardsPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_ADVANCED:
-                fragment = new DebugPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new DebugPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_FOLDERS:
-                fragment = new FoldersPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new FoldersPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_BOTTOM_TABS:
-                fragment = new BottomTabsPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new BottomTabsPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_MESSAGES_PROFILES:
-                fragment = new MessagesAndProfilesPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new MessagesAndProfilesPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_MESSAGE_MENU:
-                fragment = new MessageMenuPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new MessageMenuPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_MESSAGE_MENU_ITEMS:
-                fragment = new MessageMenuItemsPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new MessageMenuItemsPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_MESSAGE_MENU_ORDER:
                 fragment = new MessageMenuOrderPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_MESSAGE_FILTERS:
-                fragment = new MessageFiltersPreferencesActivity();
+                fragment = new MessageFiltersPreferencesActivity().openAtSetting(entry.titleRes);
                 break;
             case NimarkoSettingsSearchIndex.SCREEN_RECENT:
-                fragment = new RecentEmojisStickersPreferencesActivity().openAtSetting(entry.itemId);
+                fragment = new RecentEmojisStickersPreferencesActivity();
                 break;
             case NimarkoSettingsSearchIndex.ACTION_UPDATES:
                 NimarkoUpdaterSheet.showAlert(this, false, null);
@@ -316,6 +329,15 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 break;
         }
         if (fragment != null) {
+            if (entry.itemId != 0) {
+                if (fragment instanceof BasePreferencesActivity) {
+                    ((BasePreferencesActivity) fragment).openAtSetting(entry.itemId);
+                } else if (fragment instanceof NimarkoUniversalPreferencesActivity) {
+                    ((NimarkoUniversalPreferencesActivity) fragment).openAtSetting(entry.itemId);
+                } else if (fragment instanceof MessagesAndProfilesPreferencesActivity) {
+                    ((MessagesAndProfilesPreferencesActivity) fragment).openAtSetting(entry.itemId);
+                }
+            }
             presentFragment(fragment);
         }
     }

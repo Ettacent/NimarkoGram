@@ -1,17 +1,25 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.glass;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
 import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -20,6 +28,7 @@ import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -29,6 +38,7 @@ import androidx.annotation.StringRes;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DocumentObject;
@@ -37,6 +47,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -78,6 +89,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean usePremiumCounter;
 
     private TabAnimation tabAnimation;
+    private boolean isMainTab;
     private TLRPC.TL_attachMenuBot tabAnimationBot;
 
     private final TextPaint defaultTextPaint;
@@ -86,6 +98,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         super(context);
         setFocusable(true);
         imageView = new RLottieImageView(context);
+        imageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         addView(imageView, LayoutHelper.createFrame(44, 44, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, -6, 0, 0));
 
         imageView.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN));
@@ -171,6 +184,10 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
+        if (!SharedConfig.animationsEnabled()
+                || (Build.VERSION.SDK_INT >= 26 && !ValueAnimator.areAnimatorsEnabled())) {
+            finishPackSelection();
+        }
         final float viewWidth = hasVisualWidth ? visualWidth : getWidth();
         final float selectedFactor = selectorAnimator.getFactor();
         if (selectedFactor > 0 && !skipDrawSelector) {
@@ -254,10 +271,13 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     public void setSelected(boolean selected, boolean animated) {
         boolean changed = isSelectedAnimator.getValue() != selected;
-        isSelectedAnimator.setValue(selected, animated);
-        updateSelectorTarget(selected, animated);
+        boolean animateSelection = animated && (lastIconReplacement == 0
+                || (SharedConfig.animationsEnabled() && isAttachedToWindow()
+                && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled())));
+        isSelectedAnimator.setValue(selected, animateSelection);
+        updateSelectorTarget(selected, animateSelection);
         super.setSelected(selected);
-        checkPlayAnimation(animated);
+        checkPlayAnimation(animateSelection);
 
         textView.setTypeface(selected ? AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_EXTRA_BOLD) : AndroidUtilities.bold());
         if (changed && selected && animated) {
@@ -280,6 +300,10 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean needUpdateBackupViewColor;
 
     private void updateColors() {
+        if (packIconDrawable != null) {
+            packIconDrawable.setSelectionProgress(tabAnimation != null && tabAnimation.iconStatic == -1
+                    && SharedConfig.animationsEnabled() ? isSelectedAnimator.getFloatValue() : 0f);
+        }
         final int color = ColorUtils.blendARGB(colorDefault, colorSelected, isSelectedAnimator.getFloatValue());
         final int colorText = ColorUtils.blendARGB(colorDefault, colorSelectedText, isSelectedAnimator.getFloatValue());
 
@@ -304,6 +328,11 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private int lastIconAnimationRaw;
     private long lastBotIconId;
 
+    private int lastIconReplacement;
+    private Resources lastIconReplacementResources;
+    private long lastIconReplacementGeneration;
+    private int lastIconReplacementDensityDpi;
+    private FixedSizeIconDrawable packIconDrawable;
     private void checkPlayAnimation(boolean animated) {
         final boolean isSelected = isSelectedAnimator.getValue();
 
@@ -337,8 +366,47 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             return;
         }
 
+        final Resources resources = getContext().getResources();
+        final int replacementIcon = tabAnimation.getReplacementIcon();
+        if (replacementIcon != 0 && resources instanceof NimarkoIconResources
+                && ((NimarkoIconResources) resources).hasReplacement(replacementIcon)) {
+            final long generation = ((NimarkoIconResources) resources).getReplacementGeneration();
+            final int densityDpi = resources.getDisplayMetrics().densityDpi;
+            if (lastIconReplacement != replacementIcon || lastIconReplacementResources != resources
+                    || lastIconReplacementGeneration != generation
+                    || lastIconReplacementDensityDpi != densityDpi) {
+                imageView.stopAnimation();
+                imageView.clearAnimationDrawable();
+                packIconDrawable = new FixedSizeIconDrawable(
+                        resources.getDrawable(replacementIcon, getContext().getTheme()).mutate(),
+                        (int) Math.ceil(24f * resources.getDisplayMetrics().density),
+                        !isMainTab || tabAnimation != TabAnimation.CONTACTS && tabAnimation != TabAnimation.CALLS
+                                && tabAnimation != TabAnimation.CHATS && tabAnimation != TabAnimation.SETTINGS);
+                imageView.setImageDrawable(packIconDrawable);
+                lastIconReplacement = replacementIcon;
+                lastIconReplacementResources = resources;
+                lastIconReplacementGeneration = generation;
+                lastIconReplacementDensityDpi = densityDpi;
+                lastIconAnimationRaw = 0;
+                isSelectedAnimator.setValue(isSelected, false);
+            }
+            if (!animated) {
+                isSelectedAnimator.setValue(isSelected, false);
+            }
+            updateColors();
+            return;
+        }
+        if (lastIconReplacement != 0) {
+            packIconDrawable = null;
+            lastIconReplacement = 0;
+            lastIconReplacementResources = null;
+            lastIconReplacementDensityDpi = 0;
+            imageView.clearAnimationDrawable();
+            lastIconAnimationRaw = 0;
+            animated = false;
+        }
         if (tabAnimation.iconStatic != -1) {
-            imageView.setImageResource(tabAnimation.iconStatic);
+            imageView.setImageDrawable(resources.getDrawable(tabAnimation.iconStatic, getContext().getTheme()));
             updateColors();
             return;
         }
@@ -429,6 +497,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     public static GlassTabView createMainTab(Context context, Theme.ResourcesProvider resourcesProvider, TabAnimation tabAnimation, @StringRes int stringRes) {
         GlassTabView tab = new GlassTabView(context);
+        tab.isMainTab = true;
         tab.resourcesProvider = resourcesProvider;
         tab.tabAnimation = tabAnimation;
         tab.textView.setText(LocaleController.getString(stringRes));
@@ -644,6 +713,125 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         STATIC
     }
 
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        Resources resources = getContext().getResources();
+        if (tabAnimation != null && (packIconDrawable != null || (resources instanceof NimarkoIconResources
+                && tabAnimation.getReplacementIcon() != 0
+                && ((NimarkoIconResources) resources).hasReplacement(tabAnimation.getReplacementIcon())))) {
+            checkPlayAnimation(false);
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        finishPackSelection();
+        super.onDetachedFromWindow();
+    }
+
+    private void finishPackSelection() {
+        if (packIconDrawable != null) {
+            isSelectedAnimator.setValue(isSelectedAnimator.getValue(), false);
+            updateSelectorTarget(isSelectedAnimator.getValue(), false);
+            packIconDrawable.setSelectionProgress(0f);
+        }
+    }
+
+    private static final class FixedSizeIconDrawable extends Drawable implements Drawable.Callback {
+        private final Drawable icon;
+        private final int size;
+        private final boolean pulseOnSelection;
+        private float selectionProgress;
+
+        private FixedSizeIconDrawable(Drawable icon, int size, boolean pulseOnSelection) {
+            this.icon = icon;
+            this.size = size;
+            this.pulseOnSelection = pulseOnSelection;
+            icon.setCallback(this);
+        }
+
+        @Override
+        public int getIntrinsicWidth() {
+            return size;
+        }
+
+        @Override
+        public int getIntrinsicHeight() {
+            return size;
+        }
+
+        @Override
+        protected void onBoundsChange(Rect bounds) {
+            int width = icon.getIntrinsicWidth();
+            int height = icon.getIntrinsicHeight();
+            if (width <= 0 || height <= 0) {
+                icon.setBounds(bounds);
+                return;
+            }
+            float scale = Math.min((float) bounds.width() / width, (float) bounds.height() / height);
+            int fittedWidth = Math.round(width * scale);
+            int fittedHeight = Math.round(height * scale);
+            int left = bounds.left + (bounds.width() - fittedWidth) / 2;
+            int top = bounds.top + (bounds.height() - fittedHeight) / 2;
+            icon.setBounds(left, top, left + fittedWidth, top + fittedHeight);
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            if (!pulseOnSelection || selectionProgress <= 0f || selectionProgress >= 1f || !SharedConfig.animationsEnabled()
+                    || (Build.VERSION.SDK_INT >= 26 && !ValueAnimator.areAnimatorsEnabled())) {
+                icon.draw(canvas);
+                return;
+            }
+            Rect bounds = getBounds();
+            int save = canvas.save();
+            canvas.clipRect(bounds);
+            float motion = (float) Math.sin(Math.PI * selectionProgress);
+            float scale = 1f - 0.24f * motion;
+            canvas.scale(scale, scale, bounds.exactCenterX(), bounds.exactCenterY());
+            icon.draw(canvas);
+            canvas.restoreToCount(save);
+        }
+
+        private void setSelectionProgress(float progress) {
+            selectionProgress = progress;
+            invalidateSelf();
+        }
+
+        @Override
+        public void setAlpha(int alpha) {
+            icon.setAlpha(alpha);
+            invalidateSelf();
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter filter) {
+            icon.setColorFilter(filter);
+            invalidateSelf();
+        }
+
+        @Override
+        public int getOpacity() {
+            return PixelFormat.TRANSLUCENT;
+        }
+
+        @Override
+        public void invalidateDrawable(Drawable who) {
+            invalidateSelf();
+        }
+
+        @Override
+        public void scheduleDrawable(Drawable who, Runnable what, long when) {
+            scheduleSelf(what, when);
+        }
+
+        @Override
+        public void unscheduleDrawable(Drawable who, Runnable what) {
+            unscheduleSelf(what);
+        }
+    }
+
     public enum TabAnimation {
         CONTACTS(R.raw.tab_contacts),
         CALLS(R.raw.tab_calls),
@@ -667,6 +855,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         LINK(TabAnimationType.STATIC, R.drawable.tabs_link_24),
         ARTICLE(R.raw.tab_article, R.raw.tab_article_reverse),
 
+        GRAM(R.raw.gram, R.raw.gram_reverse),
         BOOSTS(R.raw.boosts, 25, 49),
         MONETIZATION(R.raw.monetize, 19, 45);
 
@@ -675,6 +864,34 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         public final @DrawableRes int iconStatic;
         public final int endFrameMid, endFrameEnd;
 
+        private int getReplacementIcon() {
+            switch (this) {
+                case CONTACTS: return R.drawable.msg_contacts;
+                case CALLS: return R.drawable.msg_calls;
+                case CHATS: return R.drawable.msg_discussion;
+                case SETTINGS: return R.drawable.msg_settings;
+                case CHECKLIST: return R.drawable.iv_todo;
+                case COLORS: return R.drawable.msg_palette;
+                case FILES: return R.drawable.msg_filled_data_files;
+                case GALLERY: return R.drawable.msg_photos;
+                case GIFT: return R.drawable.menu_gift;
+                case LOCATION: return R.drawable.msg_location;
+                case STICKER: return R.drawable.msg_sticker;
+                case EMOJI: return R.drawable.msg_emoji_smiles;
+                case MODELS: return R.drawable.menu_feature_unique;
+                case MUSIC: return R.drawable.msg_filled_data_music;
+                case POLL: return R.drawable.filled_chatlist_poll;
+                case SYMBOLS: return R.drawable.msg_reactions;
+                case REPLIES: return R.drawable.menu_quickreply;
+                case WALLET: return 0;
+                case LINK: return R.drawable.tabs_link_24;
+                case ARTICLE: return R.drawable.large_article;
+                case BOOSTS: return R.drawable.large_boosts;
+                case MONETIZATION: return R.drawable.large_monetize;
+                case GRAM: return 0;
+                default: return 0;
+            }
+        }
         TabAnimation(int iconRes, int endFrameMid, int endFrameEnd) {
             this.iconToFilled = iconRes;
             this.iconToOutline = iconRes;
@@ -719,6 +936,11 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         tabAnimationBot = null;
         lastIconAnimationRaw = 0;
         lastBotIconId = 0;
+        lastIconReplacement = 0;
+        lastIconReplacementResources = null;
+        lastIconReplacementDensityDpi = 0;
+        packIconDrawable = null;
+        imageView.stopAnimation();
         imageView.clearAnimationDrawable();
         checkPlayAnimation(false);
     }

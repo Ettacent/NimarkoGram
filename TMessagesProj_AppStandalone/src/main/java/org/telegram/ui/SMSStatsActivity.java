@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -334,7 +336,7 @@ public class SMSStatsActivity extends GradientHeaderActivity implements Notifica
         items.add(Item.asButton(BUTTON_TERMS, org.telegram.messenger.R.drawable.menu_intro, LocaleController.getString(R.string.SmsToS)));
         items.add(Item.asButton(BUTTON_PREMIUM, R.drawable.menu_premium_main, LocaleController.getString(R.string.SmsPremiumBenefits)));
         if (state == SMSJobController.STATE_JOINED && !SMSJobController.getInstance(currentAccount).journal.isEmpty()) {
-            items.add(Item.asButton(BUTTON_HISTORY, R.drawable.menu_sms_history, LocaleController.getString(R.string.SmsHistory)).setError(SMSJobController.getInstance(currentAccount).hasError()));
+            items.add(Item.asButton(BUTTON_HISTORY, SmsIconPackResources.resolve(getContext(), R.drawable.menu_sms_history), LocaleController.getString(R.string.SmsHistory)).setError(SMSJobController.getInstance(currentAccount).hasError()));
         }
         if (state == SMSJobController.STATE_JOINED) {
             final int simsCount = SMSJobController.getInstance(currentAccount).simsCount();
@@ -840,7 +842,7 @@ public class SMSStatsActivity extends GradientHeaderActivity implements Notifica
 
                 ImageView imageView = new ImageView(context);
                 imageView.setScaleType(ImageView.ScaleType.CENTER);
-                imageView.setImageResource(R.drawable.large_sms_code);
+                imageView.setImageResource(SmsIconPackResources.resolve(context, R.drawable.large_sms_code));
                 imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
                 imageView.setBackground(Theme.createCircleDrawable(dp(80), Theme.getColor(Theme.key_featuredStickers_addButton)));
                 addView(imageView, LayoutHelper.createLinear(80, 80, Gravity.CENTER_HORIZONTAL, 0, 24, 0, 12));

@@ -1,0 +1,15 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="reply_bubble" android:pathData="M6,3H18Q22,3 22,7V15Q22,19 18,19H9L4,22V18Q2,17 2,15V7Q2,3 6,3Z">
+        <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="3" android:startY="3" android:endX="21" android:endY="21" android:startColor="#C4FFFFFF" android:centerColor="#68FFFFFF" android:endColor="#96FFFFFF"/></aapt:attr>
+    </path>
+    <path android:name="bubble_rim" android:pathData="M3,11V7Q3,4 6,4H17" android:fillColor="#00000000" android:strokeColor="#55FFFFFF" android:strokeWidth=".7" android:strokeLineCap="round"/>
+    <path android:name="reply_arrow" android:pathData="M10,7L6.8,10.2L10,13.4 M7,10.2H13Q17,10.2 17,14.6" android:fillColor="#00000000" android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor"><gradient android:type="linear" android:startX="7" android:startY="7" android:endX="17" android:endY="15" android:startColor="#F5FFFFFF" android:centerColor="#DDFFFFFF" android:endColor="#F0FFFFFF"/></aapt:attr>
+    </path>
+</vector>

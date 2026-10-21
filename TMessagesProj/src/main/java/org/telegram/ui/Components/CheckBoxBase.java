@@ -29,9 +29,11 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.GenericProvider;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class CheckBoxBase {
 
     private View parentView;
@@ -68,6 +70,8 @@ public class CheckBoxBase {
 
     private Path path = new Path();
 
+    private BoundedPackIconRenderer popupCheckRenderer;
+    private RectF popupCheckBounds;
     private boolean enabled = true;
 
     private boolean attachedToWindow;
@@ -646,7 +650,9 @@ public class CheckBoxBase {
                         canvas.scale(checkScale, checkScale, cx, cy);
                         restore = true;
                     }
+                    if (!drawPopupPackCheck(canvas)) {
                     canvas.drawPath(path, checkPaint);
+                    }
                     if (restore) {
                         canvas.restore();
                     }
@@ -658,6 +664,29 @@ public class CheckBoxBase {
         }
     }
 
+    private boolean drawPopupPackCheck(Canvas canvas) {
+        if (backgroundType != -1 || checkedText != null || forbidden || cutCheck
+                || checkPaint.getXfermode() != null) {
+            return false;
+        }
+        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        if (icons == null) {
+            return false;
+        }
+        if (popupCheckRenderer == null) {
+            popupCheckRenderer = new BoundedPackIconRenderer();
+            popupCheckBounds = new RectF();
+        }
+        if (!popupCheckRenderer.prepare(icons, R.drawable.ic_ab_done)) {
+            return false;
+        }
+        path.computeBounds(popupCheckBounds, true);
+        final float halfStroke = checkPaint.getStrokeWidth() / 2f;
+        popupCheckBounds.inset(-halfStroke, -halfStroke);
+        popupCheckRenderer.draw(canvas, checkPaint, popupCheckBounds.centerX(), popupCheckBounds.centerY(),
+                popupCheckBounds.width(), popupCheckBounds.height(), 1f, false);
+        return true;
+    }
     public void setCirclePaintProvider(GenericProvider<Void, Paint> circlePaintProvider) {
         if (this.circlePaintProvider == circlePaintProvider) {
             return;

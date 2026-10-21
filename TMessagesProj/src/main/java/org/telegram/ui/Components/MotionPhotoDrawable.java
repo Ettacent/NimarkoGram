@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -19,12 +21,15 @@ import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class MotionPhotoDrawable extends Drawable {
 
     private final Path play = new Path();
 
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
     public final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     public final Paint playPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     public final Paint clearPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -64,6 +69,20 @@ public class MotionPhotoDrawable extends Drawable {
 
         final float cx = getBounds().centerX();
         final float cy = getBounds().centerY();
+        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon enabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_on);
+        NimarkoIconResources.PreparedIcon disabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_off);
+        if (enabledIcon != null && disabledIcon != null
+                && strokePaint.getColor() == playPaint.getColor()
+                && strokePaint.getAlpha() == playPaint.getAlpha()
+                && strokePaint.getColorFilter() == playPaint.getColorFilter()
+                && strokePaint.getShader() == playPaint.getShader()) {
+            packIconRenderer.draw(canvas, enabledIcon, strokePaint, cx, cy, dp(24),
+                    strokePaint.getAlpha() / 255f * (1f - d), 0);
+            packIconRenderer.draw(canvas, disabledIcon, strokePaint, cx, cy, dp(24),
+                    strokePaint.getAlpha() / 255f * d, 0);
+            return;
+        }
         final float r = dpf2(10.66f);
 
         AndroidUtilities.rectTmp.set(cx - r, cy - r, cx + r, cy + r);

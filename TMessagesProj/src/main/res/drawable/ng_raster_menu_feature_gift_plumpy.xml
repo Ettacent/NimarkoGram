@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="gift_box" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.6"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4,10V19A2,2 0,0 0,6,21H18A2,2 0,0 0,20,19V10 M4,7H20A1.5,1.5 0,0 1,21.5,8.5V10H2.5V8.5A1.5,1.5 0,0 1,4,7Z"/>
+    <path android:name="bow" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,7C4.3,7 3.1,1.5 6.5,2C9,2.4 10.6,4.8 12,7C19.7,7 20.9,1.5 17.5,2C15,2.4 13.4,4.8 12,7"/>
+    <path android:name="gift_star" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.35" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12.00,11.80L12.81,13.89L15.04,14.01L13.31,15.43L13.88,17.59L12.00,16.38L10.12,17.59L10.69,15.43L8.96,14.01L11.19,13.89Z"/>
+</vector>

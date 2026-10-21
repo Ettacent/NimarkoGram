@@ -33,6 +33,8 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.R;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
@@ -51,6 +53,7 @@ import org.telegram.ui.Components.UniversalRecyclerView;
 
 import java.util.ArrayList;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class MultipleStoriesSelector extends FrameLayout {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -249,8 +252,17 @@ public class MultipleStoriesSelector extends FrameLayout {
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Text counter;
     private final Path closePath = new Path();
+    private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer();
     private final RectF listBounds = new RectF();
 
+    private boolean drawPackClose(Canvas canvas) {
+        if (strokePaint.getXfermode() != null) return false;
+        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
+        final float size = 2f * dp(4.33f) + strokePaint.getStrokeWidth();
+        packClose.draw(canvas, strokePaint, 0f, 0f, size, size, 1f, false);
+        return true;
+    }
     private final Paint darkenBackground = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final RectF hintBounds = new RectF();
@@ -289,7 +301,9 @@ public class MultipleStoriesSelector extends FrameLayout {
             canvas.save();
             canvas.translate(buttonBounds.centerX(), buttonBounds.centerY());
             strokePaint.setAlpha((int) (0xFF * listView.getAlpha()));
+            if (!drawPackClose(canvas)) {
             canvas.drawPath(closePath, strokePaint);
+            }
             canvas.restore();
         }
         canvas.restore();

@@ -992,6 +992,8 @@ public class ApplicationLoader extends Application {
 
         }
 
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.install(this);
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordEvent("startup", "on_create", "begin");
         try {
             app.nimarkogram.messenger.NimarkoCrashHandler.install(this);
         } catch (Throwable ignored) {}
@@ -1070,8 +1072,10 @@ public class ApplicationLoader extends Application {
             applicationContext = getApplicationContext();
         }
 
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordEvent("startup", "native_library", "begin");
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
 
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordEvent("startup", "native_library", "complete");
         try {
             ConnectionsManager.native_setJava(false);
         } catch (UnsatisfiedLinkError error) {
@@ -1136,6 +1140,7 @@ public class ApplicationLoader extends Application {
             FileLog.e("PluginsController.init failed at app start", t);
         }
 
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.startupCompleted();
     }
 
     private final Runnable debugEverySecondChecks = () -> AndroidUtilities.runOnUIThread(() -> {
@@ -1203,6 +1208,7 @@ public class ApplicationLoader extends Application {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        app.nimarkogram.messenger.diagnostics.CrashDiagnostics.onTrimMemory(level);
         if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
                 || (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW
                 && level < ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN)) {

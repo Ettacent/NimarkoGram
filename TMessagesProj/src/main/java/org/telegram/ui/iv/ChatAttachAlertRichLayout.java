@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -8,6 +10,7 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.os.Build;
 import android.text.Editable;
 import android.text.SpannableString;
@@ -20,6 +23,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -82,6 +86,17 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     private boolean emojiViewVisible;
     private boolean emojiSearchOpened;
     private int emojiPadding;
+    private boolean waitingForEmojiKeyboard;
+    private boolean emojiPanRunning;
+    private boolean emojiInputPaused;
+    private boolean suppressLateEmojiKeyboard;
+    private int emojiPopupGeneration;
+    private Runnable emojiKeyboardSettlement;
+    private Runnable emojiKeyboardTimeout;
+    private RichEditText emojiKeyboardTarget;
+    private int emojiHandoffHeight;
+    private int emojiHandoffVisibleHeight;
+    private float emojiHandoffTranslationY;
     private RichEditText emojiTargetEditText;
     private int emojiTargetSelection;
     private static final int TOOLBAR_BOTTOM_INSET = 8 + 44 + 8;
@@ -127,7 +142,12 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
                 updateToolbarTopOffset();
                 updateAttachRaise();
             }
-            @Override public void makeEditTextFocusable(RichEditText et, boolean showKeyboard) { parentAlert.makeFocusable(et, showKeyboard); }
+            @Override public void makeEditTextFocusable(RichEditText et, boolean showKeyboard) {
+                if (emojiInputPaused) return;
+                if (showKeyboard) suppressLateEmojiKeyboard = false;
+                if (showKeyboard && emojiViewVisible) prepareKeyboardFromPopup(et);
+                parentAlert.makeFocusable(et, showKeyboard);
+            }
             @Override public void onInlineButtonEditRequested(RichEditorListView.InlineButtonEdit edit, View anchor) {
                 final ItemOptions options = ItemOptions.makeOptions(ChatAttachAlertRichLayout.this, resourcesProvider, anchor, false, false, true).dontFocus();
                 menu = RichInlineButtonEditor.show(options, parentAlert.getBaseFragment(), getContext(), resourcesProvider, edit, true);
@@ -277,6 +297,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
 
     @Override
     public boolean onDismiss() {
+        pauseEmojiInput();
         if (listView != null) {
             listView.clearContent();
         }
@@ -528,7 +549,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     }
 
     private void updateAttachButtons(boolean animated) {
-        final boolean hide = listView.hasAnyText() || emojiViewVisible;
+        final boolean hide = listView.hasAnyText() || emojiViewVisible || waitingForEmojiKeyboard;
         parentAlert.setTypeButtonsHidden(hide, animated);
         attachRaise = attachRaiseTarget(hide);
         layoutBottomPanels();
@@ -543,7 +564,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     }
 
     private void updateAttachRaise() {
-        final int raise = attachRaiseTarget(listView.hasAnyText() || emojiViewVisible);
+        final int raise = attachRaiseTarget(listView.hasAnyText() || emojiViewVisible || waitingForEmojiKeyboard);
         if (attachRaise != raise) {
             attachRaise = raise;
             layoutBottomPanels();
@@ -562,16 +583,24 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
         return emojiSearchOpened ? dp(245) : emojiPadding;
     }
 
+    private int emojiHandoffConsumedHeight(int height) {
+        return waitingForEmojiKeyboard ? Math.max(0, emojiHandoffHeight - height) : 0;
+    }
     private int lastAttachRise;
     private void layoutBottomPanels() {
         final int emojiVisible = emojiVisibleHeight();
+        final int consumed = emojiHandoffConsumedHeight(getHeight());
         if (emojiView != null) {
-            emojiView.setTranslationY(emojiViewVisible ? (emojiPadding - emojiVisible) + (emojiSearchOpened ? -parentAlert.currentPanTranslationY : 0) : 0);
+            emojiView.setTranslationY(waitingForEmojiKeyboard ? emojiHandoffTranslationY + consumed
+                    : emojiViewVisible ? (emojiPadding - emojiVisible) + (emojiSearchOpened ? -parentAlert.currentPanTranslationY : 0) : 0);
         }
         if (toolbar != null) {
             float inset = emojiViewVisible ? emojiVisible : bottomNavInset();
             if (!emojiViewVisible || emojiSearchOpened) {
                 inset += parentAlert.currentPanTranslationY;
+            }
+            if (waitingForEmojiKeyboard) {
+                inset = Math.max(inset, Math.max(0, emojiHandoffVisibleHeight - consumed));
             }
             toolbar.getBottomContainer().animate().cancel();
             toolbar.getBottomContainer().setTranslationY(-inset);
@@ -579,6 +608,9 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
             float gradientInset = emojiViewVisible ? emojiVisible : 0;
             if (!emojiViewVisible || emojiSearchOpened) {
                 gradientInset += parentAlert.currentPanTranslationY;
+            }
+            if (waitingForEmojiKeyboard) {
+                gradientInset = Math.max(gradientInset, Math.max(0, emojiHandoffVisibleHeight - consumed));
             }
             toolbar.setBottomGradientTranslationY(-gradientInset);
 
@@ -594,6 +626,12 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
 
     @Override
     public boolean onBackPressed() {
+        if (waitingForEmojiKeyboard) {
+            hideEmojiPopup();
+            suppressLateEmojiKeyboard = true;
+            AndroidUtilities.hideKeyboard(this);
+            return false;
+        }
         if (emojiSearchOpened) {
             closeEmojiSearch();
             return false;
@@ -704,14 +742,19 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
         }
         paddingTop += AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight();
 
-        final int attachButtonsExtra = (listView.hasAnyText() || emojiViewVisible) ? 0 : parentAlert.getTypeButtonsHeight();
-        final int paddingBottom = bottomNavInset() + dp(TOOLBAR_BOTTOM_INSET + 50) + attachButtonsExtra + emojiPadding;
+        final int attachButtonsExtra = (listView.hasAnyText() || emojiViewVisible || waitingForEmojiKeyboard) ? 0 : parentAlert.getTypeButtonsHeight();
+        final int paddingBottom = bottomNavInset() + dp(TOOLBAR_BOTTOM_INSET + 50) + attachButtonsExtra
+                + Math.max(0, emojiPadding - emojiHandoffConsumedHeight(availableHeight));
         if (listView.getPaddingTop() != paddingTop || listView.getPaddingBottom() != paddingBottom) {
             ignoreLayout = true;
             listView.setPaddingWithoutRequestLayout(0, paddingTop, 0, paddingBottom);
             ignoreLayout = false;
         }
         updateToolbarTopOffset();
+        if (!emojiPanRunning && keyboardVisible
+                && (waitingForEmojiKeyboard || suppressLateEmojiKeyboard || emojiViewVisible && !emojiSearchOpened)) {
+            scheduleEmojiKeyboardSettlement();
+        }
     }
 
     @Override
@@ -729,11 +772,10 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     @Override
     public void onPanTransitionStart(boolean keyboardVisible, int contentHeight) {
         super.onPanTransitionStart(keyboardVisible, contentHeight);
+        emojiPanRunning = true;
+        cancelEmojiKeyboardSettlement();
         this.keyboardVisible = keyboardVisible;
         layoutBottomPanels();
-        if (keyboardVisible && emojiViewVisible && !emojiSearchOpened) {
-            hideEmojiPopup();
-        }
         updateToolbarTopOffset();
     }
 
@@ -746,28 +788,121 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     @Override
     public void onPanTransitionEnd() {
         super.onPanTransitionEnd();
+        emojiPanRunning = false;
         keyboardVisible = parentAlert.sizeNotifierFrameLayout.measureKeyboardHeight() > dp(20);
+        settleEmojiKeyboardState();
         layoutBottomPanels();
         updateToolbarTopOffset();
+        if (waitingForEmojiKeyboard) scheduleEmojiKeyboardSettlement();
+    }
+
+    private boolean selectionTouchCaptured;
+    private boolean touchStartedInControls;
+    private boolean touchStartedInEmojiPanel;
+    private boolean touchStartedInRetainedEmoji;
+    private boolean emojiDismissTap;
+    private float emojiTapX, emojiTapY;
+    private int emojiTapGeneration;
+    private int emojiTapPopupGeneration;
+    private final Rect touchControlBounds = new Rect();
+
+    private boolean isTouchOnForegroundControl(MotionEvent event) {
+        if (toolbar != null && toolbar.isTouchOnControls(event.getX(), event.getY())) return true;
+        return isTouchOnEmojiPanel(event);
+    }
+
+    private boolean isTouchOnEmojiPanel(MotionEvent event) {
+        if (emojiView != null && emojiView.getVisibility() == View.VISIBLE && emojiView.getAlpha() > 0) {
+            emojiView.getHitRect(touchControlBounds);
+            return touchControlBounds.contains((int) (event.getX() + getScrollX()),
+                    (int) (event.getY() + getScrollY()));
+        }
+        return false;
+    }
+
+    private void cancelChildTouch(MotionEvent event) {
+        MotionEvent cancel = MotionEvent.obtain(event);
+        cancel.setAction(MotionEvent.ACTION_CANCEL);
+        try {
+            super.dispatchTouchEvent(cancel);
+        } finally {
+            cancel.recycle();
+        }
     }
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (listView.textSelectionHelper.isInSelectionMode() && listView.textSelectionOverlay.onTouchEvent(ev)) {
+        final int action = ev.getActionMasked();
+        final boolean finished = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL;
+        if (action == MotionEvent.ACTION_DOWN) {
+            selectionTouchCaptured = false;
+            touchStartedInControls = isTouchOnForegroundControl(ev);
+            touchStartedInEmojiPanel = isTouchOnEmojiPanel(ev);
+            touchStartedInRetainedEmoji = waitingForEmojiKeyboard && touchStartedInEmojiPanel;
+            emojiTapGeneration++;
+            emojiTapPopupGeneration = emojiPopupGeneration;
+            emojiTapX = ev.getRawX();
+            emojiTapY = ev.getRawY();
+            emojiDismissTap = !touchStartedInControls && emojiViewVisible
+                    && !listView.textSelectionHelper.isInSelectionMode();
+        } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN
+                || action == MotionEvent.ACTION_POINTER_UP || ev.getPointerCount() != 1
+                || Math.hypot(ev.getRawX() - emojiTapX, ev.getRawY() - emojiTapY)
+                        > ViewConfiguration.get(getContext()).getScaledTouchSlop()) {
+            emojiDismissTap = false;
+        }
+        if (touchStartedInEmojiPanel && waitingForEmojiKeyboard && !touchStartedInRetainedEmoji) {
+            cancelChildTouch(ev);
+            touchStartedInRetainedEmoji = true;
+        }
+        if (touchStartedInRetainedEmoji) {
+            if (finished) {
+                touchStartedInRetainedEmoji = false;
+                touchStartedInEmojiPanel = false;
+            }
             return true;
         }
-        final int top = (emojiSearchOpened && emojiView != null ? (int) emojiView.getY() : getHeight() - emojiPadding) - dp(8 + 44 + 8) - attachRaise;
-        if (ev.getAction() == MotionEvent.ACTION_DOWN && emojiViewVisible && ev.getY() < top) {
+        if (touchStartedInControls) return super.dispatchTouchEvent(ev);
+        if (listView.dispatchSelectionHandleTouch(ev)) {
+            emojiDismissTap = false;
+            if (!selectionTouchCaptured && action != MotionEvent.ACTION_DOWN) {
+                cancelChildTouch(ev);
+            }
+            selectionTouchCaptured = !finished;
+            return true;
+        }
+        if (selectionTouchCaptured) {
+            emojiDismissTap = false;
+            listView.handleSelectionTouch(ev);
+            selectionTouchCaptured = !finished;
+            return true;
+        }
+        if (listView.textSelectionOverlay.checkOnTap(ev)) {
+            emojiDismissTap = false;
+            cancelChildTouch(ev);
+            return true;
+        }
+        if (listView.handleSelectionTouch(ev)) {
+            emojiDismissTap = false;
+            if (action != MotionEvent.ACTION_DOWN) cancelChildTouch(ev);
+            selectionTouchCaptured = !finished;
+            return true;
+        }
+        final boolean handled = super.dispatchTouchEvent(ev);
+        if (action == MotionEvent.ACTION_UP && emojiDismissTap
+                && ev.getEventTime() - ev.getDownTime() < ViewConfiguration.getLongPressTimeout()) {
+            final int gesture = emojiTapGeneration;
+            final int popup = emojiTapPopupGeneration;
+            final int selection = listView.getSelectionGeneration();
+            post(() -> {
+                if (gesture != emojiTapGeneration || popup != emojiPopupGeneration
+                        || selection != listView.getSelectionGeneration() || !isEmojiInputActive()
+                        || waitingForEmojiKeyboard || !emojiViewVisible || listView.textSelectionHelper.isInSelectionMode()) return;
             hideEmojiPopup();
+            });
         }
-        if ((ev.getAction() != MotionEvent.ACTION_DOWN || (ev.getY() > dp(8 + 44 + 8) && ev.getY() < top))
-            && listView.textSelectionOverlay.checkOnTap(ev)) {
-            ev.setAction(MotionEvent.ACTION_CANCEL);
-        }
-        if (ev.getY() < top && listView.handleSelectionTouch(ev)) {
-            return true;
-        }
-        return super.dispatchTouchEvent(ev);
+        if (finished) emojiDismissTap = false;
+        return handled;
     }
 
     @Override
@@ -792,6 +927,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
 
     @Override
     public void onShow(ChatAttachAlert.AttachAlertLayout previousLayout) {
+        emojiInputPaused = false;
         parentAlert.actionBar.setTitle("");
         listView.adapter.update(false);
         updateAttachButtons(false);
@@ -800,8 +936,8 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
 
     @Override
     public void onHide() {
+        pauseEmojiInput();
         if (commandSuggestions != null) commandSuggestions.hide();
-        if (emojiViewVisible) hideEmojiPopup();
         if (sendButtonShown) {
             sendButtonShown = false;
             parentAlert.showSendButtonOnly(false, true);
@@ -1166,6 +1302,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
 
     @Override
     protected void onDetachedFromWindow() {
+        pauseEmojiInput();
         super.onDetachedFromWindow();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.currentUserPremiumStatusChanged);
     }
@@ -1197,6 +1334,8 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
         emojiView.setDelegate(new EmojiView.EmojiViewDelegate() {
             @Override
             public void onSearchOpenClose(int type) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard || emojiInputPaused) return;
+                cancelEmojiKeyboardWork();
                 if (type != 0) {
                     final RichEditText focused = listView.getFocusedEditTextOrNull();
                     if (focused != null) {
@@ -1213,6 +1352,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
             }
             @Override
             public boolean onBackspace() {
+                if (!emojiViewVisible || waitingForEmojiKeyboard || emojiInputPaused) return false;
                 final RichEditText et = resolveEmojiTarget();
                 if (et == null || et.length() == 0) return false;
                 et.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
@@ -1220,6 +1360,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
             }
             @Override
             public void onEmojiSelected(String symbol) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard || emojiInputPaused) return;
                 final RichEditText et = resolveEmojiTarget();
                 if (et == null) return;
                 final int i = resolveEmojiTargetOffset(et);
@@ -1233,6 +1374,7 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
             }
             @Override
             public void onCustomEmojiSelected(long documentId, TLRPC.Document document, String emoticon, boolean isRecent) {
+                if (!emojiViewVisible || waitingForEmojiKeyboard || emojiInputPaused) return;
                 final RichEditText et = resolveEmojiTarget();
                 if (et == null) return;
                 final int i = resolveEmojiTargetOffset(et);
@@ -1271,21 +1413,29 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     }
 
     private void toggleEmojiPopup() {
+        if (emojiInputPaused) return;
         if (emojiViewVisible) {
             final RichEditText et = listView.findFocusedEditText();
             if (et != null) {
                 et.requestEditFocus();
-                AndroidUtilities.showKeyboard(et);
+            } else {
+                hideEmojiPopup();
             }
-            hideEmojiPopup(true);
         } else {
             showEmojiPopup();
         }
     }
 
     private void showEmojiPopup() {
+        if (emojiInputPaused) return;
+        final int retainedHeight = emojiPadding;
+        final boolean switching = waitingForEmojiKeyboard || emojiPanRunning;
+        cancelEmojiKeyboardWork();
+        waitingForEmojiKeyboard = false;
+        emojiKeyboardTarget = null;
+        suppressLateEmojiKeyboard = false;
         createEmojiView();
-        final int h = getEmojiPanelHeight();
+        final int h = switching ? Math.max(retainedHeight, getEmojiPanelHeight()) : getEmojiPanelHeight();
         final android.widget.FrameLayout.LayoutParams lp = (android.widget.FrameLayout.LayoutParams) emojiView.getLayoutParams();
         lp.height = h;
         emojiView.setLayoutParams(lp);
@@ -1305,6 +1455,10 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
     }
 
     private void hideEmojiPopup(boolean keepKeyboard) {
+        cancelEmojiKeyboardWork();
+        waitingForEmojiKeyboard = false;
+        emojiKeyboardTarget = null;
+        emojiViewVisible = false;
         if (emojiSearchOpened) {
             emojiSearchOpened = false;
             if (emojiView != null) {
@@ -1317,15 +1471,19 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
             emojiView.setTranslationY(0);
             emojiView.setVisibility(GONE);
         }
-        emojiViewVisible = false;
         emojiPadding = 0;
         if (toolbar != null) toolbar.setEmojiOpened(false);
+        if (parentAlert.getCurrentAttachLayout() == this && !parentAlert.isDismissed()) {
         updateAttachButtons(false);
+        } else {
+            layoutBottomPanels();
+        }
         requestLayout();
     }
 
     private void closeEmojiSearch() {
         if (!emojiSearchOpened) return;
+        cancelEmojiKeyboardWork();
         emojiSearchOpened = false;
         if (emojiView != null) {
             emojiView.closeSearch(false);
@@ -1334,13 +1492,89 @@ public class ChatAttachAlertRichLayout extends ChatAttachAlert.AttachAlertLayout
         layoutBottomPanels();
     }
 
+    private boolean isEmojiInputActive() {
+        return !emojiInputPaused && isAttachedToWindow() && !parentAlert.isDismissed()
+                && parentAlert.getCurrentAttachLayout() == this;
+    }
+
+    private void cancelEmojiKeyboardSettlement() {
+        if (emojiKeyboardSettlement != null) removeCallbacks(emojiKeyboardSettlement);
+        emojiKeyboardSettlement = null;
+    }
+
+    private void cancelEmojiKeyboardWork() {
+        emojiPopupGeneration++;
+        cancelEmojiKeyboardSettlement();
+        if (emojiKeyboardTimeout != null) AndroidUtilities.cancelRunOnUIThread(emojiKeyboardTimeout);
+        emojiKeyboardTimeout = null;
+    }
+
+    private void prepareKeyboardFromPopup(RichEditText target) {
+        if (emojiInputPaused || !emojiViewVisible) return;
+        final boolean stableSearch = emojiSearchOpened && keyboardVisible && !emojiPanRunning;
+        cancelEmojiKeyboardWork();
+        emojiHandoffHeight = getHeight();
+        emojiHandoffVisibleHeight = emojiVisibleHeight();
+        emojiHandoffTranslationY = emojiView == null ? 0 : emojiView.getTranslationY();
+        emojiKeyboardTarget = target;
+        waitingForEmojiKeyboard = true;
+        emojiViewVisible = false;
+        if (emojiSearchOpened) {
+            emojiSearchOpened = false;
+            if (emojiView != null) emojiView.closeSearch(false);
+        }
+        emojiTargetEditText = null;
+        if (toolbar != null) toolbar.setEmojiOpened(false);
+        updateAttachButtons(false);
+        requestLayout();
+        final int generation = emojiPopupGeneration;
+        emojiKeyboardTimeout = () -> {
+            if (generation != emojiPopupGeneration || !waitingForEmojiKeyboard || !isEmojiInputActive()) return;
+            hideEmojiPopup(true);
+        };
+        AndroidUtilities.runOnUIThread(emojiKeyboardTimeout, 1500);
+        if (stableSearch) scheduleEmojiKeyboardSettlement();
+    }
+
+    private void scheduleEmojiKeyboardSettlement() {
+        cancelEmojiKeyboardSettlement();
+        if (!isEmojiInputActive()) return;
+        final int generation = emojiPopupGeneration;
+        emojiKeyboardSettlement = () -> {
+            if (generation != emojiPopupGeneration || !isEmojiInputActive()) return;
+            emojiKeyboardSettlement = null;
+            settleEmojiKeyboardState();
+        };
+        postOnAnimation(emojiKeyboardSettlement);
+    }
+
+    private void settleEmojiKeyboardState() {
+        if (!isEmojiInputActive() || emojiPanRunning) return;
+        keyboardVisible = parentAlert.sizeNotifierFrameLayout.measureKeyboardHeight() > dp(20);
+        if (!keyboardVisible) return;
+        if (suppressLateEmojiKeyboard || emojiViewVisible && !emojiSearchOpened) {
+            AndroidUtilities.hideKeyboard(this);
+        } else if (waitingForEmojiKeyboard && emojiKeyboardTarget != null && emojiKeyboardTarget.hasFocus()) {
+            hideEmojiPopup(true);
+        }
+    }
+
+    private void pauseEmojiInput() {
+        emojiInputPaused = true;
+        emojiPanRunning = false;
+        suppressLateEmojiKeyboard = false;
+        emojiTapGeneration++;
+        hideEmojiPopup();
+    }
     @Override
     public void onHidden() {
 
+        pauseEmojiInput();
     }
 
     @Override
     public void onDestroy() {
+        pauseEmojiInput();
         if (messageSendPreview != null) {
             messageSendPreview.dismissInstant();
             messageSendPreview = null;

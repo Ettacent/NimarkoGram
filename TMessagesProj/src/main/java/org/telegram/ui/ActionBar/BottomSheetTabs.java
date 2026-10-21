@@ -10,6 +10,8 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -68,6 +70,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class BottomSheetTabs extends FrameLayout {
 
     private static final int MAX_LIVE_WEB_TABS = 3;
@@ -91,6 +94,7 @@ public class BottomSheetTabs extends FrameLayout {
         super(context);
         this.actionBarLayout = actionBarLayout;
 
+        backgroundColorAnimated.setParent(actionBarLayout);
         setNavigationBarColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
         accessibilityHelper = new TabsAccessibilityHelper(this);
@@ -276,6 +280,7 @@ public class BottomSheetTabs extends FrameLayout {
                 tabColorAnimated.set(tabColor, true);
                 tabDarkAnimated.set(tabIsDark, true);
             }
+            actionBarLayout.invalidate();
             invalidate();
         }
     }
@@ -478,6 +483,8 @@ public class BottomSheetTabs extends FrameLayout {
         TLRPC.User user = MessagesController.getInstance(tab.props.currentAccount).getUser(tab.props.botId);
         if (user != null) {
             botName = ContactsController.formatName(user.first_name, user.last_name);
+        } else if (tab.props.type == BotWebViewSheet.TYPE_FAKE_WEB_VIEW) {
+            botName = tab.props.buttonText;
         }
 
         final boolean[] clicked = new boolean[] { false };
@@ -628,7 +635,6 @@ public class BottomSheetTabs extends FrameLayout {
             return;
         }
 
-        backgroundPaint.setColor(backgroundColorAnimated.set(backgroundColor));
         super.dispatchDraw(canvas);
 
         final int tabColor = tabColorAnimated.set(this.tabColor);
@@ -651,6 +657,7 @@ public class BottomSheetTabs extends FrameLayout {
     }
 
     public Paint getBackgroundPaint() {
+        backgroundPaint.setColor(backgroundColorAnimated.set(backgroundColor));
         return backgroundPaint;
     }
 
@@ -770,6 +777,8 @@ public class BottomSheetTabs extends FrameLayout {
 
     public static class TabDrawable {
 
+        private static final app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec CLOSE_ICON = app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec.single(R.drawable.ic_close_white);
+        private static final app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec EXPAND_ICON = app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec.single(R.drawable.arrow_more);
         public final WebTabData tab;
         public final View parentView;
 
@@ -783,6 +792,8 @@ public class BottomSheetTabs extends FrameLayout {
         private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint faviconPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
+        private final app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer packIconRenderer = new app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer();
+        private final RectF packIconBounds = new RectF();
         public int closeRippleColor;
         public final Drawable closeRipple = Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_CIRCLE_20DP);
 
@@ -795,6 +806,10 @@ public class BottomSheetTabs extends FrameLayout {
         private Bitmap favicon;
         private Drawable iconDrawable;
         private int iconDrawableColor = Color.WHITE;
+        private Resources iconDrawableResources;
+        private long iconDrawableGeneration;
+        private int iconDrawableDensity;
+        private Configuration iconDrawableConfiguration;
         private final Text title;
         private Text overrideTitle;
 
@@ -815,9 +830,6 @@ public class BottomSheetTabs extends FrameLayout {
             this.title = Text.ui(title, 17, AndroidUtilities.bold());
             this.tabColor = tab.actionBarColor;
             this.tabIsDark = AndroidUtilities.computePerceivedBrightness(tabColor) < .721f;
-            if (tab.isArticle()) {
-                iconDrawable = view.getContext().getResources().getDrawable(R.drawable.msg_instant).mutate();
-            }
             progress = tab.articleProgress;
 
             closePath.rewind();
@@ -832,6 +844,34 @@ public class BottomSheetTabs extends FrameLayout {
             expandPath.lineTo(dp(12.66f), dp(6.33f) / 2f);
         }
 
+        private Drawable getArticleIcon(int color) {
+            if (tab == null || !tab.isArticle() || parentView == null) {
+                return null;
+            }
+            final Resources resources = parentView.getContext().getResources();
+            if (resources == null) {
+                return null;
+            }
+            final long generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            final int density = resources.getDisplayMetrics().densityDpi;
+            final Configuration configuration = resources.getConfiguration();
+            final boolean reload = iconDrawableResources != resources
+                    || iconDrawableGeneration != generation || iconDrawableDensity != density
+                    || !configuration.equals(iconDrawableConfiguration);
+            if (reload) {
+                final Drawable drawable = resources.getDrawable(R.drawable.msg_instant);
+                iconDrawable = drawable == null ? null : drawable.mutate();
+                iconDrawableResources = resources;
+                iconDrawableGeneration = generation;
+                iconDrawableDensity = density;
+                iconDrawableConfiguration = new Configuration(configuration);
+            }
+            if (iconDrawable != null && (reload || iconDrawableColor != color)) {
+                iconDrawable.setColorFilter(new PorterDuffColorFilter(iconDrawableColor = color, PorterDuff.Mode.SRC_IN));
+            }
+            return iconDrawable;
+        }
         public void setOverrideTitle(CharSequence title) {
             if (title == null) {
                 overrideTitle = null;
@@ -879,6 +919,15 @@ public class BottomSheetTabs extends FrameLayout {
         private final Path closePath = new Path();
         private final Path expandPath = new Path();
 
+        private boolean drawPackIcon(Canvas canvas, app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec spec, float cx, float cy, float rotation, int color) {
+            final float halfSize = dp(24) / 2f;
+            packIconBounds.set(cx - halfSize, cy - halfSize, cx + halfSize, cy + halfSize);
+            final int save = canvas.save();
+            canvas.rotate(rotation, cx, cy);
+            final boolean drawn = packIconRenderer.draw(canvas, spec, 0, 1, packIconBounds, iconPaint, 0x100000000L | (color & 0xffffffffL));
+            canvas.restoreToCount(save);
+            return drawn;
+        }
         public void draw(Canvas canvas, RectF bounds, float r, float alpha, float contentAlpha) {
             final int backgroundColor = ColorUtils.blendARGB(this.backgroundColor, this.tabColor, expandProgress);
             backgroundPaint.setColor(backgroundColor);
@@ -923,15 +972,20 @@ public class BottomSheetTabs extends FrameLayout {
             canvas.save();
             canvas.translate(bounds.left + dp(22 - 4), bounds.centerY() - dp(6));
             iconPaint.setAlpha((int) (0xFF * alpha * contentAlpha));
+            if (!drawPackIcon(canvas, CLOSE_ICON, dp(6), dp(6), 0, iconColor)) {
             canvas.drawPath(closePath, iconPaint);
+            }
             canvas.restore();
 
             canvas.save();
             canvas.translate(bounds.right - dp(22 - 4 + 12.66f), bounds.centerY());
             iconPaint.setAlpha((int) (0xFF * alpha * contentAlpha * (1f - expandProgress)));
+            if (!drawPackIcon(canvas, EXPAND_ICON, dp(12.66f) / 2f, 0, 180, iconColor)) {
             canvas.drawPath(expandPath, iconPaint);
+            }
             canvas.restore();
 
+            final Drawable articleIcon = favicon == null ? getArticleIcon(iconColor) : null;
             int leftPadding = 0;
             if (favicon != null) {
                 final int sz = dp(24);
@@ -948,11 +1002,11 @@ public class BottomSheetTabs extends FrameLayout {
                 canvas.restore();
 
                 leftPadding = sz + dp(4);
-            } else if (iconDrawable != null) {
+            } else if (articleIcon != null) {
                 final int sz = dp(24);
 
                 final int h = sz;
-                final int w = (int) (sz / (float) iconDrawable.getIntrinsicHeight() * iconDrawable.getIntrinsicWidth());
+                final int w = (int) (sz / (float) articleIcon.getIntrinsicHeight() * articleIcon.getIntrinsicWidth());
                 final float s = .7f;
 
                 AndroidUtilities.rectTmp2.set(
@@ -961,12 +1015,9 @@ public class BottomSheetTabs extends FrameLayout {
                     (int) (bounds.left + dp(56) + w * s),
                     (int) (bounds.centerY() + h / 2f * s)
                 );
-                if (iconColor != iconDrawableColor) {
-                    iconDrawable.setColorFilter(new PorterDuffColorFilter(iconDrawableColor = iconColor, PorterDuff.Mode.SRC_IN));
-                }
-                iconDrawable.setAlpha((int) (0xFF * alpha * contentAlpha));
-                iconDrawable.setBounds(AndroidUtilities.rectTmp2);
-                iconDrawable.draw(canvas);
+                articleIcon.setAlpha((int) (0xFF * alpha * contentAlpha));
+                articleIcon.setBounds(AndroidUtilities.rectTmp2);
+                articleIcon.draw(canvas);
 
                 leftPadding = w - dp(2);
             }
@@ -1001,6 +1052,7 @@ public class BottomSheetTabs extends FrameLayout {
         public Bitmap previewBitmap;
         public Object previewNode;
 
+        Runnable previewCaptureCleanup;
         public boolean overrideActionBarColor;
         public boolean overrideBackgroundColor;
         public int actionBarColorKey;
@@ -1069,6 +1121,11 @@ public class BottomSheetTabs extends FrameLayout {
 
         public void destroy() {
             try {
+                final Runnable captureCleanup = previewCaptureCleanup;
+                previewCaptureCleanup = null;
+                if (captureCleanup != null) {
+                    captureCleanup.run();
+                }
                 evictWebView();
                 final Bitmap bitmapToRecycle = previewBitmap;
                 final Object nodeToRelease = previewNode;
@@ -1102,6 +1159,9 @@ public class BottomSheetTabs extends FrameLayout {
                 return title;
             }
             if (props == null) return "";
+            if (props.type == BotWebViewSheet.TYPE_FAKE_WEB_VIEW) {
+                return props.buttonText;
+            }
             TLRPC.User user = MessagesController.getInstance(props.currentAccount).getUser(props.botId);
             return UserObject.getUserName(user);
         }
@@ -1167,9 +1227,17 @@ public class BottomSheetTabs extends FrameLayout {
             this.tabs = tabs;
         }
 
+        private int getClipHeight(boolean isKeyboardVisible, float visible) {
+            return (int) ((isKeyboardVisible ? 0 : tabs.getHeight(true)) * visible);
+        }
+
+        public float getClipBottom(boolean isKeyboardVisible, float visible) {
+            final int bottomSheetHeight = getClipHeight(isKeyboardVisible, visible);
+            return bottomSheetHeight <= 0 ? Float.POSITIVE_INFINITY : tabs.getY() + tabs.getHeight() - bottomSheetHeight;
+        }
         public void clip(Canvas canvas, boolean withShadow, boolean isKeyboardVisible, int width, int height, float visible) {
-            final int bottomSheetHeight = (int) ((isKeyboardVisible ? 0 : tabs.getHeight(true)) * visible);
-            final int bottomRadius = Math.min(1, bottomSheetHeight / dp(60)) * dp(10);
+            final int bottomSheetHeight = getClipHeight(isKeyboardVisible, visible);
+            final float bottomRadius = Math.max(0, Math.min(1, bottomSheetHeight / (float) dp(60))) * dp(10);
             if (bottomSheetHeight <= 0)
                 return;
 
@@ -1177,7 +1245,7 @@ public class BottomSheetTabs extends FrameLayout {
             clipRadius[4] = clipRadius[5] = clipRadius[6] = clipRadius[7] = bottomRadius;
 
             clipPath.rewind();
-            clipRect.set(0, 0, width, tabs.getY() + tabs.getHeight() - bottomSheetHeight);
+            clipRect.set(0, 0, width, getClipBottom(isKeyboardVisible, visible));
             clipPath.addRoundRect(clipRect, clipRadius, Path.Direction.CW);
 
             clipShadowPaint.setAlpha(0);

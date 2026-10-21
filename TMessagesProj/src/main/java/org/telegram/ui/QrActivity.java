@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -14,8 +16,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -202,6 +205,9 @@ public class QrActivity extends BaseFragment {
     private ImageView closeImageView;
 
     private Bitmap emojiThemeIcon;
+    private QrIconState requestedIconState;
+    private QrIconState preparedIconState;
+    private List<EmojiThemes> iconThemes;
     private Bitmap logoOptimal;
     private EmojiThemes currentTheme = homeTheme;
     private boolean isCurrentThemeDark;
@@ -260,6 +266,7 @@ public class QrActivity extends BaseFragment {
         FrameLayout rootLayout = new FrameLayout(context) {
             @Override
             protected void dispatchDraw(Canvas canvas) {
+                refreshEmojiThemeIcons();
                 if (initialPageAlpha <= 0f) return;
                 if (initialPageAlpha >= 1f) {
                     super.dispatchDraw(canvas);
@@ -725,6 +732,7 @@ public class QrActivity extends BaseFragment {
     @Override
     public void onResume() {
         super.onResume();
+        refreshEmojiThemeIcons();
         applyScreenSettings();
     }
 
@@ -1054,10 +1062,13 @@ public class QrActivity extends BaseFragment {
         }
         List<EmojiThemes> themes = new ArrayList<>(result);
         themes.set(0, homeTheme);
+        iconThemes = new ArrayList<>(themes);
+        final QrIconState iconState = new QrIconState();
+        requestedIconState = iconState;
         int generation = ++themesLoadGeneration;
         final QrThemeSubscription subscription = themeSubscription;
         Utilities.themeQueue.postRunnable(() -> {
-            Bitmap preparedIcon = prepareEmojiThemeIcon(null, null);
+            Bitmap preparedIcon = prepareEmojiThemeIcon(null, null, iconState);
             ArrayMap<String, Bitmap> preparedDarkIcons = new ArrayMap<>();
             for (int i = 0; i < themes.size(); ++i) {
                 try {
@@ -1068,13 +1079,18 @@ public class QrActivity extends BaseFragment {
                     continue;
                 }
                 String emoji = themes.get(i).emoji;
-                preparedDarkIcons.put(emoji, prepareEmojiThemeIcon(emoji, preparedIcon));
+                preparedDarkIcons.put(emoji, prepareEmojiThemeIcon(emoji, preparedIcon, iconState));
             }
             AndroidUtilities.runOnUIThread(() -> {
                 if (fragmentView == null || themesViewController == null || generation != themesLoadGeneration
                         || subscription == null || subscription.cancelled || !subscription.key.equals(currentAccount + ":" + UserConfig.getInstance(currentAccount).getClientUserId())) {
                     return;
                 }
+                if (!iconState.matches(new QrIconState())) {
+                    onDataLoaded(iconThemes);
+                    return;
+                }
+                preparedIconState = iconState;
                 emojiThemeIcon = preparedIcon;
                 emojiThemeDarkIcons.clear();
                 for (int i = 0; i < preparedDarkIcons.size(); i++) {
@@ -1120,35 +1136,78 @@ public class QrActivity extends BaseFragment {
     }
 
     private Bitmap getEmojiThemeIcon(EmojiThemes theme, boolean isDark) {
+        if (preparedIconState == null || !preparedIconState.matches(new QrIconState())) return null;
         return isDark ? emojiThemeDarkIcons.get(theme.emoji) : emojiThemeIcon;
     }
+    private void refreshEmojiThemeIcons() {
+        if (iconThemes != null && themesViewController != null
+                && (requestedIconState == null || !requestedIconState.matches(new QrIconState()))) {
+            onDataLoaded(iconThemes);
+        }
+    }
+
+    private static final class QrIconState {
+        final Resources resources;
+        final long generation;
+        final int density;
+        final float scale;
+        final boolean dark;
+
+        QrIconState() {
+            resources = ApplicationLoader.applicationContext.getResources();
+            generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            density = resources.getDisplayMetrics().densityDpi;
+            scale = resources.getDisplayMetrics().density;
+            dark = Theme.isCurrentThemeDark();
+        }
+
+        boolean matches(QrIconState other) {
+            return resources == other.resources && generation == other.generation
+                    && density == other.density && scale == other.scale && dark == other.dark;
+        }
+
+        int pixels(float value) {
+            return (int) Math.ceil(scale * value);
+        }
+    }
+
+    private static QrIconState qrIconCacheState;
     private static final android.util.LruCache<String, Bitmap> qrIconCache = new android.util.LruCache<String, Bitmap>(1024 * 1024) {
         @Override
         protected int sizeOf(String key, Bitmap value) {
             return value.getAllocationByteCount();
         }
     };
-    private static Bitmap prepareEmojiThemeIcon(String emoji, Bitmap base) {
+    private static Bitmap prepareEmojiThemeIcon(String emoji, Bitmap base, QrIconState state) {
         try {
-            return rasterizeEmojiThemeIcon(emoji, base);
+            return rasterizeEmojiThemeIcon(emoji, base, state);
         } catch (RuntimeException | OutOfMemoryError e) {
             FileLog.e(e);
             return base;
         }
     }
-    private static Bitmap rasterizeEmojiThemeIcon(String emoji, Bitmap base) {
-        String key = AndroidUtilities.density + ":" + emoji;
+    private static synchronized Bitmap rasterizeEmojiThemeIcon(String emoji, Bitmap base, QrIconState state) {
+        if (qrIconCacheState == null || !qrIconCacheState.matches(state)) {
+            qrIconCache.evictAll();
+            qrIconCacheState = state;
+        }
+        String key = String.valueOf(emoji);
         Bitmap bitmap = qrIconCache.get(key);
         if (bitmap != null && !bitmap.isRecycled()) return bitmap;
-        bitmap = Bitmap.createBitmap(dp(32), dp(32), Bitmap.Config.ARGB_8888);
+        bitmap = Bitmap.createBitmap(state.pixels(32), state.pixels(32), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         if (base == null) {
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             paint.setColor(Color.WHITE);
-            canvas.drawRoundRect(new RectF(0, 0, bitmap.getWidth(), bitmap.getHeight()), dp(5), dp(5), paint);
+            canvas.drawRoundRect(new RectF(0, 0, bitmap.getWidth(), bitmap.getHeight()), state.pixels(5), state.pixels(5), paint);
             paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
-            Bitmap mini = BitmapFactory.decodeResource(ApplicationLoader.applicationContext.getResources(), R.drawable.msg_qr_mini);
-            if (mini != null) {
+            Drawable miniDrawable = state.resources.getDrawable(R.drawable.msg_qr_mini).mutate();
+            if (miniDrawable != null) {
+                Bitmap mini = Bitmap.createBitmap(Math.max(1, miniDrawable.getIntrinsicWidth()),
+                        Math.max(1, miniDrawable.getIntrinsicHeight()), Bitmap.Config.ARGB_8888);
+                miniDrawable.setBounds(0, 0, mini.getWidth(), mini.getHeight());
+                miniDrawable.draw(new Canvas(mini));
                 canvas.drawBitmap(mini, (bitmap.getWidth() - mini.getWidth()) * .5f, (bitmap.getHeight() - mini.getHeight()) * .5f, paint);
                 mini.recycle();
             }
@@ -1156,7 +1215,7 @@ public class QrActivity extends BaseFragment {
             int[] colors = qrColorsMap.get(emoji + "n");
             if (colors != null) {
                 MotionBackgroundDrawable gradient = new MotionBackgroundDrawable(colors[0], colors[1], colors[2], colors[3], true);
-                gradient.setBounds(dp(6), dp(6), bitmap.getWidth() - dp(6), bitmap.getHeight() - dp(6));
+                gradient.setBounds(state.pixels(6), state.pixels(6), bitmap.getWidth() - state.pixels(6), bitmap.getHeight() - state.pixels(6));
                 gradient.draw(canvas);
             }
             canvas.drawBitmap(base, 0, 0, null);

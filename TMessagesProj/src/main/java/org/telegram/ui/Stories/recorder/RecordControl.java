@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static android.graphics.Color.BLACK;
@@ -48,6 +50,7 @@ import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 
+import org.telegram.ui.Components.IconPackCanvasRenderer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -115,6 +118,8 @@ public class RecordControl extends View implements FlashViews.Invertable {
     private final Paint hintLinePaintWhite = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint hintLinePaintBlack = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint checkPaint =         new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint packCheckPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final IconPackCanvasRenderer packCheckRenderer = new IconPackCanvasRenderer();
     private final Matrix redMatrix =         new Matrix();
     private RadialGradient redGradient;
 
@@ -166,6 +171,7 @@ public class RecordControl extends View implements FlashViews.Invertable {
         checkPaint.setStyle(Paint.Style.STROKE);
         checkPaint.setStrokeJoin(Paint.Join.ROUND);
         checkPaint.setStrokeCap(Paint.Cap.ROUND);
+        packCheckPaint.setColor(BLACK);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             checkPaint.setBlendMode(android.graphics.BlendMode.CLEAR);
         } else {
@@ -427,7 +433,7 @@ public class RecordControl extends View implements FlashViews.Invertable {
         canvas.scale(scale, scale, cx, cy);
         mainPaint.setAlpha(0xFF);
         canvas.drawRoundRect(AndroidUtilities.rectTmp, rad, rad, mainPaint);
-        if (check > 0) {
+        if (check > 0 && !drawPackCollageCheck(canvas, check)) {
             checkPaint.setStrokeWidth(dp(4));
             checkPath.rewind();
             checkPath.moveTo(check1.x, check1.y);
@@ -666,6 +672,12 @@ public class RecordControl extends View implements FlashViews.Invertable {
         notifyAccessibilityIfChanged();
     }
 
+    private boolean drawPackCollageCheck(Canvas canvas, float progress) {
+        final float p = Math.max(0, Math.min(1, progress));
+        packCheckPaint.setAlpha(Math.round(255 * p));
+        return packCheckRenderer.draw(canvas, R.drawable.ic_ab_done, packCheckPaint,
+                cx, cy + dpf2(2.5f), dpf2(24) * (.85f + .15f * p));
+    }
     public boolean hasCheck() {
         return collageProgress >= 1.0f;
     }

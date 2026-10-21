@@ -106,7 +106,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
     public boolean useSeparator;
 
-    private int currentAccount = UserConfig.selectedAccount;
+    private final int currentAccount;
 
     private int nameLeft;
     private int nameTop;
@@ -164,10 +164,16 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     }
 
     public ProfileSearchCell(Context context, Theme.ResourcesProvider resourcesProvider) {
+        this(context, UserConfig.selectedAccount, resourcesProvider);
+    }
+
+    public ProfileSearchCell(Context context, int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         super(context);
+        this.currentAccount = currentAccount;
         this.resourcesProvider = resourcesProvider;
 
         avatarImage = new ImageReceiver(this);
+        avatarImage.setCurrentAccount(currentAccount);
         avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(46));
         avatarDrawable = new AvatarDrawable();
 

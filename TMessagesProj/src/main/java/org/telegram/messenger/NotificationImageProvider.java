@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.ContentProvider;
@@ -5,7 +7,10 @@ import android.content.ContentValues;
 import android.content.UriMatcher;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -14,17 +19,45 @@ import androidx.annotation.Nullable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 public class NotificationImageProvider extends ContentProvider implements NotificationCenter.NotificationCenterDelegate {
 
-	private static String authority;
-	private static UriMatcher matcher;
+	private static volatile String authority;
+	private static volatile UriMatcher matcher;
 
-	private HashSet<String> waitingForFiles = new HashSet<>();
+	private final HashMap<String, Integer> waitingForFiles = new HashMap<>();
 	private final Object sync = new Object();
-	private HashMap<String, Long> fileStartTimes = new HashMap<>();
+	private final AtomicBoolean initializationPosted = new AtomicBoolean();
+	private Handler mainHandler;
+	private volatile boolean closed;
+	private int observedAccounts;
+	private final FutureTask<Void> initialization = new FutureTask<>(() -> {
+		if (closed) return null;
+		if (ApplicationLoader.applicationContext == null) {
+			throw new IllegalStateException("Application is not ready");
+		}
+		ApplicationLoader.postInitApplication();
+		for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT && !closed; i++) {
+			NotificationCenter.getInstance(i).addObserver(this, NotificationCenter.fileLoaded);
+			observedAccounts = i + 1;
+		}
+		return null;
+	}) {
+		@Override
+		protected void setException(Throwable failure) {
+			super.setException(failure);
+			if (failure instanceof Error) throw (Error) failure;
+			if (failure instanceof RuntimeException) throw (RuntimeException) failure;
+			throw new RuntimeException(failure);
+		}
+	};
 
 	public static String getAuthority() {
 		if (authority == null) {
@@ -33,27 +66,66 @@ public class NotificationImageProvider extends ContentProvider implements Notifi
 		return authority;
 	}
 
-	private static UriMatcher getUriMatcher() {
+	private static synchronized UriMatcher getUriMatcher() {
 		if (matcher == null) {
-			matcher = new UriMatcher(UriMatcher.NO_MATCH);
-			matcher.addURI(getAuthority(), "msg_media_raw/#/*", 1); // content://org.telegram..../msg_media_raw/account/filename.ext
+			UriMatcher value = new UriMatcher(UriMatcher.NO_MATCH);
+			value.addURI(getAuthority(), "msg_media_raw/#/*", 1); // content://org.telegram..../msg_media_raw/account/filename.ext
+			matcher = value;
 		}
 		return matcher;
 	}
 
 	@Override
 	public boolean onCreate() {
-		for (int i = 0; i < UserConfig.getActivatedAccountsCount(); i++) {
-			NotificationCenter.getInstance(i).addObserver(this, NotificationCenter.fileLoaded);
-		}
+		if (getContext() == null) return false;
+		authority = getContext().getPackageName() + ".notification_image_provider";
+		mainHandler = new Handler(Looper.getMainLooper());
 		return true;
 	}
 
 	@Override
 	public void shutdown() {
-		for (int i = 0; i < UserConfig.getActivatedAccountsCount(); i++) {
+		closed = true;
+		initialization.cancel(false);
+		synchronized (sync) {
+			sync.notifyAll();
+		}
+		if (Looper.myLooper() == Looper.getMainLooper()) {
+			removeObservers();
+		} else if (mainHandler != null) {
+			mainHandler.post(this::removeObservers);
+		}
+	}
+
+	private void removeObservers() {
+		for (int i = 0; i < observedAccounts; i++) {
 			NotificationCenter.getInstance(i).removeObserver(this, NotificationCenter.fileLoaded);
 		}
+		observedAccounts = 0;
+	}
+
+	private void ensureInitialized(long deadline) throws FileNotFoundException {
+		if (closed || mainHandler == null) throw new FileNotFoundException("Provider is unavailable");
+		if (Looper.myLooper() == Looper.getMainLooper()) {
+			if (ApplicationLoader.applicationContext == null || ApplicationLoader.applicationHandler == null) {
+				throw new FileNotFoundException("Application is not ready");
+			}
+			initialization.run();
+			if (!initialization.isDone()) throw new FileNotFoundException("Image provider initialization in progress");
+		} else if (initializationPosted.compareAndSet(false, true) && !mainHandler.post(initialization)) {
+			initialization.cancel(false);
+		}
+		try {
+			initialization.get(Math.max(0, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new FileNotFoundException("Image request interrupted");
+		} catch (ExecutionException | CancellationException | TimeoutException e) {
+			FileNotFoundException failure = new FileNotFoundException("Image provider initialization unavailable");
+			failure.initCause(e);
+			throw failure;
+		}
+		if (closed) throw new FileNotFoundException("Provider is unavailable");
 	}
 
 	@Nullable
@@ -101,42 +173,50 @@ public class NotificationImageProvider extends ContentProvider implements Notifi
 		}
 		if (getUriMatcher().match(uri) == 1) {
 			List<String> path = uri.getPathSegments();
-			int account = Integer.parseInt(path.get(1));
+			int account;
+			try {
+				account = Integer.parseInt(path.get(1));
+			} catch (NumberFormatException e) {
+				throw new FileNotFoundException("Invalid account");
+			}
+			if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) throw new FileNotFoundException("Invalid account");
 			String name = path.get(2);
 			String finalPath = uri.getQueryParameter("final_path");
 			String fallbackPath = uri.getQueryParameter("fallback");
+			if (TextUtils.isEmpty(finalPath)) throw new FileNotFoundException("Missing image path");
 			File finalFile = new File(finalPath);
-			ApplicationLoader.postInitApplication();
+			long deadline = SystemClock.elapsedRealtime() + 3000;
+			ensureInitialized(deadline);
 			if (AndroidUtilities.isInternalUri(Uri.fromFile(finalFile))) {
 				throw new SecurityException("trying to read internal file");
 			}
 			if (!finalFile.exists()) {
-				Long _startTime = fileStartTimes.get(name);
-				long startTime = _startTime != null ? _startTime : System.currentTimeMillis();
-				if (_startTime == null) {
-					fileStartTimes.put(name, startTime);
+				String key = account + ":" + name;
+				synchronized (sync) {
+					waitingForFiles.put(key, waitingForFiles.getOrDefault(key, 0) + 1);
+					try {
+						while (!finalFile.exists() && !closed) {
+							long remaining = deadline - SystemClock.elapsedRealtime();
+							if (remaining <= 0 || Looper.myLooper() == Looper.getMainLooper()) break;
+							sync.wait(Math.min(1000, remaining));
+						}
+					} catch (InterruptedException e) {
+						Thread.currentThread().interrupt();
+						throw new FileNotFoundException("Image request interrupted");
+					} finally {
+						int count = waitingForFiles.get(key);
+						if (count == 1) waitingForFiles.remove(key);
+						else waitingForFiles.put(key, count - 1);
+					}
 				}
-				while (!finalFile.exists()) {
-					if (System.currentTimeMillis() - startTime >= 3000) {
-						if (BuildVars.LOGS_ENABLED) {
-							FileLog.w("Waiting for " + name + " to download timed out");
-						}
-						if (TextUtils.isEmpty(fallbackPath)) {
-							throw new FileNotFoundException("Download timed out");
-						}
+				if (closed) throw new FileNotFoundException("Provider is unavailable");
+				if (!finalFile.exists()) {
+					if (TextUtils.isEmpty(fallbackPath)) throw new FileNotFoundException("Download timed out");
 						File file = new File(fallbackPath);
 						if (AndroidUtilities.isInternalUri(Uri.fromFile(file))) {
 							throw new SecurityException("trying to read internal file");
 						}
 						return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
-					}
-					synchronized (sync) {
-						waitingForFiles.add(name);
-						try {
-							sync.wait(1000);
-						} catch (InterruptedException ignore) {
-						}
-					}
 				}
 				if (AndroidUtilities.isInternalUri(Uri.fromFile(finalFile))) {
 					throw new SecurityException("trying to read internal file");
@@ -152,8 +232,7 @@ public class NotificationImageProvider extends ContentProvider implements Notifi
 		if (id == NotificationCenter.fileLoaded) {
 			synchronized (sync) {
 				String name = (String) args[0];
-				if (waitingForFiles.remove(name)) {
-					fileStartTimes.remove(name);
+				if (waitingForFiles.containsKey(account + ":" + name)) {
 					sync.notifyAll();
 				}
 			}

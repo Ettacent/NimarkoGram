@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -251,6 +253,10 @@ public class MainTabsLayout extends AnimatedLinearLayout {
 
     private final Runnable restoreDrawSelector = () -> setSkipDrawSelector(false);
 
+    public void updateColors() {
+        selectorPaint.setColor(Theme.multAlpha(Theme.getColor(Theme.key_glass_tabSelected, resourcesProvider), 0.09f));
+        invalidate();
+    }
     private boolean drawCustomSelector;
     private void setSkipDrawSelector(boolean skipDrawSelector) {
         drawCustomSelector = skipDrawSelector;

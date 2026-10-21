@@ -1,0 +1,16 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Modifications Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000"
+        android:strokeWidth="2.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M6.25,6.25L17.75,17.75 M17.75,6.25L6.25,17.75">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="5" android:startY="5" android:endX="19" android:endY="19"
+                android:startColor="#94FFFFFF" android:centerColor="#7CFFFFFF" android:endColor="#64FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

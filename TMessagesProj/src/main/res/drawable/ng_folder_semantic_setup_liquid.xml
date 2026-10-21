@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="board" android:pathData="M7.1,4H5.5C4.1,4 3.5,4.8 3.5,6.2V19.3C3.5,20.7 4.3,21.5 5.7,21.5H18.3C19.7,21.5 20.5,20.7 20.5,19.3V6.2C20.5,4.8 19.9,4 18.5,4H16.9V5.3C16.9,6.5 16,7.4 14.8,7.4H9.2C8,7.4 7.1,6.5 7.1,5.3Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="4" android:startY="3"
+                android:endX="20" android:endY="22" android:startColor="#A3FFFFFF"
+                android:centerColor="#66FFFFFF" android:endColor="#8FFFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="clip" android:pathData="M9.5,2.5H14.5C15.2,2.5 15.6,2.9 15.6,3.6V5C15.6,5.7 15.2,6.1 14.5,6.1H9.5C8.8,6.1 8.4,5.7 8.4,5V3.6C8.4,2.9 8.8,2.5 9.5,2.5Z"
+        android:fillColor="#DBFFFFFF"/>
+    <path android:name="lines" android:pathData="M7,10H17V11.5H7ZM7,13.5H17V15H7ZM7,17H14V18.5H7Z"
+        android:fillColor="#D4FFFFFF"/>
+</vector>

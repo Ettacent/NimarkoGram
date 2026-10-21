@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram mini_call_out_16.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:height="16dp" android:viewportHeight="48" android:viewportWidth="48" android:width="16dp">
+    <path android:fillType="nonZero" android:pathData="M33.9,11.9C35.115,11.9 36.1,12.885 36.1,14.1L36.1,32C36.1,33.16 35.16,34.1 34,34.1C32.84,34.1 31.9,33.16 31.9,32L31.899,19.069L14.485,36.485C13.665,37.305 12.335,37.305 11.515,36.485C10.695,35.665 10.695,34.335 11.515,33.515L28.931,16.099L16,16.1C14.84,16.1 13.9,15.16 13.9,14C13.9,12.84 14.84,11.9 16,11.9L33.9,11.9Z" android:strokeColor="#00000000">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

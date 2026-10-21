@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram mini_checklist_done_outline.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="16dp" android:height="16dp" android:viewportWidth="48" android:viewportHeight="48">
+    <group android:scaleX="0.75" android:scaleY="0.75" android:pivotX="24" android:pivotY="18">
+        <path android:fillColor="#00000000" android:strokeWidth="4.5" android:pathData="M35,2                               C41.0751322,2 46,6.92486775 46,13                               L46,35                               C46,41.0751322 41.0751322,46 35,46                               L13,46                               C6.92486775,46 2,41.0751322 2,35                               L2,13                               C2,6.92486775 6.92486775,2 13,2                               L35,2 Z">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                    <item android:offset="0" android:color="#FAFFFFFF" />
+                    <item android:offset="0.32" android:color="#E0FFFFFF" />
+                    <item android:offset="0.56" android:color="#8FFFFFFF" />
+                    <item android:offset="0.78" android:color="#B8FFFFFF" />
+                    <item android:offset="1" android:color="#F5FFFFFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:fillColor="#00000000" android:strokeWidth="5" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M13.5,26                               L20,32                               L35,17.5">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="12" android:endY="48">
+                    <item android:offset="0" android:color="#FAFFFFFF" />
+                    <item android:offset="0.32" android:color="#E0FFFFFF" />
+                    <item android:offset="0.56" android:color="#8FFFFFFF" />
+                    <item android:offset="0.78" android:color="#B8FFFFFF" />
+                    <item android:offset="1" android:color="#F5FFFFFF" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

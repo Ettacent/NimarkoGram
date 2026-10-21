@@ -1,0 +1,26 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="story_ring" android:fillColor="#00000000"
+        android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,3A9,9 0,0 0,12,21 M15.2,3.6L17,4.5 M19.4,7L20.3,8.7 M21,12V13.8 M20.1,17L19,18.4 M16.5,20.1L15.2,20.6">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="play" android:fillColor="#00000000"
+        android:strokeWidth="1.75" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M9,7.7L16,12L9,16.3Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

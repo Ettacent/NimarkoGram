@@ -1,0 +1,14 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Modifications Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M12,2.75 C12.69,2.75 13.25,3.31 13.25,4 L13.25,11.98 L16.62,8.61 C17.11,8.12 17.9,8.12 18.39,8.61 C18.88,9.1 18.88,9.89 18.39,10.38 L12.88,15.89 C12.39,16.38 11.61,16.38 11.12,15.89 L5.61,10.38 C5.12,9.89 5.12,9.1 5.61,8.61 C6.1,8.12 6.89,8.12 7.38,8.61 L10.75,11.98 L10.75,4 C10.75,3.31 11.31,2.75 12,2.75 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="7" android:startY="3" android:endX="17" android:endY="16"
+                android:startColor="#94FFFFFF" android:centerColor="#7CFFFFFF" android:endColor="#64FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

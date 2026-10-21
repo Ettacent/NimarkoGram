@@ -1,3 +1,5 @@
+/* Copyright (C) 2026 Ettacent. */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 package app.nimarkogram.messenger.diagnostics;
@@ -452,6 +454,36 @@ public final class NativeTombstone {
                     || matches(prefix, start, end, "accessed stale "))
                     && contains(prefix, start, end, " reference")) {
                 return "jni_invalid_reference";
+            }
+            String nullMethodId = "jmethodID was NULL";
+            int nullMethodIdEnd = start + nullMethodId.length();
+            if (matches(prefix, start, end, nullMethodId)
+                    && (nullMethodIdEnd == end && (end < prefix.length || prefix.length < 1024)
+                    || nullMethodIdEnd < end && (prefix[nullMethodIdEnd] == ' ' || prefix[nullMethodIdEnd] == '\t'))) {
+                return "jni_null_method_id";
+            }
+            String invalidMethodId = "invalid jmethodID: ";
+            if (matches(prefix, start, end, invalidMethodId) && start + invalidMethodId.length() < end) {
+                return "jni_invalid_method_id";
+            }
+            String nonStaticMethod = "calling non-static method ";
+            String staticMethod = "calling static method ";
+            int methodStart = matches(prefix, start, end, nonStaticMethod) ? start + nonStaticMethod.length()
+                    : matches(prefix, start, end, staticMethod) ? start + staticMethod.length() : -1;
+            if (methodStart >= 0 && contains(prefix, methodStart + 1, end - 1, " with ")) {
+                return "jni_method_kind_mismatch";
+            }
+            String nullReflectedMethod = "expected non-null method";
+            int nullReflectedMethodEnd = start + nullReflectedMethod.length();
+            if (matches(prefix, start, end, nullReflectedMethod)
+                    && (nullReflectedMethodEnd == end && (end < prefix.length || prefix.length < 1024)
+                    || nullReflectedMethodEnd < end
+                    && (prefix[nullReflectedMethodEnd] == ' ' || prefix[nullReflectedMethodEnd] == '\t'))) {
+                return "jni_null_reflected_method";
+            }
+            String invalidReflectedMethod = "expected java.lang.reflect.Method or java.lang.reflect.Constructor but got object of type ";
+            if (matches(prefix, start, end, invalidReflectedMethod) && start + invalidReflectedMethod.length() < end) {
+                return "jni_invalid_reflected_method";
             }
             return "unclassified";
         }

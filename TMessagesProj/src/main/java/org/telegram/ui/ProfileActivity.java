@@ -130,6 +130,7 @@ import org.telegram.ui.Components.ScrimOptions;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.blur3.utils.Blur3Utils;
+import org.telegram.ui.Wallet.WalletSendEnterAmount;
 import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
@@ -645,6 +646,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     // NimarkoGram: extra profile-menu options dispatched to
     // NimarkoProfileActivityHelper. Kept in the 1000+ range to stay clear of
     // the private constants above.
+    private final static int send_money = 48;
     private final static int nm_option_restart = app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_RESTART;
     private final static int nm_option_boost_channel = app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_BOOST_CHANNEL;
     private final static int nm_option_get_profile_background = app.nimarkogram.messenger.utils.NimarkoProfileActivityHelper.OPTION_GET_PROFILE_BACKGROUND;
@@ -3814,6 +3816,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     openDiscussion();
                 } else if (id == gift_premium) {
                     onGiftPermiumClicked();
+                } else if (id == send_money) {
+                    presentFragment(new WalletSendEnterAmount(currentAccount, getMessagesController().getUser(userId)).setAllowOpenChat());
                 } else if (id == channel_stories) {
                     Bundle args = new Bundle();
                     args.putInt("type", MediaActivity.TYPE_ARCHIVED_CHANNEL_STORIES);
@@ -6602,7 +6606,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         frameLayout.addView(communityItem, LayoutHelper.createFrame(16, 16, Gravity.TOP | Gravity.LEFT));
 
         starBgItem = new ImageView(context);
+        if (context.getResources() instanceof app.nimarkogram.messenger.icons.NimarkoIconResources
+                && ((app.nimarkogram.messenger.icons.NimarkoIconResources) context.getResources()).getAppliedSelection() == app.nimarkogram.messenger.NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+            starBgItem.setImageDrawable(app.nimarkogram.messenger.icons.NimarkoIconResources.getStockDrawable(context, R.drawable.star_small_outline).mutate());
+        } else {
         starBgItem.setImageResource(R.drawable.star_small_outline);
+        }
         starBgItem.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_actionBarDefault), PorterDuff.Mode.SRC_IN));
         starBgItem.setAlpha(0.0f);
         starBgItem.setScaleY(0.0f);
@@ -14303,15 +14312,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private Drawable getLockIconDrawable() {
         if (lockIconDrawable == null) {
-            lockIconDrawable = Theme.chat_lockIconDrawable.getConstantState().newDrawable().mutate();
+            lockIconDrawable = app.nimarkogram.messenger.icons.NimarkoIconResources.copyDrawable(
+                    Theme.chat_lockIconDrawable, ApplicationLoader.applicationContext.getResources());
         }
         return lockIconDrawable;
     }
 
     private Drawable getVerifiedCrossfadeDrawable(int a) {
         if (verifiedCrossfadeDrawable[a] == null) {
-            verifiedDrawable[a] = Theme.profile_verifiedDrawable.getConstantState().newDrawable().mutate();
-            verifiedCheckDrawable[a] = Theme.profile_verifiedCheckDrawable.getConstantState().newDrawable().mutate();
+            verifiedDrawable[a] = app.nimarkogram.messenger.icons.NimarkoIconResources.copyDrawable(
+                    Theme.profile_verifiedDrawable, ApplicationLoader.applicationContext.getResources());
+            verifiedCheckDrawable[a] = app.nimarkogram.messenger.icons.NimarkoIconResources.copyDrawable(
+                    Theme.profile_verifiedCheckDrawable, ApplicationLoader.applicationContext.getResources());
             if (a == 1 && peerColor != null) {
                 int color = Theme.adaptHSV(peerColor.hasColor6(Theme.isCurrentThemeDark()) ? peerColor.getColor5() : peerColor.getColor3(), +.1f, Theme.isCurrentThemeDark() ? -.1f : -.08f);
                 verifiedDrawable[1].setColorFilter(AndroidUtilities.getOffsetColor(color, getThemedColor(Theme.key_player_actionBarTitle), mediaHeaderAnimationProgress, 1.0f), PorterDuff.Mode.MULTIPLY);
@@ -14874,7 +14886,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 if (user.bot_active_users != 0) {
                     newString2 = LocaleController.formatPluralStringComma("BotUsers", user.bot_active_users, ',');
                 } else {
-                    newString2 = LocaleController.getString(R.string.Bot);
+                    newString2 = UserObject.getBotStatus(user);
                 }
             } else {
                 isOnline[0] = false;
@@ -15699,6 +15711,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         StarsController.getInstance(currentAccount).loadStarGifts();
                         otherItem.addSubItem(gift_premium, R.drawable.msg_gift_premium, LocaleController.getString(R.string.ProfileSendAGift));
                         giftAction = true;
+                    }
+                    if (getMessagesController().config.walletAvailable.get() && !MessagesController.isSupportUser(user) && !UserObject.isService(user.id)) {
+                        otherItem.addSubItem(send_money, R.drawable.ic_gram, LocaleController.getString(R.string.WalletSendMoney));
                     }
                     otherItem.addSubItem(start_secret_chat, R.drawable.msg_secret, LocaleController.getString(R.string.StartEncryptedChat));
                     otherItem.setSubItemShown(start_secret_chat, DialogObject.isEmpty(getMessagesController().isUserContactBlocked(userId)));
@@ -17770,7 +17785,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (position == infoSectionRow) {
                         final long did = getDialogId();
                         TLObject obj = getMessagesController().getUserOrChat(did);
-                        TL_bots.botVerification bot_verification = userInfo != null ? userInfo.bot_verification : chatInfo != null ? chatInfo.bot_verification : null;
+                        TL_bots.BotVerification bot_verification = userInfo != null ? userInfo.bot_verification : chatInfo != null ? chatInfo.bot_verification : null;
                         Long bot_manager_id = userInfo != null && TLObject.hasFlag(userInfo.flags2, TLObject.FLAG_25) ? userInfo.bot_manager_id : null;
                         if (botAppRow >= 0 || bot_verification != null || bot_manager_id != null) {
                             cell.setFixedSize(0);
@@ -17790,7 +17805,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 sb.append("x");
                                 sb.setSpan(new AnimatedEmojiSpan(bot_verification.icon, cell.getTextView().getPaint().getFontMetricsInt()), sb.length() - 1, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                                 sb.append(" ");
-                                SpannableString description = new SpannableString(bot_verification.description);
+                                SpannableString description = new SpannableString(MessageObject.formatTextWithEntities(bot_verification.description));
                                 try {
                                     AndroidUtilities.addLinksSafe(description, Linkify.WEB_URLS, false, false);
                                     URLSpan[] spans = description.getSpans(0, description.length(), URLSpan.class);
@@ -18270,6 +18285,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         private ArrayList<Object> recentSearches = new ArrayList<>();
         private boolean searchWas;
         private Runnable searchRunnable;
+        private int searchGeneration;
         private String lastSearchString;
         public TLRPC.WebPage faqWebPage;
         private boolean loadingFaqPage;
@@ -18283,9 +18299,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         private void updateSearchArray() {
+            recentSearches.clear();
             HashMap<Integer, SearchResult> resultHashMap = new HashMap<>();
             for (int a = 0; a < searchArray.length; a++) {
-                if (searchArray[a] == null) {
+                if (searchArray[a] == null || TextUtils.isEmpty(searchArray[a].searchTitle)) {
                     continue;
                 }
                 resultHashMap.put(searchArray[a].guid, searchArray[a]);
@@ -18297,9 +18314,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         SerializedData data = new SerializedData(Utilities.hexToBytes(value));
                         int num = data.readInt32(false);
                         int type = data.readInt32(false);
+                        if (num < 0) {
+                            continue;
+                        }
                         if (type == 0) {
                             String title = data.readString(false);
                             int count = data.readInt32(false);
+                            if (TextUtils.isEmpty(title) || count < 0 || count > data.remaining()) {
+                                continue;
+                            }
                             String[] path = null;
                             if (count > 0) {
                                 path = new String[count];
@@ -18308,14 +18331,26 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 }
                             }
                             String url = data.readString(false);
+                            if (TextUtils.isEmpty(url)) {
+                                continue;
+                            }
                             MessagesController.FaqSearchResult result = new MessagesController.FaqSearchResult(title, path, url);
                             result.num = num;
+                            int index = recentSearches.indexOf(result);
+                            if (index < 0) {
                             recentSearches.add(result);
+                            } else if (num < getNum(recentSearches.get(index))) {
+                                recentSearches.set(index, result);
+                            }
                         } else if (type == 1) {
                             SearchResult result = resultHashMap.get(data.readInt32(false));
                             if (result != null) {
+                                if (recentSearches.contains(result)) {
+                                    result.num = Math.min(result.num, num);
+                                } else {
                                 result.num = num;
                                 recentSearches.add(result);
+                                }
                             }
                         }
                     } catch (Exception ignore) {
@@ -18333,15 +18368,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
                 return 0;
             });
+            while (recentSearches.size() > 20) {
+                recentSearches.remove(recentSearches.size() - 1);
+            }
         }
 
         private static SearchResult[] onCreateSearchArray(final BaseFragment f) {
             final int currentAccount = f.getCurrentAccount();
             final Theme.ResourcesProvider resourcesProvider = f.getResourceProvider();
+            final int chatFlags = AndroidUtilities.isTablet() ? LiteMode.FLAGS_CHAT & ~LiteMode.FLAG_CHAT_FORUM_TWOCOLUMN : LiteMode.FLAGS_CHAT;
             return new SearchResult[]{
                     new SearchResult(500, getString(R.string.EditName), 0, () -> f.presentFragment(new ChangeNameActivity(resourcesProvider))),
                     new SearchResult(501, getString(R.string.ChangePhoneNumber), 0, () -> f.presentFragment(new ActionIntroActivity(ActionIntroActivity.ACTION_TYPE_CHANGE_PHONE_NUMBER))).withLink("tg://settings/edit/change-number"),
-                    new SearchResult(502, getString(R.string.AddAnotherAccount), 0, () -> {
+                    UserConfig.getActivatedAccountsCount() < UserConfig.MAX_ACCOUNT_COUNT ? new SearchResult(502, getString(R.string.AddAnotherAccount), 0, () -> {
                         int freeAccount = -1;
                         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                             if (!UserConfig.getInstance(a).isClientActivated()) {
@@ -18352,7 +18391,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         if (freeAccount >= 0) {
                             f.presentFragment(new LoginActivity(freeAccount));
                         }
-                    }).withLink("tg://settings/edit/add-account"),
+                    }).withLink("tg://settings/edit/add-account") : null,
                     // TODO:
 //                    new SearchResult(503, getString(R.string.UserBio), 0, () -> {
 //                        if (userInfo != null) {
@@ -18377,11 +18416,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                     new SearchResult(100, getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy"),
                     new SearchResult(109, getString(R.string.TwoStepVerification), getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new TwoStepVerificationActivity())).withLink("tg://settings/privacy/2sv"),
-                    new SearchResult(124, getString(R.string.AutoDeleteMessages), getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> {
+                    UserConfig.getInstance(currentAccount).getGlobalTTl() >= 0 ? new SearchResult(124, getString(R.string.AutoDeleteMessages), getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> {
                         if (UserConfig.getInstance(currentAccount).getGlobalTTl() >= 0) {
                             f.presentFragment(new AutoDeleteMessagesActivity());
                         }
-                    }).withLink("tg://settings/privacy/auto-delete"),
+                    }).withLink("tg://settings/privacy/auto-delete") : null,
                     new SearchResult(108, getString(R.string.Passcode), getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(PasscodeActivity.determineOpenFragment())).withLink("tg://settings/privacy/passcode"),
                     SharedConfig.hasEmailLogin ? new SearchResult(125, getString(R.string.EmailLogin), "emailLoginRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/login-email") : null,
                     new SearchResult(101, getString(R.string.BlockedUsers), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyUsersActivity().loadBlocked())).withLink("tg://settings/privacy/blocked"),
@@ -18390,17 +18429,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(102, getString(R.string.PrivacyLastSeen), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_LASTSEEN, true))).withLink("tg://settings/privacy/last-seen"),
                     new SearchResult(103, getString(R.string.PrivacyProfilePhoto), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_PHOTO, true))).withLink("tg://settings/privacy/profile-photos"),
                     new SearchResult(104, getString(R.string.PrivacyForwards), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_FORWARDS, true))).withLink("tg://settings/privacy/forwards"),
-                    new SearchResult(122, getString(R.string.PrivacyP2P), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_P2P, true))).withLink("tg://settings/privacy/calls/p2p"),
+                    new SearchResult(127, getString(R.string.PrivacyP2P), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_P2P, true))).withLink("tg://settings/privacy/calls/p2p"),
                     new SearchResult(106, getString(R.string.Calls), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_CALLS, true))).withLink("tg://settings/privacy/calls"),
                     new SearchResult(107, getString(R.string.PrivacyInvites), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_INVITE, true))).withLink("tg://settings/privacy/invites"),
-                    new SearchResult(123, getString(R.string.PrivacyVoiceMessages), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> {
+                    isPremiumFeatureAvailable(currentAccount, -1) ? new SearchResult(123, getString(R.string.PrivacyVoiceMessages), getString(R.string.PrivacySettings), R.drawable.msg_secret, () -> {
                         if (!UserConfig.getInstance(currentAccount).isPremium()) {
                             BulletinFactory.of(f).createRestrictVoiceMessagesPremiumBulletin().show();
                             return;
                         }
                         f.presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_VOICE_MESSAGES, true));
-                    }).withLink("tg://settings/privacy/voice"),
-                    MessagesController.getInstance(currentAccount).autoarchiveAvailable ? new SearchResult(121, getString(R.string.ArchiveAndMute), "newChatsRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/archive-and-mute") : null,
+                    }).withLink("tg://settings/privacy/voice") : null,
+                    (MessagesController.getInstance(currentAccount).autoarchiveAvailable || UserConfig.getInstance(currentAccount).isPremium()) ? new SearchResult(126, getString(R.string.ArchiveAndMute), "newChatsRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/archive-and-mute") : null,
                     new SearchResult(112, getString(R.string.DeleteAccountIfAwayFor2), "deleteAccountRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/self-destruct"),
                     new SearchResult(113, getString(R.string.PrivacyPaymentsClear), "paymentsClearRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/data-settings/clear-payment-info"),
                     new SearchResult(114, getString(R.string.WebSessionsTitle), getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new SessionsActivity(1))).withLink("tg://settings/privacy/active-websites"),
@@ -18411,15 +18450,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(119, getString(R.string.SecretWebPage), "secretWebpageRow", getString(R.string.PrivacySettings), R.drawable.msg2_secret, () -> f.presentFragment(new PrivacySettingsActivity())).withLink("tg://settings/privacy/data-settings/link-previews"),
 
                     new SearchResult(120, getString(R.string.Devices), R.drawable.msg2_devices, () -> f.presentFragment(new SessionsActivity(0))).withLink("tg://settings/devices"),
-                    new SearchResult(121, getString(R.string.TerminateAllSessions), "terminateAllSessionsRow", getString(R.string.Devices), R.drawable.msg2_devices, () -> f.presentFragment(new SessionsActivity(0))).withLink("tg://settings/devices/terminate-sessions"),
-                    new SearchResult(122, getString(R.string.LinkDesktopDevice), getString(R.string.Devices), R.drawable.msg2_devices, () -> f.presentFragment(new SessionsActivity(0).setHighlightLinkDesktopDevice())).withLink("tg://settings/devices/link-desktop"),
+                    new SearchResult(128, getString(R.string.TerminateAllSessions), "terminateAllSessionsRow", getString(R.string.Devices), R.drawable.msg2_devices, () -> f.presentFragment(new SessionsActivity(0))).withLink("tg://settings/devices/terminate-sessions"),
+                    MessagesController.getInstance(currentAccount).qrLoginCamera ? new SearchResult(129, getString(R.string.LinkDesktopDevice), getString(R.string.Devices), R.drawable.msg2_devices, () -> f.presentFragment(new SessionsActivity(0).setHighlightLinkDesktopDevice())).withLink("tg://settings/devices/link-desktop") : null,
 
                     new SearchResult(200, getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/privacy/data-settings"),
                     new SearchResult(201, getString(R.string.DataUsage), "usageSectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(202, getString(R.string.StorageUsage), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())).withLink("tg://settings/data/storage"),
-                    new SearchResult(203, getString(R.string.KeepMedia), "keepMediaRow", getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
-                    new SearchResult(204, getString(R.string.ClearMediaCache), "cacheRow", getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
-                    new SearchResult(205, getString(R.string.LocalDatabase), "databaseRow", getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
+                    new SearchResult(203, getString(R.string.AutoDeleteCachedMedia), null, getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
+                    new SearchResult(204, getString(R.string.ClearMediaCache), null, getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
+                    new SearchResult(205, getString(R.string.ClearLocalDatabase), null, getString(R.string.DataSettings), getString(R.string.StorageUsage), R.drawable.msg2_data, () -> f.presentFragment(new CacheControlActivity())),
                     new SearchResult(206, getString(R.string.NetworkUsage), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataUsage2Activity())).withLink("tg://settings/data/usage"),
                     new SearchResult(207, getString(R.string.AutomaticMediaDownload), "mediaDownloadSectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(208, getString(R.string.WhenUsingMobileData), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataAutoDownloadActivity(0))),
@@ -18430,7 +18469,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(216, getString(R.string.EnableStreaming), "enableStreamRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(217, getString(R.string.Calls), "callsSectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
                     new SearchResult(218, getString(R.string.VoipUseLessData), "useLessDataForCallsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/data/use-less-data"),
-                    new SearchResult(219, getString(R.string.VoipQuickReplies), "quickRepliesRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
+                    new SearchResult(219, getString(R.string.VoipQuickReplies), getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new QuickRepliesSettingsActivity())),
                     new SearchResult(220, getString(R.string.ProxySettings), R.drawable.msg2_data, () -> f.presentFragment(new ProxyListActivity())).withLink("tg://settings/data/proxy"),
                     new SearchResult(111, getString(R.string.PrivacyDeleteCloudDrafts), "clearDraftsRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())).withLink("tg://settings/privacy/data-settings/delete-cloud-drafts"),
                     new SearchResult(222, getString(R.string.SaveToGallery), "saveToGallerySectionRow", getString(R.string.DataSettings), R.drawable.msg2_data, () -> f.presentFragment(new DataSettingsActivity())),
@@ -18453,8 +18492,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(305, getString(R.string.AutoNightTheme), getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_NIGHT))),
                     new SearchResult(328, getString(R.string.NextMediaTap), "nextMediaTapRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/appearance/tap-for-next-media"),
                     new SearchResult(327, getString(R.string.RaiseToListen), "raiseToListenRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/data/raise-to-listen"),
-                    new SearchResult(310, getString(R.string.RaiseToSpeak), "raiseToSpeakRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/data/raise-to-speak"),
-                    new SearchResult(326, getString(R.string.PauseMusicOnMedia), "pauseOnMediaRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/data/pause-music"),
+                    SharedConfig.raiseToListen ? new SearchResult(310, getString(R.string.RaiseToSpeak), "raiseToSpeakRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/data/raise-to-speak") : null,
+                    new SearchResult(329, getString(R.string.PauseMusicOnMedia), "pauseOnMediaRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))).withLink("tg://settings/data/pause-music"),
                     new SearchResult(325, getString(R.string.MicrophoneForVoiceMessages), "bluetoothScoRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))),
                     new SearchResult(308, getString(R.string.DirectShare), "directShareRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))),
                     new SearchResult(311, getString(R.string.SendByEnter), "sendByEnterRow", getString(R.string.ChatSettings), R.drawable.msg2_discussion, () -> f.presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC))),
@@ -18462,19 +18501,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                     new SearchResult(600, getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))).withLink("tg://settings/appearance/stickers-and-emoji"),
                     new SearchResult(601, getString(R.string.SuggestStickers), "suggestRow", getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))),
-                    new SearchResult(602, getString(R.string.FeaturedStickers), "featuredStickersHeaderRow", getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))),
+                    new SearchResult(602, getString(R.string.FeaturedStickers), "featuredRow", getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))),
                     new SearchResult(603, getString(R.string.Masks), null, getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_MASK, null))),
                     new SearchResult(604, getString(R.string.ArchivedStickers), null, getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new ArchivedStickersActivity(MediaDataController.TYPE_IMAGE))).withLink("tg://settings/appearance/stickers-and-emoji/archived"),
                     new SearchResult(605, getString(R.string.ArchivedMasks), null, getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new ArchivedStickersActivity(MediaDataController.TYPE_MASK))),
                     new SearchResult(606, getString(R.string.LargeEmoji), "largeEmojiRow", getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))).withLink("tg://settings/appearance/stickers-and-emoji/emoji/large"),
-                    new SearchResult(607, getString(R.string.LoopAnimatedStickers), "loopRow", getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_IMAGE, null))),
                     new SearchResult(608, getString(R.string.Emoji), null, getString(R.string.StickersName), R.drawable.input_smile, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, null))).withLink("tg://settings/appearance/stickers-and-emoji/emoji"),
-                    new SearchResult(609, getString(R.string.SuggestAnimatedEmoji), "suggestAnimatedEmojiRow", getString(R.string.StickersName), getString(R.string.Emoji), R.drawable.input_smile, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, null))).withLink("tg://settings/appearance/stickers-and-emoji/emoji/suggest"),
-                    new SearchResult(610, getString(R.string.FeaturedEmojiPacks), "featuredStickersHeaderRow", getString(R.string.StickersName), getString(R.string.Emoji), R.drawable.input_smile, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, null))),
+                    new SearchResult(609, getString(R.string.SuggestAnimatedEmoji), null, getString(R.string.StickersName), getString(R.string.Emoji), R.drawable.input_smile, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, null))).withLink("tg://settings/appearance/stickers-and-emoji/emoji/suggest"),
+                    new SearchResult(610, getString(R.string.FeaturedEmojiPacks), null, getString(R.string.StickersName), getString(R.string.Emoji), R.drawable.input_smile, () -> f.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, null))),
                     new SearchResult(611, getString(R.string.DoubleTapSetting), null, getString(R.string.StickersName), R.drawable.msg2_sticker, () -> f.presentFragment(new ReactionsDoubleTapManageActivity())).withLink("tg://settings/appearance/stickers-and-emoji/emoji/quick-reaction"),
 
                     new SearchResult(700, getString(R.string.Filters), null, R.drawable.msg2_folder, () -> f.presentFragment(new FiltersSetupActivity())).withLink("tg://settings/folders"),
-                    new SearchResult(701, getString(R.string.CreateNewFilter), "createFilterRow", getString(R.string.Filters), R.drawable.msg2_folder, () -> f.presentFragment(new FiltersSetupActivity())).withLink("tg://settings/folders/create"),
+                    new SearchResult(701, getString(R.string.CreateNewFilter), null, getString(R.string.Filters), R.drawable.msg2_folder, () -> f.presentFragment(new FiltersSetupActivity())).withLink("tg://settings/folders/create"),
 
                     isPremiumFeatureAvailable(currentAccount, -1) ? new SearchResult(800, getString(R.string.TelegramPremium), R.drawable.msg_settings_premium, () -> f.presentFragment(new PremiumPreviewFragment("settings"))) : null,
                     isPremiumFeatureAvailable(currentAccount, PremiumPreviewFragment.PREMIUM_FEATURE_LIMITS) ? new SearchResult(801, getString(R.string.PremiumPreviewLimits), getString(R.string.TelegramPremium), R.drawable.msg_settings_premium, () -> f.showDialog(new PremiumFeatureBottomSheet(f, PremiumPreviewFragment.PREMIUM_FEATURE_LIMITS, false).setForceAbout())) : null,
@@ -18535,36 +18573,36 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     new SearchResult(908, getString(R.string.LiteOptionsChat), getString(R.string.PowerUsage), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.scrollToFlags(LiteMode.FLAGS_CHAT);
+                        set.scrollToFlags(chatFlags);
                     }).withLink("tg://settings/power-saving/effects"),
                     new SearchResult(909, getString(R.string.LiteOptionsBackground), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.setExpanded(LiteMode.FLAGS_CHAT, true);
+                        set.setExpanded(chatFlags, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_BACKGROUND);
                     }).withLink("tg://settings/power-saving/background"),
-                    new SearchResult(910, getString(R.string.LiteOptionsTopics), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
+                    !AndroidUtilities.isTablet() ? new SearchResult(910, getString(R.string.LiteOptionsTopics), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.setExpanded(LiteMode.FLAGS_CHAT, true);
+                        set.setExpanded(chatFlags, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_FORUM_TWOCOLUMN);
-                    }),
+                    }) : null,
                     new SearchResult(911, getString(R.string.LiteOptionsSpoiler), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.setExpanded(LiteMode.FLAGS_CHAT, true);
+                        set.setExpanded(chatFlags, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_SPOILER);
                     }),
-                    SharedConfig.canBlurChat() ? new SearchResult(326 /* for compatibility */, getString(R.string.LiteOptionsBlur2), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
+                    SharedConfig.canBlurChat() ? new SearchResult(915, getString(R.string.LiteOptionsBlur2), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.setExpanded(LiteMode.FLAGS_CHAT, true);
+                        set.setExpanded(chatFlags, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_BLUR);
                     }) : null,
                     new SearchResult(912, getString(R.string.LiteOptionsScale), null, getString(R.string.PowerUsage), getString(R.string.LiteOptionsChat), R.drawable.msg2_battery, () -> {
                         LiteModeSettingsActivity set = new LiteModeSettingsActivity();
                         f.presentFragment(set);
-                        set.setExpanded(LiteMode.FLAGS_CHAT, true);
+                        set.setExpanded(chatFlags, true);
                         set.scrollToFlags(LiteMode.FLAG_CHAT_SCALE);
                     }),
                     new SearchResult(913, getString(R.string.LiteOptionsCalls), getString(R.string.PowerUsage), R.drawable.msg2_battery, () -> {
@@ -18589,8 +18627,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }).withLink("tg://settings/power-saving/transitions"),
 
                     new SearchResult(400, getString(R.string.Language), R.drawable.msg2_language, () -> f.presentFragment(new LanguageSelectActivity())).withLink("tg://settings/language"),
-                    new SearchResult(405, getString(R.string.ShowTranslateButton), getString(R.string.Language), R.drawable.msg2_language, () -> f.presentFragment(new LanguageSelectActivity())).withLink("tg://settings/language/show-button"),
-                    MessagesController.getInstance(currentAccount).getTranslateController().isContextTranslateEnabled() ? new SearchResult(406, getString(R.string.DoNotTranslate), getString(R.string.Language), R.drawable.msg2_language, () -> f.presentFragment(new LanguageSelectActivity())).withLink("tg://settings/language/do-not-translate") : null,
+                    MessagesController.getInstance(currentAccount).isTranslationsManualEnabled() ? new SearchResult(405, getString(R.string.ShowTranslateButton), getString(R.string.Language), R.drawable.msg2_language, () -> f.presentFragment(new LanguageSelectActivity())).withLink("tg://settings/language/show-button") : null,
+                    (MessagesController.getInstance(currentAccount).isTranslationsManualEnabled() || MessagesController.getInstance(currentAccount).isTranslationsAutoEnabled())
+                            && (MessagesController.getInstance(currentAccount).getTranslateController().isFeatureAvailable() || MessagesController.getInstance(currentAccount).getTranslateController().isContextTranslateEnabled()) ? new SearchResult(406, getString(R.string.DoNotTranslate), getString(R.string.Language), R.drawable.msg2_language, () -> f.presentFragment(new LanguageSelectActivity())).withLink("tg://settings/language/do-not-translate") : null,
 
                     new SearchResult(402, getString(R.string.AskAQuestion), getString(R.string.SettingsHelp), R.drawable.msg2_help, () -> f.showDialog(AlertsCreator.createSupportAlert(f, null))).withLink("tg://settings/ask-question"),
                     new SearchResult(403, getString(R.string.TelegramFAQ), getString(R.string.SettingsHelp), R.drawable.msg2_help, () -> Browser.openUrl(f.getParentActivity(), getString(R.string.TelegramFaqUrl))).withLink("tg://settings/faq"),
@@ -18607,16 +18646,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         public void loadFaqWebPage() {
+            if (fragment.isFinished || loadingFaqPage) {
+                return;
+            }
             faqWebPage = MessagesController.getInstance(currentAccount).faqWebPage;
+            final String faqUrl = LocaleController.getString(R.string.TelegramFaqUrl);
+            if (faqWebPage != null && !faqUrl.equals(faqWebPage.url)) {
+                faqWebPage = null;
+            }
+            faqSearchArray.clear();
             if (faqWebPage != null) {
                 faqSearchArray.addAll(MessagesController.getInstance(currentAccount).faqSearchArray);
-            }
-            if (faqWebPage != null || loadingFaqPage) {
+                if (TextUtils.isEmpty(lastSearchString)) {
+                    notifyDataSetChanged();
+                } else {
+                    search(lastSearchString);
+                }
                 return;
             }
             loadingFaqPage = true;
             final TLRPC.TL_messages_getWebPage req2 = new TLRPC.TL_messages_getWebPage();
-            req2.url = LocaleController.getString(R.string.TelegramFaqUrl);
+            req2.url = faqUrl;
             req2.hash = 0;
             ConnectionsManager.getInstance(currentAccount).sendRequest(req2, (response2, error2) -> {
                 if (response2 instanceof TLRPC.TL_messages_webPage) {
@@ -18663,18 +18713,38 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                                 break;
                             }
                         }
-                        faqWebPage = page;
                     }
                     AndroidUtilities.runOnUIThread(() -> {
+                        loadingFaqPage = false;
+                        if (fragment.isFinished) {
+                            return;
+                        }
+                        if (!faqUrl.equals(LocaleController.getString(R.string.TelegramFaqUrl))) {
+                            loadFaqWebPage();
+                            return;
+                        }
+                        faqWebPage = page.cached_page == null ? null : page;
+                        faqSearchArray.clear();
                         faqSearchArray.addAll(arrayList);
                         MessagesController.getInstance(currentAccount).faqSearchArray = arrayList;
                         MessagesController.getInstance(currentAccount).faqWebPage = faqWebPage;
-                        if (!searchWas) {
+                        if (TextUtils.isEmpty(lastSearchString)) {
                             notifyDataSetChanged();
+                        } else {
+                            search(lastSearchString);
+                        }
+                    });
+                } else {
+                    AndroidUtilities.runOnUIThread(() -> {
+                loadingFaqPage = false;
+                        if (fragment.isFinished) {
+                            return;
+                        }
+                        if (!faqUrl.equals(LocaleController.getString(R.string.TelegramFaqUrl))) {
+                            loadFaqWebPage();
                         }
                     });
                 }
-                loadingFaqPage = false;
             });
         }
 
@@ -18847,16 +18917,19 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
 
         public void addRecent(Object object) {
+            if (!(object instanceof SearchResult) && !(object instanceof MessagesController.FaqSearchResult)) {
+                return;
+            }
             int index = recentSearches.indexOf(object);
             if (index >= 0) {
                 recentSearches.remove(index);
             }
             recentSearches.add(0, object);
-            if (!searchWas) {
-                notifyDataSetChanged();
-            }
             if (recentSearches.size() > 20) {
                 recentSearches.remove(recentSearches.size() - 1);
+            }
+            if (!searchWas) {
+                notifyDataSetChanged();
             }
             LinkedHashSet<String> toSave = new LinkedHashSet<>();
             for (int a = 0, N = recentSearches.size(); a < N; a++) {
@@ -18886,12 +18959,49 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return 0;
         }
 
+        private CharSequence matchSearchTitle(String title, String[] searchArgs, String[] translitArgs, int color) {
+            if (TextUtils.isEmpty(title)) {
+                return null;
+            }
+            SpannableStringBuilder highlighted = new SpannableStringBuilder(title);
+            for (int i = 0; i < searchArgs.length; i++) {
+                boolean found = false;
+                for (int variant = 0; variant < 2 && !found; variant++) {
+                    String word = variant == 0 ? searchArgs[i] : translitArgs[i];
+                    if (TextUtils.isEmpty(word)) {
+                        continue;
+                    }
+                    for (int offset = 0; offset + word.length() <= title.length(); offset++) {
+                        if ((offset == 0 || Character.isWhitespace(title.charAt(offset - 1)) || Character.isSpaceChar(title.charAt(offset - 1))
+                                || Character.isIdeographic(title.codePointBefore(offset)))
+                                && title.regionMatches(true, offset, word, 0, word.length())) {
+                            highlighted.setSpan(new ForegroundColorSpan(color), offset, offset + word.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    return null;
+                }
+            }
+            return highlighted;
+        }
         public void search(String query) {
-            final String text = query == null ? "" : query.trim();
+            if (fragment.isFinished) {
+                return;
+            }
+            final String text = (query == null ? "" : query.trim()).replaceAll("^[\\s\\p{Z}]+|[\\s\\p{Z}]+$", "");
+            final int generation = ++searchGeneration;
             lastSearchString = text;
             if (searchRunnable != null) {
                 Utilities.searchQueue.cancelRunnable(searchRunnable);
                 searchRunnable = null;
+            }
+            searchArray = onCreateSearchArray(fragment);
+            updateSearchArray();
+            if (faqWebPage != null && !LocaleController.getString(R.string.TelegramFaqUrl).equals(faqWebPage.url)) {
+                loadFaqWebPage();
             }
             if (TextUtils.isEmpty(text)) {
                 searchWas = false;
@@ -18907,95 +19017,56 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 notifyDataSetChanged();
                 return;
             }
+            final SearchResult[] settings = searchArray.clone();
+            final ArrayList<MessagesController.FaqSearchResult> faq = new ArrayList<>(faqSearchArray);
+            final int color = fragment.getThemedColor(Theme.key_windowBackgroundWhiteBlueText4);
+            boolean hasFreeAccount = false;
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                if (!UserConfig.getInstance(a).isClientActivated()) {
+                    hasFreeAccount = true;
+                    break;
+                }
+            }
+            final boolean canAddAccount = hasFreeAccount;
             Utilities.searchQueue.postRunnable(searchRunnable = () -> {
                 ArrayList<SearchResult> results = new ArrayList<>();
                 ArrayList<MessagesController.FaqSearchResult> faqResults = new ArrayList<>();
                 ArrayList<CharSequence> names = new ArrayList<>();
-                String[] searchArgs = text.split(" ");
+                String[] searchArgs = text.split("[\\s\\p{Z}]+");
                 String[] translitArgs = new String[searchArgs.length];
                 for (int a = 0; a < searchArgs.length; a++) {
-                    translitArgs[a] = LocaleController.getInstance().getTranslitString(searchArgs[a]);
-                    if (translitArgs[a].equals(searchArgs[a])) {
+                    translitArgs[a] = LocaleController.getInstance().getTranslitString(searchArgs[a].toLowerCase(java.util.Locale.ROOT));
+                    if (searchArgs[a].equalsIgnoreCase(translitArgs[a])) {
                         translitArgs[a] = null;
                     }
                 }
 
-                for (int a = 0; a < searchArray.length; a++) {
-                    SearchResult result = searchArray[a];
+                for (SearchResult result : settings) {
+                    if (result == null || result.guid == 502 && !canAddAccount) {
+                        continue;
+                    }
+                    CharSequence name = matchSearchTitle(result.searchTitle, searchArgs, translitArgs, color);
+                    if (name != null) {
+                        results.add(result);
+                        names.add(name);
+                    }
+                }
+                for (MessagesController.FaqSearchResult result : faq) {
                     if (result == null) {
                         continue;
                     }
-                    String title = " " + result.searchTitle.toLowerCase();
-                    SpannableStringBuilder stringBuilder = null;
-                    for (int i = 0; i < searchArgs.length; i++) {
-                        if (searchArgs[i].length() != 0) {
-                            String searchString = searchArgs[i];
-                            int index = title.indexOf(" " + searchString);
-                            if (index < 0 && translitArgs[i] != null) {
-                                searchString = translitArgs[i];
-                                index = title.indexOf(" " + searchString);
-                            }
-                            if (index >= 0) {
-                                if (stringBuilder == null) {
-                                    stringBuilder = new SpannableStringBuilder(result.searchTitle);
-                                }
-                                stringBuilder.setSpan(new ForegroundColorSpan(fragment.getThemedColor(Theme.key_windowBackgroundWhiteBlueText4)), index, index + searchString.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                            } else {
-                                break;
-                            }
-                        }
-                        if (stringBuilder != null && i == searchArgs.length - 1) {
-                            if (result.guid == 502) {
-                                int freeAccount = -1;
-                                for (int b = 0; b < UserConfig.MAX_ACCOUNT_COUNT; b++) {
-                                    if (!UserConfig.getInstance(b).isClientActivated()) {
-                                        freeAccount = b;
-                                        break;
-                                    }
-                                }
-                                if (freeAccount < 0) {
-                                    continue;
-                                }
-                            }
-                            results.add(result);
-                            names.add(stringBuilder);
-                        }
-                    }
-                }
-                if (faqWebPage != null) {
-                    for (int a = 0, N = faqSearchArray.size(); a < N; a++) {
-                        MessagesController.FaqSearchResult result = faqSearchArray.get(a);
-                        String title = " " + result.title.toLowerCase();
-                        SpannableStringBuilder stringBuilder = null;
-                        for (int i = 0; i < searchArgs.length; i++) {
-                            if (searchArgs[i].length() != 0) {
-                                String searchString = searchArgs[i];
-                                int index = title.indexOf(" " + searchString);
-                                if (index < 0 && translitArgs[i] != null) {
-                                    searchString = translitArgs[i];
-                                    index = title.indexOf(" " + searchString);
-                                }
-                                if (index >= 0) {
-                                    if (stringBuilder == null) {
-                                        stringBuilder = new SpannableStringBuilder(result.title);
-                                    }
-                                    stringBuilder.setSpan(new ForegroundColorSpan(fragment.getThemedColor(Theme.key_windowBackgroundWhiteBlueText4)), index, index + searchString.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                                } else {
-                                    break;
-                                }
-                            }
-                            if (stringBuilder != null && i == searchArgs.length - 1) {
+                    CharSequence name = matchSearchTitle(result.title, searchArgs, translitArgs, color);
+                    if (name != null) {
                                 faqResults.add(result);
-                                names.add(stringBuilder);
-                            }
-                        }
+                        names.add(name);
                     }
                 }
 
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (!text.equals(lastSearchString)) {
+                    if (fragment.isFinished || generation != searchGeneration) {
                         return;
                     }
+                    searchRunnable = null;
                     if (!searchWas) {
                         if (fragment instanceof ProfileActivity) {
                             try {

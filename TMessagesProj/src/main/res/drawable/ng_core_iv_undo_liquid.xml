@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram iv_undo.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="72" android:viewportHeight="72">
+    <path android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M34 58.5H41.5C50.6127 58.5 58 51.1127 58 42C58 32.8873 50.6127 25.5 41.5 25.5H16M29.5 39L16 25.5L29.5 12">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="18" android:endY="72">
+                <item android:offset="0" android:color="#FAffffff" />
+                <item android:offset="0.32" android:color="#E0ffffff" />
+                <item android:offset="0.56" android:color="#8Fffffff" />
+                <item android:offset="0.78" android:color="#B8ffffff" />
+                <item android:offset="1" android:color="#F5ffffff" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

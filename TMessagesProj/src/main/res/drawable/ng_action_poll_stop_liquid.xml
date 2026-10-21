@@ -1,0 +1,18 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group>
+        <clip-path android:pathData="M0,2.8L21.2,24H0Z M2.8,0H24V21.2Z"/>
+        <path android:name="poll_bars" android:pathData="M3,12Q3,11 4,11H6Q7,11 7,12V19H3Z M10,8Q10,7 11,7H13Q14,7 14,8V19H10Z M17,4Q17,3 18,3H20Q21,3 21,4V19H17Z">
+            <aapt:attr name="android:fillColor"><gradient android:type="linear" android:startX="3" android:startY="3" android:endX="21" android:endY="21" android:startColor="#C4FFFFFF" android:centerColor="#68FFFFFF" android:endColor="#96FFFFFF"/></aapt:attr>
+        </path>
+        <path android:name="poll_baseline" android:pathData="M3,21H21" android:fillColor="#00000000" android:strokeColor="#B6FFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round"/>
+    </group>
+    <path android:name="stop_slash" android:pathData="M3,3L21,21" android:fillColor="#00000000" android:strokeWidth="1.8" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor"><gradient android:type="linear" android:startX="3" android:startY="3" android:endX="21" android:endY="21" android:startColor="#EFFFFFFF" android:centerColor="#BDFFFFFF" android:endColor="#DCFFFFFF"/></aapt:attr>
+    </path>
+</vector>

@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -221,6 +222,8 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
     private TLRPC.TL_auth_sentCode currentPhoneVerification;
 
     private ActionBarMenuItem doneItem;
+    private final app.nimarkogram.messenger.icons.NimarkoIconViewBindings iconBindings =
+            new app.nimarkogram.messenger.icons.NimarkoIconViewBindings();
     private AnimatorSet doneItemAnimation;
     private ContextProgressView progressView;
 
@@ -476,7 +479,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
             checkImageView = new ImageView(context);
             checkImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_featuredStickers_addedIcon), PorterDuff.Mode.MULTIPLY));
-            checkImageView.setImageResource(R.drawable.sticker_added);
+            iconBindings.bind(checkImageView, R.drawable.sticker_added);
             addView(checkImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, 21, 25, 21, 0));
         }
 
@@ -908,6 +911,16 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
     @Override
     public void onResume() {
         super.onResume();
+        if (fragmentView != null && getParentActivity() != null) {
+            Resources iconResources = getParentActivity().getResources();
+            if (iconBindings.refresh(iconResources)) {
+                for (SecureDocumentCell cell : documentsCells.values()) {
+                    if (cell.buttonState == 1) {
+                        cell.radialProgress.setBackground(iconResources.getDrawable(R.drawable.circle), true, false);
+                    }
+                }
+            }
+        }
         if (chatAttachAlert != null) {
             chatAttachAlert.onResume();
         }
@@ -944,6 +957,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        iconBindings.clear();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploaded);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploadFailed);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.twoStepPasswordChanged);
@@ -973,7 +987,9 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
     @Override
     public View createView(Context context) {
 
+        iconBindings.clear();
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
+        iconBindings.bind(actionBar.getBackButton(), R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
 
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
@@ -1297,6 +1313,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         if (currentActivityType != TYPE_REQUEST && currentActivityType != TYPE_MANAGE) {
             ActionBarMenu menu = actionBar.createMenu();
             doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, AndroidUtilities.dp(56), LocaleController.getString(R.string.Done));
+            iconBindings.bind(doneItem.getIconView(), R.drawable.ic_ab_done);
             progressView = new ContextProgressView(context, 1);
             progressView.setAlpha(0.0f);
             progressView.setScaleX(0.1f);
@@ -1547,7 +1564,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         linearLayout2.addView(passwordRequestTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 21, 0, 21, 0));
 
         noPasswordImageView = new ImageView(context);
-        noPasswordImageView.setImageResource(R.drawable.no_password);
+        iconBindings.bind(noPasswordImageView, R.drawable.no_password);
         noPasswordImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.MULTIPLY));
         linearLayout2.addView(noPasswordImageView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 13, 0, 0));
 
@@ -1998,7 +2015,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         actionBar.setTitle(LocaleController.getString(R.string.TelegramPassport));
 
-        actionBar.createMenu().addItem(info_item, R.drawable.msg_info);
+        iconBindings.bind(actionBar.createMenu().addItem(info_item, R.drawable.msg_info).getIconView(), R.drawable.msg_info);
 
         if (botUser != null) {
             FrameLayout avatarContainer = new FrameLayout(context);
@@ -2406,7 +2423,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         acceptTextView = new TextView(context);
         acceptTextView.setCompoundDrawablePadding(AndroidUtilities.dp(8));
-        acceptTextView.setCompoundDrawablesWithIntrinsicBounds(R.drawable.authorize, 0, 0, 0);
+        iconBindings.bindLeft(acceptTextView, R.drawable.authorize);
         acceptTextView.setTextColor(Theme.getColor(Theme.key_passport_authorizeText));
         acceptTextView.setText(LocaleController.getString(R.string.PassportAuthorize));
         acceptTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -2428,7 +2445,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
         actionBar.setTitle(LocaleController.getString(R.string.TelegramPassport));
 
-        actionBar.createMenu().addItem(info_item, R.drawable.msg_info);
+        iconBindings.bind(actionBar.createMenu().addItem(info_item, R.drawable.msg_info).getIconView(), R.drawable.msg_info);
 
         headerCell = new HeaderCell(context);
         headerCell.setText(LocaleController.getString(R.string.PassportProvidedInformation));
@@ -2499,7 +2516,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         }
 
         emptyImageView = new ImageView(context);
-        emptyImageView.setImageResource(R.drawable.no_passport);
+        iconBindings.bind(emptyImageView, R.drawable.no_passport);
         emptyImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_sessions_devicesImage), PorterDuff.Mode.MULTIPLY));
         emptyLayout.addView(emptyImageView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
@@ -7282,7 +7299,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
                 addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
 
                 ImageView imageView = new ImageView(context);
-                imageView.setImageResource(R.drawable.phone_activate);
+                iconBindings.bind(imageView, R.drawable.phone_activate);
                 if (LocaleController.isRTL) {
                     frameLayout.addView(imageView, LayoutHelper.createFrame(64, 76, Gravity.LEFT | Gravity.CENTER_VERTICAL, 2, 2, 0, 0));
                     frameLayout.addView(confirmTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 64 + 18, 0, 0, 0));
@@ -7298,19 +7315,19 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
 
                 if (verificationType == 1) {
                     blackImageView = new ImageView(context);
-                    blackImageView.setImageResource(R.drawable.sms_devices);
+                    iconBindings.bind(blackImageView, R.drawable.sms_devices);
                     blackImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.MULTIPLY));
                     frameLayout.addView(blackImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 0, 0, 0));
 
                     blueImageView = new ImageView(context);
-                    blueImageView.setImageResource(R.drawable.sms_bubble);
+                    iconBindings.bind(blueImageView, R.drawable.sms_bubble);
                     blueImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_actionBackground), PorterDuff.Mode.MULTIPLY));
                     frameLayout.addView(blueImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 0, 0, 0));
 
                     titleTextView.setText(LocaleController.getString(R.string.SentAppCodeTitle));
                 } else {
                     blueImageView = new ImageView(context);
-                    blueImageView.setImageResource(R.drawable.sms_code);
+                    iconBindings.bind(blueImageView, R.drawable.sms_code);
                     blueImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_actionBackground), PorterDuff.Mode.MULTIPLY));
                     frameLayout.addView(blueImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 0, 0, 0));
 

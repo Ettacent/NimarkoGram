@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp" android:height="64dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="clipboard" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.6"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,4.5H6.7A2.2,2.2 0,0 0,4.5,6.7V18.8A2.2,2.2 0,0 0,6.7,21H17.3A2.2,2.2 0,0 0,19.5,18.8V6.7A2.2,2.2 0,0 0,17.3,4.5H16"/>
+    <path android:name="clip" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M10.2,4.2V3.6A1.8,1.8 0,0 1,13.8,3.6V4.2H15.5V7H8.5V4.2Z"/>
+    <path android:name="entries" android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF" android:strokeAlpha="1"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,10.5H16 M8,14H16 M8,17.5H13.5"/>
+</vector>

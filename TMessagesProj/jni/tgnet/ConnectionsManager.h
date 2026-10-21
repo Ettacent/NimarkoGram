@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -106,7 +108,7 @@ private:
     void requestSaltsForDatacenter(Datacenter *datacenter, bool media, bool useTempConnection);
     void clearRequestsForDatacenter(Datacenter *datacenter, HandshakeType type);
     void registerForInternalPushUpdates();
-    void processRequestQueue(uint32_t connectionType, uint32_t datacenterId);
+    void processRequestQueue(uint32_t connectionType, uint32_t datacenterId, Connection *connectedDownload = nullptr);
     void authorizeOnMovingDatacenter();
     void authorizedOnMovingDatacenter();
     Datacenter *getDatacenterWithId(uint32_t datacenterId);

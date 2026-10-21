@@ -129,6 +129,7 @@ public class ActionBarPopupWindow extends PopupWindow {
         private onSizeChangedListener onSizeChangedListener;
         private float reactionsEnterProgress = 1f;
 
+        private final Rect reactionsContentBounds = new Rect();
         private PopupSwipeBackLayout swipeBackLayout;
         @Nullable
         private ScrollView scrollView;
@@ -490,6 +491,7 @@ public class ActionBarPopupWindow extends PopupWindow {
 
         @Override
         protected void dispatchDraw(Canvas canvas) {
+            reactionsContentBounds.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
             if (swipeBackGravityRight) {
                 setTranslationX(getMeasuredWidth() * (1f - backScaleX));
                 if (topView != null) {
@@ -571,14 +573,25 @@ public class ActionBarPopupWindow extends PopupWindow {
                         rect.set(AndroidUtilities.rectTmp2.right, AndroidUtilities.rectTmp2.top, AndroidUtilities.rectTmp2.right, AndroidUtilities.rectTmp2.top);
                         AndroidUtilities.lerp(rect, AndroidUtilities.rectTmp2, reactionsEnterProgress, AndroidUtilities.rectTmp2);
                     }
+                    if (gapStartY == -1000000) {
+                        reactionsContentBounds.set(AndroidUtilities.rectTmp2);
+                    }
                     backgroundDrawable.setBounds(AndroidUtilities.rectTmp2);
                     backgroundDrawable.draw(canvas);
                     if (clipChildren) {
-                        AndroidUtilities.rectTmp2.left += bgPaddings.left;
-                        AndroidUtilities.rectTmp2.top += bgPaddings.top;
-                        AndroidUtilities.rectTmp2.right -= bgPaddings.right;
-                        AndroidUtilities.rectTmp2.bottom -= bgPaddings.bottom;
+                        float insetScale = gapStartY == -1000000
+                                ? Math.max(0f, reactionsEnterProgress) : 1f;
+                        if (gapStartY == -1000000) {
+                            AndroidUtilities.rectTmp2.set(reactionsContentBounds);
+                        }
+                        AndroidUtilities.rectTmp2.left += Math.round(bgPaddings.left * insetScale);
+                        AndroidUtilities.rectTmp2.top += Math.round(bgPaddings.top * insetScale);
+                        AndroidUtilities.rectTmp2.right -= Math.round(bgPaddings.right * insetScale);
+                        AndroidUtilities.rectTmp2.bottom -= Math.round(bgPaddings.bottom * insetScale);
                         canvas.clipRect(AndroidUtilities.rectTmp2);
+                    }
+                    if (gapStartY != -1000000) {
+                        reactionsContentBounds.set(AndroidUtilities.rectTmp2);
                     }
                     if (hasGap && popupOverlayDrawable == null) {
                         canvas.save();
@@ -616,9 +629,11 @@ public class ActionBarPopupWindow extends PopupWindow {
                 }
             }
             if (reactionsEnterProgress != 1f) {
-                canvas.saveLayerAlpha((float) AndroidUtilities.rectTmp2.left, (float) AndroidUtilities.rectTmp2.top, AndroidUtilities.rectTmp2.right, AndroidUtilities.rectTmp2.bottom, (int) (255 * reactionsEnterProgress), Canvas.ALL_SAVE_FLAG);
-                float scale = 0.5f + reactionsEnterProgress * 0.5f;
-                canvas.scale(scale, scale, AndroidUtilities.rectTmp2.right, AndroidUtilities.rectTmp2.top);
+                canvas.saveLayerAlpha((float) reactionsContentBounds.left, (float) reactionsContentBounds.top, reactionsContentBounds.right, reactionsContentBounds.bottom, (int) (255 * Math.max(0f, Math.min(1f, reactionsEnterProgress))), Canvas.ALL_SAVE_FLAG);
+                float scale = backgroundDrawable != null && gapStartY == -1000000
+                        ? Math.max(0f, reactionsEnterProgress)
+                        : 0.5f + reactionsEnterProgress * 0.5f;
+                canvas.scale(scale, scale, reactionsContentBounds.right, reactionsContentBounds.top);
                 drawPopupOverlay(canvas);
                 super.dispatchDraw(canvas);
                 canvas.restore();

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <!-- Copyright (C) 2026 Ettacent -->
 <resources>
+    <string name="GramEarnings">Gram 收益</string>
+    <string name="WalletAttachMoney">資金</string>
     <string name="NM_Settings_WorldwidePreview">%1$s，全球</string>
     <string name="NM_Settings_DCMiami">美國（邁阿密）</string>
     <string name="NM_Settings_DCAmsterdam">荷蘭（阿姆斯特丹）</string>

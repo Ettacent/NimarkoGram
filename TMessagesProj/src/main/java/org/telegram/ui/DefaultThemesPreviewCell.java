@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.animation.Animator;
@@ -20,6 +22,7 @@ import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
@@ -69,10 +72,14 @@ public class DefaultThemesPreviewCell extends LinearLayout {
 
     private Boolean wasPortrait = null;
 
+    private final boolean customDayNightIcons;
     public DefaultThemesPreviewCell(Context context, BaseFragment parentFragment, int type) {
         super(context);
         this.currentType = type;
         this.parentFragment = parentFragment;
+        customDayNightIcons = context.getResources() instanceof NimarkoIconResources
+                && ((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.menu_day_mode_24)
+                && ((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.menu_night_mode_24);
         setOrientation(LinearLayout.VERTICAL);
         FrameLayout frameLayout = new FrameLayout(context);
         addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -177,7 +184,8 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         recyclerView.setAnimateEmptyView(true, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA);
 
         if (currentType == ThemeActivity.THEME_TYPE_BASIC) {
-            darkThemeDrawable = new RLottieDrawable(R.raw.sun_outline, AndroidUtilities.dp(28), AndroidUtilities.dp(28), true, null);
+            final int iconSize = AndroidUtilities.dp(customDayNightIcons ? 24 : 28);
+            darkThemeDrawable = new RLottieDrawable(R.raw.sun_outline, iconSize, iconSize, true, null);
             darkThemeDrawable.setPlayInDirectionOfCustomEndFrame(true);
             darkThemeDrawable.beginApplyLayerColors();
             darkThemeDrawable.commitApplyLayerColors();
@@ -290,9 +298,9 @@ public class DefaultThemesPreviewCell extends LinearLayout {
                         }
 
                         if (Theme.isCurrentThemeDay()) {
-                            dayNightCell.setTextAndIcon(LocaleController.getString(R.string.SettingsSwitchToNightMode), darkThemeDrawable, true);
+                            setDayNightCellText(R.string.SettingsSwitchToNightMode);
                         } else {
-                            dayNightCell.setTextAndIcon(LocaleController.getString(R.string.SettingsSwitchToDayMode), darkThemeDrawable, true);
+                            setDayNightCellText(R.string.SettingsSwitchToDayMode);
                         }
 
                         Theme.turnOffAutoNight(parentFragment);
@@ -309,9 +317,9 @@ public class DefaultThemesPreviewCell extends LinearLayout {
 
             if (!Theme.isCurrentThemeDay()) {
                 darkThemeDrawable.setCurrentFrame(darkThemeDrawable.getFramesCount() - 1);
-                dayNightCell.setTextAndIcon(LocaleController.getString(R.string.SettingsSwitchToDayMode), darkThemeDrawable, true);
+                setDayNightCellText(R.string.SettingsSwitchToDayMode);
             } else {
-                dayNightCell.setTextAndIcon(LocaleController.getString(R.string.SettingsSwitchToNightMode), darkThemeDrawable, true);
+                setDayNightCellText(R.string.SettingsSwitchToNightMode);
             }
         }
         refreshThemes();
@@ -572,6 +580,13 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         }
     }
 
+    private void setDayNightCellText(int stringRes) {
+        dayNightCell.setTextAndIcon(LocaleController.getString(stringRes), darkThemeDrawable, true);
+        if (customDayNightIcons) {
+            dayNightCell.setImageLeft(16);
+            dayNightCell.getImageView().setPadding(0, AndroidUtilities.dp(7), 0, 0);
+        }
+    }
     public void updateColors() {
         if (adapter != null && recyclerView != null) {
             updateDayNightMode();

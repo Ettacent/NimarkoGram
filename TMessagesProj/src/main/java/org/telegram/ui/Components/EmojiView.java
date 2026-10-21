@@ -4,6 +4,17 @@
  * You should have received a copy of the license in this archive (see LICENSE).
  *
  * Copyright Nikolai Kudashov, 2013-2018.
+ * Modifications Copyright (C) 2026 Ettacent
+ */
+
+/* Modifications Copyright (C) 2026 Ettacent */
+
+/*
+ * This is the source code of Telegram for Android v. 5.x.x.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ *
+ * Copyright Nikolai Kudashov, 2013-2018.
  */
 
 package org.telegram.ui.Components;
@@ -291,6 +302,9 @@ public class EmojiView extends FrameLayout implements
     }
 
     public void setAllow(boolean allowEmoji, boolean allowStickers, boolean allowGifs, boolean animated) {
+        boolean wasAutomatic = automaticPageChange;
+        automaticPageChange = true;
+        try {
         if (pager != null) {
             pager.finishPageTransition();
         }
@@ -314,6 +328,10 @@ public class EmojiView extends FrameLayout implements
                 typeTabs.setViewPager(pager);
             }
             checkGridVisibility(pager.getCurrentItem(), 0);
+                saveNewPage();
+            }
+        } finally {
+            automaticPageChange = wasAutomatic;
         }
     }
 
@@ -383,6 +401,9 @@ public class EmojiView extends FrameLayout implements
 
     private int currentPage;
 
+    private int selectedPage;
+    private int pageToOpen = -1;
+    private boolean automaticPageChange;
     private EmojiColorPickerWindow colorPickerView;
     private int emojiSize;
     private int location[] = new int[2];
@@ -2748,6 +2769,10 @@ public class EmojiView extends FrameLayout implements
                 protected boolean isTabAnimationEnabled() {
                     return pager.isPageMotionEnabled();
                 }
+                @Override
+                protected void onTabClicked(int position) {
+                    saveSelectedPage(position);
+                }
             };
             typeTabs.setSmoothScroll(true);
             typeTabs.setViewPager(pager);
@@ -2892,7 +2917,7 @@ public class EmojiView extends FrameLayout implements
                 Emoji.saveEmojiColors();
             }
         });
-        currentPage = MessagesController.getGlobalEmojiSettings().getInt("selected_page", 0);
+        selectedPage = currentPage = MessagesController.getGlobalEmojiSettings().getInt("selected_page", 0);
 
         Emoji.loadRecentEmoji();
         emojiAdapter.notifyDataSetChanged();
@@ -5556,21 +5581,55 @@ public class EmojiView extends FrameLayout implements
     }
 
     private void saveNewPage() {
-        if (pager == null) {
+        if (pager == null || getPageType(pager.getCurrentItem()) < 0) {
             return;
         }
-        int newPage;
-        int currentItem = getPageType(pager.getCurrentItem());
-        if (currentItem == 2) {
-            newPage = 1;
-        } else if (currentItem == 1) {
-            newPage = 2;
-        } else {
-            newPage = 0;
+        currentPage = getSavedPage(pager.getCurrentItem());
+        if (!automaticPageChange) {
+            saveSelectedPage(pager.getCurrentItem());
         }
-        if (currentPage != newPage) {
-            currentPage = newPage;
+    }
+
+    private int getSavedPage(int position) {
+        int type = getPageType(position);
+        return type == TAB_STICKERS ? 1 : type == TAB_GIFS ? 2 : 0;
+    }
+
+    private void saveSelectedPage(int position) {
+        int type = getPageType(position);
+        if (type < 0 || (type == TAB_EMOJI ? emojiBanned : stickersBanned)) {
+            return;
+        }
+        int newPage = getSavedPage(position);
+        pageToOpen = -1;
+        if (selectedPage != newPage) {
+            selectedPage = newPage;
             MessagesController.getGlobalEmojiSettings().edit().putInt("selected_page", newPage).commit();
+        }
+    }
+
+    private int getPageIndex(int type) {
+        for (int i = 0; i < currentTabs.size(); i++) {
+            if (currentTabs.get(i).type == type) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void setPage(int position, boolean animated) {
+        if (pager == null || getPageType(position) < 0) {
+            return;
+        }
+        boolean wasAutomatic = automaticPageChange;
+        automaticPageChange = true;
+        try {
+            if (pager.getCurrentItem() != position) {
+                pager.setCurrentItem(position, animated);
+            }
+            saveNewPage();
+        } finally {
+            automaticPageChange = wasAutomatic;
         }
     }
 
@@ -5612,7 +5671,8 @@ public class EmojiView extends FrameLayout implements
     public void switchToGifRecent() {
         showBackspaceButton(false, false);
         showStickerSettingsButton(false, false);
-        pager.setCurrentItem(1, false);
+        pageToOpen = 2;
+        setPage(getPageIndex(TAB_GIFS), false);
     }
 
     private void updateEmojiHeaders() {
@@ -6131,18 +6191,29 @@ public class EmojiView extends FrameLayout implements
     }
 
     public void onOpen(boolean forceEmoji, boolean groupEmojiHintWasVisible) {
-        if (currentPage != 0 && stickersBanned) {
-            currentPage = 0;
+        int page = pageToOpen >= 0 ? pageToOpen : selectedPage;
+        pageToOpen = -1;
+        int type = page == 1 ? TAB_STICKERS : page == 2 ? TAB_GIFS : TAB_EMOJI;
+        if (forceEmoji && !emojiBanned && getPageIndex(TAB_EMOJI) >= 0) {
+            type = TAB_EMOJI;
         }
-        if (currentPage == 0 && emojiBanned) {
-            currentPage = 1;
+        if (getPageIndex(type) < 0 || (type == TAB_EMOJI ? emojiBanned : stickersBanned)) {
+            for (Tab tab : currentTabs) {
+                if (!(tab.type == TAB_EMOJI ? emojiBanned : stickersBanned)) {
+                    type = tab.type;
+                    break;
+                }
+            }
         }
-        if (currentPage == 0 || forceEmoji || currentTabs.size() == 1) {
+        int position = getPageIndex(type);
+        if (position < 0) {
+            position = currentTabs.isEmpty() ? -1 : 0;
+            type = getPageType(position);
+        }
+        setPage(position, type == TAB_EMOJI && !forceEmoji);
+        if (type == TAB_EMOJI) {
             showBackspaceButton(true, false);
             showStickerSettingsButton(false, false);
-            if (pager.getCurrentItem() != 0) {
-                pager.setCurrentItem(0, !forceEmoji);
-            }
             if (groupEmojiHintWasVisible) {
                 AndroidUtilities.runOnUIThread(() -> {
                     ArrayList<EmojiPack> packs = getEmojipacks();
@@ -6158,12 +6229,9 @@ public class EmojiView extends FrameLayout implements
                     }
                 }, 350);
             }
-        } else if (currentPage == 1) {
+        } else if (type == TAB_STICKERS) {
             showBackspaceButton(false, false);
             showStickerSettingsButton(shouldDrawBackground || shouldDrawStickerSettings, false);
-            if (pager.getCurrentItem() != 2) {
-                pager.setCurrentItem(2, false);
-            }
             if (stickersTab != null) {
                 firstTabUpdate = true;
                 if (favTabNum >= 0) {
@@ -6176,12 +6244,9 @@ public class EmojiView extends FrameLayout implements
                 firstTabUpdate = false;
                 stickersLayoutManager.scrollToPositionWithOffset(0, 0);
             }
-        } else if (currentPage == 2) {
+        } else if (type == TAB_GIFS) {
             showBackspaceButton(false, false);
             showStickerSettingsButton(false, false);
-            if (pager.getCurrentItem() != 1) {
-                pager.setCurrentItem(1, false);
-            }
             if (gifTabs != null) {
                 gifTabs.selectTab(0);
             }
@@ -6254,6 +6319,9 @@ public class EmojiView extends FrameLayout implements
 
     public int getCurrentPage() {
         return currentPage;
+    }
+    public int getSelectedPage() {
+        return selectedPage;
     }
     @Override
     protected void onVisibilityChanged(View changedView, int visibility) {
@@ -6381,21 +6449,24 @@ public class EmojiView extends FrameLayout implements
         } else {
             currentChatId = 0;
         }
-        View view = typeTabs.getTab(stickersBanned ? 2 : 0);
+        for (int i = 0; i < currentTabs.size(); i++) {
+            View view = typeTabs.getTab(i);
         if (view != null) {
-            view.setAlpha(currentChatId != 0 ? 0.15f : 1.0f);
-            if (stickersBanned) {
-                if (currentChatId != 0 && pager.getCurrentItem() != 0) {
-                    showBackspaceButton(true, true);
-                    showStickerSettingsButton(false, true);
-                    pager.setCurrentItem(0, false);
-                }
-            } else {
-                if (currentChatId != 0 && pager.getCurrentItem() != 1) {
-                    showBackspaceButton(false, true);
-                    showStickerSettingsButton(false, true);
-                    pager.setCurrentItem(1, false);
-                }
+                boolean banned = currentTabs.get(i).type == TAB_EMOJI ? emojiBanned : stickersBanned;
+                view.setAlpha(currentChatId != 0 && banned ? 0.15f : 1.0f);
+            }
+        }
+        int currentType = getPageType(pager.getCurrentItem());
+        if (currentChatId == 0 || !(currentType == TAB_EMOJI ? emojiBanned : stickersBanned)) {
+            return;
+        }
+        for (int i = 0; i < currentTabs.size(); i++) {
+            int type = currentTabs.get(i).type;
+            if (!(type == TAB_EMOJI ? emojiBanned : stickersBanned)) {
+                showBackspaceButton(type == TAB_EMOJI, true);
+                showStickerSettingsButton(type == TAB_STICKERS && (shouldDrawBackground || shouldDrawStickerSettings), true);
+                setPage(i, false);
+                break;
             }
         }
     }

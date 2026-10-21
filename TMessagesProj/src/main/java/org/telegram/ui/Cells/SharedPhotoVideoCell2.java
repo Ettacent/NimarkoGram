@@ -11,8 +11,8 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -30,6 +30,7 @@ import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -54,6 +55,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.AvatarSpan;
@@ -74,6 +76,7 @@ import org.telegram.ui.Stories.StoryWidgetsImageDecorator;
 import org.telegram.ui.Stories.recorder.DominantColors;
 import org.telegram.ui.Stories.recorder.StoryPrivacyBottomSheet;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 public class SharedPhotoVideoCell2 extends FrameLayout {
@@ -121,6 +124,10 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     private Drawable gradientDrawable;
     private boolean gradientDrawableLoading;
 
+    private int gradientGeneration;
+    private String boundStoryImageKey;
+    private String boundStoryMediaKey;
+    private Drawable boundStoryStrippedThumb, staleStoryStrippedThumb;
     public boolean isStory;
     public boolean isStoryUploading;
     public boolean isStoryPinned;
@@ -232,6 +239,81 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         return false;
     }
 
+    private TLRPC.Photo getStoryPhoto(MessageObject messageObject) {
+        if (messageObject == null || messageObject.storyItem == null) return null;
+        TLRPC.MessageMedia media = messageObject.storyItem.media;
+        return media == null ? null : media.video_cover != null ? media.video_cover : media.photo;
+    }
+
+    private String getStoryMediaKey(MessageObject messageObject) {
+        if (messageObject == null || !messageObject.isStory()) return null;
+        TLRPC.MessageMedia media = getStoryMedia(messageObject);
+        return messageObject.currentAccount + ":" + messageObject.getDialogId() + ":" + messageObject.getId()
+                + ":" + (media == null || media.document == null ? 0 : media.document.id)
+                + ":" + (media == null || media.photo == null ? 0 : media.photo.id)
+                + ":" + (media == null || media.video_cover == null ? 0 : media.video_cover.id);
+    }
+
+    private TLRPC.Document getImageDocument(MessageObject messageObject) {
+        TLRPC.Document selected = messageObject.getDocument();
+        if (!messageObject.isStory()) return selected;
+        TLRPC.MessageMedia media = messageObject.storyItem.media;
+        if (media == null || media.document == null) return null;
+        if (selected != null && selected.id == media.document.id) return selected;
+        if (selected != null && media.alt_documents != null) {
+            for (TLRPC.Document alternative : media.alt_documents) {
+                if (alternative.id == selected.id) return selected;
+            }
+        }
+        return media.document;
+    }
+
+    private String getStoryImageKey(MessageObject messageObject, int columns) {
+        if (messageObject == null || !messageObject.isStory()) return null;
+        Object parent = messageObject.isStory() ? messageObject.storyItem : messageObject;
+        TLRPC.Document document = getImageDocument(messageObject);
+        TLRPC.Photo photo = getStoryPhoto(messageObject);
+        ImageLocation image = null, thumb = null;
+        if (messageObject.uploadingStory != null && messageObject.uploadingStory.firstFramePath != null) {
+            image = ImageLocation.getForPath(messageObject.uploadingStory.firstFramePath);
+        } else if (messageObject.mediaThumb != null) {
+            image = messageObject.mediaThumb;
+            thumb = messageObject.mediaSmallThumb;
+        } else {
+            int stride = columns <= 2 ? AndroidUtilities.getPhotoSize() : 320;
+            if (photo != null) {
+                TLRPC.PhotoSize small = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, 50);
+                TLRPC.PhotoSize large = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, stride, false, small, true);
+                image = ImageLocation.getForPhoto(large, photo);
+                thumb = ImageLocation.getForPhoto(small == large ? null : small, photo);
+            } else if (document != null) {
+                TLRPC.PhotoSize small = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 50);
+                TLRPC.PhotoSize large = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, stride, false, null, true);
+                image = ImageLocation.getForDocument(large, document);
+                thumb = ImageLocation.getForDocument(small, document);
+            }
+        }
+        return messageObject.currentAccount + ":" + messageObject.getDialogId() + ":" + messageObject.getId()
+                + ":" + (document == null ? 0 : document.id) + ":" + (photo == null ? 0 : photo.id)
+                + ":" + (image == null ? null : image.getKey(parent, null, false))
+                + ":" + (thumb == null ? null : thumb.getKey(parent, image, false));
+    }
+
+    private void updateStoryGradient(ImageReceiver imageReceiver) {
+        if (gradientDrawable == null && !gradientDrawableLoading && imageReceiver.getBitmap() != null) {
+            gradientDrawableLoading = true;
+            final int generation = gradientGeneration;
+            final String owner = boundStoryImageKey;
+            DominantColors.getColors(false, imageReceiver.getBitmap(), Theme.isCurrentThemeDark(), colors -> {
+                if (!gradientDrawableLoading || generation != gradientGeneration || !TextUtils.equals(owner, boundStoryImageKey)) {
+                    return;
+                }
+                gradientDrawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors);
+                invalidate();
+                gradientDrawableLoading = false;
+            });
+        }
+    }
     private int getPrivacyType(MessageObject messageObject) {
         if (isStoryPinned) {
             return 100;
@@ -271,6 +353,10 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         if (currentMessageObject == null && messageObject == null) {
             return;
         }
+        final String storyImageKey = getStoryImageKey(messageObject, parentColumnsCount);
+        final String storyMediaKey = getStoryMediaKey(messageObject);
+        final boolean storyMediaChanged = !TextUtils.equals(boundStoryMediaKey, storyMediaKey);
+        final boolean storyImageChanged = storyMediaChanged || !TextUtils.equals(boundStoryImageKey, storyImageKey);
         if (currentMessageObject != null &&
             messageObject != null &&
             currentMessageObject.getId() == messageObject.getId() &&
@@ -278,6 +364,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             ((currentMessageObject != null ? currentMessageObject.uploadingStory : null) == (messageObject != null ? messageObject.uploadingStory : null)) &&
             ((currentMessageObject != null ? currentMessageObject.parentStoriesList : null) == (messageObject != null ? messageObject.parentStoriesList : null)) &&
             mediaEqual(getStoryMedia(currentMessageObject), getStoryMedia(messageObject)) &&
+            !storyImageChanged &&
             oldParentColumnsCount == parentColumnsCount &&
             (privacyType == 100) == isStoryPinned &&
             privacyType == getPrivacyType(messageObject) &&
@@ -285,7 +372,18 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         ) {
             return;
         }
-        if (currentMessageObject != messageObject) {
+        if (storyImageChanged) {
+            if (storyMediaChanged || oldParentColumnsCount == parentColumnsCount) {
+                staleStoryStrippedThumb = boundStoryStrippedThumb;
+            }
+            boundStoryStrippedThumb = messageObject != null ? messageObject.strippedThumb : null;
+            boundStoryImageKey = storyImageKey;
+            boundStoryMediaKey = storyMediaKey;
+            gradientGeneration++;
+            gradientDrawableLoading = false;
+            gradientDrawable = null;
+        }
+        if (storyImageChanged || currentMessageObject != messageObject) {
             resetSpoilerReveal();
         }
         currentMessageObject = messageObject;
@@ -293,6 +391,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         isStoryUploading = currentMessageObject != null && currentMessageObject.uploadingStory != null;
         updateSpoilers2();
         if (messageObject == null) {
+            boundStoryStrippedThumb = staleStoryStrippedThumb = null;
             updateSpoilerBlur();
             imageReceiver.onDetachedFromWindow();
             imageReceiverFullSize.onDetachedFromWindow();
@@ -354,7 +453,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             viewsText.setText("", false);
         }
         viewsAlpha.set(drawViews ? 1f : 0f, true);
-        Object parentObject = messageObject.parentStoriesList != null ? messageObject.storyItem : messageObject;
+        final Drawable strippedThumb = isStory && messageObject.strippedThumb == staleStoryStrippedThumb ? null : messageObject.strippedThumb;
+        Object parentObject = messageObject.isStory() ? messageObject.storyItem : messageObject;
         if (!TextUtils.isEmpty(restrictionReason)) {
             showImageStub = true;
         } else if (messageObject.storyItem != null && messageObject.storyItem.media instanceof TLRPC.TL_messageMediaUnsupported) {
@@ -365,8 +465,12 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         } else if (messageObject.uploadingStory != null && messageObject.uploadingStory.firstFramePath != null) {
             imageReceiver.setImage(ImageLocation.getForPath(messageObject.uploadingStory.firstFramePath), imageFilter, null, null, parentObject, 0);
         } else {
-            final TLRPC.Document video = messageObject.getDocument();
-            final TLRPC.Photo photo = messageObject.getPhoto();
+            final TLRPC.Document video = getImageDocument(messageObject);
+            final TLRPC.MessageMedia storyMedia = getStoryMedia(messageObject);
+            final TLRPC.Photo photo = isStory ? storyMedia != null ? storyMedia.photo : null : messageObject.getPhoto();
+            final TLRPC.Photo storyPhoto = getStoryPhoto(messageObject);
+            final ArrayList<TLRPC.PhotoSize> photoThumbs = storyPhoto != null ? storyPhoto.sizes : messageObject.photoThumbs;
+            final TLObject photoThumbsObject = storyPhoto != null ? storyPhoto : messageObject.photoThumbsObject;
             if (MessageObject.isVideoDocument(video)) {
                 showVideoLayout = !messageObject.isLivePhoto();
                 showLivePhoto = messageObject.isLivePhoto();
@@ -374,32 +478,32 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                     videoText = AndroidUtilities.formatShortDuration((int) messageObject.getDuration());
                 }
                 if (messageObject.mediaThumb != null) {
-                    if (messageObject.strippedThumb != null) {
-                        imageReceiver.setImage(messageObject.mediaThumb, imageFilter, messageObject.strippedThumb, null, parentObject, 0);
+                    if (strippedThumb != null) {
+                        imageReceiver.setImage(messageObject.mediaThumb, imageFilter, strippedThumb, null, parentObject, 0);
                     } else {
                         imageReceiver.setImage(messageObject.mediaThumb, imageFilter, messageObject.mediaSmallThumb, imageFilter + "_b", null, 0, null, parentObject, 0);
                     }
-                } else if (messageObject.hasVideoCover()) {
-                    TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, 50);
-                    TLRPC.PhotoSize currentPhotoObject = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, stride, false, currentPhotoObjectThumb, isStory);
+                } else if (isStory ? storyMedia != null && storyMedia.video_cover != null : messageObject.hasVideoCover()) {
+                    TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(photoThumbs, 50);
+                    TLRPC.PhotoSize currentPhotoObject = FileLoader.getClosestPhotoSizeWithSize(photoThumbs, stride, false, currentPhotoObjectThumb, isStory);
                     if (currentPhotoObject == currentPhotoObjectThumb) {
                         currentPhotoObjectThumb = null;
                     }
-                    if (messageObject.strippedThumb != null) {
-                        imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, messageObject.photoThumbsObject), imageFilter, null, null, messageObject.strippedThumb, currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
+                    if (strippedThumb != null) {
+                        imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, photoThumbsObject), imageFilter, null, null, strippedThumb, currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
                     } else {
-                        imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, messageObject.photoThumbsObject), imageFilter, ImageLocation.getForObject(currentPhotoObjectThumb, messageObject.photoThumbsObject), imageFilter + "_b", currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
+                        imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, photoThumbsObject), imageFilter, ImageLocation.getForObject(currentPhotoObjectThumb, photoThumbsObject), imageFilter + "_b", currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
                     }
                 } else {
-                    TLRPC.Document document = messageObject.getDocument();
+                    TLRPC.Document document = video;
                     TLRPC.PhotoSize thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 50);
                     TLRPC.PhotoSize qualityThumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, stride, false, null, isStory);
                     if (thumb == qualityThumb && !isStory) {
                         qualityThumb = null;
                     }
                     if (thumb != null) {
-                        if (messageObject.strippedThumb != null) {
-                            imageReceiver.setImage(ImageLocation.getForDocument(qualityThumb, document), imageFilter, messageObject.strippedThumb, null, parentObject, 0);
+                        if (strippedThumb != null) {
+                            imageReceiver.setImage(ImageLocation.getForDocument(qualityThumb, document), imageFilter, strippedThumb, null, parentObject, 0);
                         } else {
                             imageReceiver.setImage(ImageLocation.getForDocument(qualityThumb, document), imageFilter, ImageLocation.getForDocument(thumb, document), imageFilter + "_b", null, 0, null, parentObject, 0);
                         }
@@ -407,32 +511,32 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                         showImageStub = true;
                     }
                 }
-            } else if (photo != null && !messageObject.photoThumbs.isEmpty()) {
+            } else if (photo != null && !photoThumbs.isEmpty()) {
                 if (messageObject.mediaExists || canAutoDownload(messageObject) || isStory) {
                     if (messageObject.mediaThumb != null) {
-                        if (messageObject.strippedThumb != null) {
-                            imageReceiver.setImage(messageObject.mediaThumb, imageFilter, messageObject.strippedThumb, null, parentObject, 0);
+                        if (strippedThumb != null) {
+                            imageReceiver.setImage(messageObject.mediaThumb, imageFilter, strippedThumb, null, parentObject, 0);
                         } else {
                             imageReceiver.setImage(messageObject.mediaThumb, imageFilter, messageObject.mediaSmallThumb, imageFilter + "_b", null, 0, null, parentObject, 0);
                         }
                     } else {
-                        TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, 50);
-                        TLRPC.PhotoSize currentPhotoObject = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, stride, false, currentPhotoObjectThumb, isStory);
+                        TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(photoThumbs, 50);
+                        TLRPC.PhotoSize currentPhotoObject = FileLoader.getClosestPhotoSizeWithSize(photoThumbs, stride, false, currentPhotoObjectThumb, isStory);
                         if (currentPhotoObject == currentPhotoObjectThumb) {
                             currentPhotoObjectThumb = null;
                         }
-                        if (messageObject.strippedThumb != null) {
-                            imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, messageObject.photoThumbsObject), imageFilter, null, null, messageObject.strippedThumb, currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
+                        if (strippedThumb != null) {
+                            imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, photoThumbsObject), imageFilter, null, null, strippedThumb, currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
                         } else {
-                            imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, messageObject.photoThumbsObject), imageFilter, fullSize ? null : ImageLocation.getForObject(currentPhotoObjectThumb, messageObject.photoThumbsObject), imageFilter + "_b", currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
+                            imageReceiver.setImage(ImageLocation.getForObject(currentPhotoObject, photoThumbsObject), imageFilter, fullSize ? null : ImageLocation.getForObject(currentPhotoObjectThumb, photoThumbsObject), imageFilter + "_b", currentPhotoObject != null ? currentPhotoObject.size : 0, null, parentObject, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 1);
                         }
                     }
                 } else {
-                    if (messageObject.strippedThumb != null) {
-                        imageReceiver.setImage(null, null, null, null, messageObject.strippedThumb, 0, null, parentObject, 0);
+                    if (strippedThumb != null) {
+                        imageReceiver.setImage(null, null, null, null, strippedThumb, 0, null, parentObject, 0);
                     } else {
-                        TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(messageObject.photoThumbs, 50);
-                        imageReceiver.setImage(null, null, ImageLocation.getForObject(currentPhotoObjectThumb, messageObject.photoThumbsObject), "b", null, 0, null, parentObject, 0);
+                        TLRPC.PhotoSize currentPhotoObjectThumb = FileLoader.getClosestPhotoSizeWithSize(photoThumbs, 50);
+                        imageReceiver.setImage(null, null, ImageLocation.getForObject(currentPhotoObjectThumb, photoThumbsObject), "b", null, 0, null, parentObject, 0);
                     }
                 }
             } else {
@@ -527,7 +631,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     }
 
     private void setPrivacyType(int type) {
-        if (privacyType == type) return;
+        final boolean changed = privacyType != type;
         privacyType = type;
         privacyBitmap = null;
         int resId;
@@ -541,7 +645,9 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         if (resId != 0) {
             privacyBitmap = sharedResources.getPrivacyBitmap(getContext(), resId);
         }
+        if (changed) {
         invalidate();
+        }
     }
 
     private boolean canAutoDownload(MessageObject messageObject) {
@@ -617,17 +723,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         if (isStory && currentParentColumnsCount == 1) {
             final float w = getHeight() * .72f;
             if (gradientDrawable == null) {
-                if (!gradientDrawableLoading && imageReceiver.getBitmap() != null) {
-                    gradientDrawableLoading = true;
-                    DominantColors.getColors(false, imageReceiver.getBitmap(), Theme.isCurrentThemeDark(), colors -> {
-                        if (!gradientDrawableLoading) {
-                            return;
-                        }
-                        gradientDrawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors);
-                        invalidate();
-                        gradientDrawableLoading = false;
-                    });
-                }
+                updateStoryGradient(imageReceiver);
             } else {
                 gradientDrawable.setBounds(0, 0, getWidth(), getHeight());
                 gradientDrawable.draw(canvas);
@@ -636,15 +732,14 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         } else if (checkBoxProgress > 0) {
             float offset = dp(check2 ? 7 : 10) * checkBoxProgress;
             imageReceiver.setImageCoords(leftpadding + offset, padding + offset, imageWidth - offset * 2, imageHeight - offset * 2);
-            blurImageReceiver.setImageCoords(leftpadding + offset, padding + offset, imageWidth - offset * 2, imageHeight - offset * 2);
         } else {
             float padPlus = 0;
             if (crossfadeProgress > 0.5f && crossfadeToColumnsCount != 9 && currentParentColumnsCount != 9) {
                 padPlus = 1;
             }
             imageReceiver.setImageCoords(leftpadding + padPlus, padding + padPlus, imageWidth, imageHeight);
-            blurImageReceiver.setImageCoords(leftpadding + padPlus, padding + padPlus, imageWidth, imageHeight);
         }
+        blurImageReceiver.setImageCoords(imageReceiver.getImageX(), imageReceiver.getImageY(), imageReceiver.getImageWidth(), imageReceiver.getImageHeight());
         imageRadii[0] = imageRadii[1] = lerp(isFirst && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress);
         imageRadii[2] = imageRadii[3] = lerp(isLast && isTop ? dp(18) : dp(1), dp(8), checkBoxProgress);
         imageRadii[4] = imageRadii[5] = imageRadii[6] = imageRadii[7] = lerp(dp(1), dp(8), checkBoxProgress);
@@ -675,7 +770,6 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             if (currentMessageObject != null && currentMessageObject.hasMediaSpoilers() && !currentMessageObject.isMediaSpoilersRevealedInSharedMedia) {
                 canvas.save();
                 canvas.clipPath(imageOutline);
-                canvas.clipRect(leftpadding, toppadding, leftpadding + imageWidth - rightpadding, toppadding + imageHeight - bottompadding);
 
                 if (spoilerRevealProgress != 0f) {
                     path.rewind();
@@ -687,8 +781,10 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
                 blurImageReceiver.draw(canvas);
 
                 if (mediaSpoilerEffect2 != null) {
-                    canvas.clipRect(imageReceiver.getImageX(), imageReceiver.getImageY(), imageReceiver.getImageX2(), imageReceiver.getImageY2());
-                    mediaSpoilerEffect2.draw(canvas, this, (int) imageReceiver.getImageWidth(), (int) imageReceiver.getImageHeight());
+                    canvas.save();
+                    canvas.translate(imageReceiver.getImageX(), imageReceiver.getImageY());
+                    mediaSpoilerEffect2.draw(canvas, this, (int) Math.ceil(imageReceiver.getImageWidth()), (int) Math.ceil(imageReceiver.getImageHeight()));
+                    canvas.restore();
                 } else {
                     if (mediaSpoilerEffect == null) {
                         mediaSpoilerEffect = new SpoilerEffect();
@@ -935,6 +1031,9 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
     }
 
     public void drawPrivacy(Canvas canvas, RectF bounds, float alpha) {
+        if (isStory) {
+            setPrivacyType(privacyType);
+        }
         if (!isStory || privacyBitmap == null || privacyBitmap.isRecycled()) {
             return;
         }
@@ -1279,6 +1378,10 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         SparseArray<String> imageFilters = new SparseArray<>();
         private final HashMap<Integer, Bitmap> privacyBitmaps = new HashMap<>();
 
+        private Resources privacyResources;
+        private long privacyGeneration;
+        private int privacyDensity;
+        private boolean privacyDark;
         public SharedResources(Context context, Theme.ResourcesProvider resourcesProvider) {
             textPaint.setTextSize(dp(12));
             textPaint.setColor(Color.WHITE);
@@ -1307,11 +1410,34 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         }
 
         public Bitmap getPrivacyBitmap(Context context, int resId) {
+            final Resources resources = context.getResources();
+            final long generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            final int density = resources.getDisplayMetrics().densityDpi;
+            final boolean dark = Theme.isCurrentThemeDark();
+            if (privacyResources != resources || privacyGeneration != generation || privacyDensity != density || privacyDark != dark) {
+                privacyBitmaps.clear();
+                privacyResources = resources;
+                privacyGeneration = generation;
+                privacyDensity = density;
+                privacyDark = dark;
+            }
             Bitmap bitmap = privacyBitmaps.get(resId);
-            if (bitmap != null) {
+            if (bitmap != null && !bitmap.isRecycled()) {
                 return bitmap;
             }
-            bitmap = BitmapFactory.decodeResource(context.getResources(), resId);
+            Drawable icon = resources.getDrawable(resId).mutate();
+            int width = Math.max(1, icon.getIntrinsicWidth());
+            int height = Math.max(1, icon.getIntrinsicHeight());
+            if (resId == R.drawable.msg_pin_mini && resources instanceof NimarkoIconResources
+                    && ((NimarkoIconResources) resources).hasReplacement(resId)) {
+                final int size = Math.max(1, (int) Math.ceil(17.33f * resources.getDisplayMetrics().density));
+                width = Math.max(width, size);
+                height = Math.max(height, size);
+            }
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            icon.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
+            icon.draw(new Canvas(bitmap));
             Bitmap shadowBitmap = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(shadowBitmap);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -1323,8 +1449,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             canvas.drawBitmap(shadowBitmap, 0, 0, paint);
             canvas.drawBitmap(shadowBitmap, 0, 0, paint);
             canvas.drawBitmap(shadowBitmap, 0, 0, paint);
-            paint.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
-            canvas.drawBitmap(bitmap, 0, 0, paint);
+            icon.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
+            icon.draw(canvas);
             shadowBitmap.recycle();
             bitmap.recycle();
             bitmap = resultBitmap;

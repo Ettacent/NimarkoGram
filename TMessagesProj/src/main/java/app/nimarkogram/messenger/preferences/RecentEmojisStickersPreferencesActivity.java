@@ -36,7 +36,7 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                         80,
                         String::valueOf,
                         NimarkoConfig::setRecentEmojisAmplifier
-                )
+                ).setId(ID_EMOJI_SLIDER)
         );
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentEmoji)));
 
@@ -50,7 +50,7 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                         50,
                         String::valueOf,
                         NimarkoConfig::setRecentStickersAmplifier
-                )
+                ).setId(ID_STICKERS_SLIDER)
         );
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentStickers)));
     }

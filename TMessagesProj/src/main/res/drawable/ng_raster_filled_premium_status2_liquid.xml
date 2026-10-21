@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="briefcase" android:fillColor="#FFFFFFFF" android:fillAlpha="0.08"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4.8,7H19.2A2.3,2.3 0,0 1,21.5,9.3V18.7A2.3,2.3 0,0 1,19.2,21H4.8A2.3,2.3 0,0 1,2.5,18.7V9.3A2.3,2.3 0,0 1,4.8,7Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="handle" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M8,7V4.8A2.3,2.3 0,0 1,10.3,2.5H13.7A2.3,2.3 0,0 1,16,4.8V7">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="closure" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M2.5,13H9.5 M14.5,13H21.5 M9.5,11H14.5V15H9.5Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

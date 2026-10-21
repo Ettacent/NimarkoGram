@@ -1,0 +1,44 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="message" android:fillColor="#FFFFFFFF" android:fillAlpha="0.08"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,2.5A9,9 0,1 1,7.1,19.1L3.5,20.5L4.8,16.8A9,9 0,0 1,12,2.5Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="link_upper" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M10.5,8.2L12,6.7A3,3 0,0 1,16.2,10.9L14.7,12.4">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="link_lower" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M13.5,14.4L12,15.9A3,3 0,0 1,7.8,11.7L9.3,10.2">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="chain_join" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M9.6,13.8L14.4,9">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

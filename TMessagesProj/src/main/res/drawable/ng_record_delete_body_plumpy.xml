@@ -1,0 +1,6 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="100" android:viewportHeight="100">
+    <path android:fillColor="#59FFFFFF" android:pathData="M20,32 L80,32 L75,78 C74,87 69,92 61,92 L39,92 C31,92 26,87 25,78 Z" />
+</vector>

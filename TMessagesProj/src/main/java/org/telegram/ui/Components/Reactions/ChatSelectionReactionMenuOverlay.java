@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
 import static org.telegram.ui.ChatActivity.MODE_DEFAULT;
@@ -49,6 +51,9 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
 
     private boolean messageSet;
 
+    private int visibilityGeneration;
+    private Runnable showReactionsRunnable;
+    private ValueAnimator visibilityAnimator;
     public ChatSelectionReactionMenuOverlay(ChatActivity fragment, Context context) {
         super(context);
         setVisibility(GONE);
@@ -299,14 +304,16 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
     }
 
     private boolean isMessageTypeAllowed(MessageObject obj) {
-        if (obj != null && obj.messageOwner != null && obj.messageOwner.rich_message != null) return true;
-        return obj != null && !obj.needDrawBluredPreview() && (
-            MessageObject.isPhoto(obj.messageOwner) && MessageObject.getMedia(obj.messageOwner).webpage == null ||
-            obj.getDocument() != null && (
-                MessageObject.isVideoDocument(obj.getDocument()) ||
-                MessageObject.isGifDocument(obj.getDocument())
-            )
-        );
+        if (obj == null || obj.messageOwner == null) return false;
+        if (obj.messageOwner.rich_message != null) return true;
+        if (obj.needDrawBluredPreview()) return false;
+
+        TLRPC.MessageMedia media = MessageObject.getMedia(obj.messageOwner);
+        if (media != null && MessageObject.isPhoto(obj.messageOwner) && media.webpage == null) {
+            return true;
+        }
+        TLRPC.Document document = obj.getDocument();
+        return document != null && (MessageObject.isVideoDocument(document) || MessageObject.isGifDocument(document));
     }
 
     public void setSelectedMessages(List<MessageObject> messages) {
@@ -345,12 +352,57 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
         }
     }
 
+    private void cancelVisibilityAnimation() {
+        visibilityGeneration++;
+        if (showReactionsRunnable != null) {
+            removeCallbacks(showReactionsRunnable);
+            showReactionsRunnable = null;
+        }
+        ValueAnimator animator = visibilityAnimator;
+        visibilityAnimator = null;
+        if (animator != null) {
+            animator.removeAllUpdateListeners();
+            animator.removeAllListeners();
+            animator.cancel();
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (isVisible && !hiddenByScroll) {
+            animateVisible(true);
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        cancelVisibilityAnimation();
+        if (reactionsContainerLayout != null) {
+            removeView(reactionsContainerLayout);
+            reactionsContainerLayout = null;
+        }
+        currentPrimaryObject = null;
+        messageSet = false;
+        setVisibility(GONE);
+        super.onDetachedFromWindow();
+    }
     private void animateVisible(boolean visible) {
+        cancelVisibilityAnimation();
+        final int generation = visibilityGeneration;
         if (visible) {
             setVisibility(VISIBLE);
-            post(() -> {
+            if (reactionsContainerLayout != null) {
+                reactionsContainerLayout.setAlpha(1f);
+            }
+            showReactionsRunnable = () -> {
+                if (generation != visibilityGeneration) return;
+                showReactionsRunnable = null;
+                if (!isVisible || hiddenByScroll || !isAttachedToWindow()) return;
                 currentPrimaryObject = findPrimaryObject();
+                if (currentPrimaryObject == null) return;
                 checkCreateReactionsLayout();
+                reactionsContainerLayout.setAlpha(1f);
                 invalidatePosition(false);
 
                 if (reactionsContainerLayout.isEnabled()) {
@@ -361,24 +413,33 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
                     messageSet = false;
                     reactionsContainerLayout.setTransitionProgress(1f);
                 }
-            });
+            };
+            post(showReactionsRunnable);
         } else {
             messageSet = false;
-            ValueAnimator animator = ValueAnimator.ofFloat(1, 0).setDuration(150);
+            final ReactionsContainerLayout outgoing = reactionsContainerLayout;
+            if (outgoing == null) {
+                currentPrimaryObject = null;
+                setVisibility(GONE);
+                return;
+            }
+            final ValueAnimator animator = ValueAnimator.ofFloat(outgoing.getAlpha(), 0).setDuration(150);
+            visibilityAnimator = animator;
             animator.addUpdateListener(animation -> {
-                float val = (float) animation.getAnimatedValue();
-                if (reactionsContainerLayout != null) {
-                    reactionsContainerLayout.setAlpha(val);
+                if (generation == visibilityGeneration && visibilityAnimator == animator
+                        && reactionsContainerLayout == outgoing) {
+                    outgoing.setAlpha((float) animation.getAnimatedValue());
                 }
             });
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (generation != visibilityGeneration || visibilityAnimator != animator
+                            || reactionsContainerLayout != outgoing) return;
+                    visibilityAnimator = null;
                     setVisibility(GONE);
-                    if (reactionsContainerLayout != null) {
-                        removeView(reactionsContainerLayout);
+                    removeView(outgoing);
                         reactionsContainerLayout = null;
-                    }
                     currentPrimaryObject = null;
                 }
             });

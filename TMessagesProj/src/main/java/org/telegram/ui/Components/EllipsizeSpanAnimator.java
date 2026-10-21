@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -117,6 +119,9 @@ public class EllipsizeSpanAnimator {
             this.alpha = 0;
         }
 
+        public TextAlphaSpan(float alpha) {
+            this.alpha = (int) (alpha * 255f);
+        }
         public TextAlphaSpan(int alpha) {
             this.alpha = alpha;
         }

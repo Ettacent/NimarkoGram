@@ -33,6 +33,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -819,6 +820,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Runnable openKeyboardRunnable = new Runnable() {
         @Override
         public void run() {
+            if (cancelKeyboardRestoreForRichDraft()) {
+                return;
+            }
             if (hasBotWebView() && botCommandsMenuIsShowing() || BaseFragment.hasSheets(parentFragment)) {
                 return;
             }
@@ -1437,18 +1441,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                     deleteBlendStartMs = now;
                     startPendingDeleteExit();
                 }
-                float blend = deleteBlendStartMs < 0 ? 0f : getRecordDeleteBlend(now - deleteBlendStartMs);
-                redDotPaint.setAlpha(Math.round(255 * alpha * (1f - blend)));
-                if (blend < 1f) {
+                if (deleteBlendStartMs < 0) {
+                    redDotPaint.setAlpha(Math.round(255 * alpha));
                     canvas.drawCircle(getMeasuredWidth() / 2f, getMeasuredHeight() / 2f,
-                            dp(5) * (1f - .35f * blend), redDotPaint);
-                }
-                drawable.setAlpha(Math.round(255 * blend));
-                canvas.save();
-                float scale = .8f + .2f * blend;
-                canvas.scale(scale, scale, getMeasuredWidth() / 2f, getMeasuredHeight() / 2f);
+                            dp(5), redDotPaint);
+                } else {
+                    float blend = getRecordDeleteBlend(now - deleteBlendStartMs);
+                    drawable.setAlpha(Math.round(255 * (alpha + (1f - alpha) * blend)));
                 drawable.draw(canvas);
-                canvas.restore();
+                }
                 invalidate();
                 return;
             }
@@ -1591,6 +1592,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         Paint lockOutlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private boolean roundControlStyle;
 
+        private final RecordingControlsIconRenderer recordingIcons = new RecordingControlsIconRenderer();
         Path path = new Path();
         private Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -2018,7 +2020,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             canvas.translate(0, dpf2(2) * (1f - moveProgress));
             canvas.rotate(lockRotation, locCx, locCy);
 
-            if (transformToPauseProgress != 1f) {
+            final boolean packLockPause = recordingIcons.drawLockPause(
+                    canvas, lockPaint, locCx, locCy, transformToPauseProgress);
+            if (!packLockPause && transformToPauseProgress != 1f) {
                 AndroidUtilities.rectTmp.set(0, 0, dpf2(8), dpf2(8));
                 canvas.save();
                 canvas.clipRect(0, 0, getMeasuredWidth(), dy + lockBottom + dpf2(2) * (1f - moveProgress));
@@ -2041,7 +2045,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 resumeDrawable = isInVideoMode ? vidDrawable : micDrawable;
             }
 
-            if (transformToPauseProgress > 0) {
+            if (!packLockPause && transformToPauseProgress > 0) {
                 if (periodBackgroundDrawable == null) {
                     canvas.drawRoundRect(rectF, dpf2(3), dpf2(3), lockBackgroundPaint);
                 }
@@ -2058,7 +2062,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 radiiRight[0] = radiiRight[1] = radiiRight[6] = radiiRight[7] = dp(1.5f) * transformToPauseProgress;
                 path2.addRoundRect(AndroidUtilities.rectTmp, radiiRight, Path.Direction.CW);
                 canvas.drawPath(path2, lockPaint);
-            } else {
+            } else if (!packLockPause) {
                 canvas.drawRoundRect(rectF, dpf2(3), dpf2(3), lockPaint);
             }
             lockPaint.setAlpha(wasAlpha);
@@ -2078,7 +2082,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 resumeDrawable.draw(canvas);
             }
 
-            if (transformToPauseProgress != 1) {
+            if (!packLockPause && transformToPauseProgress != 1) {
                 canvas.drawCircle(locCx, locCy, dpf2(2) * (1f - transformToPauseProgress), lockBackgroundPaint);
             }
             canvas.restore();
@@ -2548,19 +2552,19 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (micDrawable != null) {
                 return;
             }
-            micDrawable = getResources().getDrawable(R.drawable.input_mic_pressed).mutate();
+            micDrawable = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_mic_pressed, resourcesProvider);
             micDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.MULTIPLY));
 
-            cameraDrawable = getResources().getDrawable(R.drawable.input_video_pressed).mutate();
+            cameraDrawable = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_video_pressed, resourcesProvider);
             cameraDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.MULTIPLY));
 
-            sendDrawable = getResources().getDrawable(R.drawable.attach_send).mutate();
+            sendDrawable = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.attach_send, resourcesProvider);
             sendDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.MULTIPLY));
 
-            micOutline = getResources().getDrawable(R.drawable.input_mic).mutate();
+            micOutline = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_mic, resourcesProvider);
             micOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
 
-            cameraOutline = getResources().getDrawable(R.drawable.input_video).mutate();
+            cameraOutline = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_video, resourcesProvider);
             cameraOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         }
 
@@ -3053,6 +3057,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             tinyWaveDrawable.paint.setColor(ColorUtils.setAlphaComponent(getThemedColor(Theme.key_chat_messagePanelVoiceBackground), (int) (255 * WaveDrawable.CIRCLE_ALPHA_2)));
             bigWaveDrawable.paint.setColor(ColorUtils.setAlphaComponent(getThemedColor(Theme.key_chat_messagePanelVoiceBackground), (int) (255 * WaveDrawable.CIRCLE_ALPHA_1)));
 
+            PorterDuffColorFilter iconFilter = new PorterDuffColorFilter(getThemedColor(Theme.key_chat_messagePanelVoicePressed), PorterDuff.Mode.MULTIPLY);
+            if (micDrawable != null) micDrawable.setColorFilter(iconFilter);
+            if (cameraDrawable != null) cameraDrawable.setColorFilter(iconFilter);
+            if (sendDrawable != null) sendDrawable.setColorFilter(iconFilter);
             paintAlpha = paint.getAlpha();
         }
 
@@ -3334,7 +3342,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         frameLayout.setClipChildren(false);
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, DEFAULT_HEIGHT, 0));
 
-        emojiButton = new ChatActivityEnterViewAnimatedIconView(context) {
+        emojiButton = new ChatActivityEnterViewAnimatedIconView(context, resourcesProvider) {
             @Override
             protected void onDraw(Canvas canvas) {
                 super.onDraw(canvas);
@@ -3408,7 +3416,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         deleteRichDraftButton = new ImageView(context);
         deleteRichDraftButton.setScaleType(ImageView.ScaleType.CENTER);
-        deleteRichDraftButton.setImageDrawable(NimarkoIconResources.getStockDrawable(context, R.drawable.menu_delete_old).mutate());
+        deleteRichDraftButton.setImageDrawable(ComposerAccessoryIconHelper.deleteDraft(context));
         deleteRichDraftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         deleteRichDraftButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
         deleteRichDraftButton.setVisibility(View.GONE);
@@ -3446,8 +3454,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             if (chatMode != ChatActivity.MODE_WELCOME_MESSAGES) {
                 notifyButton = new ImageView(context);
-                notifySilentDrawable = new CrossOutDrawable(context, R.drawable.input_notify_on, Theme.key_glass_defaultIcon);
-                notifyButton.setImageDrawable(notifySilentDrawable);
+                notifySilentDrawable = new CrossOutDrawable(context, R.drawable.input_notify_on, Theme.key_glass_defaultIcon, resourcesProvider);
+                notifyButton.setImageDrawable(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(context, R.drawable.input_notify_on, notifySilentDrawable));
                 notifySilentDrawable.setCrossOut(silent, false);
                 notifyButton.setContentDescription(silent ? getString("AccDescrChanSilentOn", R.string.AccDescrChanSilentOn) : getString("AccDescrChanSilentOff", R.string.AccDescrChanSilentOff));
                 notifyButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
@@ -3461,10 +3469,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                         if (fragment == null) return;
                         silent = !silent;
                         if (notifySilentDrawable == null) {
-                            notifySilentDrawable = new CrossOutDrawable(context, R.drawable.input_notify_on, Theme.key_glass_defaultIcon);
+                            notifySilentDrawable = new CrossOutDrawable(context, R.drawable.input_notify_on, Theme.key_glass_defaultIcon, resourcesProvider);
                         }
                         notifySilentDrawable.setCrossOut(silent, true);
-                        notifyButton.setImageDrawable(notifySilentDrawable);
+                        notifyButton.setImageDrawable(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(context, R.drawable.input_notify_on, notifySilentDrawable));
                         MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + dialog_id, silent).commit();
                         NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(dialog_id, fragment == null ? 0 : fragment.getTopicId());
                         UndoView undoView = fragment.getUndoView();
@@ -3488,7 +3496,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             };
             attachButton.setScaleType(ImageView.ScaleType.CENTER);
             attachButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-            attachButton.setImageResource(R.drawable.msg_input_attach2);
+            attachButton.setImageDrawable(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(context, R.drawable.msg_input_attach2, ChatActivityEnterViewAnimatedIconView.loadComposerIcon(context, R.drawable.msg_input_attach2, resourcesProvider)));
             attachButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             messageEditTextContainer.addView(attachButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
             attachButton.setOnClickListener(v -> {
@@ -4122,19 +4130,21 @@ public class ChatActivityEnterView extends FrameLayout implements
 //            return true;
 //        });
 
-        micOutline = getResources().getDrawable(R.drawable.input_mic).mutate();
+        micOutline = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_mic, resourcesProvider);
         micOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
 
-        cameraOutline = getResources().getDrawable(R.drawable.input_video).mutate();
+        cameraOutline = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.input_video, resourcesProvider);
         cameraOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
 
-        audioVideoSendButton = new ChatActivityEnterViewAnimatedIconView(context, 24) {
+        audioVideoSendButton = new ChatActivityEnterViewAnimatedIconView(context, 24, resourcesProvider) {
             private final Rect tmpRectF = new Rect();
             @Override
             public void draw(@NonNull Canvas canvas) {
                 if (audioVideoButtonContainerForbidden) {
                     tmpRectF.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
                     tmpRectF.inset(dp(7.5f), dp(7.5f));
+                    ChatActivityEnterViewAnimatedIconView.fitComposerIconBounds(getContext(),
+                            getCurrentState() == State.VIDEO ? R.drawable.input_video : R.drawable.input_mic, tmpRectF);
                     Drawable d = getCurrentState() == State.VIDEO ? cameraOutline : micOutline;
                     d.setBounds(tmpRectF);
                     d.draw(canvas);
@@ -4447,7 +4457,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
         };
-        giftButton.setImageResource(R.drawable.msg_input_gift);
+        giftButton.setImageDrawable(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(getContext(), R.drawable.msg_input_gift, ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), R.drawable.msg_input_gift, resourcesProvider)));
         giftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         giftButton.setVisibility(GONE);
         giftButton.setContentDescription(getString(R.string.GiftPremium));
@@ -4589,8 +4599,47 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
         };
-        botButton.setImageDrawable(botButtonDrawable = new ReplaceableIconDrawable(getContext()));
-        botButtonDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+        botButton.setImageDrawable(botButtonDrawable = new ReplaceableIconDrawable(getContext()) {
+            private int currentIconId;
+            private Resources iconResources;
+            private Configuration iconConfiguration;
+            private long iconGeneration;
+            private int iconDensityDpi;
+            private float iconDensity;
+
+            @Override
+            public void setIcon(int resId, boolean animated) {
+                Resources resources = getContext().getResources();
+                long generation = resources instanceof NimarkoIconResources
+                        ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+                boolean sameResources = resources == iconResources && generation == iconGeneration
+                        && resources.getDisplayMetrics().densityDpi == iconDensityDpi
+                        && resources.getDisplayMetrics().density == iconDensity
+                        && iconConfiguration != null && iconConfiguration.equals(resources.getConfiguration());
+                if (currentIconId == resId && sameResources) {
+                    return;
+                }
+                iconResources = resources;
+                iconGeneration = generation;
+                iconDensityDpi = resources.getDisplayMetrics().densityDpi;
+                iconDensity = resources.getDisplayMetrics().density;
+                if (!sameResources) {
+                    iconConfiguration = new Configuration(resources.getConfiguration());
+                }
+                super.setIcon(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(getContext(), resId, ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), resId, resourcesProvider)), animated && sameResources);
+                currentIconId = resId;
+                invalidateSelf();
+            }
+
+            @Override
+            public void draw(Canvas canvas) {
+                if (currentIconId != 0) {
+                    setIcon(currentIconId, false);
+                }
+                super.draw(canvas);
+            }
+        });
+        botButtonDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         botButtonDrawable.setIcon(R.drawable.input_bot2, false);
         botButton.setScaleType(ImageView.ScaleType.CENTER);
         botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
@@ -6835,6 +6884,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         richDraftPreview = new RichMessageLayout.PreviewView(getContext(), currentAccount, resourcesProvider);
         richDraftPreview.setAllowActions(false);
+        richDraftPreview.setRoundedContent(true);
         richDraftPreview.setMaxHeight(dp(150));
         richDraftPreview.setMinHeight(dp(DEFAULT_HEIGHT + DEFAULT_HEIGHT));
         richDraftPreview.setVisibility(View.GONE);
@@ -6940,14 +6990,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (emojiView == null) {
                     currentPage = MessagesController.getGlobalEmojiSettings().getInt("selected_page", 0);
                 } else {
-                    currentPage = emojiView.getCurrentPage();
+                    currentPage = emojiView.getSelectedPage();
                 }
                 if (currentPage == 0 || !allowStickers && !allowGifs) {
                     allowChangeToSmile = false;
                 }
 
                 if ((before == 0 && !TextUtils.isEmpty(charSequence) || before != 0 && TextUtils.isEmpty(charSequence)) && allowChangeToSmile) {
-                    setEmojiButtonImage(false, true);
+                    setEmojiButtonImage(isPopupShowing(), true);
                 }
                 if (lineCount != messageEditText.getLineCount()) {
                     heightShouldBeChanged = (messageEditText.getLineCount() >= 4) != (lineCount >= 4);
@@ -7131,6 +7181,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean shownAiButton;
     private int aiButtonVisibilityGeneration;
     private boolean assistantButtonsFrozen;
+    private Object richEditorTransitionOwner;
     private boolean assistantButtonsUpdateDeferred;
     private float assistantRowProgress;
     private float assistantRowTarget;
@@ -7517,11 +7568,21 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void beginRichEditorTransition() {
+        richEditorTransitionOwner = null;
         assistantButtonsFrozen = true;
         assistantButtonsUpdateDeferred = false;
         if (messageEditText != null) {
             messageEditText.removeCallbacks(composerAssistantButtonsUpdateRunnable);
         }
+    }
+
+    public void beginRichEditorTransition(Object owner) {
+        beginRichEditorTransition();
+        richEditorTransitionOwner = owner;
+    }
+
+    public boolean isRichEditorTransitionOwner(Object owner) {
+        return owner != null && assistantButtonsFrozen && richEditorTransitionOwner == owner;
     }
 
     /** Resolves the destination composer without child animations before the
@@ -7581,8 +7642,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         requestLayout();
     }
 
+    public void endRichEditorTransition(Object owner) {
+        if (owner == null || richEditorTransitionOwner != owner || !assistantButtonsFrozen) {
+            return;
+        }
+        richEditorTransitionOwner = null;
+        endRichEditorTransition();
+    }
     public void endRichEditorTransition() {
         assistantButtonsFrozen = false;
+        if (richDraftPreview != null) {
+            richDraftPreview.invalidate();
+        }
+        if (messageEditTextContainer != null) {
+            messageEditTextContainer.invalidate();
+        }
+        invalidate();
         if (assistantButtonsUpdateDeferred) {
             assistantButtonsUpdateDeferred = false;
             scheduleComposerAssistantButtonsUpdate();
@@ -8119,7 +8194,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             senderSelectPopupWindow.setPauseNotifications(false);
             senderSelectPopupWindow.dismiss();
         }
-        if (keyboardVisible) {
+        if (!cancelKeyboardRestoreForRichDraft() && keyboardVisible) {
             showKeyboardOnResume = true;
         }
         AndroidUtilities.runOnUIThread(hideKeyboardRunnable = () -> {
@@ -8151,7 +8226,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void restoreKeyboardOnResume() {
-        if (isPaused) {
+        if (cancelKeyboardRestoreForRichDraft() || isPaused) {
             return;
         }
 
@@ -8174,6 +8249,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                 AndroidUtilities.runOnUIThread(openKeyboardRunnable, 100);
             }
         }
+    }
+
+    private boolean cancelKeyboardRestoreForRichDraft() {
+        if (!richDraftActive || richDraftMessage == null || editingMessageObject != null) {
+            return false;
+        }
+        showKeyboardOnResume = false;
+        waitingForKeyboardOpen = false;
+        waitingForKeyboardOpenAfterAnimation = false;
+        AndroidUtilities.cancelRunOnUIThread(openKeyboardRunnable);
+        return true;
     }
 
     @Override
@@ -8678,8 +8764,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             iconsEndAnimator.setDuration(150);
-            iconsEndAnimator.setStartDelay(getRecordDeleteFadeDelay(
-                    recordDeleteImageView.getAnimatedDrawable(), 600, iconsEndAnimator.getDuration()));
+            iconsEndAnimator.setStartDelay(600);
 
             recordPannelAnimation = new AnimatorSet();
             if (separatedComposerLayout && messageEditText != null) {
@@ -10448,10 +10533,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         return Math.max(standardDelay, disappearingIcon.getStartDelay() + disappearingIcon.getDuration());
     }
 
-    private long getRecordDeleteFadeDelay(RLottieDrawable drawable, long standardDelay, long fadeDuration) {
-
-        return drawable != null ? Math.max(standardDelay, drawable.getDuration()) : standardDelay;
-    }
 
     private boolean useFastRecordExit(boolean entryRunning, int recordState) {
         return (entryRunning && (!separatedComposerLayout || recordState != RECORD_STATE_PREPARING))
@@ -11387,8 +11468,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
 
                 iconsAnimator.setDuration(150);
-                iconsAnimator.setStartDelay(getRecordDeleteFadeDelay(
-                        recordDot == null ? null : recordDot.drawable, 700, iconsAnimator.getDuration()));
+                iconsAnimator.setStartDelay(700);
 
                 recordTimer.setDuration(200);
                 recordTimer.setStartDelay(200);
@@ -12366,6 +12446,24 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         emojiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         emojiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        if (giftButton != null) {
+            giftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+            giftButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        }
+        if (notifyButton != null) {
+            notifyButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+            notifyButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        }
+        if (botButton != null) {
+            botButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
+            botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        }
+        if (micOutline != null) {
+            micOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+        }
+        if (cameraOutline != null) {
+            cameraOutline.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+        }
         if (attachButton != null) {
             attachButton.setColorFilter(new PorterDuffColorFilter(
                     getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
@@ -12762,6 +12860,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         final boolean wasActive = richDraftActive;
         richDraftActive = richDraftMessage != null && editingMessageObject == null;
         if (richDraftActive) {
+            cancelKeyboardRestoreForRichDraft();
             richDraftPreview.setResourcesProvider(resourcesProvider);
             richDraftPreview.set(richDraftMessage);
             richDraftPreview.setVisibility(View.VISIBLE);
@@ -13048,10 +13147,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (notifyButton != null) {
                 notifyVisible = canWriteToChannel;
                 if (notifySilentDrawable == null) {
-                    notifySilentDrawable = new CrossOutDrawable(getContext(), R.drawable.input_notify_on, Theme.key_glass_defaultIcon);
+                    notifySilentDrawable = new CrossOutDrawable(getContext(), R.drawable.input_notify_on, Theme.key_glass_defaultIcon, resourcesProvider);
                 }
                 notifySilentDrawable.setCrossOut(silent, false);
-                notifyButton.setImageDrawable(notifySilentDrawable);
+                notifyButton.setImageDrawable(ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(getContext(), R.drawable.input_notify_on, notifySilentDrawable));
             }
             if (attachLayout != null) {
                 updateFieldRight(attachLayout.getVisibility() == VISIBLE ? 1 : 0);
@@ -15115,7 +15214,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (emojiView == null) {
                 currentPage = MessagesController.getGlobalEmojiSettings().getInt("selected_page", 0);
             } else {
-                currentPage = emojiView.getCurrentPage();
+                currentPage = emojiView.getSelectedPage();
+            }
+            if (currentPage == 1 && !allowStickers || currentPage == 2 && !allowGifs) {
+                currentPage = 0;
             }
             if (currentPage == 0 || !allowStickers && !allowGifs) {
                 nextIcon = ChatActivityEnterViewAnimatedIconView.State.SMILE;
@@ -15239,6 +15341,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void openKeyboardInternal() {
+        if (cancelKeyboardRestoreForRichDraft()) {
+            return;
+        }
         if (hasBotWebView() && botCommandsMenuIsShowing() || BaseFragment.hasSheets(parentFragment)) {
             return;
         }
@@ -15279,6 +15384,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void openKeyboard() {
+        if (cancelKeyboardRestoreForRichDraft()) {
+            return;
+        }
         if (hasBotWebView() && botCommandsMenuIsShowing() || BaseFragment.hasSheets(parentFragment)) {
             return;
         }
@@ -15314,6 +15422,10 @@ public class ChatActivityEnterView extends FrameLayout implements
      */
     public boolean isPopupDismissibleByBack() {
         return isPopupShowing() && !isPersistentBotKeyboardShowing();
+    }
+
+    public boolean canHidePopupByBackButton() {
+        return isPopupDismissibleByBack();
     }
 
     public boolean closeCreationLinkDialog(boolean invoked) {
@@ -17447,6 +17559,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         private Drawable drawable;
         private Drawable inactiveDrawable;
         private Drawable drawableInverse;
+        private Resources iconResources;
+        private Configuration iconConfiguration;
+        private long iconGeneration = Long.MIN_VALUE;
+        private int iconDensity;
+        private int loadedIconResourceId;
+        private boolean customSendIcon;
         private final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable emojiDrawable;
         private float ephemeralFactor;
         private float sameWidthFactor;
@@ -17488,6 +17606,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             this.resourcesProvider = resourcesProvider;
             this.isNewDesignSendButton = isNewDesignSendButton;
 
+            lockIcon = ComposerAccessoryIconHelper.lockBadge(context);
+            lockIcon.setCallback(this);
             priceText = new AnimatedTextView.AnimatedTextDrawable();
             priceText.setTextSize(dp(15));
             priceText.setTypeface(AndroidUtilities.bold());
@@ -17496,9 +17616,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             priceText.setCallback(this);
             priceText.setOverrideFullWidth(AndroidUtilities.displaySize.x);
 
-            drawable = context.getResources().getDrawable(resId).mutate();
-            inactiveDrawable = context.getResources().getDrawable(resId).mutate();
-            drawableInverse = context.getResources().getDrawable(resId).mutate();
+            updateIconDrawables();
             emojiDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(14));
 
             loadingPaint.setStyle(Paint.Style.STROKE);
@@ -17514,8 +17632,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         private boolean locked;
-        private Drawable lockIcon;
+        private final Drawable lockIcon;
         private int lockIconColor;
+        private boolean lockIconColorSet;
         public void setLocked(boolean locked) {
             if (this.locked == locked) return;
             this.locked = locked;
@@ -17525,11 +17644,42 @@ public class ChatActivityEnterView extends FrameLayout implements
         public void setResourceId(int resId) {
             if (this.resId != resId) {
                 this.resId = resId;
-                drawable = getContext().getResources().getDrawable(resId).mutate();
-                inactiveDrawable = getContext().getResources().getDrawable(resId).mutate();
-                drawableInverse = getContext().getResources().getDrawable(resId).mutate();
+                updateIconDrawables();
                 invalidate();
             }
+        }
+
+        private void updateIconDrawables() {
+            Resources resources = getContext().getResources();
+            long generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            int density = resources.getDisplayMetrics().densityDpi;
+            Configuration configuration = resources.getConfiguration();
+            if (drawable != null && loadedIconResourceId == resId && iconResources == resources
+                    && iconGeneration == generation && iconDensity == density
+                    && configuration.equals(iconConfiguration)) {
+                return;
+            }
+            customSendIcon = resId == R.drawable.send_plane_24
+                    && resources instanceof NimarkoIconResources
+                    && ((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_send);
+            int iconId = customSendIcon ? R.drawable.ic_send : resId;
+            drawable = loadSendIcon(iconId);
+            inactiveDrawable = loadSendIcon(iconId);
+            drawableInverse = loadSendIcon(iconId);
+            loadedIconResourceId = resId;
+            iconResources = resources;
+            iconGeneration = generation;
+            iconDensity = density;
+            iconConfiguration = new Configuration(configuration);
+            drawableColorsInitialized = false;
+        }
+
+        private Drawable loadSendIcon(int iconId) {
+            Drawable icon = ChatActivityEnterViewAnimatedIconView.loadComposerIcon(getContext(), iconId, resourcesProvider);
+            return customSendIcon
+                    ? ChatActivityEnterViewAnimatedIconView.wrapComposerIcon(getContext(), iconId, icon)
+                    : icon;
         }
 
         private int circleWidth = -1, circleHeight = -1;
@@ -17651,7 +17801,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         @Override
         protected boolean verifyDrawable(@NonNull Drawable who) {
-            return who == count || who == emojiDrawable || who == priceText || super.verifyDrawable(who);
+            return who == count || who == emojiDrawable || who == priceText || who == lockIcon || super.verifyDrawable(who);
         }
 
         public void setEffect(long effectId) {
@@ -17701,6 +17851,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         private float countBounceScale = 1f;
 
         private final AnimatedFloat appear = new AnimatedFloat(this, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
+        private final AnimatedFloat planePress = new AnimatedFloat(0f, this, 0, 180, CubicBezierInterpolator.EASE_OUT_QUINT);
         public void appear() {
             appear.force(0);
             invalidate();
@@ -17710,6 +17861,52 @@ public class ChatActivityEnterView extends FrameLayout implements
         public void setPressed(boolean pressed) {
             super.setPressed(pressed);
             bounce.setPressed(pressed);
+            invalidate();
+        }
+
+        private float getPlanePressProgress() {
+            int selection = iconResources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) iconResources).getAppliedSelection() : NimarkoConfig.ICON_REPLACE_NONE;
+            boolean enabled = customSendIcon && (selection == NimarkoConfig.ICON_REPLACE_SOLAR
+                    || selection == NimarkoConfig.ICON_REPLACE_PLUMPY)
+                    && isAttachedToWindow() && SharedConfig.animationsEnabled()
+                    && !AndroidUtilities.isAccessibilityTouchExplorationEnabled()
+                    && (Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled()
+                    : AndroidUtilities.getAnimatorDurationScale() > 0f);
+            if (!enabled) {
+                planePress.force(0);
+                return 0;
+            }
+            return planePress.set(isPressed());
+        }
+
+        private void drawSendIcon(Canvas canvas, Drawable icon, float press) {
+            float opticalScale = 1f;
+            if (isNewDesignSendButton && customSendIcon && iconResources instanceof NimarkoIconResources) {
+                switch (((NimarkoIconResources) iconResources).getAppliedSelection()) {
+                    case NimarkoConfig.ICON_REPLACE_SOLAR: opticalScale = 1.10f; break;
+                    case NimarkoConfig.ICON_REPLACE_PLUMPY: opticalScale = 1.14f; break;
+                    case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS:
+                        opticalScale = ChatActivityEnterViewAnimatedIconView.LIQUID_SEND_ARTWORK_FRACTION * (38f / 24f);
+                        break;
+                }
+            }
+            float scale = opticalScale * (1f - 0.08f * press);
+            if (scale == 1f) {
+                icon.draw(canvas);
+                return;
+            }
+            Rect bounds = icon.getBounds();
+            int saved = canvas.save();
+            canvas.scale(scale, scale, bounds.exactCenterX(), bounds.exactCenterY());
+            icon.draw(canvas);
+            canvas.restoreToCount(saved);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            planePress.force(0);
+            super.onDetachedFromWindow();
         }
 
         private Drawable ephemeralOutlineDrawable;
@@ -17723,6 +17920,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             updateColors();
             checkBackgroundRect();
+            final float planePressProgress = getPlanePressProgress();
             if (isNewDesignSendButton) {
                 canvas.drawRoundRect(backgroundRect, dp(RADIUS), dp(RADIUS), backgroundPaint);
             }
@@ -17759,7 +17957,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 canvas.rotate(60 * (1f - appear), x + drawable.getIntrinsicWidth() / 2f, y + drawable.getIntrinsicHeight() / 2f);
                 drawable.setBounds(x, y, x + drawable.getIntrinsicWidth(), y + drawable.getIntrinsicHeight());
                 drawable.setAlpha((int) (0xFF * (1.0f - priceProgress)));
-                drawable.draw(canvas);
+                drawSendIcon(canvas, drawable, planePressProgress);
                 canvas.restore();
             }
             final float right, cy, h;
@@ -17820,7 +18018,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 canvas.clipPath(path);
                 if (loadingShown > 0) {
-                    loadingPaint.setColor(0xFFFFFFFF);
+                    loadingPaint.setColor(fillContentColor);
                     loadingPaint.setAlpha((int) (0xFF * loadingShown));
                     final float R = dp(8.66f);
                     AndroidUtilities.rectTmp.set(right - w / 2.0f - R, cy - R, right - w / 2.0f + R, cy + R);
@@ -17860,7 +18058,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 } else {
                     drawableInverse.setBounds(x, y, x + drawable.getIntrinsicWidth(), y + drawable.getIntrinsicHeight());
                 }
-                drawableInverse.draw(canvas);
+                drawSendIcon(canvas, drawableInverse, planePressProgress);
                 if (loadingShown > 0) {
                     canvas.restore();
                 }
@@ -17929,11 +18127,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             final float _cy = backgroundRect.top + sz / 2f - dp(6);
             canvas.drawCircle(_cx, _cy, sz / 2f + dp(2), Theme.PAINT_CLEAR);
             canvas.drawCircle(_cx, _cy, sz / 2f, backgroundPaint);
-            if (lockIcon == null) {
-                lockIcon = NimarkoIconResources.getStockDrawable(getContext(), R.drawable.mini_switch_lock).mutate();
-                lockIcon.setColorFilter(new PorterDuffColorFilter(lockIconColor = drawableColor, PorterDuff.Mode.SRC_IN));
-            }
-            if (lockIconColor != drawableColor) {
+            if (!lockIconColorSet || lockIconColor != drawableColor) {
+                lockIconColorSet = true;
                 lockIcon.setColorFilter(new PorterDuffColorFilter(lockIconColor = drawableColor, PorterDuff.Mode.SRC_IN));
             }
             lockIcon.setBounds((int) (_cx - dp(8)), (int) (_cy - dp(8)), (int) (_cx + dp(8)), (int) (_cy + dp(8)));
@@ -17984,19 +18179,51 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         private int drawableColor;
 
+        private int inactiveDrawableColor;
+        private int inverseDrawableColor;
+        private boolean drawableThemeDark;
+        private boolean drawableColorsInitialized;
+        private int fillContentColor = Color.WHITE;
         public void updateColors() {
-            int color = isNewDesignSendButton
-                    ? MonetHelper.getOnPrimaryColor(Color.WHITE)
-                    : Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider);
-            if (color != drawableColor) {
+            updateIconDrawables();
+            int fillColor = Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider);
+            boolean packSurface = isNewDesignSendButton && customSendIcon;
+            int accentColor = fillColor;
+            if (packSurface) {
+                fillColor = ColorUtils.blendARGB(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), accentColor, 0.12f);
+            }
+            boolean monetFilled = isNewDesignSendButton && MonetHelper.isActiveMonetTheme();
+            int color = packSurface ? MonetHelper.ensureReadableForeground(accentColor, fillColor) : isNewDesignSendButton
+                    ? MonetHelper.ensureReadableForeground(MonetHelper.getOnPrimaryColor(Color.WHITE), fillColor)
+                    : fillColor;
+            int c = monetFilled || packSurface ? color : Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider);
+            int inactiveColor = Color.argb(0xb4, Color.red(c), Color.green(c), Color.blue(c));
+            int inverseColor = Theme.getColor(Theme.key_chat_messagePanelVoicePressed, resourcesProvider);
+            if (packSurface) {
+                inverseColor = color;
+            } else if (monetFilled) {
+                inverseColor = MonetHelper.ensureReadableForeground(inverseColor, fillColor);
+            }
+            int nextFillContentColor = monetFilled || packSurface ? color : Color.WHITE;
+            if (fillContentColor != nextFillContentColor) {
+                fillContentColor = nextFillContentColor;
+                priceText.setTextColor(fillContentColor);
+                count.setTextColor(fillContentColor);
+            }
+            boolean dark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+            if (!drawableColorsInitialized || color != drawableColor || inactiveColor != inactiveDrawableColor
+                    || inverseColor != inverseDrawableColor || dark != drawableThemeDark) {
+                drawableColorsInitialized = true;
                 drawableColor = color;
+                inactiveDrawableColor = inactiveColor;
+                inverseDrawableColor = inverseColor;
+                drawableThemeDark = dark;
                 drawable.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
-                int c = Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider);
-                inactiveDrawable.setColorFilter(new PorterDuffColorFilter(Color.argb(0xb4, Color.red(c), Color.green(c), Color.blue(c)), PorterDuff.Mode.SRC_IN));
-                drawableInverse.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelVoicePressed, resourcesProvider), PorterDuff.Mode.SRC_IN));
+                inactiveDrawable.setColorFilter(new PorterDuffColorFilter(inactiveColor, PorterDuff.Mode.SRC_IN));
+                drawableInverse.setColorFilter(new PorterDuffColorFilter(inverseColor, PorterDuff.Mode.SRC_IN));
             }
             if (isNewDesignSendButton) {
-                backgroundPaint.setColor(Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider));
+                backgroundPaint.setColor(fillColor);
             } else if (shouldDrawBackground()) {
                 backgroundPaint.setColor(getFillColor());
             } else {

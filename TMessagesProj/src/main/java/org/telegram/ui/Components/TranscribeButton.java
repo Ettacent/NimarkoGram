@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -91,6 +93,7 @@ public class TranscribeButton {
         outIconDrawable.setCurrentFrame(0);
         outIconDrawable.setCallback(parent);
         outIconDrawable.setOnFinishCallback(() -> {
+            if (!shouldBeOpen) return;
             outIconDrawable.stop();
             inIconDrawable.stop();
             isOpen = shouldBeOpen = true;
@@ -103,6 +106,7 @@ public class TranscribeButton {
         inIconDrawable.setCallback(parent);
         inIconDrawable.setMasterParent(parent);
         inIconDrawable.setOnFinishCallback(() -> {
+            if (shouldBeOpen) return;
             inIconDrawable.stop();
             outIconDrawable.stop();
             isOpen = shouldBeOpen = false;
@@ -155,11 +159,13 @@ public class TranscribeButton {
         if (animated) {
             if (open && !wasShouldBeOpen) {
                 isOpen = false;
+                inIconDrawable.stop();
                 inIconDrawable.setCurrentFrame(0);
                 outIconDrawable.setCurrentFrame(0);
                 outIconDrawable.start();
             } else if (!open && wasShouldBeOpen) {
                 isOpen = true;
+                outIconDrawable.stop();
                 outIconDrawable.setCurrentFrame(0);
                 inIconDrawable.setCurrentFrame(0);
                 inIconDrawable.start();
@@ -179,19 +185,28 @@ public class TranscribeButton {
     private boolean pressed = false;
     private long pressId = 0;
     public boolean onTouch(int action, float x, float y) {
+        boolean inside = pressBounds.contains((int) x, (int) y);
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            if (pressed && action == MotionEvent.ACTION_UP) {
+            boolean click = pressed && inside && action == MotionEvent.ACTION_UP;
+            pressed = false;
+            if (selectorDrawable != null) {
+                selectorDrawable.setState(StateSet.NOTHING);
+            }
+            if (parent != null) parent.invalidate();
+            if (click) {
                 onTap();
                 return true;
             }
-            pressed = false;
-            return false;
-        }
-        if (!pressBounds.contains((int) x, (int) y)) {
             return false;
         }
         if (action == MotionEvent.ACTION_DOWN) {
-            pressed = true;
+            pressed = inside;
+        } else if (action == MotionEvent.ACTION_MOVE && !inside) {
+            pressed = false;
+        }
+        if (!pressed) {
+            if (selectorDrawable != null) selectorDrawable.setState(StateSet.NOTHING);
+            return false;
         }
         if (pressed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && selectorDrawable instanceof RippleDrawable) {
             selectorDrawable.setHotspot(x, y);

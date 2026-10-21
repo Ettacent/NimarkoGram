@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.web;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1314,7 +1316,8 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         hasQRPending = false;
         lastQrText = null;
 
-        if (oldWebView != null) {
+        if (oldWebView != null && oldWebView.lifecycleOwner == this) {
+            oldWebView.lifecycleOwner = null;
             AndroidUtilities.removeFromParent(oldWebView);
             oldWebView.setContainers(null, null);
             oldWebView.setCloseListener(null);
@@ -1324,14 +1327,14 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             if (webViewProxy != null) {
                 webViewProxy.setContainer(null);
             }
-            botWebViewProxy = null;
-            webViewProxy = null;
             if (!keepWebView) {
                 oldWebView.destroy();
                 onWebViewDestroyed(oldWebView);
             }
         }
 
+        botWebViewProxy = null;
+        webViewProxy = null;
         isPageLoaded = false;
         updateKeyboardFocusable();
 
@@ -5385,6 +5388,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         }
 
         private BotWebViewContainer botWebViewContainer;
+        private BotWebViewContainer lifecycleOwner;
         private boolean botWebMessageListenerAdded;
         private ScriptHandler botWebMessageShimHandler;
         private WebViewScrollListener webViewScrollListener;
@@ -5392,6 +5396,9 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
 
         public void setContainers(BotWebViewContainer botWebViewContainer, WebViewScrollListener webViewScrollListener) {
             d("setContainers(" + botWebViewContainer + ", " + webViewScrollListener + ")");
+            if (botWebViewContainer != null) {
+                lifecycleOwner = botWebViewContainer;
+            }
             final boolean attachedAgain = this.botWebViewContainer == null && botWebViewContainer != null;
             this.botWebViewContainer = botWebViewContainer;
             this.webViewScrollListener = webViewScrollListener;
@@ -5495,6 +5502,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         @Override
         public void destroy() {
             d("destroy");
+            lifecycleOwner = null;
             whenPageLoaded = null;
             if (lastPermissionsDialog != null) {
                 try {

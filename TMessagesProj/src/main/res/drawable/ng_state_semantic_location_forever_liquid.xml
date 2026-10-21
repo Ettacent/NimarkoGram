@@ -1,0 +1,17 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="infinity" android:fillColor="#00000000"
+        android:strokeWidth="2.3" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,12C10,9.4 8.7,8.7 7,8.7C3.2,8.7 3.2,15.3 7,15.3C8.7,15.3 10,14.6 12,12C14,9.4 15.3,8.7 17,8.7C20.8,8.7 20.8,15.3 17,15.3C15.3,15.3 14,14.6 12,12Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="4" android:startY="8"
+                android:endX="20" android:endY="16" android:startColor="#EFFFFFFF"
+                android:centerColor="#B0FFFFFF" android:endColor="#D4FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

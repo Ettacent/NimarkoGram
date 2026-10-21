@@ -667,7 +667,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         return isCenterTitle || app.nimarkogram.messenger.NimarkoConfig.centerTitle;
     }
 
-    private boolean shouldUseAdaptiveCenterTitle() {
+    protected boolean shouldUseAdaptiveCenterTitle() {
         return shouldCenterTitle() && menu != null && menu.getVisibleItemsCount() > 2;
     }
 
@@ -1520,6 +1520,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void onSearchFieldVisibilityChanged(boolean visible) {
+        if (visible && !isSearchFieldVisible && searchFactor == 0f) {
+            captureSearchMenuGeometry();
+        }
         isSearchFieldVisible = visible;
         checkMenuItemsWidth();
         if (searchVisibleAnimator != null) {
@@ -1758,8 +1761,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (searchFieldIsVisible && !this.isSearchFieldVisible) {
                 menuWidth = MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST);
                 menu.measure(menuWidth, actionBarHeightSpec);
-                int itemsWidth = menu.getItemsMeasuredWidth(true);
-                menuWidth = MeasureSpec.makeMeasureSpec(width - dp(menuOccupyBack ? 0 : AndroidUtilities.isTablet() ? 74 : 66) + menu.getItemsMeasuredWidth(true), MeasureSpec.EXACTLY);
+                int itemsWidth = menu.getVisibleItemsLayoutWidth();
+                menuWidth = MeasureSpec.makeMeasureSpec(width - dp(menuOccupyBack ? 0 : AndroidUtilities.isTablet() ? 74 : 66) + itemsWidth, MeasureSpec.EXACTLY);
                 if (!isMenuOffsetSuppressed) {
                     menu.translateXItems(-itemsWidth);
                 }
@@ -2833,10 +2836,46 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     private float searchFactor;
 
+    private float searchClosedMenuWidth = -1f;
+    private float searchClosedMenuPresence;
+    private boolean searchMenuGeometryUpdating;
+    private final FactorAnimator animatorSearchClosedMenuWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
+    private final FactorAnimator animatorSearchClosedMenuPresence = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
+
+    private void captureSearchMenuGeometry() {
+        if (searchClosedMenuWidth >= 0f) {
+            return;
+        }
+        searchClosedMenuWidth = Math.max(0f, animatorMenuItemsWidth.getFactor());
+        searchClosedMenuPresence = animatorHasMenuItems.getFloatValue();
+        searchMenuGeometryUpdating = true;
+        try {
+            animatorSearchClosedMenuWidth.forceFactor(searchClosedMenuWidth);
+            animatorSearchClosedMenuPresence.forceFactor(searchClosedMenuPresence);
+        } finally {
+            searchMenuGeometryUpdating = false;
+        }
+    }
+
+    private void finishSearchMenuGeometryIfSettled() {
+        if (!searchMenuGeometryUpdating && searchClosedMenuWidth >= 0f && searchFactor == 0f && !isSearchFieldVisible
+                && searchClosedMenuWidth == animatorMenuItemsWidth.getFactor()
+                && searchClosedMenuWidth == animatorMenuItemsWidth.getToFactor()
+                && searchClosedMenuWidth == animatorSearchClosedMenuWidth.getToFactor()
+                && searchClosedMenuPresence == animatorHasMenuItems.getFloatValue()
+                && searchClosedMenuPresence == (animatorHasMenuItems.getValue() ? 1f : 0f)
+                && searchClosedMenuPresence == animatorSearchClosedMenuPresence.getToFactor()) {
+            searchClosedMenuWidth = -1f;
+        }
+    }
     public void setSearchFactor(float factor) {
         factor = Utilities.clamp01(factor);
+        if (factor > 0f && searchClosedMenuWidth < 0f) {
+            captureSearchMenuGeometry();
+        }
         if (searchFactor != factor) {
             searchFactor = factor;
+            finishSearchMenuGeometryIfSettled();
             invalidate();
             if (chatAvatarContainer != null
                     && (chatAvatarContainer.shouldUseCompactTitleIsland()
@@ -2919,47 +2958,73 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             out.setEmpty();
             return false;
         }
-        final int menuWidth = getGlassMenuWidth();
-        final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth)
+        final float menuWidth = getGlassMenuWidthFloat();
+        final float menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth)
                 ? (menuWidth > 0 ? p : 0)
-                : (int) (p * animatorHasMenuItems.getFloatValue()));
-        final int normalRightOffset = lerp(
+                : p * animatorHasMenuItems.getFloatValue());
+        final float normalRightOffset = lerp(
                 menuWidthWithPadding,
                 Math.max(menuWidthWithPadding, p + s),
                 useCompactChatTitle ? 1f - animatorAvatarContainerHasAvatar.getFloatValue() : 0f);
-        final int rightOffset = lerp(normalRightOffset, 0, search);
-        final int leftDefault = lerp(
-                hasBackButton ? s + p : 0,
-                s + p,
+        final float rightOffset = lerp(normalRightOffset, 0f, search);
+        final float leftDefault = lerp(
+                hasBackButton ? (float) s + p : 0f,
+                (float) s + p,
                 useCompactChatTitle ? 1f - animatorAvatarContainerHasAvatar.getFloatValue() : 0f);
 
         final int minimumIslandWidth = Math.min(barWidth, p * 2 + 1);
-        final int boundedLeftDefault = Math.min(
-                leftDefault, Math.max(0, barWidth - minimumIslandWidth));
-        final int rightDefault = Math.max(
+        final int boundedLeftDefault = Math.round(Math.min(
+                leftDefault, Math.max(0, barWidth - minimumIslandWidth)));
+        final int rightDefault = Math.round(Math.max(
                 boundedLeftDefault + minimumIslandWidth,
-                barWidth - Math.max(0, rightOffset));
-        final int widthDefault = rightDefault - boundedLeftDefault;
-        int left = boundedLeftDefault;
-        int right = rightDefault;
+                barWidth - Math.max(0, rightOffset)));
+        final float widthDefault = rightDefault - boundedLeftDefault;
+        float left = boundedLeftDefault;
+        float right = rightDefault;
         if (useCompactChatTitle) {
-            final int compactWidth = Math.max(
+            if (chatAvatarContainer.isInlineCenteredAvatar()
+                    && searchClosedMenuWidth >= 0f) {
+                final float closedMenuWidth = Math.max(0f,
+                        hasForcedMenuMinWidth ? Math.max(forcedMenuMinWidth,
+                                hasForcedMenuWidth ? forcedMenuWidth : searchClosedMenuWidth)
+                                : hasForcedMenuWidth ? forcedMenuWidth : searchClosedMenuWidth);
+                final float closedMenuPadding = closedMenuWidth
+                        + ((hasForcedMenuWidth || hasForcedMenuMinWidth)
+                        ? (closedMenuWidth > 0f ? p : 0f) : p * searchClosedMenuPresence);
+                final float closedRightOffset = lerp(closedMenuPadding,
+                        Math.max(closedMenuPadding, p + s),
+                        1f - animatorAvatarContainerHasAvatar.getFloatValue());
+                final int closedRight = Math.round(Math.max(
+                        boundedLeftDefault + minimumIslandWidth,
+                        barWidth - Math.max(0f, closedRightOffset)));
+                final int closedWidth = Math.round(Math.max(minimumIslandWidth,
+                        Math.min(closedRight - boundedLeftDefault,
+                                Math.max(0f, animatorAvatarContainerWidth.getFactor()) + p * 2)));
+                final int actionWidth = Math.round(lerp((float) closedWidth,
+                        closedRight - boundedLeftDefault, actionModeFactor));
+                final int closedLeft = Math.round(Math.max(boundedLeftDefault,
+                        Math.min((barWidth - actionWidth) / 2f, closedRight - actionWidth)));
+                out.set(Math.round(lerp((float) closedLeft, boundedLeftDefault, search)), 0,
+                        Math.round(lerp((float) (closedLeft + actionWidth), barWidth, search)), 0);
+                return true;
+            }
+            final int compactWidth = Math.round(Math.max(
                     minimumIslandWidth,
                     Math.min(widthDefault,
-                            Math.max(0, (int) animatorAvatarContainerWidth.getFactor()) + p * 2));
-            final int width = lerp(
-                    compactWidth,
+                            Math.max(0f, animatorAvatarContainerWidth.getFactor()) + p * 2)));
+            final int width = Math.round(lerp(
+                    (float) compactWidth,
                     widthDefault,
-                    Math.max(search, actionModeFactor));
+                    Math.max(search, actionModeFactor)));
             if (chatAvatarContainer.isInlineCenteredAvatar()) {
-                final int desiredLeft = (getWidth() - width) / 2;
+                final float desiredLeft = (getWidth() - width) / 2f;
                 left = Math.max(boundedLeftDefault, Math.min(desiredLeft, rightDefault - width));
             } else {
-                left = (rightDefault + boundedLeftDefault - width) / 2;
+                left = (rightDefault + boundedLeftDefault - width) / 2f;
             }
             right = left + width;
         }
-        out.set(left, 0, right, 0);
+        out.set(Math.round(left), 0, Math.round(right), 0);
         return true;
     }
 
@@ -3024,11 +3089,19 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
+        if (callee == animatorSearchClosedMenuWidth && searchClosedMenuWidth >= 0f) {
+            searchClosedMenuWidth = factor;
+        } else if (callee == animatorSearchClosedMenuPresence && searchClosedMenuWidth >= 0f) {
+            searchClosedMenuPresence = factor;
+        }
+        finishSearchMenuGeometryIfSettled();
         invalidate();
         final boolean compactMenuGeometryChanged =
                 chatAvatarContainer != null
                 && chatAvatarContainer.shouldUseCompactTitleIsland()
                 && (callee == animatorMenuItemsWidth
+                || callee == animatorSearchClosedMenuWidth
+                || callee == animatorSearchClosedMenuPresence
                 || animatorHasMenuItems.isAnimating());
         final boolean compactTitleWidthChanged =
                 callee == animatorAvatarContainerWidth
@@ -3076,9 +3149,13 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     private boolean isAnimationsAllowed;
 
     private int getGlassMenuWidth() {
-        final int width = hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor();
+        return Math.round(getGlassMenuWidthFloat());
+    }
+
+    private float getGlassMenuWidthFloat() {
+        final float width = hasForcedMenuWidth ? forcedMenuWidth : animatorMenuItemsWidth.getFactor();
         return Math.max(0, hasForcedMenuMinWidth
-                ? Math.max((int) (forcedMenuMinWidth * (1f - Utilities.clamp01(searchFactor))), width)
+                ? Math.max(forcedMenuMinWidth * (1f - Utilities.clamp01(searchFactor)), width)
                 : width);
     }
 
@@ -3088,6 +3165,19 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int searchMenuWidth = dp(46);
         final int width =                                              (actionModeVisible ? actionMenuWidth : defaultMenuWidth);
 
+        if (searchClosedMenuWidth >= 0f && !isSearchFieldVisible) {
+            if (isAnimationsAllowed) {
+                if (animatorSearchClosedMenuWidth.getToFactor() != width) {
+                    animatorSearchClosedMenuWidth.animateTo(width);
+                }
+                if (animatorSearchClosedMenuPresence.getToFactor() != (width > 0 ? 1f : 0f)) {
+                    animatorSearchClosedMenuPresence.animateTo(width > 0 ? 1f : 0f);
+                }
+            } else {
+                animatorSearchClosedMenuWidth.forceFactor(width);
+                animatorSearchClosedMenuPresence.forceFactor(width > 0 ? 1f : 0f);
+            }
+        }
         animatorHasMenuItems.setValue(width > 0, isAnimationsAllowed);
         if (animatorMenuItemsWidth.getToFactor() != width) {
             if (isAnimationsAllowed) {
@@ -3096,10 +3186,19 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 animatorMenuItemsWidth.forceFactor(width);
             }
         }
+        finishSearchMenuGeometryIfSettled();
     }
 
     public boolean doNotDrawGlassMenu;
 
+    private boolean drawGlassTitle = true;
+
+    public void setDrawGlassTitle(boolean draw) {
+        if (drawGlassTitle != draw) {
+            drawGlassTitle = draw;
+            invalidate();
+        }
+    }
     public void prepareGlassForCapture() {
         drawGlass(null);
     }

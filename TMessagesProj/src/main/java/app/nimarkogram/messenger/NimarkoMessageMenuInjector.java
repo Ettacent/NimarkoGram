@@ -51,7 +51,7 @@ public final class NimarkoMessageMenuInjector {
 
         items.add(LocaleController.getString(R.string.NM_QC_Create));
         options.add(OPTION_CREATE_QUOTE);
-        icons.add(R.drawable.menu_select_quote);
+        icons.add(R.drawable.ng_create_quote);
     }
 
     public static void injectCopyPhoto(
@@ -427,7 +427,7 @@ public final class NimarkoMessageMenuInjector {
         ));
         menuItems.add(new MenuItemConfig(
                 LocaleController.getString(R.string.NM_MI_CopyPhotoAsSticker),
-                R.drawable.msg_copy,
+                R.drawable.msg_sticker,
                 () -> NimarkoConfig.showCopyPhotoAsSticker,
                 NimarkoConfig::toggleShowCopyPhotoAsSticker,
                 false

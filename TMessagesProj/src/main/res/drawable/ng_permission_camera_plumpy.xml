@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="44dp" android:height="44dp" android:viewportWidth="44" android:viewportHeight="44">
+    <group>
+        <clip-path android:pathData="M0,0H44V44H0Z M36,13A8,8 0,1 0,20,13A8,8 0,1 0,36,13Z"/>
+        <path android:name="permission_camera_body" android:fillType="evenOdd" android:fillColor="#66FFFFFF" android:pathData="M9,15H10Q11.5,15 12,13L12.5,11.5Q13,10 15,10H20Q22,10 22.5,11.5L23,13Q23.5,15 25,15H27Q33,15 33,21V32Q33,38 27,38H9Q3,38 3,32V21Q3,15 9,15Z M23.5,25.5A6,6 0,1 0,11.5,25.5A6,6 0,1 0,23.5,25.5Z"></path>
+        <path android:name="permission_camera_details" android:fillColor="#B8FFFFFF" android:pathData="M22,25.5A4.5,4.5 0,1 1,13,25.5A4.5,4.5 0,1 1,22,25.5Z M8,19H10V20.5H8Z"/>
+    </group>
+</vector>

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.ListView;
 
 import android.content.Context;
@@ -10,6 +12,7 @@ import org.telegram.ui.Components.RecyclerListView;
 public class RecyclerListViewWithOverlayDraw extends RecyclerListView {
 
     boolean invalidated;
+    private final RectF overlayBounds = new RectF();
     public RecyclerListViewWithOverlayDraw(Context context) {
         super(context);
     }
@@ -18,13 +21,7 @@ public class RecyclerListViewWithOverlayDraw extends RecyclerListView {
     protected void dispatchDraw(Canvas canvas) {
         invalidated = false;
         for (int i = 0; i < getChildCount(); i++) {
-            if (getChildAt(i) instanceof OverlayView) {
-                OverlayView view = (OverlayView) getChildAt(i);
-                canvas.save();
-                canvas.translate(view.getX(), view.getY());
-                view.preDraw(this, canvas);
-                canvas.restore();
-            }
+            drawOverlayChild(canvas, getChildAt(i));
         }
         super.dispatchDraw(canvas);
     }
@@ -38,19 +35,33 @@ public class RecyclerListViewWithOverlayDraw extends RecyclerListView {
                 continue;
             }
 
-            final float left = child.getX();
-            final float top = child.getY();
-            final float right = left + child.getWidth();
-            final float bottom = top + child.getHeight();
-
-            if (!position.intersects(left, top, right, bottom)) {
+            overlayBounds.set(0, 0, child.getWidth(), child.getHeight());
+            child.getMatrix().mapRect(overlayBounds);
+            overlayBounds.offset(child.getLeft(), child.getTop());
+            if (!RectF.intersects(position, overlayBounds)) {
                 continue;
             }
 
-            canvas.save();
-            canvas.translate(left, top);
+            drawOverlayChild(canvas, child);
+        }
+    }
+
+    private void drawOverlayChild(Canvas canvas, View child) {
+        if (!(child instanceof OverlayView) || child.getVisibility() != View.VISIBLE
+                || child.getWidth() <= 0 || child.getHeight() <= 0) return;
+        final int alpha = Math.max(0, Math.min(255, Math.round(child.getAlpha() * 255)));
+        if (alpha == 0) return;
+        final int save = canvas.save();
+        try {
+            canvas.translate(child.getLeft(), child.getTop());
+            canvas.concat(child.getMatrix());
+            canvas.clipRect(0, 0, child.getWidth(), child.getHeight());
+            if (alpha != 255) {
+                canvas.saveLayerAlpha(0, 0, child.getWidth(), child.getHeight(), alpha);
+            }
             ((OverlayView) child).preDraw(this, canvas);
-            canvas.restore();
+        } finally {
+            canvas.restoreToCount(save);
         }
     }
 

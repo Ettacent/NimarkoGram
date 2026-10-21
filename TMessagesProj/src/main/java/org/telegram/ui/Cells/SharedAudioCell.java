@@ -507,6 +507,7 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         } else {
             hasMiniProgress = 0;
             miniButtonState = -1;
+            radialProgress.setMiniIcon(MediaActionDrawable.ICON_NONE, false, false);
         }
         if (hasMiniProgress != 0) {
             radialProgress.setMiniProgressBackgroundColor(getThemedColor(currentMessageObject.isOutOwner() ? Theme.key_chat_outLoader : Theme.key_chat_inLoader));

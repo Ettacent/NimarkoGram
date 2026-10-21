@@ -1,10 +1,12 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
@@ -20,6 +22,8 @@ import android.view.View;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import org.telegram.ui.ActionBar.Theme;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.AnimatedFloat;
@@ -29,7 +33,13 @@ public class ToggleButton extends View implements FlashViews.Invertable {
 
     private Drawable drawable;
 
-    private int activeResId;
+    private final int resId;
+    private final int activeResId;
+    private Resources iconResources;
+    private long iconGeneration;
+    private int iconDensity;
+    private boolean iconDark;
+    private float invert;
     private Bitmap activeBitmap;
     private final Paint activePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint activeBitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -41,18 +51,42 @@ public class ToggleButton extends View implements FlashViews.Invertable {
     public ToggleButton(Context context, int resId, int activeResId) {
         super(context);
 
-        drawable = context.getResources().getDrawable(resId).mutate();
+        this.resId = resId;
 
         this.activeResId = activeResId;
         activePaint.setColor(0xFFFFFFFF);
         activeBitmapPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+        refreshResourceDrawables();
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        refreshResourceDrawables();
+    }
+
+    private void refreshResourceDrawables() {
+        final Resources resources = getResources();
+        final long generation = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final int density = resources.getDisplayMetrics().densityDpi;
+        final boolean dark = Theme.isCurrentThemeDark();
+        if (iconResources != resources || iconGeneration != generation || iconDensity != density || iconDark != dark) {
+            drawable = resources.getDrawable(resId).mutate();
+            activeBitmap = null;
+            iconResources = resources;
+            iconGeneration = generation;
+            iconDensity = density;
+            iconDark = dark;
+            setInvert(invert);
+        }
         if (activeBitmap == null) {
-            activeBitmap = BitmapFactory.decodeResource(getResources(), activeResId);
+            Drawable activeDrawable = resources.getDrawable(activeResId).mutate();
+            final int width = Math.max(1, activeDrawable.getIntrinsicWidth());
+            final int height = Math.max(1, activeDrawable.getIntrinsicHeight());
+            activeBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            activeDrawable.setBounds(0, 0, width, height);
+            activeDrawable.draw(new Canvas(activeBitmap));
         }
     }
 
@@ -76,6 +110,7 @@ public class ToggleButton extends View implements FlashViews.Invertable {
     private final Path clipPath = new Path();
 
     public void setInvert(float invert) {
+        this.invert = invert;
         drawable.setColorFilter(new PorterDuffColorFilter(ColorUtils.blendARGB(0xFFFFFFFF, 0xFF000000, invert), PorterDuff.Mode.MULTIPLY));
         activePaint.setColor(ColorUtils.blendARGB(0xFFFFFFFF, 0xFF000000, invert));
     }
@@ -84,6 +119,7 @@ public class ToggleButton extends View implements FlashViews.Invertable {
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
+        refreshResourceDrawables();
         float t = valueAnimated.set(value);
 
         final int w = drawable.getIntrinsicWidth(), h = drawable.getIntrinsicHeight();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
 Modified by Nikolai Kudashov
 Changed drawing to Bitmap instead of Picture
@@ -143,12 +145,12 @@ public class SvgHelper {
 
         @Override
         public int getIntrinsicHeight() {
-            return width;
+            return height;
         }
 
         @Override
         public int getIntrinsicWidth() {
-            return height;
+            return width;
         }
 
         public void setAspectFill(boolean value) {

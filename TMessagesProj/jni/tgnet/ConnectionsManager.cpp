@@ -21,8 +21,8 @@
 #include <memory>
 #include <string>
 #include <cinttypes>
-#include <utility>
 #include "ConnectionsManager.h"
+#include "DownloadRequestBudget.h"
 #include "FileLog.h"
 #include "EventObject.h"
 #include "MTProtoScheme.h"
@@ -196,7 +196,7 @@ void ConnectionsManager::checkPendingTasks() {
         } else {
             count--;
         }
-        task = std::move(pendingTasks.front());
+        task = pendingTasks.front();
         pendingTasks.pop();
         pthread_mutex_unlock(&mutex);
         task();
@@ -311,7 +311,7 @@ void ConnectionsManager::select() {
 
 void ConnectionsManager::scheduleTask(std::function<void()> task) {
     pthread_mutex_lock(&mutex);
-    pendingTasks.push(std::move(task));
+    pendingTasks.push(task);
     pthread_mutex_unlock(&mutex);
     wakeup();
 }
@@ -817,10 +817,8 @@ void ConnectionsManager::onConnectionConnected(Connection *connection) {
             if (networkPaused && lastPauseTime != 0) {
                 lastPauseTime = getCurrentTimeMonotonicMillis();
             }
-            processRequestQueue(connection->getConnectionType(), datacenter->getDatacenterId());
-            // A busy request queue need not send a ping during connection setup. Do not leave the
-            // proxy's first RTT unavailable until the 19-second keepalive interval expires.
-            // Use the authenticated main connection, not a separate proxy-check connection.
+            processRequestQueue(connectionType, datacenter->getDatacenterId(),
+                                connectionType == ConnectionTypeDownload ? connection : nullptr);
             if (connectionType == ConnectionTypeGeneric && connection->getConnectionNum() == 0
                     && datacenter->getDatacenterId() == currentDatacenterId
                     && !proxyAddress.empty() && mainConnectionRtt.value(getCurrentTimeMonotonicMillis()) == 0 && !sendingPing) {
@@ -1128,7 +1126,9 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
             for (auto & runningRequest : runningRequests) {
                 Request *request = runningRequest.get();
                 Datacenter *requestDatacenter = getDatacenterWithId(request->datacenterId);
-                if (request->messageId < response->first_msg_id && request->connectionType & connection->getConnectionType() && requestDatacenter != nullptr && requestDatacenter->getDatacenterId() == datacenter->getDatacenterId()) {
+                bool sameDownloadConnection = connection->getConnectionType() != ConnectionTypeDownload ||
+                                              (request->connectionType >> 16) == connection->getConnectionNum();
+                if (sameDownloadConnection && request->messageId < response->first_msg_id && request->connectionType & connection->getConnectionType() && requestDatacenter != nullptr && requestDatacenter->getDatacenterId() == datacenter->getDatacenterId()) {
                     if (LOGS_ENABLED) DEBUG_D("clear request %p - %s", request->rawRequest, typeid(*request->rawRequest).name());
                     request->clear(true);
                 }
@@ -2111,9 +2111,16 @@ bool ConnectionsManager::cancelRequestInternal(int32_t token, int64_t messageId,
             request->cancelled = true;
             const char* type = request->rawRequest == nullptr ? "" : typeid(*request->rawRequest).name();
             if (LOGS_ENABLED) DEBUG_D("cancelled queued rpc request %p - %s of messageId 0x%" PRIx64, request->rawRequest, type, request->messageId);
+            if (onCancelled != nullptr) {
+                request->disableClearCallback = true;
+            }
+            auto cancelledRequest = std::move(*iter);
             requestsQueue.erase(iter);
             if (removeFromClass) {
                 removeRequestFromGuid(token);
+            }
+            if (onCancelled != nullptr) {
+                onCancelled();
             }
             return true;
         }
@@ -2125,9 +2132,16 @@ bool ConnectionsManager::cancelRequestInternal(int32_t token, int64_t messageId,
             request->cancelled = true;
             const char* type = request->rawRequest == nullptr ? "" : typeid(*request->rawRequest).name();
             if (LOGS_ENABLED) DEBUG_D("cancelled waiting login rpc request %p - %s", request->rawRequest, type);
+            if (onCancelled != nullptr) {
+                request->disableClearCallback = true;
+            }
+            auto cancelledRequest = std::move(*iter);
             waitingLoginRequests.erase(iter);
             if (removeFromClass) {
                 removeRequestFromGuid(token);
+            }
+            if (onCancelled != nullptr) {
+                onCancelled();
             }
             return true;
         }
@@ -2138,19 +2152,20 @@ bool ConnectionsManager::cancelRequestInternal(int32_t token, int64_t messageId,
         if (request == nullptr) continue;
         if ((token != 0 && request->requestToken == token) || (messageId != 0 && request->respondsToMessageId(messageId))) {
             request->cancelled = true;
+            if (onCancelled != nullptr) {
+                request->disableClearCallback = true;
+            }
             bool erase = true;
             if ((request->requestFlags & RequestFlagListenAfterCancel) != 0) {
                 int32_t token = request->requestToken;
                 auto oldOnCancelled = onCancelled;
-                if (onCancelled != nullptr) {
-                    request->disableClearCallback = true;
-                }
                 onCancelled = [this, oldOnCancelled, token]() -> void {
+                    std::unique_ptr<Request> cancelledRequest;
                     for (auto iter2 = runningRequests.begin(); iter2 != runningRequests.end(); iter2++) {
                         Request *request2 = iter2->get();
                         if (request2->requestToken == token && !request2->doNotClearOnDrop) {
-                            request2->disableClearCallback = true;
                             if (LOGS_ENABLED) DEBUG_D("6) erase request %d 0x%" PRIx64, request2->requestToken, request2->messageId);
+                            cancelledRequest = std::move(*iter2);
                             runningRequests.erase(iter2);
                             break;
                         }
@@ -2161,9 +2176,33 @@ bool ConnectionsManager::cancelRequestInternal(int32_t token, int64_t messageId,
                 };
                 erase = false;
             }
+            if (onCancelled != nullptr) {
+                auto callback = std::make_shared<onRequestCancelDoneFunc>(std::move(onCancelled));
+                onCancelled = [callback]() {
+                    auto action = std::move(*callback);
+                    *callback = nullptr;
+                    if (action != nullptr) {
+                        action();
+                    }
+                };
+            }
+            int64_t requestMessageId = request->messageId;
+            uint32_t datacenterId = request->datacenterId;
+            ConnectionType connectionType = request->connectionType;
+            const char* type = request->rawRequest == nullptr ? "" : typeid(*request->rawRequest).name();
+            if (LOGS_ENABLED) DEBUG_D("cancelled running rpc request %p - %s, of messageId 0x%" PRIx64 " notify=%d", request->rawRequest, type, requestMessageId, notifyServer);
+            std::unique_ptr<Request> cancelledRequest;
+            if (erase) {
+                if (LOGS_ENABLED) DEBUG_D("7) erase request %d 0x%" PRIx64, request->requestToken, requestMessageId);
+                cancelledRequest = std::move(*iter);
+                runningRequests.erase(iter);
+            }
+            if (removeFromClass) {
+                removeRequestFromGuid(token);
+            }
             if (notifyServer) {
                 auto dropAnswer = new TL_rpc_drop_answer();
-                dropAnswer->req_msg_id = request->messageId;
+                dropAnswer->req_msg_id = requestMessageId;
                 if (onCancelled != nullptr) {
                     sendRequest(dropAnswer, ([onCancelled](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime, int64_t msgId, int32_t dcId) -> void {
                         if (onCancelled != nullptr) {
@@ -2173,21 +2212,12 @@ bool ConnectionsManager::cancelRequestInternal(int32_t token, int64_t messageId,
                         if (onCancelled != nullptr) {
                             onCancelled();
                         }
-                    }), RequestFlagEnableUnauthorized | RequestFlagWithoutLogin | RequestFlagFailOnServerErrors | RequestFlagIsCancel, request->datacenterId, request->connectionType, true);
+                    }), RequestFlagEnableUnauthorized | RequestFlagWithoutLogin | RequestFlagFailOnServerErrors | RequestFlagIsCancel, datacenterId, connectionType, true);
                 } else {
-                    sendRequest(dropAnswer, nullptr, nullptr, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin | RequestFlagFailOnServerErrors | RequestFlagIsCancel, request->datacenterId, request->connectionType, true);
+                    sendRequest(dropAnswer, nullptr, nullptr, nullptr, RequestFlagEnableUnauthorized | RequestFlagWithoutLogin | RequestFlagFailOnServerErrors | RequestFlagIsCancel, datacenterId, connectionType, true);
                 }
             } else if (onCancelled != nullptr) {
                 onCancelled();
-            }
-            const char* type = request->rawRequest == nullptr ? "" : typeid(*request->rawRequest).name();
-            if (LOGS_ENABLED) DEBUG_D("cancelled running rpc request %p - %s, of messageId 0x%" PRIx64 " notify=%d", request->rawRequest, type, request->messageId, notifyServer);
-            if (erase) {
-                if (LOGS_ENABLED) DEBUG_D("7) erase request %d 0x%" PRIx64, request->requestToken, request->messageId);
-                runningRequests.erase(iter);
-            }
-            if (removeFromClass) {
-                removeRequestFromGuid(token);
             }
             return true;
         }
@@ -2215,7 +2245,7 @@ void ConnectionsManager::failNotRunningRequest(int32_t token) {
         return;
     }
 
-    scheduleTask([&, token] {
+    scheduleTask([&, token]() -> void {
         for (auto iter = requestsQueue.begin(); iter != requestsQueue.end(); iter++) {
             Request *request = iter->get();
             if ((token != 0 && request->requestToken == token)) {
@@ -2229,7 +2259,7 @@ void ConnectionsManager::failNotRunningRequest(int32_t token) {
                 if (LOGS_ENABLED) DEBUG_D("cancelled queued rpc request %p - %s", request->rawRequest, typeid(*request->rawRequest).name());
                 requestsQueue.erase(iter);
                 removeRequestFromGuid(token);
-                return true;
+                return;
             }
         }
     });
@@ -2465,7 +2495,12 @@ inline void addMessageToDatacenter(uint32_t datacenterId, NetworkMessage *networ
 #define MAX_DOWNLOAD_REQUESTS 16 * 2
 #define MAX_UPLOAD_REQUESTS 10 * 3
 
-void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t dc) {
+static uint32_t getDownloadSize(Request *request) {
+    auto apiRequest = dynamic_cast<TL_api_request *>(request->rawRequest);
+    return apiRequest != nullptr ? apiRequest->downloadSize : 0;
+}
+
+void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t dc, Connection *connectedDownload) {
     genericMessagesToDatacenters.clear();
     genericMediaMessagesToDatacenters.clear();
     tempMessagesToDatacenters.clear();
@@ -2537,21 +2572,6 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
                     genericRunningRequestCount++;
                 }
                 break;
-            case ConnectionTypeDownload: {
-                // Keep accounting in the shared map. A value copy loses every
-                // already-running request and lets boosted queues overrun the
-                // intended per-DC 32/64 request limit.
-                auto &map = request->isCancelRequest() ? downloadCancelRunningRequestCount : downloadRunningRequestCount;
-                uint32_t currentCount;
-                auto dcIter = map.find(datacenterId);
-                if (dcIter != map.end()) {
-                    currentCount = dcIter->second;
-                } else {
-                    currentCount = 0;
-                }
-                map[datacenterId] = currentCount + 1;
-                break;
-            }
             case ConnectionTypeUpload:
                 uploadRunningRequestCount++;
                 break;
@@ -2608,7 +2628,8 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
 
         uint32_t requestConnectionType = request->connectionType & 0x0000ffff;
 
-        bool forceThisRequest = (connectionTypes & requestConnectionType) && requestDatacenter->getDatacenterId() == dc;
+        bool forceThisRequest = (connectionTypes & requestConnectionType) && requestDatacenter->getDatacenterId() == dc &&
+                                (connectedDownload == nullptr || connection == connectedDownload);
 
         if (typeInfo == typeid(TL_get_future_salts)) {
             if (request->messageId != 0) {
@@ -2724,6 +2745,19 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
             }
         }
         iter++;
+    }
+
+    DownloadRequestBudget downloadBudget(currentUserPremium);
+    for (const auto &request : runningRequests) {
+        if (!request->cancelled && (request->connectionType & 0xffff) == ConnectionTypeDownload) {
+            uint32_t datacenterId = request->datacenterId == DEFAULT_DATACENTER_ID ? currentDatacenterId : request->datacenterId;
+            uint32_t bytes = getDownloadSize(request.get());
+            if (bytes == 0) {
+                auto &map = request->isCancelRequest() ? downloadCancelRunningRequestCount : downloadRunningRequestCount;
+                ++map[datacenterId];
+            }
+            downloadBudget.account(datacenterId, (request->requestFlags & RequestFlagSmallDownload) != 0, bytes);
+        }
     }
 
     Connection *genericConnection = nullptr;
@@ -2853,7 +2887,7 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
 
         Connection *connection = requestDatacenter->getConnectionByType(request->connectionType, true, canUseUnboundKey);
 
-        if (request->connectionType & ConnectionTypeGeneric && connection->getConnectionToken() == 0) {
+        if (((request->connectionType & ConnectionTypeGeneric) || getDownloadSize(request) != 0) && connection->getConnectionToken() == 0) {
             iter++;
             continue;
         }
@@ -2883,6 +2917,14 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
                     if (LOGS_ENABLED)
                         DEBUG_D("skip queue, token = %d: download type: network unavailable", request->requestToken);
                     continue;
+                }
+                uint32_t bytes = getDownloadSize(request);
+                if (bytes != 0) {
+                    if (!downloadBudget.acquire(datacenterId, (request->requestFlags & RequestFlagSmallDownload) != 0, bytes)) {
+                        iter++;
+                        continue;
+                    }
+                    break;
                 }
                 int max;
                 if (request->isCancelRequest()) {

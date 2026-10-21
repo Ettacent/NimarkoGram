@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -354,6 +356,8 @@ public class RadialProgress2 {
         int currentIcon = mediaActionDrawable.getCurrentIcon();
         final float wholeAlpha = getWholeAlpha();
 
+        mediaActionDrawable.setOverrideAlpha(overrideAlpha);
+        miniMediaActionDrawable.setOverrideAlpha(overrideAlpha);
         if (isPressedMini && circleCrossfadeColorKey < 0) {
             if (iconPressedColorKey >= 0) {
                 miniMediaActionDrawable.setColor(getThemedColor(iconPressedColorKey));
@@ -502,7 +506,6 @@ public class RadialProgress2 {
                 mediaActionDrawable.draw(canvas);
             }
         } else {
-            mediaActionDrawable.setOverrideAlpha(overrideAlpha);
             mediaActionDrawable.draw(canvas);
         }
         if (restore != Integer.MIN_VALUE && miniDrawCanvas != null) {
@@ -541,6 +544,7 @@ public class RadialProgress2 {
                 miniDrawCanvas.drawCircle(AndroidUtilities.dp(18 + size + offset), AndroidUtilities.dp(18 + size + offset), AndroidUtilities.dp(halfSize + 1) * alpha * miniIconScale, Theme.checkboxSquare_eraserPaint);
             } else {
                 miniProgressBackgroundPaint.setColor(progressColor);
+                miniProgressBackgroundPaint.setAlpha((int) (Color.alpha(progressColor) * wholeAlpha * overrideAlpha));
                 canvas.drawCircle(cx, cy, AndroidUtilities.dp(12), miniProgressBackgroundPaint);
             }
 

@@ -21,13 +21,17 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.Editable;
@@ -54,6 +58,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -106,6 +111,9 @@ import org.telegram.ui.Components.StickerEmptyView;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.utils.ui.MonetHelper;
 public class PhotoPickerActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     public interface PhotoPickerActivityDelegate {
@@ -176,7 +184,6 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
     protected View shadow;
     protected EditTextEmoji commentTextView;
     private ImageView writeButton;
-    private Drawable writeButtonDrawable;
     private SizeNotifierFrameLayout sizeNotifierFrameLayout;
     private int itemsPerRow = 3;
     private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -1043,20 +1050,8 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
             writeButtonContainer.setAlpha(0.0f);
             sizeNotifierFrameLayout.addView(writeButtonContainer, LayoutHelper.createFrame(60, 60, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 12, 10));
 
-            writeButton = new ImageView(context);
-            writeButtonDrawable = Theme.createSimpleSelectorCircleDrawable(AndroidUtilities.dp(56), Theme.getColor(Theme.key_dialogFloatingButton), Theme.getColor(Build.VERSION.SDK_INT >= 21 ? Theme.key_dialogFloatingButtonPressed : Theme.key_dialogFloatingButton));
-            if (Build.VERSION.SDK_INT < 21) {
-                Drawable shadowDrawable = context.getResources().getDrawable(R.drawable.floating_shadow_profile).mutate();
-                shadowDrawable.setColorFilter(new PorterDuffColorFilter(0xff000000, PorterDuff.Mode.MULTIPLY));
-                CombinedDrawable combinedDrawable = new CombinedDrawable(shadowDrawable, writeButtonDrawable, 0, 0);
-                combinedDrawable.setIconSize(AndroidUtilities.dp(56), AndroidUtilities.dp(56));
-                writeButtonDrawable = combinedDrawable;
-            }
-            writeButton.setBackgroundDrawable(writeButtonDrawable);
-            writeButton.setImageResource(R.drawable.attach_send);
+            writeButton = new PickerSendButton(context, dialogBackgroundKey);
             writeButton.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            writeButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogFloatingIcon), PorterDuff.Mode.MULTIPLY));
-            writeButton.setScaleType(ImageView.ScaleType.CENTER);
             if (Build.VERSION.SDK_INT >= 21) {
                 writeButton.setOutlineProvider(new ViewOutlineProvider() {
                     @SuppressLint("NewApi")
@@ -1205,6 +1200,104 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
         updatePhotosButton(0);
 
         return fragmentView;
+    }
+
+    static final class PickerSendButton extends ImageView {
+        private final int surfaceKey;
+        private Resources iconResources;
+        private Configuration iconConfiguration;
+        private long iconGeneration = Long.MIN_VALUE;
+        private int iconDensityDpi;
+        private float iconDensity;
+        private boolean customIcon;
+        private int backgroundColor;
+        private int pressedColor;
+        private int foregroundColor;
+        private boolean colorsInitialized;
+
+        PickerSendButton(Context context, int surfaceKey) {
+            super(context);
+            this.surfaceKey = surfaceKey;
+            setScaleType(ImageView.ScaleType.CENTER);
+            refreshSendIcon();
+        }
+
+        private void refreshSendIcon() {
+            Resources resources = getContext().getResources();
+            long generation = resources instanceof NimarkoIconResources
+                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            int densityDpi = resources.getDisplayMetrics().densityDpi;
+            float density = resources.getDisplayMetrics().density;
+            Configuration configuration = resources.getConfiguration();
+            boolean reload = getDrawable() == null || iconResources != resources
+                    || iconGeneration != generation || iconDensityDpi != densityDpi
+                    || iconDensity != density || !configuration.equals(iconConfiguration);
+            if (reload) {
+                customIcon = resources instanceof NimarkoIconResources
+                        && ((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_send);
+                if (customIcon) {
+                    Drawable icon = resources.getDrawable(R.drawable.ic_send).mutate();
+                    float artworkDp = ((NimarkoIconResources) resources).getAppliedSelection()
+                            == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS ? 32f : 24f;
+                    int size = (int) Math.ceil(artworkDp * density);
+                    int width = icon.getIntrinsicWidth();
+                    int height = icon.getIntrinsicHeight();
+                    CombinedDrawable fitted = new CombinedDrawable(new ColorDrawable(Color.TRANSPARENT), icon);
+                    fitted.setCustomSize(size, size);
+                    if (width > 0 && height > 0) {
+                        float scale = Math.min((float) size / width, (float) size / height);
+                        fitted.setIconSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+                    } else {
+                        fitted.setIconSize(size, size);
+                    }
+                    setImageDrawable(fitted);
+                } else {
+                    setImageResource(R.drawable.attach_send);
+                }
+                iconResources = resources;
+                iconGeneration = generation;
+                iconDensityDpi = densityDpi;
+                iconDensity = density;
+                iconConfiguration = new Configuration(configuration);
+            }
+
+            int fill = Theme.getColor(Theme.key_dialogFloatingButton);
+            int pressed = Theme.getColor(Build.VERSION.SDK_INT >= 21
+                    ? Theme.key_dialogFloatingButtonPressed : Theme.key_dialogFloatingButton);
+            int foreground = Theme.getColor(Theme.key_dialogFloatingIcon);
+            if (customIcon) {
+                int surface = Theme.getColor(surfaceKey);
+                int accent = fill;
+                fill = ColorUtils.blendARGB(surface, fill, 0.12f);
+                pressed = ColorUtils.blendARGB(surface, pressed, 0.12f);
+                foreground = MonetHelper.ensureReadableForeground(accent, fill);
+            }
+            if (reload || !colorsInitialized || fill != backgroundColor || pressed != pressedColor) {
+                Drawable background = Theme.createSimpleSelectorCircleDrawable(dp(56), fill, pressed);
+                if (Build.VERSION.SDK_INT < 21) {
+                    Drawable shadow = resources.getDrawable(R.drawable.floating_shadow_profile).mutate();
+                    shadow.setColorFilter(new PorterDuffColorFilter(0xff000000, PorterDuff.Mode.MULTIPLY));
+                    CombinedDrawable combined = new CombinedDrawable(shadow, background, 0, 0);
+                    combined.setIconSize(dp(56), dp(56));
+                    background = combined;
+                }
+                setBackgroundDrawable(background);
+            }
+            if (reload || !colorsInitialized || foreground != foregroundColor) {
+                setColorFilter(new PorterDuffColorFilter(foreground,
+                        customIcon ? PorterDuff.Mode.SRC_IN : PorterDuff.Mode.MULTIPLY));
+            }
+            backgroundColor = fill;
+            pressedColor = pressed;
+            foregroundColor = foreground;
+            colorsInitialized = true;
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            refreshSendIcon();
+            super.draw(canvas);
+        }
     }
 
     @Override

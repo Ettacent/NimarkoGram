@@ -2247,7 +2247,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
 
             closeView = new ImageView(context);
             closeView.setBackground(Theme.createCircleDrawable(dp(28), 0x24FFFFFF));
-            closeView.setImageResource(R.drawable.msg_close);
+            closeView.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
             ScaleStateListAnimator.apply(closeView);
             addView(closeView, LayoutHelper.createFrame(28, 28, Gravity.RIGHT | Gravity.TOP, 0, 12, 12, 0));
             closeView.setOnClickListener(v -> dismiss.run());
@@ -8687,7 +8687,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             ScaleStateListAnimator.apply(helpButton);
 
             closeButton = new ImageView(context);
-            closeButton.setImageResource(R.drawable.msg_close);
+            closeButton.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
             closeButton.setBackground(new RoundRectStrokeDrawable(dp(24), Theme.multAlpha(0xFFFFFFFF, 0.08f)));
             buttonsLayout.addView(closeButton, LayoutHelper.createFrame(32, 32, Gravity.TOP | Gravity.RIGHT, 14, 14, 14, 14));
             closeButton.setOnClickListener(v -> {
@@ -9595,7 +9595,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
                 addView(closeLayout, LayoutHelper.createFrame(20, 20, Gravity.TOP | Gravity.RIGHT, 2, 0, 2, 0));
 
                 closeIcon = new ImageView(context);
-                closeIcon.setImageResource(R.drawable.msg_close);
+                closeIcon.setImageDrawable(app.nimarkogram.messenger.icons.CompactIconHelper.getDrawable(context, R.drawable.msg_close));
                 closeIcon.setScaleType(ImageView.ScaleType.CENTER);
                 closeLayout.addView(closeIcon, LayoutHelper.createFrame(12, 12, Gravity.CENTER));
 

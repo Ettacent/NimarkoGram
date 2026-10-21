@@ -112,6 +112,7 @@ import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ChoosingStickerStatusDrawable;
 import org.telegram.ui.Components.CombinedDrawable;
+import org.telegram.ui.Components.MediaControlIconHelper;
 import org.telegram.ui.Components.FragmentContextViewWavesDrawable;
 import org.telegram.ui.Components.LinkPath;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
@@ -3461,6 +3462,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static final int key_telegram_color = colorsCount++;
     public static final int key_telegram_color_text = colorsCount++;
 
+    public static final int key_wallet_comment = colorsCount++;
+    public static final int key_wallet_out_commentBorder = colorsCount++;
+    public static final int key_wallet_inputCurrency = colorsCount++;
     public static final String key_drawable_botInline = "drawableBotInline";
     public static final String key_drawable_botLink = "drawableBotLink";
     public static final String key_drawable_botWebView = "drawableBotWebView";
@@ -3761,6 +3765,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
         // fallbackKeys.put(key_chat_msgIvButtonDefaultIn, );
         // fallbackKeys.put(key_chat_msgIvButtonDefaultInPressed, );
+        fallbackKeys.put(key_wallet_comment, Theme.key_dialogBackgroundGray);
+        fallbackKeys.put(key_wallet_out_commentBorder, Theme.key_divider);
+        fallbackKeys.put(key_wallet_inputCurrency, Theme.key_color_green);
         fallbackKeys.put(key_chat_msgIvButtonDefaultInText, key_chat_messageTextIn);
 
         fallbackKeys.put(key_chat_msgIvButtonPrimaryIn, key_featuredStickers_addButton);
@@ -5733,8 +5740,12 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     public static void applyThemeInBackground(ThemeInfo themeInfo, boolean nightTheme, Runnable onDone, Runnable onCancelled) {
+        applyThemeInBackground(themeInfo, nightTheme, onDone, onCancelled, null);
+    }
+
+    public static void applyThemeInBackground(ThemeInfo themeInfo, boolean nightTheme, Runnable onDone, Runnable onCancelled, Runnable onBeforeApply) {
         int generation = backgroundThemeApplyGeneration.incrementAndGet();
-        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone, onCancelled, generation);
+        applyThemeInBackground(themeInfo, true, true, nightTheme, onDone, onCancelled, onBeforeApply, generation);
     }
 
     public static void applyTheme(ThemeInfo themeInfo, boolean save, boolean nightTheme) {
@@ -5894,7 +5905,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         }
     }
 
-    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone, Runnable onCancelled, int generation) {
+    private static void applyThemeInBackground(ThemeInfo themeInfo, boolean save, boolean removeWallpaperOverride, final boolean nightTheme, Runnable onDone, Runnable onCancelled, Runnable onBeforeApply, int generation) {
         if (themeInfo == null) {
             if (onDone != null) {
                 onDone.run();
@@ -5920,6 +5931,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                             onCancelled.run();
                         }
                         return;
+                    }
+                    if (onBeforeApply != null) {
+                        onBeforeApply.run();
                     }
                     try {
                         themedWallpaperFileOffset = currentColorsNoAccent.get(key_wallpaperFileOffset, -1);
@@ -6062,6 +6076,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 }
                 return;
             } else {
+                if (onBeforeApply != null) {
+                    onBeforeApply.run();
+                }
                 if (!nightTheme && save) {
                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                     SharedPreferences.Editor editor = preferences.edit();
@@ -6269,7 +6286,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         applyProfileTheme();
         applyChatTheme(false, bg);
         boolean checkNavigationBarColor = !hasPreviousTheme;
-        AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewTheme, false, checkNavigationBarColor));
+        AndroidUtilities.runOnUIThread(() -> {
+            org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory.invalidateGlassSettings();
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewTheme, false, checkNavigationBarColor);
+        });
     }
 
     public static boolean hasHue(int color) {
@@ -8346,7 +8366,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             chat_msgTextCodePaint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 1), SharedConfig.fontSize - 2)));
             chat_msgTextCode2Paint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 2), SharedConfig.fontSize - 3)));
             chat_msgTextCode3Paint.setTextSize(dp(Math.max(Math.min(10, SharedConfig.fontSize - 2), SharedConfig.fontSize - 5)));
-            if (Theme.chat_msgTextPaint == null) {
+            if (chat_timePaint instanceof com.exteragram.messenger.utils.ui.TextPaint) {
                 com.exteragram.messenger.utils.ui.LegacyThemeFields.chat_timePaint =
                         (com.exteragram.messenger.utils.ui.TextPaint) chat_timePaint;
             }
@@ -8490,7 +8510,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
             Resources resources = context.getResources();
 
-            chat_msgNoSoundDrawable = resources.getDrawable(R.drawable.video_muted);
+            chat_msgNoSoundDrawable = MediaControlIconHelper.getDrawableBounded(context, R.drawable.video_muted);
             chat_livePhoto = resources.getDrawable(R.drawable.media_live_on).mutate();
 
             chat_msgInDrawable = new MessageDrawable(MessageDrawable.TYPE_TEXT, false, false);
@@ -8628,8 +8648,8 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
 
             chat_fileStatesDrawable[0][0] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_play_m);
             chat_fileStatesDrawable[0][1] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_play_m);
-            chat_fileStatesDrawable[1][0] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_pause_m);
-            chat_fileStatesDrawable[1][1] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_pause_m);
+            chat_fileStatesDrawable[1][0] = createCircleDrawableWithIcon(dp(44), MediaControlIconHelper.getDrawableBounded(context, R.drawable.msg_round_pause_m).mutate(), 0);
+            chat_fileStatesDrawable[1][1] = createCircleDrawableWithIcon(dp(44), MediaControlIconHelper.getDrawableBounded(context, R.drawable.msg_round_pause_m).mutate(), 0);
             chat_fileStatesDrawable[2][0] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_load_m);
             chat_fileStatesDrawable[2][1] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_load_m);
             chat_fileStatesDrawable[3][0] = createCircleDrawableWithIcon(dp(44), R.drawable.msg_round_file_s);

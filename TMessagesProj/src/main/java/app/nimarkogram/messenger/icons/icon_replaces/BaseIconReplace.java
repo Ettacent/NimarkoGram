@@ -16,6 +16,14 @@ public abstract class BaseIconReplace {
 
     protected final HashSet<Integer> noTint = new HashSet<>();
 
+    protected final void addAlias(int stock, int existing) {
+        Integer replacement = replaces.get(existing);
+        if (replacement != null && replaces.putIfAbsent(stock, replacement) == null) {
+            if (noTint.contains(existing)) {
+                noTint.add(stock);
+            }
+        }
+    }
     public final int wrap(int id) {
         Integer mapped = replaces.get(id);
         return mapped != null ? mapped : id;

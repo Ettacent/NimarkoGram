@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -9,6 +11,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.Editable;
@@ -23,6 +26,7 @@ import android.transition.Visibility;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
@@ -33,6 +37,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
+import app.nimarkogram.messenger.infocards.InfoCardsConfig;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.LocaleController;
@@ -69,6 +74,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     
     private app.nimarkogram.messenger.infocards.InfoCardStripView infoCards;
     private boolean infoCardsSuppressed;
+    private boolean searchIconOnRight;
     private final boolean withInfoCards;
     private boolean closeButtonForcedVisible;
     public final EditTextBoldCursor editText;
@@ -171,6 +177,17 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         addView(closeIcon, LayoutHelper.createFrame(24, 24, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT), 12, 0, 12, 0));
 
         searchFilterLayout = new LinearLayout(getContext()) {
+            private final Rect touchClip = new Rect();
+
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && getClipBounds(touchClip)
+                        && (event.getX() < touchClip.left || event.getX() >= touchClip.right
+                        || event.getY() < touchClip.top || event.getY() >= touchClip.bottom)) {
+                    return false;
+                }
+                return super.dispatchTouchEvent(event);
+            }
             @Override
             protected void onLayout(boolean changed, int l, int t, int r, int b) {
                 animatorSearchFiltersWidth.animateTo(getMeasuredWidth());
@@ -189,7 +206,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
             infoCards.setVisibilityFactor(1f);
             
             addView(infoCards, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT,
-                    (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT), 6, 0, 6, 0));
+                    (InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT), 6, 0, 6, 0));
         }
 
         setWillNotDraw(false);
@@ -235,6 +252,22 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         drawable.setPadding(dp(4));
         blurredBackgroundDrawable = drawable;
     }
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        float factor = animatorInfoCardsVisible.getFloatValue();
+        if (child != infoCards || factor >= 1f || infoCardsSuppressed) {
+            return super.drawChild(canvas, child, drawingTime);
+        }
+        int save = canvas.save();
+        try {
+            boolean left = InfoCardsConfig.isOnLeft();
+            canvas.clipRect(left ? child.getLeft() - dp(4) : 0, -dp(8),
+                    left ? getWidth() : child.getRight() + dp(4), getHeight() + dp(8));
+            return super.drawChild(canvas, child, drawingTime);
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
     public void setInfoCardsGlassBackgroundFactory(
             org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory factory) {
         if (infoCards != null) infoCards.setGlassBackgroundFactory(factory);
@@ -262,17 +295,51 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (infoCards != null) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) infoCards.getLayoutParams();
+            params.gravity = InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT;
+        }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         checkUi_editTextPaddings();
     }
 
     private void checkUi_editTextPaddings() {
+        final boolean cardsEnabled = infoCards != null && !infoCardsSuppressed
+                && InfoCardsConfig.isEnabled() && infoCards.getChildCount() > 0;
+        searchIconOnRight = cardsEnabled && InfoCardsConfig.isOnLeft() && !LocaleController.isRTL;
         final int filtersWidth = (int) animatorSearchFiltersWidth.getFactor() + dp(6); 
-        final int pStart = Math.max(filtersWidth, dp(48));
-        final int pEnd = dp(48) + additionalIconsLayout.getMeasuredWidth();
+        int pStart = Math.max(filtersWidth, dp(searchIconOnRight ? 12 : 48));
+        int pEnd = dp(48) + additionalIconsLayout.getMeasuredWidth();
+        int cardInset = 0;
+        boolean cardsAtStart = false;
+        float cardFactor = 0f;
+        if (cardsEnabled && infoCards.getVisibility() != GONE) {
+            cardFactor = Math.max(0f, Math.min(1f, animatorInfoCardsVisible.getFloatValue()));
+            cardInset = Math.round((infoCards.getMeasuredWidth() + dp(12)) * cardFactor);
+            cardsAtStart = InfoCardsConfig.isOnLeft() != LocaleController.isRTL;
+            if (cardsAtStart) {
+                pStart += cardInset;
+            } else {
+                pEnd = Math.max(pEnd, Math.round(infoCards.getMeasuredWidth() * cardFactor) + dp(12));
+            }
+        }
+        if (infoCards != null) {
+            boolean left = InfoCardsConfig.isOnLeft();
+            int cardWidth = infoCards.getMeasuredWidth();
+            infoCards.setPivotX(left ? 0f : cardWidth);
+            infoCards.setTranslationX(cardFactor > 0f
+                    ? (left ? -1f : 1f) * (infoCards.getScaleX() - cardFactor) * cardWidth : 0f);
+        }
+        float startOffset = cardsAtStart ? cardInset * (LocaleController.isRTL ? -1f : 1f) : 0f;
+        searchIcon.setTranslationX(searchIconOnRight
+                ? Math.max(0, getMeasuredWidth() - getPaddingLeft() - getPaddingRight() - dp(48))
+                : startOffset);
+        searchFilterLayout.setTranslationX(startOffset);
+        updateSearchIconVisibility();
 
-        final int pLeft = LocaleController.isRTL ? pEnd : pStart;
-        final int pRight = LocaleController.isRTL ? pStart : pEnd;
+        final int width = editText.getMeasuredWidth();
+        final int pLeft = Math.min(width, LocaleController.isRTL ? pEnd : pStart);
+        final int pRight = Math.min(Math.max(0, width - pLeft), LocaleController.isRTL ? pStart : pEnd);
 
         AndroidUtilities.rectTmp2.set(
             pLeft, 0,
@@ -281,6 +348,20 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         );
         editText.setClipBounds(AndroidUtilities.rectTmp2);
         editText.setPadding(pLeft, 0, pRight, 0);
+        int filterWidth = searchFilterLayout.getMeasuredWidth();
+        int filterVisibleWidth = Math.max(0, Math.min(filterWidth,
+                width - (cardsAtStart ? cardInset : 0) - pEnd - dp(4)));
+        AndroidUtilities.rectTmp2.set(LocaleController.isRTL ? filterWidth - filterVisibleWidth : 0, 0,
+                LocaleController.isRTL ? filterWidth : filterVisibleWidth, searchFilterLayout.getMeasuredHeight());
+        searchFilterLayout.setClipBounds(AndroidUtilities.rectTmp2);
+    }
+
+    private void updateSearchIconVisibility() {
+        float factor = animatorSearchIconVisible.getFloatValue();
+        if (searchIconOnRight) {
+            factor *= 1f - animatorCloseIconVisible.getFloatValue();
+        }
+        FragmentFloatingButton.setAnimatedVisibility(searchIcon, factor);
     }
 
     public boolean isSectionBackground;
@@ -357,6 +438,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         if (infoCards != null) {
             infoCards.setVisibilityFactor(suppressed ? 0f : animatorInfoCardsVisible.getFloatValue());
         }
+        checkUi_editTextPaddings();
     }
 
     private void checkCloseButtonVisible() {
@@ -370,12 +452,14 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         if (id == ANIMATOR_ID_CLOSE_BUTTON_VISIBLE) {
             FragmentFloatingButton.setAnimatedVisibility(closeIcon, factor);
             closeIcon.setRotation((1 - factor) * 90);
+            updateSearchIconVisibility();
         } else if (id == ANIMATOR_ID_SEARCH_ICON_VISIBLE) {
-            FragmentFloatingButton.setAnimatedVisibility(searchIcon, factor);
+            updateSearchIconVisibility();
         } else if (id == ANIMATOR_ID_SEARCH_FILTERS_WIDTH) {
             checkUi_editTextPaddings();
         } else if (id == ANIMATOR_ID_INFO_CARDS_VISIBLE) {
             if (infoCards != null) infoCards.setVisibilityFactor(infoCardsSuppressed ? 0f : factor);
+            checkUi_editTextPaddings();
         }
     }
 

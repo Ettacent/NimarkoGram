@@ -111,6 +111,12 @@ public class AnimatedLinearLayout extends LinearLayout {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        for (int i = 0; i < getChildCount(); i++) {
+            final View child = getChildAt(i);
+            if (child instanceof IndependentPanel) {
+                child.forceLayout();
+            }
+        }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         calculateTotalSizesAfterMeasure();
     }

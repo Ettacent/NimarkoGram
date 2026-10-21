@@ -12,6 +12,7 @@ import java.util.List;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
@@ -27,6 +28,7 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
     private static final int ID_INFINITE_SCROLL    = 101;
     private static final int ID_AUTO_SCROLL        = 102;
 
+    private static final int ID_SIDE               = 103;
     private static final int ID_CARD_BASE          = 1000;
 
     private int activeReorderSectionId = -1;
@@ -89,6 +91,16 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
                             LocaleController.getString(R.string.NM_CARDS_AutoScroll))
                     .setChecked(InfoCardsConfig.isAutoScroll()));
 
+        }
+
+        UItem sideItem = SettingsActivity.SettingCell.Factory.of(ID_SIDE, 0, 0, 0,
+                LocaleController.getString(R.string.NM_CARDS_Side),
+                LocaleController.getString(R.string.NM_SettingsDesc_CardsSide),
+                LocaleController.getString(InfoCardsConfig.isOnLeft()
+                        ? R.string.NM_CARDS_SideLeft : R.string.NM_CARDS_SideRight));
+        items.add(SettingsActivity.SettingCell.Factory.withDividers(sideItem));
+
+        if (enabled) {
             final List<Integer> active = InfoCardsConfig.getActiveCards();
             final List<Integer> hidden = InfoCardsConfig.getHiddenCards();
 
@@ -126,6 +138,15 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
             InfoCardsConfig.setEnabled(!InfoCardsConfig.isEnabled());
             updateCheckState(view, InfoCardsConfig.isEnabled());
             reload();
+        } else if (id == ID_SIDE) {
+            ArrayList<String> labels = new ArrayList<>();
+            labels.add(LocaleController.getString(R.string.NM_CARDS_SideRight));
+            labels.add(LocaleController.getString(R.string.NM_CARDS_SideLeft));
+            PopupHelper.show(labels, LocaleController.getString(R.string.NM_CARDS_Side),
+                    InfoCardsConfig.getSide(), getParentActivity(), i -> {
+                        InfoCardsConfig.setSide(i);
+                        reload();
+                    }, getResourceProvider());
         } else if (id == ID_INFINITE_SCROLL) {
             boolean v = !InfoCardsConfig.isInfiniteScrolling();
             InfoCardsConfig.setInfiniteScrolling(v);

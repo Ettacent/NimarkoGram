@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -112,23 +114,14 @@ public class Bitmaps {
     };
 
     public static Bitmap createBitmap(int width, int height, Bitmap.Config config) {
-        Bitmap bitmap;
-        bitmap = Bitmap.createBitmap(width, height, config);
+        Bitmap bitmap = Bitmap.createBitmap(width, height, config);
         if (config == Bitmap.Config.ARGB_8888 || config == Bitmap.Config.ARGB_4444) {
             bitmap.eraseColor(Color.TRANSPARENT);
         }
         return bitmap;
     }
 
-    public static Bitmap createBitmap(Bitmap source, int x, int y, int width, int height, Matrix m, boolean filter) {
-        return Bitmap.createBitmap(source, x, y, width, height, m, filter);
-    }
-
-    public static Bitmap createBitmap(Bitmap source, int x, int y, int width, int height) {
-        return createBitmap(source, x, y, width, height, null, false);
-    }
-
-    public static Bitmap createScaledBitmap(Bitmap src, int dstWidth, int dstHeight, boolean filter) {
-        return Bitmap.createScaledBitmap(src, dstWidth, dstHeight, filter);
+    public static Bitmap createBitmap(Bitmap source, int x, int y, int width, int height, Matrix matrix, boolean filter) {
+        return Bitmap.createBitmap(source, x, y, width, height, matrix, filter);
     }
 }

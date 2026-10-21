@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -7,12 +9,14 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -27,8 +31,11 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -256,6 +263,29 @@ public class VoIPToggleButton extends FrameLayout {
         invalidate();
     }
 
+    private Drawable createIconDrawable(int iconRes) {
+        Drawable drawable = ContextCompat.getDrawable(getContext(), iconRes).mutate();
+        if (iconRes != R.drawable.calls_unmute && iconRes != R.drawable.calls_video
+                && iconRes != R.drawable.calls_speaker && iconRes != R.drawable.calls_bluetooth
+                && iconRes != R.drawable.calls_headphones) {
+            return drawable;
+        }
+        Resources resources = getResources();
+        if (!(resources instanceof NimarkoIconResources) || !((NimarkoIconResources) resources).hasReplacement(iconRes)) {
+            return drawable;
+        }
+        Drawable stock = NimarkoIconResources.getStockDrawable(getContext(), iconRes);
+        int width = drawable.getIntrinsicWidth();
+        int height = drawable.getIntrinsicHeight();
+        if (stock == null || stock.getIntrinsicWidth() <= 0 || stock.getIntrinsicHeight() <= 0 || width <= 0 || height <= 0) {
+            return drawable;
+        }
+        float scale = Math.min(1f, (float) dp(24) / Math.max(width, height));
+        CombinedDrawable paddedDrawable = new CombinedDrawable(new ColorDrawable(Color.TRANSPARENT), drawable);
+        paddedDrawable.setCustomSize(stock.getIntrinsicWidth(), stock.getIntrinsicHeight());
+        paddedDrawable.setIconSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+        return paddedDrawable;
+    }
     public void setData(int iconRes, int iconColor, int backgroundColor, String text, boolean cross, boolean animated) {
         setData(iconRes, iconColor, backgroundColor, 1.0f, true, text, cross, animated);
     }
@@ -297,7 +327,7 @@ public class VoIPToggleButton extends FrameLayout {
 
         if (!animated) {
             if (iconRes != 0) {
-                icon[0] = ContextCompat.getDrawable(getContext(), iconRes).mutate();
+                icon[0] = createIconDrawable(iconRes);
                 icon[0].setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
             }
             crossPaint.setColor(iconColor);
@@ -311,7 +341,7 @@ public class VoIPToggleButton extends FrameLayout {
             invalidate();
         } else {
             if (!iconChangeColor && iconRes != 0) {
-                icon[1] = ContextCompat.getDrawable(getContext(), iconRes).mutate();
+                icon[1] = createIconDrawable(iconRes);
                 icon[1].setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
             }
             if (!checkable) {
@@ -353,6 +383,9 @@ public class VoIPToggleButton extends FrameLayout {
                         textView[0] = textView[1];
                         textView[1] = tv;
                         textView[1].setVisibility(View.GONE);
+                        textView[0].setAlpha(1f);
+                        textView[0].setScaleX(1f);
+                        textView[0].setScaleY(1f);
                     }
 
                     if (!iconChangeColor && icon[1] != null) {

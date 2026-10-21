@@ -1,0 +1,61 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+import java.nio.channels.OverlappingFileLockException
+import java.util.concurrent.TimeUnit
+
+def tgcallsDirectory = new File(settingsDir, 'TMessagesProj/jni/tgcalls')
+def tgcallsPatch = new File(settingsDir, 'patches/tgcalls-audio-normalization.patch')
+def lockFile = new File(settingsDir, '.gradle/tgcalls-patches.lock')
+lockFile.parentFile.mkdirs()
+
+def git = { List<String> arguments ->
+    def command = ['git', '-C', tgcallsDirectory.absolutePath] + arguments
+    def process = new ProcessBuilder(command).redirectErrorStream(true).start()
+    def output = new StringBuffer()
+    def reader = process.consumeProcessOutputStream(output)
+    if (!process.waitFor(30, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        reader.join(1000)
+        throw new GradleException('Timed out running git for the tgcalls source patch')
+    }
+    reader.join(1000)
+    [process.exitValue(), output.toString()]
+}
+
+new RandomAccessFile(lockFile, 'rw').withCloseable { lockHandle ->
+    def channel = lockHandle.channel
+    def lock = null
+    def deadline = System.nanoTime() + 120_000_000_000L
+    while (lock == null) {
+        try {
+            lock = channel.tryLock()
+        } catch (OverlappingFileLockException ignored) {
+        }
+        if (lock == null) {
+            if (System.nanoTime() >= deadline) {
+                throw new GradleException('Timed out waiting for the tgcalls patch lock')
+            }
+            Thread.sleep(50)
+        }
+    }
+    try {
+        def head = git(['rev-parse', 'HEAD'])
+        if (head[0] != 0 || head[1].trim() != '03d7b8662512af7528f476c02094862c1a37177d') {
+            throw new GradleException('tgcalls patch requires pinned revision 03d7b8662512af7528f476c02094862c1a37177d')
+        }
+        if (!tgcallsPatch.isFile()) {
+            throw new GradleException('Required tgcalls source patch is missing')
+        }
+        if (git(['apply', '--reverse', '--check', tgcallsPatch.absolutePath])[0] != 0) {
+            def check = git(['apply', '--check', tgcallsPatch.absolutePath])
+            if (check[0] != 0) {
+                throw new GradleException('tgcalls source patch conflicts with the working tree: ' + check[1])
+            }
+            def applied = git(['apply', tgcallsPatch.absolutePath])
+            if (applied[0] != 0 || git(['apply', '--reverse', '--check', tgcallsPatch.absolutePath])[0] != 0) {
+                throw new GradleException('tgcalls source patch did not apply completely: ' + applied[1])
+            }
+        }
+    } finally {
+        lock.release()
+    }
+}

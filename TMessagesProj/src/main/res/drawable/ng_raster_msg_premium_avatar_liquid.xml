@@ -1,0 +1,26 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="avatar_circle" android:fillColor="#FFFFFFFF" android:fillAlpha="0.1"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M21,12A9,9 0,1 1,3,12A9,9 0,1 1,21,12">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="avatar_play" android:fillColor="#00000000"
+        android:strokeWidth="1.65" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M9,7.7L16,12L9,16.3Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

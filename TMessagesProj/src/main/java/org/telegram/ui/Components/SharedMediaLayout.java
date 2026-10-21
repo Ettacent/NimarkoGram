@@ -4,6 +4,7 @@ package org.telegram.ui.Components;
 
 import app.nimarkogram.messenger.utils.ui.ProfileListPadding;
 import app.nimarkogram.messenger.utils.ParticipantOrder;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -31,6 +32,7 @@ import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -1958,7 +1960,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         if (!isArchivedOnlyStoriesView() && !isSearchingStories()) {
             actionBar.addView(photoVideoOptionsItem, LayoutHelper.createFrame(48, 56, Gravity.RIGHT | Gravity.BOTTOM));
 
-            optionsSearchImageView = new RLottieImageView(context);
+            optionsSearchImageView = new OptionsSearchImageView(context);
             optionsSearchImageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
             optionsSearchImageView.setAnimation(R.raw.options_to_search, 24, 24);
             optionsSearchImageView.getAnimatedDrawable().multiplySpeed(2f);
@@ -4604,11 +4606,12 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             @Override
             public boolean showOptions(int page, View view) {
                 if (profileActivity == null) return false;
-                if (getTab(page, info instanceof TLRPC.TL_channelFull) == null) {
+                final boolean isChannel = isBroadcastChannelProfile();
+                if (getTab(page, isChannel) == null) {
                     return false;
                 }
                 final TLRPC.ProfileTab main_tab;
-                if (info instanceof TLRPC.TL_channelFull) {
+                if (isChannel) {
                     final TLRPC.Chat chat = profileActivity.getMessagesController().getChat(info.id);
                     if (!ChatObject.canUserDoAction(chat, ChatObject.ACTION_POST))
                         return false;
@@ -4626,7 +4629,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 o.add(R.drawable.tabs_reorder, getString(R.string.ProfileTabSetAsMain), () -> {
                     if (profileActivity == null) return;
                     final TLObject r;
-                    if (info instanceof TLRPC.TL_channelFull) {
+                    if (isChannel) {
                         TLRPC.TL_channels_setMainProfileTab req = new TLRPC.TL_channels_setMainProfileTab();
                         req.tab = getTab(page, true);
                         req.channel = profileActivity.getMessagesController().getInputChannel(info.id);
@@ -4885,6 +4888,26 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
     Runnable jumpToRunnable;
 
+    private static boolean shouldJumpToMediaRange(int first, int last, int start, int count, int threshold) {
+        if (first < 0 || last < first || count <= 0) {
+            return false;
+        }
+        long end = (long) start + count;
+        return first > end && first - end > threshold || last < start && (long) start - last - 1 > threshold;
+    }
+
+    private static int sharedMediaPageSize(int width, int height, int columns) {
+        if (width <= 0 || height <= 0 || columns <= 0) {
+            return 50;
+        }
+        double rows = Math.ceil(height / (width / (double) columns)) + 2;
+        return (int) Math.max(50, Math.min(100, rows * columns));
+    }
+
+    private int sharedMediaPageSize(MediaPage page) {
+        return page == null ? 50 : sharedMediaPageSize(page.listView.getMeasuredWidth(),
+                page.listView.getMeasuredHeight() - page.listView.getPaddingTop() - page.listView.getPaddingBottom(), mediaColumnsCount[0]);
+    }
     private void checkLoadMoreScroll(MediaPage mediaPage, RecyclerListView recyclerView, LinearLayoutManager layoutManager) {
         if (photoVideoChangeColumnsAnimation || jumpToRunnable != null) {
             return;
@@ -4915,10 +4938,21 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 if (jumpToTreshold < sharedMediaData[type].fastScrollPeriods.get(1).startOffset) {
                     jumpToTreshold = sharedMediaData[type].fastScrollPeriods.get(1).startOffset;
                 }
-                if ((firstVisibleItem > totalItemCount && firstVisibleItem - totalItemCount > jumpToTreshold) || ((firstVisibleItem + visibleItemCount) < sharedMediaData[type].startOffset && sharedMediaData[0].startOffset - (firstVisibleItem + visibleItemCount) > jumpToTreshold)) {
+                if (shouldJumpToMediaRange(firstVisibleItem, layoutManager.findLastVisibleItemPosition(),
+                        sharedMediaData[type].getStartOffset(), sharedMediaData[type].getMessages().size(), jumpToTreshold)) {
+                    final int threshold = jumpToTreshold;
+                    final int requestIndex = sharedMediaData[type].requestIndex;
+                    final RecyclerView.Adapter expectedAdapter = recyclerView.getAdapter();
                     AndroidUtilities.runOnUIThread(jumpToRunnable = () -> {
-                        findPeriodAndJumpToDate(type, recyclerView, false);
                         jumpToRunnable = null;
+                        if (destroyed || photoVideoChangeColumnsAnimation || mediaPage.selectedType != type
+                                || recyclerView.getAdapter() != expectedAdapter || requestIndex != sharedMediaData[type].requestIndex) {
+                            return;
+                        }
+                        if (shouldJumpToMediaRange(layoutManager.findFirstVisibleItemPosition(), layoutManager.findLastVisibleItemPosition(),
+                                sharedMediaData[type].getStartOffset(), sharedMediaData[type].getMessages().size(), threshold)) {
+                        findPeriodAndJumpToDate(type, recyclerView, false);
+                        }
                     });
                     return;
                 }
@@ -4957,7 +4991,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         } else if (mediaPage.selectedType != TAB_RECOMMENDED_CHANNELS && mediaPage.selectedType != TAB_SAVED_MESSAGES && mediaPage.selectedType != TAB_BOT_PREVIEWS && mediaPage.selectedType != TAB_GIFTS) {
             final int threshold;
             if (mediaPage.selectedType == 0) {
-                threshold = 3;
+                threshold = sharedMediaPageSize(mediaPage);
             } else if (mediaPage.selectedType == 5) {
                 threshold = 10;
             } else {
@@ -4992,10 +5026,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
                 if (!sharedMediaData[stype].endReached[0]) {
                     sharedMediaData[stype].loading = true;
-                    profileActivity.getMediaDataController().loadMedia(dialog_id, 50, sharedMediaData[stype].max_id[0], 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[stype].requestIndex, null, null);
+                    profileActivity.getMediaDataController().loadMedia(dialog_id, stype == 0 ? sharedMediaPageSize(mediaPage) : 50, sharedMediaData[stype].max_id[0], 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[stype].requestIndex, null, null);
                 } else if (mergeDialogId != 0 && !sharedMediaData[stype].endReached[1]) {
                     sharedMediaData[stype].loading = true;
-                    profileActivity.getMediaDataController().loadMedia(mergeDialogId, 50, sharedMediaData[stype].max_id[1], 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[stype].requestIndex, null, null);
+                    profileActivity.getMediaDataController().loadMedia(mergeDialogId, stype == 0 ? sharedMediaPageSize(mediaPage) : 50, sharedMediaData[stype].max_id[1], 0, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[stype].requestIndex, null, null);
                 }
             }
 
@@ -5045,7 +5079,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             type = MediaDataController.MEDIA_URL;
         }
         sharedMediaData[selectedType].loading = true;
-        profileActivity.getMediaDataController().loadMedia(dialog_id, 50, 0, sharedMediaData[selectedType].min_id, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[selectedType].requestIndex, null, null);
+        profileActivity.getMediaDataController().loadMedia(dialog_id, selectedType == 0 ? sharedMediaPageSize(getMediaPage(0)) : 50, 0, sharedMediaData[selectedType].min_id, type, topicId, 1, profileActivity.getClassGuid(), sharedMediaData[selectedType].requestIndex, null, null);
     }
 
     public ActionBarMenuItem getSearchItem() {
@@ -6475,7 +6509,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                     for (int a = 0; a < mediaPages.length; a++) {
                         if (mediaPages[a] != null && mediaPages[a].listView != null && mediaPages[a].listView.getAdapter() == adapter) {
                             listView = mediaPages[a].listView;
+                            if (adapter != photoVideoAdapter) {
                             mediaPages[a].listView.stopScroll();
+                            }
                         }
                     }
                     int newItemCount = adapter.getItemCount();
@@ -7774,7 +7810,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             }
         }
         if (scrollSlidingTextTabStrip.isReordering()) {
-            final boolean isChannel = info instanceof TLRPC.TL_channelFull;
+            final boolean isChannel = isBroadcastChannelProfile();
             for (int i = 0; i < 15; ++i) {
                 if (getTab(i, isChannel) != null && !containsTab(tabs, i)) {
                     tabs.add(new Pair<>(i, getTabName(i)));
@@ -9472,8 +9508,18 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
     private void findPeriodAndJumpToDate(int type, RecyclerListView listView, boolean scrollToPosition) {
         ArrayList<Period> periods = sharedMediaData[type].fastScrollPeriods;
+        if (periods == null || periods.isEmpty()) {
+            return;
+        }
+        LinearLayoutManager layoutManager = (LinearLayoutManager) listView.getLayoutManager();
+        int position = layoutManager.findFirstVisibleItemPosition();
+        int last = layoutManager.findLastVisibleItemPosition();
+        int start = sharedMediaData[type].getStartOffset();
+        int count = sharedMediaData[type].getMessages().size();
+        if (position >= 0 && last >= position && count > 0 && last >= start && position < (long) start + count) {
+            return;
+        }
         Period period = null;
-        int position = ((LinearLayoutManager) listView.getLayoutManager()).findFirstVisibleItemPosition();
         if (position >= 0) {
             if (periods != null) {
                 for (int i = 0; i < periods.size(); i++) {
@@ -9487,6 +9533,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                 }
             }
             if (period != null) {
+                if (sharedMediaData[type].loadingAfterFastScroll && sharedMediaData[type].startOffset == period.startOffset + 1
+                        && sharedMediaData[type].min_id == period.maxId) {
+                    return;
+                }
                 jumpToDate(type, period.maxId, period.startOffset + 1, scrollToPosition);
                 return;
             }
@@ -12738,6 +12788,59 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         }
     }
 
+    private static final class OptionsSearchImageView extends RLottieImageView {
+        private final Paint packPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final RectF packBounds = new RectF();
+
+        public OptionsSearchImageView(Context context) {
+            super(context);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            NimarkoIconResources.NavigationIcons snapshot = NimarkoIconResources.activeNavigationIcons();
+            NimarkoIconResources.PreparedIcon more = snapshot == null ? null : snapshot.getIcon(R.drawable.ic_ab_other);
+            NimarkoIconResources.PreparedIcon search = snapshot == null ? null : snapshot.getIcon(R.drawable.msg_search);
+            RLottieDrawable animation = getAnimatedDrawable();
+            if (animation == null || more == null || search == null
+                    || more.bitmap.isRecycled() || search.bitmap.isRecycled()) {
+                super.onDraw(canvas);
+                return;
+            }
+            animation.updateCurrentFrame(0, false);
+            int frame = animation.getCurrentFrame();
+            int targetFrame = animation.getCustomEndFrame();
+            if (!animation.isRunning() && targetFrame >= 0 && Math.abs(frame - targetFrame) <= 1) {
+                frame = targetFrame;
+            }
+            float progress = getOptionsProgress(frame);
+            float width = getWidth() - getPaddingLeft() - getPaddingRight();
+            float height = getHeight() - getPaddingTop() - getPaddingBottom();
+            float size = Math.min(dp(24), Math.min(width, height));
+            if (size <= 0) return;
+            float cx = getPaddingLeft() + width / 2f;
+            float cy = getPaddingTop() + height / 2f;
+            packBounds.set(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f);
+            drawPackIcon(canvas, search, 1f - progress);
+            drawPackIcon(canvas, more, progress);
+        }
+
+        private static float getOptionsProgress(int frame) {
+            return Math.max(0f, Math.min(1f, frame < 60 ? frame / 15f : (80 - frame) / 20f));
+        }
+
+        private void drawPackIcon(Canvas canvas, NimarkoIconResources.PreparedIcon icon, float progress) {
+            int alpha = Math.round(getImageAlpha() * progress);
+            if (alpha <= 0) return;
+            packPaint.setAlpha(alpha);
+            packPaint.setColorFilter(icon.noTint ? null : getColorFilter());
+            canvas.save();
+            float scale = 0.8f + 0.2f * progress;
+            canvas.scale(scale, scale, packBounds.centerX(), packBounds.centerY());
+            canvas.drawBitmap(icon.bitmap, null, packBounds, packPaint);
+            canvas.restore();
+        }
+    }
     private void updateOptionsSearch() {
         updateOptionsSearch(false);
     }
@@ -13512,6 +13615,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             .getStoriesController();
     }
 
+    private boolean isBroadcastChannelProfile() {
+        if (info == null || profileActivity == null) return false;
+        return ChatObject.isChannelAndNotMegaGroup(profileActivity.getMessagesController().getChat(info.id));
+    }
     public static TLRPC.ProfileTab getTab(int id, boolean isChannel) {
         if (id != TAB_STORIES && id != TAB_GIFTS && !isChannel)
             return null;
@@ -13557,9 +13664,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     public void sendTabsOrder() {
         if (profileActivity == null || scrollSlidingTextTabStrip == null) return;
 
+        final boolean isChannel = isBroadcastChannelProfile();
         final ArrayList<TLRPC.ProfileTab> order = new ArrayList<>();
         for (int id : scrollSlidingTextTabStrip.getTabIds()) {
-            final TLRPC.ProfileTab tab = getTab(id, info instanceof TLRPC.TL_channelFull);
+            final TLRPC.ProfileTab tab = getTab(id, isChannel);
             if (tab != null) {
                 order.add(tab);
             }

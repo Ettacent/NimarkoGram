@@ -20,7 +20,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ConfigurationInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -100,6 +99,7 @@ import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.SettingsSearchCell;
+import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AvatarDrawable;
@@ -136,6 +136,8 @@ import org.telegram.ui.Stars.StarsIntroActivity;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 import org.telegram.ui.Stories.recorder.DualCameraView;
 import org.telegram.ui.TON.TONIntroActivity;
+import org.telegram.ui.Wallet.GramWallet;
+import org.telegram.ui.Wallet.WalletActivity;
 import org.telegram.ui.bots.BotBiometry;
 import org.telegram.ui.bots.BotDownloads;
 import org.telegram.ui.bots.BotLocation;
@@ -143,13 +145,13 @@ import org.telegram.ui.bots.BotWebViewSheet;
 import org.telegram.ui.bots.SetupEmojiStatusSheet;
 
 import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 
 import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Locale;
 import java.util.Set;
 
 import me.vkryl.android.animator.BoolAnimator;
@@ -249,6 +251,9 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().addObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.newSuggestionsAvailable);
 
+        getNotificationCenter().addObserver(this, NotificationCenter.walletUpdate);
+        getNotificationCenter().addObserver(this, NotificationCenter.appConfigUpdated);
+        getNotificationCenter().addObserver(this, NotificationCenter.attachMenuBotsDidLoad);
         if (arguments != null) {
             hasMainTabs = arguments.getBoolean("hasMainTabs", false);
         }
@@ -557,10 +562,14 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().removeObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.newSuggestionsAvailable);
+        getNotificationCenter().removeObserver(this, NotificationCenter.walletUpdate);
+        getNotificationCenter().removeObserver(this, NotificationCenter.appConfigUpdated);
+        getNotificationCenter().removeObserver(this, NotificationCenter.attachMenuBotsDidLoad);
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (account != currentAccount) return;
         if (id == NotificationCenter.starBalanceUpdated) {
             setInfo();
             if (listView != null) {
@@ -568,7 +577,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
         } else if (id == NotificationCenter.updateInterfaces) {
             setInfo();
-        } else if (id == NotificationCenter.newSuggestionsAvailable) {
+        } else if (id == NotificationCenter.newSuggestionsAvailable || id == NotificationCenter.walletUpdate || id == NotificationCenter.appConfigUpdated || id == NotificationCenter.attachMenuBotsDidLoad) {
             if (listView != null) {
                 listView.adapter.update(true);
             }
@@ -762,6 +771,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         items.add(SettingCell.Factory.of(900, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.msg_settings_solar, getString(R.string.NimarkoGramSettings)));
         items.add(UItem.asShadow(null));
 
+        final boolean walletAvailable = getMessagesController().config.walletAvailable.get();
+        final boolean walletAbove = getConnectionsManager().getCurrentTime() - 1791538462 < 4 * 7 * 24 * 60 * 60;
+        if (walletAbove && walletAvailable) {
+            final GramWallet wallet = GramWallet.getInstance(currentAccount);
+            items.add(SettingCell.Factory.of(25, 0, 0, Theme.isCurrentThemeDark() ? R.drawable.settings_wallet_dark : R.drawable.settings_wallet, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
+            items.add(UItem.asShadow(null));
+        }
         items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
         items.add(SettingCell.Factory.of(2, IconBackgroundColors.ORANGE.top, IconBackgroundColors.ORANGE.bottom, R.drawable.settings_chat, getString(R.string.SettingsChat), getString(R.string.SettingsChatInfo)));
         items.add(SettingCell.Factory.of(3, IconBackgroundColors.GREEN.top, IconBackgroundColors.GREEN.bottom, R.drawable.settings_privacy, getString(R.string.SettingsPrivacySecurity), getString(R.string.SettingsPrivacySecurityInfo)));
@@ -774,6 +790,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         items.add(UItem.asShadow(null));
 
+        if (!walletAbove && walletAvailable) {
+            final GramWallet wallet = GramWallet.getInstance(currentAccount);
+            items.add(SettingCell.Factory.of(25, 0, 0, Theme.isCurrentThemeDark() ? R.drawable.settings_wallet_dark : R.drawable.settings_wallet, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
+            items.add(UItem.asShadow(null));
+        }
         if (!getMessagesController().premiumFeaturesBlocked()) {
             items.add(SettingCell.Factory.of(11, 0xFFB659FF, 0xFF617CFF, R.drawable.settings_premium, getString(R.string.TelegramPremium)));
         }
@@ -785,8 +806,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         StarsController tonController = StarsController.getTonInstance(currentAccount);
         TL_stars.StarsAmount tonBalance = tonController.getBalance();
         if (ApplicationLoader.isBetaBuild() || ApplicationLoader.isStandaloneBuild() || ApplicationLoader.isHuaweiStoreBuild() || (tonController.balanceAvailable() && (tonController.hasTransactions() || tonBalance.positive()))) {
-            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_gram_24, getString(R.string.MyTON), null, tonController.balanceAvailable() && tonBalance.amount > 0 ? StarsIntroActivity.formatStarsAmount(tonBalance, 0.85f, ' ') : ""));
+            items.add(SettingCell.Factory.of(13, 0xFF1BA4ED, 0xFF1488E1, R.drawable.filled_gram_earnings, getString(R.string.GramEarnings), null, tonController.balanceAvailable() && tonBalance.amount > 0 ? StarsIntroActivity.formatStarsAmount(tonBalance, 0.85f, ' ') : ""));
         }
+
+        if (!walletAvailable) {
 
         TLRPC.TL_attachMenuBots menuBots = MediaDataController.getInstance(currentAccount).getAttachMenuBots();
         if (menuBots != null && menuBots.bots != null && !menuBots.bots.isEmpty()) {
@@ -796,6 +819,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     UItem item = SettingCell.Factory.ofBot(attachMenuBot, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_wallet);
                     item.object = attachMenuBot;
                     items.add(item);
+                    }
                 }
             }
         }
@@ -818,6 +842,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(UItem.asShadow(null));
             items.add(UItem.asHeader("Experimental"));
             items.add(SettingCell.Factory.of(24, 0xFFF45255, 0xFFDF3955, 0, getString(R.string.RoundVideoSettings)));
+            items.add(SettingCell.Factory.of(26, 0xFF55CA47, 0xFF27B434, 0, getString(R.string.AudioRecorderSettings)));
         }
 
         if (BuildVars.LOGS_ENABLED || BuildVars.DEBUG_PRIVATE_VERSION) {
@@ -927,6 +952,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             case 13:
                 presentSettingFragment(new TONIntroActivity());
                 break;
+            case 25:
+                if (getMessagesController().config.walletAvailable.get()) {
+                    WalletActivity walletActivity = new WalletActivity();
+                    walletActivity.setCurrentAccount(currentAccount);
+                    presentSettingFragment(walletActivity);
+                }
+                break;
             case 15:
                 presentSettingFragment(new PremiumPreviewFragment(PremiumPreviewFragment.FEATURES_BUSINESS, "settings"));
                 break;
@@ -965,6 +997,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 presentFragment(new RoundVideoSettingsActivity());
                 break;
             }
+            case 26: {
+                presentFragment(new AudioRecorderSettingsActivity());
+                break;
+            }
         }
     }
 
@@ -1000,29 +1036,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     }
 
     public String getVersionName() {
-        try {
-            PackageInfo pInfo = ApplicationLoader.applicationContext.getPackageManager().getPackageInfo(ApplicationLoader.applicationContext.getPackageName(), 0);
-            int code = pInfo.versionCode / 10;
-            String abi = "";
-            switch (pInfo.versionCode % 10) {
-                case 1:
-                case 2:
-                    abi = "store bundled " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    break;
-                default:
-                case 9:
-                    if (ApplicationLoader.isStandaloneBuild()) {
-                        abi = "direct " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    } else {
-                        abi = "universal " + Build.CPU_ABI + " " + Build.CPU_ABI2;
-                    }
-                    break;
-            }
-            return formatString(R.string.TelegramVersion, String.format(Locale.US, "v%s (%d)\n%s", pInfo.versionName, code, abi));
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-        return null;
+        return AndroidUtilities.getBuildVersionInfo(true);
     }
 
     @Override
@@ -1099,7 +1113,25 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             counterView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
             counterView.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)));
 
-            arrowView = new ImageView(context);
+            arrowView = new ImageView(context) {
+                @Override
+                protected void onDraw(Canvas canvas) {
+                    Drawable drawable = getDrawable();
+                    if (drawable != null && getResources() instanceof NimarkoIconResources
+                            && ((NimarkoIconResources) getResources()).hasReplacement(R.drawable.msg_arrowright)) {
+                        int size = Math.max(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+                        if (size > dp(16)) {
+                            float scale = dp(16) / (float) size;
+                            int restore = canvas.save();
+                            canvas.scale(scale, scale, getWidth() / 2f, getHeight() / 2f);
+                            super.onDraw(canvas);
+                            canvas.restoreToCount(restore);
+                            return;
+                        }
+                    }
+                    super.onDraw(canvas);
+                }
+            };
             arrowView.setImageResource(R.drawable.msg_arrowright);
             arrowView.setScaleType(ImageView.ScaleType.CENTER);
             arrowView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
@@ -1239,8 +1271,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         private int originalIconColorTop;
         private int originalIconColorBottom;
         private boolean hasIconColors;
+        private boolean hasBackground = true;
         private boolean destructive;
 
+        private boolean drawDividers;
         public SettingCell(Context context, Theme.ResourcesProvider resourcesProvider) {
             this(context, resourcesProvider, false);
         }
@@ -1252,6 +1286,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             this.mini = mini;
             setOrientation(HORIZONTAL);
 
+            setBaselineAligned(false);
             setBackground(Theme.createSelectorDrawable(
                     Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_ALL));
             iconLayout = new FrameLayout(context);
@@ -1277,12 +1312,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                     super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                     setMeasuredDimension(Math.min(getMeasuredWidth(),
-                            (int) Math.ceil(getDrawable().getCurrentWidth())), getMeasuredHeight());
+                            Math.max(drawDividers ? dp(76) - dp(20) - dp(10) : 0,
+                                    (int) Math.ceil(getDrawable().getWidth()))), getMeasuredHeight());
                 }
             };
             valueView.setTextSize(dp(16));
             valueView.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
-            valueView.setAnimationProperties(0f, 0, 220, CubicBezierInterpolator.EASE_OUT_QUINT);
+            valueView.setAnimationProperties(0f, 0, 220, 0f, CubicBezierInterpolator.EASE_OUT_QUINT);
             valueView.setOnWidthUpdatedListener(valueView::requestLayout);
             if (LocaleController.isRTL) {
                 addView(valueView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 24, Gravity.CENTER_VERTICAL, 20, 0, 0, 0));
@@ -1303,7 +1339,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     resourcesProvider));
             subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
             valueView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText, resourcesProvider));
-            iconBackground.setDrawBorder(resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark());
+            iconBackground.setDrawBorder(hasBackground && (resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark()));
             if (hasIconColors) {
                 iconBackground.setColor(
                         app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(originalIconColorTop),
@@ -1312,6 +1348,23 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             iconView.setColorFilter(new PorterDuffColorFilter(
                     app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconForegroundColor(Color.WHITE),
                     PorterDuff.Mode.SRC_IN));
+        }
+
+        private void setDrawDividers(boolean drawDividers) {
+            if (this.drawDividers == drawDividers) return;
+            this.drawDividers = drawDividers;
+            setWillNotDraw(!drawDividers);
+            requestLayout();
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (!drawDividers) return;
+            canvas.drawLine(LocaleController.isRTL ? 0 : dp(20), getMeasuredHeight() - 1,
+                    getMeasuredWidth() - (LocaleController.isRTL ? dp(20) : 0),
+                    getMeasuredHeight() - 1, Theme.dividerPaint);
         }
 
         private boolean twoLines;
@@ -1323,8 +1376,16 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             private float lastPresentedProgress = 1f;
             private boolean hasPresented;
             private boolean capturing;
+            private boolean animateWidthChanges;
+            private boolean widthCapturePending;
+            private int lastPresentedWidth;
             SubtitleView(Context context) {
                 super(context);
+            }
+
+            void setAnimateWidthChanges(boolean animated) {
+                animateWidthChanges = animated;
+                if (!animated) resetFade();
             }
             private void onFadeFrame() {
                 if (capturing) return;
@@ -1390,6 +1451,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 lastPresentedHeight = 0;
                 lastPresentedProgress = 1f;
                 hasPresented = false;
+                widthCapturePending = false;
+                lastPresentedWidth = 0;
                 crossfade.finish();
                 if (resize) requestLayout();
             }
@@ -1415,6 +1478,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             @Override
             protected void onDetachedFromWindow() {
+                animateWidthChanges = false;
                 resetFade();
                 super.onDetachedFromWindow();
             }
@@ -1439,11 +1503,20 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 crossfade.draw(canvas, this::drawText);
                 lastPresentedProgress = crossfade.getProgress();
                 lastPresentedHeight = getHeight();
+                lastPresentedWidth = getWidth();
+                widthCapturePending = false;
                 hasPresented = !TextUtils.isEmpty(getText());
             }
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 if (!SharedConfig.animationsEnabled() && crossfade.getOutgoingWidth() > 0) resetFade();
+                if (animateWidthChanges && SharedConfig.animationsEnabled() && hasPresented
+                        && !widthCapturePending && canPresent()
+                        && MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.EXACTLY
+                        && MeasureSpec.getSize(widthMeasureSpec) != lastPresentedWidth) {
+                    capturePresentedBlend();
+                    widthCapturePending = true;
+                }
                 if (isHeightTransitionRunning()) {
                     super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
                     int height = Math.round(transitionStartHeight
@@ -1455,21 +1528,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
         }
         private UItem boundSettingItem;
-        private boolean animateValueHeight;
-        private ValueAnimator valueHeightAnimator;
-        private int valueTargetHeight;
-        private float valueAnimatedHeight;
-        private void stopValueHeightAnimation() {
-            if (valueHeightAnimator != null) {
-                valueHeightAnimator.cancel();
-                valueHeightAnimator = null;
-            }
-            animateValueHeight = false;
-            valueTargetHeight = 0;
-        }
         @Override
         protected void onDetachedFromWindow() {
-            stopValueHeightAnimation();
             valueView.cancelAnimation();
             subtitleView.resetFade();
             boundSettingItem = null;
@@ -1500,11 +1560,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             originalIconColorTop = iconColorTop;
             originalIconColorBottom = iconColorBottom;
+            hasBackground = iconColorTop != 0 || iconColorBottom != 0;
             hasIconColors = true;
             iconBackground.setColor(
                     app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(originalIconColorTop),
                     app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(originalIconColorBottom));
-            iconView.setImageResource(icon);
+            iconView.setImageDrawable(icon == 0 ? null : getContext().getResources().getDrawable(icon, getContext().getTheme()));
             iconView.setColorFilter(new PorterDuffColorFilter(
                     app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconForegroundColor(Color.WHITE),
                     PorterDuff.Mode.SRC_IN));
@@ -1523,20 +1584,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
         public void setValue(CharSequence value, boolean animated) {
             animated = animated && isAttachedToWindow() && SharedConfig.animationsEnabled();
-            if (!animated) {
-                stopValueHeightAnimation();
-            } else {
-                animateValueHeight = true;
-            }
+            subtitleView.setAnimateWidthChanges(animated);
             valueView.setVisibility(!TextUtils.isEmpty(value) ? View.VISIBLE : View.GONE);
             valueView.setText(value, animated);
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            if (subtitleView.isHeightTransitionRunning()) {
-                stopValueHeightAnimation();
-            }
             int width = MeasureSpec.makeMeasureSpec(
                     MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY);
             valueView.setMaxWidth(Math.min(dp(144), MeasureSpec.getSize(widthMeasureSpec) * 2 / 5));
@@ -1545,25 +1599,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 return;
             }
 
-            final int previousHeight = getMeasuredHeight();
             super.onMeasure(width, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             int height = Math.max(dp(60), textLayout.getMeasuredHeight() + dp(16));
-            if (animateValueHeight && isAttachedToWindow() && previousHeight > 0) {
-                if (valueTargetHeight != height) {
-                    if (valueHeightAnimator != null) valueHeightAnimator.cancel();
-                    valueTargetHeight = height;
-                    valueAnimatedHeight = previousHeight;
-                    valueHeightAnimator = ValueAnimator.ofFloat(previousHeight, height);
-                    valueHeightAnimator.setDuration(220);
-                    valueHeightAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-                    valueHeightAnimator.addUpdateListener(animation -> {
-                        valueAnimatedHeight = (float) animation.getAnimatedValue();
-                        requestLayout();
-                    });
-                    valueHeightAnimator.start();
-                }
-                height = Math.round(valueAnimatedHeight);
-            }
             super.onMeasure(width, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
         }
 
@@ -1632,6 +1669,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 int iconColorTop    = (int) item.longValue;
                 int iconColorBottom = (int) (item.longValue >>> 32);
                 SettingCell cell = (SettingCell) view;
+                cell.setDrawDividers(item.intValue == 1);
                 boolean animateValue = cell.isAttachedToWindow() && cell.boundSettingItem != null
                         && equals(cell.boundSettingItem, item);
                 cell.boundSettingItem = item;
@@ -1652,6 +1690,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             @Override
             public boolean contentsEquals(UItem a, UItem b) {
                 return a.itemEquals(b) && a.enabled == b.enabled;
+            }
+
+            public static UItem withDividers(UItem item) {
+                item.intValue = 1;
+                return item;
             }
 
             public static UItem of(int id, int iconColorTop, int iconColorBottom, int icon, CharSequence title) {

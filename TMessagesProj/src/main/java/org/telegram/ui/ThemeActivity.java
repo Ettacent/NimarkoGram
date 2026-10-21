@@ -48,6 +48,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.core.content.FileProvider;
@@ -903,7 +904,12 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             updateMenuItem();
         } else if (id == NotificationCenter.webBrowserSettingsUpdate) {
             if (listAdapter != null && browserRow != -1) {
+                RecyclerView.ViewHolder holder = listView == null ? null : listView.findViewHolderForAdapterPosition(browserRow);
+                if (holder != null && holder.itemView instanceof NotificationsCheckCell) {
+                    ((NotificationsCheckCell) holder.itemView).setChecked(getMessagesController().isWebBrowserInAppEnabled());
+                } else {
                 listAdapter.notifyItemChanged(browserRow);
+                }
             }
         } else if (id == NotificationCenter.themeAccentListUpdated) {
             if (listAdapter != null && themeAccentListRow != -1) {
@@ -984,7 +990,8 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
             menuItem.addSubItem(share_theme, R.drawable.msg_share, getString("ShareTheme", R.string.ShareTheme));
             menuItem.addSubItem(edit_theme, R.drawable.msg_edit, getString("EditThemeColors", R.string.EditThemeColors));
             menuItem.addSubItem(create_theme, R.drawable.msg_palette, getString("CreateNewThemeMenu", R.string.CreateNewThemeMenu));
-            menuItem.addSubItem(reset_settings, R.drawable.msg_reset, getString("ThemeResetToDefaults", R.string.ThemeResetToDefaults));
+            menuItem.addSubItem(reset_settings, R.drawable.msg_reset, getString("ThemeResetToDefaults", R.string.ThemeResetToDefaults))
+                    .getImageView().setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.msg_reset));
 
             if (getMessagesController().getContentSettings() == null) {
                 getMessagesController().getContentSettings(settings -> {
@@ -1420,7 +1427,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                         }
                         value = type + " " + value;
                     }
-                    checkCell.setTextAndValueAndIconAndCheck(getString("AutoNightTheme", R.string.AutoNightTheme), value, R.drawable.menu_night_mode_24, enabled, 0, false, true);
+                    checkCell.setValue(value);
                 } else {
                     presentFragment(new ThemeActivity(THEME_TYPE_NIGHT));
                 }
@@ -2869,6 +2876,7 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCell.class}, new String[]{"imageView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueText4));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
+        themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class}, new String[]{"checkBox"}, null, null, null, Theme.key_switchTrack));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class}, new String[]{"checkBox"}, null, null, null, Theme.key_switchTrackChecked));
 
@@ -2891,6 +2899,8 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
+        themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"multilineValueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
+        themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"imageView"}, null, null, null, Theme.key_dialogIcon));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"checkBox"}, null, null, null, Theme.key_switchTrack));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{NotificationsCheckCell.class}, new String[]{"checkBox"}, null, null, null, Theme.key_switchTrackChecked));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSizeCell.class}, null, new Drawable[]{Theme.chat_msgInDrawable, Theme.chat_msgInMediaDrawable}, null, Theme.key_chat_inBubble));

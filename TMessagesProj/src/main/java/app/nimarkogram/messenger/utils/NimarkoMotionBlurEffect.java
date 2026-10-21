@@ -12,15 +12,14 @@ import android.os.Build;
 import android.os.Looper;
 import android.view.View;
 
-import java.util.Arrays;
 import java.util.WeakHashMap;
 
 public final class NimarkoMotionBlurEffect {
-    public static final float MAX_SPAN_PX = 16f;
-    private static final float MAX_SPAN_DP = 14f;
-    public static final float MIN_SPAN_PX = 0.1f;
-    private static final double CORNER_REUSE_PX = 0.25d;
-    private static final double CORNER_REUSE_FRACTION = 0.0625d;
+    public static final float MAX_SPAN_PX = NimarkoMotionBlurState.MAX_SPAN_PX;
+    private static final float MAX_SPAN_DP = NimarkoMotionBlurState.MAX_SPAN_DP;
+    public static final float MIN_SPAN_PX = NimarkoMotionBlurState.MIN_SPAN_PX;
+    private static final double CORNER_REUSE_PX = 0.5d;
+    private static final double CORNER_REUSE_FRACTION = 0.125d;
     private static final WeakHashMap<View, State> STATES = new WeakHashMap<>();
 
     private NimarkoMotionBlurEffect() {
@@ -117,10 +116,8 @@ public final class NimarkoMotionBlurEffect {
     }
 
     private static boolean canReuseCorners(State state, double maximum) {
-        if (Build.VERSION.SDK_INT < 33 || state.shaderFailed) {
-            return Arrays.equals(state.corners, state.pendingCorners);
-        }
-        if ((state.renderedMaximum > 8d) != (maximum > 8d)) return false;
+        if (Build.VERSION.SDK_INT >= 33 && !state.shaderFailed && !Kernel33.unavailable
+                && Kernel33.sampleCount(state.renderedMaximum) != Kernel33.sampleCount(maximum)) return false;
         for (int i = 0; i < 8; i += 2) {
             double x = state.corners[i], y = state.corners[i + 1];
             double nextX = state.pendingCorners[i], nextY = state.pendingCorners[i + 1];
@@ -138,21 +135,12 @@ public final class NimarkoMotionBlurEffect {
 
     private static RenderEffect createKernelEffect(State state, float[] corners, int width, int height,
             Rect bounds, boolean opaqueEdges, double maximum) {
-        if (Build.VERSION.SDK_INT >= 33 && !state.shaderFailed) {
+        if (Build.VERSION.SDK_INT >= 33 && !state.shaderFailed && !Kernel33.unavailable) {
             try {
-                Kernel33 kernel;
-                if (maximum > 8d) {
-                    if (state.kernel17 == null) state.kernel17 = new Kernel33(true);
-                    kernel = state.kernel17;
-                } else {
-                    if (state.kernel9 == null) state.kernel9 = new Kernel33(false);
-                    kernel = state.kernel9;
-                }
-                return kernel.createEffect(corners, width, height, bounds, opaqueEdges);
+                return Kernel33.obtain(Kernel33.sampleCount(maximum)).createEffect(corners, width, height, bounds, opaqueEdges);
             } catch (IllegalArgumentException | IllegalStateException exception) {
                 state.shaderFailed = true;
-                state.kernel9 = null;
-                state.kernel17 = null;
+                Kernel33.unavailable = true;
             }
         }
         return createFallback(corners, opaqueEdges);
@@ -226,17 +214,14 @@ public final class NimarkoMotionBlurEffect {
         }
         double speed = Math.hypot(x, y);
         if (speed < MIN_SPAN_PX) return null;
-        double scale = Math.min(1d, 8d / speed);
+        double scale = Math.min(1d, NimarkoMotionBlurState.REDUCED_MAX_SPAN_PX / speed);
         x = (float) (x * scale);
         y = (float) (y * scale);
-        BlendModeColorFilter weight28 = new BlendModeColorFilter(Color.argb(28, 255, 255, 255), BlendMode.DST_IN);
-        BlendModeColorFilter weight29 = new BlendModeColorFilter(Color.argb(29, 255, 255, 255), BlendMode.DST_IN);
         RenderEffect sum = null;
-        for (int i = 0; i < 9; i++) {
-            float t = i / 8f - 0.5f;
-            BlendModeColorFilter weight = i == 2 || i == 4 || i == 6 ? weight29 : weight28;
-            RenderEffect tap = RenderEffect.createColorFilterEffect(weight,
-                    RenderEffect.createOffsetEffect(x * t, y * t));
+        for (int i = 0; i < Fallback31.WEIGHTS.length; i++) {
+            float t = i / 8f;
+            RenderEffect tap = RenderEffect.createColorFilterEffect(Fallback31.WEIGHTS[i],
+                    RenderEffect.createOffsetEffect(-x * t, -y * t));
             sum = sum == null ? tap : RenderEffect.createBlendModeEffect(sum, tap, BlendMode.PLUS);
         }
         return opaqueEdges ? RenderEffect.createBlendModeEffect(
@@ -295,8 +280,6 @@ public final class NimarkoMotionBlurEffect {
     }
 
     private static final class State implements View.OnAttachStateChangeListener {
-        Kernel33 kernel9;
-        Kernel33 kernel17;
         RenderEffect effect;
         RenderEffect baseEffect;
         RenderEffect composedEffect;
@@ -325,7 +308,24 @@ public final class NimarkoMotionBlurEffect {
         }
     }
 
+    private static final class Fallback31 {
+        private static final BlendModeColorFilter[] WEIGHTS = {
+                new BlendModeColorFilter(Color.argb(89, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(37, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(32, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(28, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(23, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(18, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(14, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(9, 255, 255, 255), BlendMode.DST_IN),
+                new BlendModeColorFilter(Color.argb(5, 255, 255, 255), BlendMode.DST_IN)
+        };
+    }
     private static final class Kernel33 {
+        private static Kernel33 compact;
+        private static Kernel33 balanced;
+        private static Kernel33 dense;
+        private static boolean unavailable;
         private static final String SOURCE =
                 "uniform shader content;\n"
                 + "uniform float2 cornerTL;\n"
@@ -340,27 +340,56 @@ public final class NimarkoMotionBlurEffect {
                 + "    float2 span = mix(mix(cornerTL, cornerTR, uv.x),\n"
                 + "            mix(cornerBL, cornerBR, uv.x), uv.y);\n"
                 + "    half4 color = half4(0.0);\n"
-                + "    for (int i = 0; i < 17; ++i) {\n"
-                + "        float2 samplePosition = position + span * (float(i) / 16.0 - 0.5);\n"
+                + "    if (position.x >= bounds.x && position.y >= bounds.y\n"
+                + "            && position.x < bounds.z && position.y < bounds.w) {\n"
+                + "        color = content.eval(position) * 0.35;\n"
+                + "    }\n"
+                + "    for (int i = 1; i < 17; ++i) {\n"
+                + "        float2 samplePosition = position + span * (float(i) / 16.0);\n"
+                + "        float weight = (17.0 - float(i)) * (0.65 / 136.0);\n"
                 + "        if (opaqueEdges > 0.5 && position.x >= bounds.x && position.y >= bounds.y\n"
                 + "                && position.x < bounds.z && position.y < bounds.w) {\n"
                 + "            samplePosition = clamp(samplePosition, float2(0.5), size - float2(0.5));\n"
-                + "            color += content.eval(samplePosition);\n"
+                + "            color += content.eval(samplePosition) * weight;\n"
                 + "        } else if (samplePosition.x >= bounds.x && samplePosition.y >= bounds.y\n"
                 + "                && samplePosition.x < bounds.z && samplePosition.y < bounds.w) {\n"
-                + "            color += content.eval(samplePosition);\n"
+                + "            color += content.eval(samplePosition) * weight;\n"
                 + "        }\n"
                 + "    }\n"
-                + "    return color / 17.0;\n"
+                + "    return color;\n"
                 + "}\n";
 
         private static final String SOURCE9 = SOURCE.replace("i < 17", "i < 9")
-                .replace("float(i) / 16.0", "float(i) / 8.0").replace("color / 17.0", "color / 9.0");
+                .replace("float(i) / 16.0", "float(i) / 8.0")
+                .replace("17.0 - float(i)", "9.0 - float(i)")
+                .replace("0.65 / 136.0", "0.65 / 36.0");
+
+        private static final String SOURCE5 = SOURCE9.replace("i < 9", "i < 5")
+                .replace("float(i) / 8.0", "float(i) / 4.0")
+                .replace("9.0 - float(i)", "5.0 - float(i)")
+                .replace("0.65 / 36.0", "0.65 / 10.0");
 
         private final RuntimeShader shader;
 
-        Kernel33(boolean dense) {
-            shader = new RuntimeShader(dense ? SOURCE : SOURCE9);
+        Kernel33(int samples) {
+            shader = new RuntimeShader(samples == 17 ? SOURCE : samples == 9 ? SOURCE9 : SOURCE5);
+        }
+
+        static int sampleCount(double maximum) {
+            return maximum > 12d ? 17 : maximum > 6d ? 9 : 5;
+        }
+
+        static Kernel33 obtain(int samples) {
+            if (samples == 17) {
+                if (dense == null) dense = new Kernel33(17);
+                return dense;
+            }
+            if (samples == 9) {
+                if (balanced == null) balanced = new Kernel33(9);
+                return balanced;
+            }
+            if (compact == null) compact = new Kernel33(5);
+            return compact;
         }
 
         RenderEffect createEffect(float[] corners, int width, int height, Rect bounds, boolean opaqueEdges) {

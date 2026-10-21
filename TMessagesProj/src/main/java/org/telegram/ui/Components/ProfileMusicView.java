@@ -45,6 +45,7 @@ public class ProfileMusicView extends View {
     private Text author, title;
     private final Paint arrowPaint = new Paint();
     private final Path arrowPath = new Path();
+    private final CompactChevronRenderer arrowRenderer = new CompactChevronRenderer();
     private final Drawable icon;
 
     private final RectF rect = new RectF();
@@ -369,8 +370,10 @@ public class ProfileMusicView extends View {
 
         arrowPaint.setStrokeWidth(dpf2(1.16f));
         canvas.translate(dpf2(4.8f), cy);
+        if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, CompactChevronRenderer.RIGHT)) {
         canvas.drawPath(arrowPath, arrowPaint);
 
+        }
         canvas.restore();
 
         canvas.restore();

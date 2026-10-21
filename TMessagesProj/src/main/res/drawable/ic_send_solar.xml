@@ -1,9 +1,22 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Modifications Copyright (C) 2026 Ettacent. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#FFF"
-        android:pathData="M10.39 19.56l5.02-2.52c4.4-2.2 6.59-3.3 6.59-5.04 0-1.74-2.2-2.84-6.59-5.04L10.4 4.44c-3.54-1.78-5.32-2.66-6.34-2.4-0.98 0.27-1.74 1.03-2 2.01-0.27 1.03 0.61 2.8 2.38 6.36 0.22 0.44 0.67 0.73 1.16 0.73l8.03 0.04c0.45 0 0.81 0.37 0.8 0.82 0 0.46-0.36 0.82-0.81 0.82l-7.9-0.04c-0.54 0-1.03 0.33-1.28 0.81-1.77 3.55-2.65 5.33-2.38 6.36 0.26 0.98 1.02 1.74 2 2 1.02 0.27 2.8-0.61 6.34-2.39Z"/>
+    <group
+        android:scaleX="0.9212"
+        android:scaleY="0.9212"
+        android:translateX="-0.3884"
+        android:translateY="1.3934">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M19.7 5.0 C20.7 4.6 21.4 5.2 21.1 6.5 L18.2 18.2 C17.9 19.5 17.1 19.8 16.1 19.1 L11.1 15.5 C10.5 15.1 10.5 14.5 11.0 14.0 L16.4 8.9 C16.7 8.6 16.5 8.3 16.1 8.5 L8.6 13.3 C8.0 13.7 7.4 13.8 6.7 13.6 L3.7 12.7 C2.5 12.3 2.5 11.4 3.7 10.9 Z"/>
+    </group>
 </vector>

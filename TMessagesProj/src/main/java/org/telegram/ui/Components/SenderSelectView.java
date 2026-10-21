@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -24,7 +26,9 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class SenderSelectView extends View {
+    private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer();
     private final static float SPRING_MULTIPLIER = 100f;
     private final static FloatPropertyCompat<SenderSelectView> MENU_PROGRESS = new SimpleFloatPropertyCompat<SenderSelectView>("menuProgress", obj -> obj.menuProgress, (obj, value) -> {
         obj.menuProgress = value;
@@ -104,14 +108,26 @@ public class SenderSelectView extends View {
         canvas.save();
         menuPaint.setAlpha(alpha);
         float padding = AndroidUtilities.dp(10) + menuPaint.getStrokeWidth();
+        if (!drawPackClose(canvas, padding)) {
         canvas.drawLine(padding, padding, getWidth() - padding, getHeight() - padding, menuPaint);
         canvas.drawLine(padding, getHeight() - padding, getWidth() - padding, padding, menuPaint);
+        }
         canvas.restore();
 
         selectorDrawable.setBounds(0, 0, getWidth(), getHeight());
         selectorDrawable.draw(canvas);
 
         canvas.restore();
+    }
+
+    private boolean drawPackClose(Canvas canvas, float padding) {
+        if (menuPaint.getXfermode() != null) return false;
+        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
+        packClose.draw(canvas, menuPaint, getWidth() / 2f, getHeight() / 2f,
+                Math.abs(getWidth() - 2f * padding) + menuPaint.getStrokeWidth(),
+                Math.abs(getHeight() - 2f * padding) + menuPaint.getStrokeWidth(), 1f, false);
+        return true;
     }
 
     /**

@@ -9,6 +9,7 @@ import static org.telegram.ui.ActionBar.Theme.RIPPLE_MASK_CIRCLE_20DP;
 
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -16,7 +17,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
-import android.graphics.drawable.AnimatedVectorDrawable;
+import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -29,6 +30,7 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
@@ -66,6 +68,9 @@ public class CaptionStory extends CaptionContainerView {
 
     private Drawable flipButton;
 
+    private Resources flipButtonResources;
+    private long flipButtonGeneration;
+    private int flipButtonDensity;
     public CaptionStory(Context context, FrameLayout rootView, SizeNotifierFrameLayout sizeNotifierFrameLayout, FrameLayout containerView, Theme.ResourcesProvider resourcesProvider, BlurringShader.BlurManager blurManager) {
         super(context, rootView, sizeNotifierFrameLayout, containerView, resourcesProvider, blurManager);
 
@@ -131,8 +136,58 @@ public class CaptionStory extends CaptionContainerView {
     }
 
     private void checkFlipButton() {
-        if (flipButton != null) return;
-        flipButton = ContextCompat.getDrawable(getContext(), R.drawable.avd_flip);
+        final Resources resources = getContext().getResources();
+        final long generation = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final int density = resources.getDisplayMetrics().densityDpi;
+        if (flipButton != null && flipButtonResources == resources
+                && flipButtonGeneration == generation && flipButtonDensity == density) return;
+        final Drawable previous = flipButton;
+        clearFlipButton();
+        flipButton = ContextCompat.getDrawable(getContext(), R.drawable.avd_flip).mutate();
+        if (!(flipButton instanceof Animatable) && resources instanceof NimarkoIconResources
+                && ((NimarkoIconResources) resources).hasReplacement(R.drawable.avd_flip)) {
+            flipButton = new CaptionStoryFlipDrawable(flipButton);
+        }
+        if (previous != null) {
+            flipButton.setBounds(previous.getBounds());
+            flipButton.setAlpha(previous.getAlpha());
+        }
+        flipButton.setCallback(this);
+        flipButtonResources = resources;
+        flipButtonGeneration = generation;
+        flipButtonDensity = density;
+    }
+
+    private void stopFlipButtonAnimation() {
+        if (flipButton instanceof CaptionStoryFlipDrawable) {
+            ((CaptionStoryFlipDrawable) flipButton).stop();
+        }
+    }
+
+    private void clearFlipButton() {
+        if (flipButton != null) {
+            if (flipButton instanceof Animatable) {
+                ((Animatable) flipButton).stop();
+            }
+            unscheduleDrawable(flipButton);
+            flipButton.setCallback(null);
+            flipButton = null;
+        }
+        flipButtonResources = null;
+    }
+
+    @Override
+    public void invalidateDrawable(Drawable drawable) {
+        if (drawable == flipButton) {
+            invalidateDrawOver2();
+        }
+        super.invalidateDrawable(drawable);
+    }
+
+    @Override
+    protected boolean verifyDrawable(Drawable drawable) {
+        return drawable == flipButton || super.verifyDrawable(drawable);
     }
 
     private boolean hasRoundVideo;
@@ -549,15 +604,19 @@ public class CaptionStory extends CaptionContainerView {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            stopFlipButtonAnimation();
+        }
         if (recording && currentRecorder != null && currentRecorder.cameraView != null && flipButton != null) {
+            checkFlipButton();
             AndroidUtilities.rectTmp.set(flipButton.getBounds());
             AndroidUtilities.rectTmp.inset(-dp(12), -dp(12));
             for (int i = 0; i < ev.getPointerCount(); ++i) {
                 if (AndroidUtilities.rectTmp.contains(ev.getX(i), ev.getY(i))) {
                     if (ev.getAction() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN) {
                         currentRecorder.cameraView.switchCamera();
-                        if (flipButton instanceof AnimatedVectorDrawable) {
-                            ((AnimatedVectorDrawable) flipButton).start();
+                        if (flipButton instanceof Animatable) {
+                            ((Animatable) flipButton).start();
                         }
                     }
                     if (!recordTouch) {
@@ -640,6 +699,7 @@ public class CaptionStory extends CaptionContainerView {
                 if (!locked && !cancelling && slideProgress >= 1) {
                     cancelling = true;
                     recording = false;
+                    stopFlipButtonAnimation();
                     roundButton.setVisibility(INVISIBLE);
                     periodButton.setVisibility(INVISIBLE);
                     recordPaint.playDeleteAnimation();
@@ -673,6 +733,7 @@ public class CaptionStory extends CaptionContainerView {
 
         stopping = true;
         recording = false;
+        stopFlipButtonAnimation();
         setCollapsed(false, (int) (getBounds().right - dp(20) - (getWidth() * .35f) * slideProgress));
 
         if (currentRecorder != null) {
@@ -735,6 +796,7 @@ public class CaptionStory extends CaptionContainerView {
 
     @Override
     protected void onDetachedFromWindow() {
+        clearFlipButton();
         super.onDetachedFromWindow();
         recordPaint.detach();
     }

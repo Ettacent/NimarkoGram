@@ -425,8 +425,10 @@ public final class NimarkoCrashContext {
             String snapshotKey = "main".equals(threadName) ? "ng_diag_main"
                     : workerSnapshotKeys[(int) (thread.getId() % workerSnapshotKeys.length)];
             setCustomKey.invoke(crashlytics, snapshotKey, snapshot);
+            app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordBridgeSnapshot(snapshotKey, snapshot);
             if ("failure".equals(safeStage)) {
                 setCustomKey.invoke(crashlytics, "ng_diag_last_failure", snapshot);
+                app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordBridgeSnapshot("ng_diag_last_failure", snapshot);
             }
             setCustomKey.invoke(crashlytics, "ng_diag_domain", safeDomain);
             setCustomKey.invoke(crashlytics, "ng_diag_plugin", safePlugin);
@@ -479,6 +481,29 @@ public final class NimarkoCrashContext {
             emitting = false;
         }
         return crashlytics != null;
+    }
+    public static void publishRuntimeDiagnostics(String identity, String memory, String failure, String stall, boolean initialize) {
+        if (!outputLock.tryLock()) return;
+        boolean ownsEmission = false;
+        try {
+            if (emitting || (initialize ? !ensure() : !initialized || crashlytics == null)) return;
+            emitting = true;
+            ownsEmission = true;
+            if (!Boolean.TRUE.equals(crashlytics.getClass().getMethod("isCrashlyticsCollectionEnabled").invoke(crashlytics))) return;
+            setCustomKey.invoke(crashlytics, "ng_runtime_identity", boundedRuntime(identity));
+            setCustomKey.invoke(crashlytics, "ng_runtime_memory", boundedRuntime(memory));
+            setCustomKey.invoke(crashlytics, "ng_runtime_failure", boundedRuntime(failure));
+            setCustomKey.invoke(crashlytics, "ng_runtime_stall", boundedRuntime(stall));
+        } catch (Throwable ignored) {
+        } finally {
+            if (ownsEmission) emitting = false;
+            outputLock.unlock();
+        }
+    }
+
+    private static String boundedRuntime(String value) {
+        if (value == null) return "unavailable";
+        return value.length() <= 900 ? value : value.substring(0, 900);
     }
     private static String readMappingId() {
         try {

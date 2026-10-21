@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram filled_gift_play_24.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:viewportHeight="72" android:viewportWidth="72" android:width="24dp">
+    <path android:fillType="evenOdd" android:pathData="M28.75,14.104L55.659,31.824C57.965,33.343 58.604,36.444 57.085,38.75C56.711,39.317 56.226,39.802 55.659,40.176L28.75,57.896C26.444,59.415 23.343,58.777 21.824,56.47C21.287,55.654 21,54.698 21,53.721L21,18.279C21,15.518 23.239,13.279 26,13.279C26.889,13.279 27.76,13.516 28.524,13.963L28.75,14.104Z" android:strokeColor="#00000000">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="18" android:endY="72">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

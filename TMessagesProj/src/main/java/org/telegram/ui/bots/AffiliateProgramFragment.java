@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -650,16 +652,18 @@ public class AffiliateProgramFragment extends GradientHeaderActivity implements 
             imageView = new ImageView(context);
             imageView.setColorFilter(new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_IN));
             imageView.setScaleType(ImageView.ScaleType.CENTER);
-            addView(imageView, imageViewLayoutParams = LayoutHelper.createFrame(28, 28, Gravity.LEFT | Gravity.TOP, 17, 14.33f, 0, 0));
+            addView(imageView, imageViewLayoutParams = LayoutHelper.createFrame(28, 28, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 17, 14.33f, LocaleController.isRTL ? 17 : 0, 0));
 
             textLayout = new LinearLayout(context);
             textLayout.setOrientation(LinearLayout.VERTICAL);
-            addView(textLayout, textLayoutLayoutParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.FILL_HORIZONTAL | Gravity.TOP, 62, 10, 40, 8.66f));
+            addView(textLayout, textLayoutLayoutParams = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.FILL_HORIZONTAL | Gravity.TOP, LocaleController.isRTL ? 40 : 62, 10, LocaleController.isRTL ? 62 : 40, 8.66f));
 
             titleView = new TextView(context);
             titleView.setTypeface(AndroidUtilities.bold());
             titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
             titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+            titleView.setEllipsize(TextUtils.TruncateAt.END);
+            titleView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
             textLayout.addView(titleView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, 0, 0, 0));
 
             textView = new TextView(context);
@@ -671,7 +675,8 @@ public class AffiliateProgramFragment extends GradientHeaderActivity implements 
             arrowView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_switchTrack, resourcesProvider), PorterDuff.Mode.SRC_IN));
             arrowView.setImageResource(R.drawable.msg_arrowright);
             arrowView.setScaleType(ImageView.ScaleType.CENTER);
-            addView(arrowView, LayoutHelper.createFrame(24, 24, Gravity.RIGHT | Gravity.CENTER_VERTICAL, 0, 0, 10, 0));
+            arrowView.setRotation(LocaleController.isRTL ? 180 : 0);
+            addView(arrowView, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 10 : 0, 0, LocaleController.isRTL ? 0 : 10, 0));
 
             percentView = new TextView(context);
             percentView.setTextColor(0xFFFFFFFF);
@@ -681,14 +686,18 @@ public class AffiliateProgramFragment extends GradientHeaderActivity implements 
             percentView.setPadding(dp(5), 0, dp(4), 0);
             percentView.setGravity(Gravity.CENTER);
             percentView.setVisibility(View.GONE);
-            addView(percentView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 18, Gravity.RIGHT | Gravity.CENTER_VERTICAL, 0, 0, 35.33f, 0));
+            percentView.setSingleLine(true);
+            percentView.setEllipsize(TextUtils.TruncateAt.END);
+            addView(percentView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 18, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 35.33f : 0, 0, LocaleController.isRTL ? 0 : 35.33f, 0));
         }
 
         public void set(int color, int iconResId, CharSequence title, CharSequence text) {
+            setPercent(null);
             imageView.setImageResource(iconResId);
             imageView.setBackground(Theme.createRoundRectDrawable(dp(9), color));
 
             titleView.setText(title);
+            titleView.setSingleLine(TextUtils.isEmpty(text));
             if (TextUtils.isEmpty(text)) {
                 imageViewLayoutParams.topMargin = dp(10);
                 imageViewLayoutParams.bottomMargin = dp(10);
@@ -722,6 +731,18 @@ public class AffiliateProgramFragment extends GradientHeaderActivity implements 
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int trailingInset = dp(40);
+            if (percentView.getVisibility() != View.GONE) {
+                FrameLayout.LayoutParams badgeParams = (FrameLayout.LayoutParams) percentView.getLayoutParams();
+                percentView.setMaxWidth(Math.max(0, MeasureSpec.getSize(widthMeasureSpec)
+                    - getPaddingLeft() - getPaddingRight() - dp(62 + 8)
+                    - badgeParams.leftMargin - badgeParams.rightMargin));
+                measureChildWithMargins(percentView, widthMeasureSpec, dp(62 + 8), heightMeasureSpec, 0);
+                trailingInset = percentView.getMeasuredWidth()
+                    + (LocaleController.isRTL ? badgeParams.leftMargin : badgeParams.rightMargin) + dp(8);
+            }
+            textLayoutLayoutParams.leftMargin = LocaleController.isRTL ? trailingInset : dp(62);
+            textLayoutLayoutParams.rightMargin = LocaleController.isRTL ? dp(62) : trailingInset;
             super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), heightMeasureSpec);
         }
 

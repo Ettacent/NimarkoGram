@@ -1,0 +1,10 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Modifications Copyright (C) 2026 Ettacent; GPL v2 or later. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M9.75,8.75H14.25 C14.802,8.75 15.25,9.198 15.25,9.75 V14.25 C15.25,14.802 14.802,15.25 14.25,15.25 H9.75 C9.198,15.25 8.75,14.802 8.75,14.25 V9.75 C8.75,9.198 9.198,8.75 9.75,8.75Z"/>
+</vector>

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package com.example
 
 import com.squareup.kotlinpoet.AnnotationSpec
@@ -23,8 +25,9 @@ import java.io.File
 
 abstract class GenerateSchemeTask : DefaultTask() {
     companion object {
-        const val LAYER = 229;
+        const val LAYER = 231;
     }
+
 
     @get:InputDirectory
     var tlSourcesDir: File = File("")
@@ -152,6 +155,7 @@ abstract class GenerateSchemeTask : DefaultTask() {
         )
         // println("✅ Generation complete. Output: $outputDir")
     }
+
 
     // =========================================================
     // Генерация — бывшие private fun в main.kt

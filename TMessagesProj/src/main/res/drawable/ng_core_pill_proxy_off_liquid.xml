@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram pill_proxy_off.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:height="24.0dip" android:width="24.0dip" android:viewportWidth="24.0" android:viewportHeight="24.0">
+    <path android:pathData="M5.28 4.5L12 3l6.72 1.5c0.38 0.08 0.64 0.4 0.64 0.8v8.16c0 1.64-0.82 3.18-2.18 4.09L12 21l-5.18-3.45c-1.36-0.91-2.19-2.45-2.19-4.09V5.3c0-0.38 0.27-0.71 0.65-0.8Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAffffff" />
+                <item android:offset="0.32" android:color="#E0ffffff" />
+                <item android:offset="0.56" android:color="#8Fffffff" />
+                <item android:offset="0.78" android:color="#B8ffffff" />
+                <item android:offset="1" android:color="#F5ffffff" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

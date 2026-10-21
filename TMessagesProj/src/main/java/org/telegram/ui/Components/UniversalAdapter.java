@@ -574,7 +574,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 }
                 break;
             case VIEW_TYPE_PROFILE_CELL:
-                view = new ProfileSearchCell(context);
+                view = new ProfileSearchCell(context, currentAccount, resourcesProvider);
                 break;
             case VIEW_TYPE_SEARCH_MESSAGE:
                 view = new DialogCell(null, context, false, true);
@@ -745,6 +745,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 } else {
                     cell.setColors(Theme.key_windowBackgroundWhiteGrayIcon, Theme.key_windowBackgroundWhiteBlackText);
                 }
+                cell.setDrawLoading(item.locked, 45, true);
                 cell.setEnabled(item.enabled, true);
                 break;
             case VIEW_TYPE_CHECK:

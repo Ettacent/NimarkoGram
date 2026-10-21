@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -34,6 +36,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
@@ -721,6 +724,8 @@ public class QuoteSpan implements LeadingMarginSpan {
         private final View view;
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
+        private final BoundedPackIconRenderer packExpanded = new BoundedPackIconRenderer();
+        private final BoundedPackIconRenderer packCollapsed = new BoundedPackIconRenderer();
         private int alpha = 0xFF;
         private boolean state;
         private final AnimatedFloat animatedState;
@@ -761,6 +766,22 @@ public class QuoteSpan implements LeadingMarginSpan {
             final float expand = animatedState.set(state);
             final float p = dpf2(2.51f);
 
+            NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+            if (packExpanded.prepare(icons, R.drawable.voice_expand)
+                    && packCollapsed.prepare(icons, R.drawable.voice_minimize) && !getBounds().isEmpty()) {
+                float aw = dpf2(4.66f), ah = dpf2(2.16f);
+                float direction = lerp(-1f, 1f, expand);
+                float extent = Math.max(aw / 2f * Math.abs(direction), (ah - aw / 2f) * direction + ah);
+                float strokeExtent = paint.getStrokeWidth() * (float) Math.sqrt((direction * direction + 1f) / 2f);
+                float size = Math.min(2f * p + (float) Math.sqrt(2) * extent + strokeExtent,
+                        Math.min(getBounds().width(), getBounds().height()));
+                int save = canvas.save();
+                canvas.clipRect(getBounds());
+                packExpanded.draw(canvas, paint, cx, cy, size, size, 1f - expand, false);
+                packCollapsed.draw(canvas, paint, cx, cy, size, size, expand, false);
+                canvas.restoreToCount(save);
+                return;
+            }
             canvas.save();
             canvas.translate(cx, cy);
 

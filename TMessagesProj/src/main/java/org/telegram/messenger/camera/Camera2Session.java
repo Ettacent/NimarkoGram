@@ -1145,26 +1145,36 @@ public class Camera2Session {
     public static void applyRoundVideoEnhancements(CaptureRequest.Builder builder,
                                                    CameraCharacteristics characteristics) {
         if (characteristics == null) return;
+        List<CaptureRequest.Key<?>> requestKeys = characteristics.getAvailableCaptureRequestKeys();
+        if (requestKeys == null) return;
         applyStabilizationModesTo(builder, characteristics,
                 app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
                 app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
-        Integer af = chooseSupportedMode(characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES),
-                app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
-                        ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO : CaptureRequest.CONTROL_AF_MODE_AUTO,
-                CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF);
+        if (requestKeys.contains(CaptureRequest.CONTROL_AF_MODE)) {
+            int[] afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+            Integer af = app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
+                    ? chooseSupportedMode(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO,
+                            CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
+                            CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF)
+                    : chooseSupportedMode(afModes, CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF);
         if (af != null) builder.set(CaptureRequest.CONTROL_AF_MODE, af);
+        }
+        if (requestKeys.contains(CaptureRequest.NOISE_REDUCTION_MODE)) {
         Integer nr = chooseSupportedMode(characteristics.get(
                 CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES),
                 app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction
                         ? CaptureRequest.NOISE_REDUCTION_MODE_FAST : CaptureRequest.NOISE_REDUCTION_MODE_OFF,
                 CaptureRequest.NOISE_REDUCTION_MODE_OFF);
         if (nr != null) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, nr);
+        }
+        if (requestKeys.contains(CaptureRequest.STATISTICS_FACE_DETECT_MODE)) {
         int[] faceModes = characteristics.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
         Integer face = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
                 ? chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,
                         CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)
                 : chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
         if (face != null) builder.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, face);
+        }
     }
 
     private boolean updateCaptureRequest() {

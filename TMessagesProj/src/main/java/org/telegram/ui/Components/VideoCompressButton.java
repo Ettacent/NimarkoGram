@@ -1,12 +1,17 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -16,6 +21,8 @@ import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
 
+import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class VideoCompressButton extends View {
 
     public static final int STATE_GIF = 0;
@@ -28,6 +35,10 @@ public class VideoCompressButton extends View {
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint clearPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    private final Paint qualityPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private LinearGradient qualityGradient;
+    private float qualityGradientTop;
+    private float qualityGradientBottom;
     private boolean disabled;
     private final AnimatedFloat disabledT = new AnimatedFloat(this, 0, 300, CubicBezierInterpolator.EASE_OUT_QUINT);
 
@@ -102,6 +113,37 @@ public class VideoCompressButton extends View {
         this.disabled = false;
         textDrawable.setText(highQuality ? "HD" : "SD");
         sizeTextDrawable.setText("", false);
+        setEnabled(true);
+        setAlpha(1f);
+        setClickable(true);
+        invalidate();
+    }
+
+    private void drawQualityBackground(Canvas canvas, float opacity) {
+        Resources resources = getResources();
+        int pack = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getAppliedSelection() : NimarkoConfig.ICON_REPLACE_NONE;
+        if (pack == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+            if (qualityGradient == null || qualityGradientTop != AndroidUtilities.rectTmp.top
+                    || qualityGradientBottom != AndroidUtilities.rectTmp.bottom) {
+                qualityGradientTop = AndroidUtilities.rectTmp.top;
+                qualityGradientBottom = AndroidUtilities.rectTmp.bottom;
+                qualityGradient = new LinearGradient(0, qualityGradientTop, 0, qualityGradientBottom,
+                        new int[]{0x88ffffff, 0x38ffffff, 0x60ffffff}, null, Shader.TileMode.CLAMP);
+            }
+            qualityPaint.setColor(0xffffffff);
+            qualityPaint.setShader(qualityGradient);
+            qualityPaint.setAlpha(Math.round(255 * opacity));
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, dpf2(4), dpf2(4), qualityPaint);
+            qualityPaint.setShader(null);
+            strokePaint.setAlpha(Math.round(0x66 * opacity));
+            strokePaint.setStrokeWidth(dpf2(.6f));
+        } else if (pack == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+            qualityPaint.setColor(0x66ffffff);
+            qualityPaint.setAlpha(Math.round(0x66 * opacity));
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, dpf2(4), dpf2(4), qualityPaint);
+            strokePaint.setAlpha(0);
+        }
     }
 
     @Override
@@ -120,6 +162,7 @@ public class VideoCompressButton extends View {
             (getWidth() + w) / 2f,
             (getHeight() + h) / 2f
         );
+        drawQualityBackground(canvas, 1f - .35f * disabled);
         canvas.drawRoundRect(AndroidUtilities.rectTmp, dpf2(4), dpf2(4), strokePaint);
 
         AndroidUtilities.rectTmp2.set(0, (int) ((getHeight() - h) / 2f), getWidth(), (int) ((getHeight() + h) / 2f));

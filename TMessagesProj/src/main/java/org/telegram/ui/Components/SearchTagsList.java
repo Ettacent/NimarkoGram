@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -27,6 +29,8 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -784,6 +788,48 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
 
     private class TagButton extends View {
         public ReactionsLayoutInBubble.ReactionButton reactionButton;
+        private boolean attached;
+        private ViewTreeObserver presentationObserver;
+        private final ViewTreeObserver.OnPreDrawListener presentationListener = () -> {
+            if (!attached || isTagPresented()) {
+                stopPresentationWatch();
+                if (attached) invalidate();
+            }
+            return true;
+        };
+
+        private boolean isTagPresented() {
+            View view = this;
+            while (view != null) {
+                if (view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0f) return false;
+                ViewParent parent = view.getParent();
+                view = parent instanceof View ? (View) parent : null;
+            }
+            return true;
+        }
+
+        private void updatePresentationWatch() {
+            if (!attached || reactionButton == null || reactionButton.animatedEmojiDrawable == null || isTagPresented()) {
+                stopPresentationWatch();
+                return;
+            }
+            ViewTreeObserver observer = getViewTreeObserver();
+            if (presentationObserver == observer) return;
+            stopPresentationWatch();
+            if (observer.isAlive()) {
+                presentationObserver = observer;
+                observer.addOnPreDrawListener(presentationListener);
+            }
+        }
+
+        private void stopPresentationWatch() {
+            if (presentationObserver != null) {
+                if (presentationObserver.isAlive()) {
+                    presentationObserver.removeOnPreDrawListener(presentationListener);
+                }
+                presentationObserver = null;
+            }
+        }
         private final AnimatedFloat progress = new AnimatedFloat(this, 0, 260, CubicBezierInterpolator.EASE_OUT_QUINT);
         private BlurredBackgroundDrawable blurredDrawable;
         private int count;
@@ -805,6 +851,10 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
         public void set(Item item) {
             boolean newReactionButton = lastReaction == null || !lastReaction.equals(item.reaction);
             if (newReactionButton) {
+                stopPresentationWatch();
+                if (reactionButton != null && attached) {
+                    reactionButton.detach();
+                }
                 TLRPC.TL_reactionCount reactionCount = new TLRPC.TL_reactionCount();
                 reactionCount.reaction = item.reaction.toTLReaction();
                 reactionCount.count = item.count;
@@ -872,6 +922,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
             if (!newReactionButton) {
                 requestLayout();
             }
+            invalidate();
         }
 
         public void startAnimate() {
@@ -914,6 +965,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
 
         @Override
         protected void onDraw(@NonNull Canvas canvas) {
+            updatePresentationWatch();
             final int x = (getWidth() - reactionButton.width) / 2;
             final int y = (getHeight() - reactionButton.height) / 2;
 
@@ -940,7 +992,6 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
             reactionButton.draw(canvas, x, y, progress.set(1f), 1f, false, false, 0.0f);
         }
 
-        private boolean attached;
 
         @Override
         protected void onAttachedToWindow() {
@@ -956,6 +1007,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
         @Override
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
+            stopPresentationWatch();
             if (attached) {
                 if (reactionButton != null) {
                     reactionButton.detach();

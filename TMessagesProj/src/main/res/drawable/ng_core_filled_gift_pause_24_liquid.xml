@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram filled_gift_pause_24.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:height="24dp" android:viewportHeight="72" android:viewportWidth="72" android:width="24dp">
+    <path android:fillType="evenOdd" android:pathData="M23.556,17.333L28,17.333C29.964,17.333 31.556,18.925 31.556,20.889L31.556,51.111C31.556,53.075 29.964,54.667 28,54.667L23.556,54.667C21.592,54.667 20,53.075 20,51.111L20,20.889C20,18.925 21.592,17.333 23.556,17.333ZM44,17.333L48.444,17.333C50.408,17.333 52,18.925 52,20.889L52,51.111C52,53.075 50.408,54.667 48.444,54.667L44,54.667C42.036,54.667 40.444,53.075 40.444,51.111L40.444,20.889C40.444,18.925 42.036,17.333 44,17.333Z" android:strokeColor="#00000000">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="18" android:endY="72">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

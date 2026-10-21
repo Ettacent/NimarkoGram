@@ -540,9 +540,11 @@ public final class PineAdapter extends MethodHook {
             try {
                 if (AFTER_HOOKED_METHOD != null) {
                     diagnosticPhase(param, "callback_after_enter");
+                    enterPluginCallback();
                     try {
                         AFTER_HOOKED_METHOD.invoke(xcHook, param);
                     } finally {
+                        leavePluginCallback();
                         diagnosticPhase(param, "callback_after_exit");
                     }
                 }

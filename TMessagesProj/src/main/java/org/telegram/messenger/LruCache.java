@@ -25,11 +25,21 @@ import java.util.Set;
  * overview.
  */
 public class LruCache<T> {
-    private final LinkedHashMap<String, T> map;
+    private static final class CacheEntry<T> {
+        final T value;
+        final int size;
+
+        CacheEntry(T value, int size) {
+            this.value = value;
+            this.size = size;
+        }
+    }
+
+    private final LinkedHashMap<String, CacheEntry<T>> map;
     private final LinkedHashMap<String, ArrayList<String>> mapFilters;
 
     /** Size of this cache in units. Not necessarily the number of elements. */
-    private int size;
+    private volatile long size;
     private int maxSize;
 
     /**
@@ -57,11 +67,11 @@ public class LruCache<T> {
             throw new NullPointerException("key == null");
         }
 
-        T mapValue;
+        CacheEntry<T> mapValue;
         synchronized (this) {
             mapValue = map.get(key);
             if (mapValue != null) {
-                return mapValue;
+                return mapValue.value;
             }
         }
         return null;
@@ -90,12 +100,13 @@ public class LruCache<T> {
             throw new NullPointerException("key == null || value == null");
         }
 
-        T previous;
+        CacheEntry<T> previous;
         synchronized (this) {
-            size += safeSizeOf(key, value);
-            previous = map.put(key, value);
+            CacheEntry<T> entry = new CacheEntry<>(value, safeSizeOf(key, value));
+            size += entry.size;
+            previous = map.put(key, entry);
             if (previous != null) {
-                size -= safeSizeOf(key, previous);
+                size -= previous.size;
             }
 
             String[] args = key.split("@");
@@ -112,11 +123,11 @@ public class LruCache<T> {
 
         }
         if (previous != null) {
-            entryRemoved(false, key, previous, value);
+            entryRemoved(false, key, previous.value, value);
         }
 
         trimToSize(maxSize, key);
-        return previous;
+        return previous == null ? null : previous.value;
     }
 
     /**
@@ -129,16 +140,15 @@ public class LruCache<T> {
             T value = null;
             synchronized (this) {
                 if (size <= maxSize || map.isEmpty()) return;
-                for (Map.Entry<String, T> entry : map.entrySet()) {
+                for (Map.Entry<String, CacheEntry<T>> entry : map.entrySet()) {
                     if (!entry.getKey().equals(justAdded)) {
                         key = entry.getKey();
-                        value = entry.getValue();
+                        value = entry.getValue().value;
                         break;
                     }
                 }
                 if (key == null) return;
-                size -= safeSizeOf(key, value);
-                map.remove(key);
+                size -= map.remove(key).size;
                 removeFilterKey(key);
             }
 
@@ -164,21 +174,21 @@ public class LruCache<T> {
             throw new NullPointerException("key == null");
         }
 
-        T previous;
+        CacheEntry<T> previous;
         synchronized (this) {
             previous = map.remove(key);
             if (previous != null) {
-                size -= safeSizeOf(key, previous);
+                size -= previous.size;
                 removeFilterKey(key);
             }
         }
 
         if (previous != null) {
 
-            entryRemoved(false, key, previous, null);
+            entryRemoved(false, key, previous.value, null);
         }
 
-        return previous;
+        return previous == null ? null : previous.value;
     }
     
     public synchronized boolean contains(String key){
@@ -234,6 +244,10 @@ public class LruCache<T> {
      * the sizes of the entries in this cache.
      */
     public synchronized final int size() {
+        return (int) Math.min(size, Integer.MAX_VALUE);
+    }
+
+    public final long diagnosticSize() {
         return size;
     }
 
@@ -248,8 +262,8 @@ public class LruCache<T> {
 
     public synchronized final Set<Map.Entry<String, T>> entrySet() {
         Set<Map.Entry<String, T>> entries = new LinkedHashSet<>();
-        for (Map.Entry<String, T> entry : map.entrySet()) {
-            entries.add(new AbstractMap.SimpleImmutableEntry<>(entry));
+        for (Map.Entry<String, CacheEntry<T>> entry : map.entrySet()) {
+            entries.add(new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), entry.getValue().value));
         }
         return entries;
     }

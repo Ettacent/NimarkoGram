@@ -2507,7 +2507,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 } else if (user.bot && user.bot_active_users != 0) {
                     newStatus = LocaleController.formatPluralStringComma("BotUsers", user.bot_active_users, ',');
                 } else if (user.bot) {
-                    newStatus = getString(R.string.Bot);
+                    newStatus = UserObject.getBotStatus(user);
                 } else {
                     isOnline[0] = false;
                     newStatus = app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle

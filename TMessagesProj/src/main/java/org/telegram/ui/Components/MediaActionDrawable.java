@@ -2,6 +2,7 @@
 
 package org.telegram.ui.Components;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
@@ -11,14 +12,18 @@ import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.NimarkoConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.animation.DecelerateInterpolator;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 
@@ -90,6 +95,315 @@ public class MediaActionDrawable extends Drawable {
     private Matrix gradientMatrix;
     private boolean hasOverlayImage;
 
+    private final PackIconRenderer packIconRenderer = new PackIconRenderer(true);
+
+    static final class PackIconRenderer {
+        private final boolean useSourceForeground;
+        private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final Paint colorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF bitmapBounds = new RectF();
+        private final Paint morphPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private NimarkoIconResources.PreparedIcon morphPlay, morphPause;
+        private float[][] morphFrom, morphTo;
+        private float[] morphVertices;
+        private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Matrix progressMatrix = new Matrix();
+        private LinearGradient progressGradient;
+
+        PackIconRenderer() {
+            this(false);
+        }
+
+        PackIconRenderer(boolean useSourceForeground) {
+            this.useSourceForeground = useSourceForeground;
+            colorPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+            morphPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
+        }
+
+        static NimarkoIconResources.PreparedIcon get(NimarkoIconResources.NavigationIcons icons, int id) {
+            NimarkoIconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(id);
+            return icon == null || icon.bitmap == null || icon.bitmap.isRecycled() ? null : icon;
+        }
+
+        void drawProgressArc(Canvas canvas, RectF bounds, float start, float sweep, Paint source, int selection) {
+            drawProgressArc(canvas, bounds, start, sweep, source, selection, 1f);
+        }
+
+        void drawProgressArc(Canvas canvas, RectF bounds, float start, float sweep, Paint source, int selection, float alpha) {
+            int opacity = Math.max(0, Math.min(255, Math.round(source.getAlpha() * alpha)));
+            if (opacity == 0) {
+                return;
+            }
+            if (selection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+                if (opacity == source.getAlpha()) {
+                    canvas.drawArc(bounds, start, sweep, false, source);
+                } else {
+                    progressPaint.set(source);
+                    progressPaint.setAlpha(opacity);
+                    canvas.drawArc(bounds, start, sweep, false, progressPaint);
+                }
+                return;
+            }
+            if (progressGradient == null) {
+                progressGradient = new LinearGradient(0, 0, 1, 1,
+                        new int[]{0x94ffffff, 0x7cffffff, 0x64ffffff}, null, Shader.TileMode.CLAMP);
+            }
+            progressMatrix.setScale(bounds.width(), bounds.height());
+            progressMatrix.postTranslate(bounds.left, bounds.top);
+            progressGradient.setLocalMatrix(progressMatrix);
+            progressPaint.set(source);
+            progressPaint.setColor(0xffffffff);
+            progressPaint.setAlpha(opacity);
+            progressPaint.setColorFilter(null);
+            progressPaint.setShader(progressGradient);
+            float inset = source.getStrokeWidth();
+            int save = canvas.saveLayer(bounds.left - inset, bounds.top - inset,
+                    bounds.right + inset, bounds.bottom + inset, null);
+            try {
+                canvas.drawArc(bounds, start, sweep, false, progressPaint);
+                colorPaint.setColor(source.getColor() | 0xff000000);
+                colorPaint.setColorFilter(source.getColorFilter());
+                colorPaint.setShader(source.getShader());
+                canvas.drawRect(bounds.left - inset, bounds.top - inset,
+                        bounds.right + inset, bounds.bottom + inset, colorPaint);
+            } finally {
+                colorPaint.setShader(null);
+                canvas.restoreToCount(save);
+            }
+        }
+
+        void draw(Canvas canvas, NimarkoIconResources.PreparedIcon icon, Paint source, float cx, float cy,
+                  float size, float alpha, float rotation) {
+            draw(canvas, icon, source, cx, cy, size, alpha, rotation, 1, 1);
+        }
+
+        void draw(Canvas canvas, NimarkoIconResources.PreparedIcon icon, Paint source, float cx, float cy,
+                  float size, float alpha, float rotation, float scaleX, float scaleY) {
+            if (icon == null || alpha <= 0 || size <= 0) {
+                return;
+            }
+            boolean preserveColor = !useSourceForeground && icon.noTint;
+            bitmapPaint.setAlpha(Math.min(255, Math.max(0, (int) (255 * alpha))));
+            float factor = size / Math.max(icon.bitmap.getWidth(), icon.bitmap.getHeight());
+            float halfWidth = icon.bitmap.getWidth() * factor * scaleX / 2;
+            float halfHeight = icon.bitmap.getHeight() * factor * scaleY / 2;
+            bitmapBounds.set(-halfWidth, -halfHeight, halfWidth, halfHeight);
+            float extent = halfWidth + halfHeight;
+            int saveCount = preserveColor ? canvas.save()
+                    : canvas.saveLayer(cx - extent, cy - extent, cx + extent, cy + extent, null);
+            canvas.save();
+            canvas.translate(cx, cy);
+            canvas.rotate(rotation);
+            canvas.drawBitmap(icon.bitmap, null, bitmapBounds, bitmapPaint);
+            canvas.restore();
+            if (!preserveColor) {
+                colorPaint.setColor(source.getColor() | 0xff000000);
+                colorPaint.setColorFilter(source.getColorFilter());
+                colorPaint.setShader(source.getShader());
+                canvas.drawRect(cx - extent, cy - extent, cx + extent, cy + extent, colorPaint);
+                colorPaint.setShader(null);
+            }
+            canvas.restoreToCount(saveCount);
+        }
+
+        void drawPlayPause(Canvas canvas, NimarkoIconResources.PreparedIcon play, NimarkoIconResources.PreparedIcon pause,
+                           Paint source, float cx, float cy, float size, float progress, float alpha) {
+            if (alpha <= 0 || size <= 0) {
+                return;
+            }
+            if (play == null || pause == null || play == pause) {
+                draw(canvas, play == null ? pause : play, source, cx, cy, size, alpha, 0);
+                return;
+            }
+            progress = Math.max(0, Math.min(1, progress));
+            if (progress == 0 || progress == 1) {
+                draw(canvas, progress == 0 ? play : pause, source, cx, cy, size, alpha, 0);
+                return;
+            }
+            if (morphPlay != play || morphPause != pause) {
+                morphPlay = play;
+                morphPause = pause;
+                try {
+                    prepareMorph(play, pause);
+                } catch (RuntimeException | OutOfMemoryError ignore) {
+                    morphFrom = morphTo = null;
+                }
+            }
+            if (morphFrom == null) {
+                draw(canvas, progress < 0.5f ? play : pause, source, cx, cy, size, alpha, 0);
+                return;
+            }
+            float p = progress * progress * (3 - 2 * progress);
+            float angle = p * (float) Math.PI / 2;
+            float cosine = (float) Math.cos(angle);
+            float sine = (float) Math.sin(angle);
+            int save = canvas.saveLayerAlpha(cx - size, cy - size, cx + size, cy + size,
+                    Math.max(0, Math.min(255, (int) (alpha * 255))), Canvas.ALL_SAVE_FLAG);
+            for (int endpoint = 0; endpoint < 2; endpoint++) {
+                NimarkoIconResources.PreparedIcon icon = endpoint == 0 ? play : pause;
+                boolean preserveColor = !useSourceForeground && icon.noTint;
+                int material = canvas.saveLayer(cx - size, cy - size, cx + size, cy + size, morphPaint);
+                bitmapPaint.setAlpha(Math.round(255 * (endpoint == 0 ? 1 - p : p)));
+                for (int side = 0; side < 2; side++) {
+                    int mesh = endpoint * 2 + side;
+                    for (int i = 0; i < morphVertices.length; i += 2) {
+                        float x = morphFrom[mesh][i] + (morphTo[mesh][i + 1] - morphFrom[mesh][i]) * p;
+                        float y = morphFrom[mesh][i + 1] + (-morphTo[mesh][i] - morphFrom[mesh][i + 1]) * p;
+                        morphVertices[i] = cx + size * (x * cosine - y * sine);
+                        morphVertices[i + 1] = cy + size * (x * sine + y * cosine);
+                    }
+                    canvas.drawBitmapMesh(icon.bitmap, 32, 32, morphVertices, 0, null, 0, bitmapPaint);
+                }
+                if (!preserveColor) {
+                    colorPaint.setColor(source.getColor() | 0xff000000);
+                    colorPaint.setColorFilter(source.getColorFilter());
+                    colorPaint.setShader(source.getShader());
+                    canvas.drawRect(cx - size, cy - size, cx + size, cy + size, colorPaint);
+                    colorPaint.setShader(null);
+                }
+                canvas.restoreToCount(material);
+            }
+            canvas.restoreToCount(save);
+        }
+
+        private void prepareMorph(NimarkoIconResources.PreparedIcon play, NimarkoIconResources.PreparedIcon pause) {
+            if (morphVertices == null) {
+                morphVertices = new float[2 * 33 * 33];
+            }
+            morphFrom = new float[4][morphVertices.length];
+            morphTo = new float[4][morphVertices.length];
+            for (int side = 0; side < 2; side++) {
+                MorphContour triangle = new MorphContour(play.bitmap, false, side);
+                MorphContour bar = new MorphContour(pause.bitmap, true, side);
+                for (int endpoint = 0; endpoint < 2; endpoint++) {
+                    MorphContour source = endpoint == 0 ? triangle : bar;
+                    MorphContour target = endpoint == 0 ? bar : triangle;
+                    float[] from = morphFrom[endpoint * 2 + side];
+                    float[] to = morphTo[endpoint * 2 + side];
+                    for (int row = 0, i = 0; row <= 32; row++) {
+                        for (int column = 0; column <= 32; column++, i += 2) {
+                            float x = source.width * column / 32f;
+                            float y = source.height * row / 32f;
+                            if (endpoint == 0) {
+                                y = side == 0 ? Math.min(y, source.height / 2f) : Math.max(y, source.height / 2f);
+                            } else {
+                                x = side == 0 ? Math.max(x, source.width / 2f) : Math.min(x, source.width / 2f);
+                            }
+                            float along = endpoint == 0 ? x : y;
+                            float u = Math.max(0, Math.min(1, (along - source.start) / Math.max(1, source.end - source.start)));
+                            float low = source.edge(source.low, along);
+                            float high = source.edge(source.high, along);
+                            float v = endpoint == 0 ? (y - low) / Math.max(1, high - low) : (high - x) / Math.max(1, high - low);
+                            v = Math.max(-1, Math.min(2, v));
+                            float targetAlong = target.start + (target.end - target.start) * u;
+                            float targetLow = target.edge(target.low, targetAlong);
+                            float targetHigh = target.edge(target.high, targetAlong);
+                            float tx = endpoint == 0 ? targetHigh - v * (targetHigh - targetLow) : targetAlong;
+                            float ty = endpoint == 0 ? targetAlong : targetLow + v * (targetHigh - targetLow);
+                            float sourceScale = Math.max(source.width, source.height);
+                            float targetScale = Math.max(target.width, target.height);
+                            float[] original = endpoint == 0 ? from : to;
+                            float[] mapped = endpoint == 0 ? to : from;
+                            original[i] = (x - source.width / 2f) / sourceScale;
+                            original[i + 1] = (y - source.height / 2f) / sourceScale;
+                            mapped[i] = (tx - target.width / 2f) / targetScale;
+                            mapped[i + 1] = (ty - target.height / 2f) / targetScale;
+                        }
+                    }
+                }
+            }
+            morphPlay = play;
+            morphPause = pause;
+        }
+
+        private static final class MorphContour {
+            final int width, height;
+            final float[] low, high;
+            int start, end;
+
+            MorphContour(Bitmap bitmap, boolean vertical, int side) {
+                width = bitmap.getWidth();
+                height = bitmap.getHeight();
+                if ((long) width * height > 1048576) {
+                    throw new IllegalArgumentException();
+                }
+                int length = vertical ? height : width;
+                int cross = vertical ? width : height;
+                low = new float[length];
+                high = new float[length];
+                int[] pixels = new int[width * height];
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+                start = length;
+                end = 0;
+                for (int a = 0; a < length; a++) {
+                    int first = cross, last = -1;
+                    int from = (vertical ? side == 0 : side == 1) ? cross / 2 : 0;
+                    int to = from == 0 ? cross / 2 : cross;
+                    for (int b = from; b < to; b++) {
+                        if ((pixels[vertical ? a * width + b : b * width + a] >>> 24) != 0) {
+                            first = Math.min(first, b);
+                            last = b;
+                        }
+                    }
+                    if (last >= first) {
+                        start = Math.min(start, a);
+                        end = a + 1;
+                        low[a] = !vertical && side == 1 ? height / 2f : first;
+                        high[a] = !vertical && side == 0 ? height / 2f : last + 1;
+                    } else {
+                        low[a] = Float.NaN;
+                    }
+                }
+                if (start == length) {
+                    start = 0;
+                    end = length;
+                }
+                int nearest = start;
+                for (int a = 0; a < length; a++) {
+                    if (Float.isNaN(low[a])) {
+                        low[a] = Float.isNaN(low[nearest]) ? cross / 2f : low[nearest];
+                        high[a] = Math.max(low[a] + 1, high[nearest]);
+                    } else {
+                        nearest = a;
+                    }
+                }
+            }
+
+            float edge(float[] values, float position) {
+                float p = Math.max(0, Math.min(values.length - 1, position - 0.5f));
+                int i = (int) p;
+                return values[i] + (values[Math.min(i + 1, values.length - 1)] - values[i]) * (p - i);
+            }
+        }
+    }
+
+    private static NimarkoIconResources.PreparedIcon packIcon(int icon, NimarkoIconResources.PreparedIcon play,
+            NimarkoIconResources.PreparedIcon pause, NimarkoIconResources.PreparedIcon download, NimarkoIconResources.PreparedIcon cancel,
+            NimarkoIconResources.PreparedIcon file, NimarkoIconResources.PreparedIcon update, NimarkoIconResources.PreparedIcon check,
+            NimarkoIconResources.PreparedIcon stop) {
+        switch (icon) {
+            case ICON_PLAY:
+                return play;
+            case ICON_PAUSE:
+                return pause;
+            case ICON_DOWNLOAD:
+                return download;
+            case ICON_CANCEL:
+            case ICON_CANCEL_NOPROFRESS:
+                return cancel;
+            case ICON_CANCEL_FILL:
+                return stop;
+            case ICON_FILE:
+                return file;
+            case ICON_UPDATE:
+                return update;
+            case ICON_CHECK:
+            case ICON_SECRETCHECK:
+                return check;
+            default:
+                return null;
+        }
+    }
     public interface MediaActionDrawableDelegate {
         void invalidate();
     }
@@ -157,6 +471,24 @@ public class MediaActionDrawable extends Drawable {
     }
 
     public boolean setIcon(int icon, boolean animated) {
+        if (animated && animatingTransition && icon == currentIcon && currentIcon != nextIcon &&
+                (currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE) &&
+                (nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE)) {
+            NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
+            if (PackIconRenderer.get(pack, R.drawable.ic_action_play) != null &&
+                    PackIconRenderer.get(pack, R.drawable.ic_action_pause) != null) {
+                currentIcon = nextIcon;
+                nextIcon = icon;
+                transitionProgress = 1 - transitionProgress;
+                if (transitionProgress >= 1) {
+                    currentIcon = nextIcon;
+                    animatingTransition = false;
+                }
+                lastAnimationTime = System.currentTimeMillis();
+                invalidateSelf();
+                return true;
+            }
+        }
         if (currentIcon == icon && nextIcon != icon) {
             currentIcon = nextIcon;
             transitionProgress = 1.0f;
@@ -297,6 +629,26 @@ public class MediaActionDrawable extends Drawable {
     public void draw(Canvas canvas) {
         android.graphics.Rect bounds = getBounds();
 
+        NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
+        NimarkoIconResources.PreparedIcon packPlay = PackIconRenderer.get(pack, R.drawable.ic_action_play);
+        NimarkoIconResources.PreparedIcon packPause = PackIconRenderer.get(pack, R.drawable.ic_action_pause);
+        NimarkoIconResources.PreparedIcon packDownload = PackIconRenderer.get(pack, R.drawable.ng_file_download);
+        NimarkoIconResources.PreparedIcon packCancel = PackIconRenderer.get(pack, R.drawable.ng_media_cancel);
+        NimarkoIconResources.PreparedIcon packStop = PackIconRenderer.get(pack, R.drawable.ng_media_stop);
+        if (packDownload == null || packCancel == null || packStop == null) {
+            packDownload = packCancel = packStop = null;
+        }
+        NimarkoIconResources.PreparedIcon packCancelShape = currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL
+                ? packStop : packCancel;
+        int progressSelection = pack != null && packDownload != null && packCancel != null && packStop != null
+                ? pack.selection : NimarkoConfig.ICON_REPLACE_NONE;
+        NimarkoIconResources.PreparedIcon packFile = PackIconRenderer.get(pack, R.drawable.msg_sendfile);
+        NimarkoIconResources.PreparedIcon packUpdate = PackIconRenderer.get(pack, R.drawable.msg_retry);
+        NimarkoIconResources.PreparedIcon packCheck = PackIconRenderer.get(pack, R.drawable.ic_ab_done);
+        if (packPlay == null || packPause == null) {
+            packPlay = packPause = null;
+        }
+        boolean packPlayback = packPlay != null;
         if (messageDrawable != null && messageDrawable.hasGradient() && !hasOverlayImage) {
             Shader shader = messageDrawable.getGradientShader();
             paint.setShader(shader);
@@ -332,6 +684,12 @@ public class MediaActionDrawable extends Drawable {
         }
 
         int width = AndroidUtilities.dp(3);
+        float packSize = AndroidUtilities.dp(24) * scale;
+        boolean packDownloadMotion = currentIcon == nextIcon ||
+                currentIcon == ICON_DOWNLOAD && (nextIcon == ICON_CANCEL || nextIcon == ICON_CANCEL_FILL) ||
+                nextIcon == ICON_DOWNLOAD && (currentIcon == ICON_CANCEL || currentIcon == ICON_CANCEL_FILL);
+        boolean packCancelMotion = currentIcon == nextIcon || currentIcon == ICON_NONE ||
+                nextIcon == ICON_DOWNLOAD || nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE || nextIcon == ICON_NONE;
         if (currentIcon == ICON_DOWNLOAD || nextIcon == ICON_DOWNLOAD) {
             applyShaderMatrix(false);
             float yStart = cy - AndroidUtilities.dp(9) * scale;
@@ -391,7 +749,8 @@ public class MediaActionDrawable extends Drawable {
                     }
                     rect.set(cx - d, yEnd2 - d / 2, cx, yEnd2 + d / 2);
                     float start = 100 * currentProgress2;
-                    canvas.drawArc(rect, start, 104 * currentProgress3 - start, false, paint);
+                    packIconRenderer.drawProgressArc(canvas, rect, start, 104 * currentProgress3 - start, paint, progressSelection,
+                            progressSelection == NimarkoConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
 
                     y1 = yStart2 + (yEnd2 - yStart2) * currentProgress;
                     y2 = y3 = yEnd2;
@@ -418,17 +777,24 @@ public class MediaActionDrawable extends Drawable {
                         }
                         if (alpha != 0) {
                             paint.setAlpha(alpha);
+                            if (packCancelShape != null && (nextIcon == ICON_CANCEL || nextIcon == ICON_CANCEL_FILL)) {
+                                packIconRenderer.draw(canvas, packCancelShape, paint, cx, cy, packSize * currentProgress2,
+                                        alpha / 255f * overrideAlpha, 0);
+                            }
                             if (nextIcon == ICON_CANCEL_FILL) {
                                 paint3.setAlpha(alpha);
                                 rect.set(cx - AndroidUtilities.dp(3.5f), cy - AndroidUtilities.dp(3.5f), cx + AndroidUtilities.dp(3.5f), cy + AndroidUtilities.dp(3.5f));
+                                if (packCancelShape == null) {
                                 canvas.drawRoundRect(rect, AndroidUtilities.dp(2), AndroidUtilities.dp(2), paint3);
 
+                                }
                                 paint.setAlpha((int) (alpha * 0.15f));
                                 int diff = AndroidUtilities.dp(isMini ? 2 : 4);
                                 rect.set(bounds.left + diff, bounds.top + diff, bounds.right - diff, bounds.bottom - diff);
-                                canvas.drawArc(rect, 0, 360, false, paint);
+                                packIconRenderer.drawProgressArc(canvas, rect, 0, 360, paint, progressSelection,
+                                        progressSelection == NimarkoConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
                                 paint.setAlpha(alpha);
-                            } else {
+                            } else if (packCancelShape == null) {
                                 canvas.drawLine(cx - d, cy - d, cx + d, cy + d, paint);
                                 canvas.drawLine(cx + d, cy - d, cx - d, cy + d, paint);
                             }
@@ -445,12 +811,17 @@ public class MediaActionDrawable extends Drawable {
                 x2 = cx + AndroidUtilities.dp(8) * scale;
                 y3 = y2 - AndroidUtilities.dp(8) * scale;
             }
-            if (y1 != y2) {
+            if (packDownload == null && y1 != y2) {
                 canvas.drawLine(cx, y1, cx, y2, paint);
             }
-            if (x1 != cx) {
+            if (packDownload == null && x1 != cx) {
                 canvas.drawLine(x1, y3, cx, y2, paint);
                 canvas.drawLine(x2, y3, cx, y2, paint);
+            }
+            if (packDownload != null && packDownloadMotion && scale > 0 && y1 != y2) {
+                packIconRenderer.draw(canvas, packDownload, paint, cx, (y1 + y2) / 2, packSize, paint.getAlpha() / 255f * overrideAlpha, 0,
+                        Math.min(1, Math.max(paint.getStrokeWidth(), x2 - x1) / (AndroidUtilities.dp(16) * scale)),
+                        Math.min(1, Math.max(0, y2 - y1) / (AndroidUtilities.dp(18) * scale)));
             }
         }
 
@@ -539,11 +910,19 @@ public class MediaActionDrawable extends Drawable {
             }
             if (alpha != 0) {
                 paint.setAlpha((int) (alpha * overrideAlpha));
+                if (packCancelShape != null && packCancelMotion && scale > 0) {
+                    float cancelScale = currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL
+                            ? 1 : d / (AndroidUtilities.dp(7) * scale);
+                    packIconRenderer.draw(canvas, packCancelShape, paint, cx, cy, packSize * cancelScale,
+                            paint.getAlpha() / 255f, 0);
+                }
                 if (currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL) {
                     paint3.setAlpha((int) (alpha * overrideAlpha));
                     rect.set(cx - AndroidUtilities.dp(3.5f), cy - AndroidUtilities.dp(3.5f), cx + AndroidUtilities.dp(3.5f), cy + AndroidUtilities.dp(3.5f));
+                    if (packCancelShape == null) {
                     canvas.drawRoundRect(rect, AndroidUtilities.dp(2), AndroidUtilities.dp(2), paint3);
-                } else {
+                    }
+                } else if (packCancelShape == null) {
                     canvas.drawLine(cx - d, cy - d, cx + d, cy + d, paint);
                     canvas.drawLine(cx + d, cy - d, cx - d, cy + d, paint);
                 }
@@ -565,10 +944,10 @@ public class MediaActionDrawable extends Drawable {
 
                 if (currentIcon == ICON_CANCEL_FILL || currentIcon == ICON_NONE && nextIcon == ICON_CANCEL_FILL) {
                     paint.setAlpha((int) (alpha * 0.15f * overrideAlpha));
-                    canvas.drawArc(rect, 0, 360, false, paint);
-                    paint.setAlpha(alpha);
+                    packIconRenderer.drawProgressArc(canvas, rect, 0, 360, paint, progressSelection);
+                    paint.setAlpha((int) (alpha * overrideAlpha));
                 }
-                canvas.drawArc(rect, downloadRadOffset, rad, false, paint);
+                packIconRenderer.drawProgressArc(canvas, rect, downloadRadOffset, rad, paint, progressSelection);
             }
             if (progressScale != 1.0f) {
                 canvas.restore();
@@ -589,7 +968,7 @@ public class MediaActionDrawable extends Drawable {
                 float rad = Math.max(4, 360 * animatedDownloadProgress);
                 int diff = AndroidUtilities.dp(isMini ? 2 : 4);
                 rect.set(bounds.left + diff, bounds.top + diff, bounds.right - diff, bounds.bottom - diff);
-                canvas.drawArc(rect, downloadRadOffset, rad, false, paint);
+                packIconRenderer.drawProgressArc(canvas, rect, downloadRadOffset, rad, paint, progressSelection);
             }
         }
 
@@ -610,14 +989,14 @@ public class MediaActionDrawable extends Drawable {
             previowsDrawableScale = Math.max(0.0f, 1.0f - transitionProgress / 0.5f);
         }
 
-        if (nextIcon == ICON_UPDATE) {
+        if (packUpdate == null && nextIcon == ICON_UPDATE) {
             nextPath = Theme.chat_updatePath;
-        } else if (currentIcon == ICON_UPDATE) {
+        } else if (packUpdate == null && currentIcon == ICON_UPDATE) {
             previousPath = Theme.chat_updatePath;
         }
-        if (nextIcon == ICON_FILE) {
+        if (packFile == null && nextIcon == ICON_FILE) {
             nextPath = Theme.chat_filePath;
-        } else if (currentIcon == ICON_FILE) {
+        } else if (packFile == null && currentIcon == ICON_FILE) {
             previousPath = Theme.chat_filePath;
         }
         if (nextIcon == ICON_FIRE) {
@@ -632,7 +1011,7 @@ public class MediaActionDrawable extends Drawable {
         }
 
 
-        if (currentIcon == ICON_SECRETCHECK || nextIcon == ICON_SECRETCHECK) {
+        if (packCheck == null && (currentIcon == ICON_SECRETCHECK || nextIcon == ICON_SECRETCHECK)) {
             applyShaderMatrix(false);
             paint.setAlpha(currentIcon == nextIcon ? 255 : (int) (transitionProgress * 255));
             int y = cy + AndroidUtilities.dp(7);
@@ -667,9 +1046,11 @@ public class MediaActionDrawable extends Drawable {
             }
 
             float d = AndroidUtilities.dp(7) * scale;
+            if (packCancel == null) {
             canvas.drawLine(cx - d, cy - d, cx + d, cy + d, paint);
             canvas.drawLine(cx + d, cy - d, cx - d, cy + d, paint);
 
+            }
             if (currentIcon != nextIcon) {
                 canvas.restore();
             }
@@ -685,7 +1066,7 @@ public class MediaActionDrawable extends Drawable {
                 transition = 1.0f - transitionProgress;
             }
 
-            textPaint.setAlpha((int) (transition * 255));
+            textPaint.setAlpha((int) (transition * 255 * overrideAlpha));
             int y = cy + AndroidUtilities.dp(5);
             int x = cx - percentStringWidth / 2;
             if (currentIcon != nextIcon) {
@@ -703,7 +1084,7 @@ public class MediaActionDrawable extends Drawable {
                 canvas.restore();
             }
         }
-        if (currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE || nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE) {
+        if (!packPlayback && (currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE || nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE)) {
             float p;
             if (currentIcon == ICON_PLAY && nextIcon == ICON_PAUSE || currentIcon == ICON_PAUSE && nextIcon == ICON_PLAY) {
                 if (animatingTransition) {
@@ -763,7 +1144,7 @@ public class MediaActionDrawable extends Drawable {
 
             canvas.restore();
         }
-        if (currentIcon == ICON_CHECK || nextIcon == ICON_CHECK) {
+        if (packCheck == null && (currentIcon == ICON_CHECK || nextIcon == ICON_CHECK)) {
             applyShaderMatrix(false);
             float progress1;
             float progress2;
@@ -800,7 +1181,7 @@ public class MediaActionDrawable extends Drawable {
             int w = (int) (previousDrawable.getIntrinsicWidth() * previowsDrawableScale);
             int h = (int) (previousDrawable.getIntrinsicHeight() * previowsDrawableScale);
             previousDrawable.setColorFilter(colorFilter);
-            previousDrawable.setAlpha(currentIcon == nextIcon ? 255 : (int) ((1.0f - transitionProgress) * 255));
+            previousDrawable.setAlpha((int) (overrideAlpha * (currentIcon == nextIcon ? 255 : (int) ((1.0f - transitionProgress) * 255))));
             previousDrawable.setBounds(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
             previousDrawable.draw(canvas);
         }
@@ -808,7 +1189,7 @@ public class MediaActionDrawable extends Drawable {
             int w = (int) (nextDrawable.getIntrinsicWidth() * drawableScale);
             int h = (int) (nextDrawable.getIntrinsicHeight() * drawableScale);
             nextDrawable.setColorFilter(colorFilter);
-            nextDrawable.setAlpha(currentIcon == nextIcon ? 255 : (int) (transitionProgress * 255));
+            nextDrawable.setAlpha((int) (overrideAlpha * (currentIcon == nextIcon ? 255 : (int) (transitionProgress * 255))));
             nextDrawable.setBounds(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2);
             nextDrawable.draw(canvas);
         }
@@ -859,6 +1240,50 @@ public class MediaActionDrawable extends Drawable {
             canvas.restore();
         }
 
+        NimarkoIconResources.PreparedIcon previousPack = packIcon(currentIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
+        NimarkoIconResources.PreparedIcon nextPack = packIcon(nextIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
+        if (currentIcon == ICON_DOWNLOAD && packDownloadMotion ||
+                (currentIcon == ICON_CANCEL || currentIcon == ICON_CANCEL_FILL) && packCancelMotion) {
+            previousPack = null;
+        }
+        if (nextIcon == ICON_DOWNLOAD && packDownloadMotion ||
+                (nextIcon == ICON_CANCEL || nextIcon == ICON_CANCEL_FILL) &&
+                        (currentIcon == ICON_DOWNLOAD || packCancelMotion &&
+                                (currentIcon == ICON_CANCEL || currentIcon == ICON_CANCEL_FILL || currentIcon == ICON_NONE))) {
+            nextPack = null;
+        }
+        if (previousPack != null || nextPack != null) {
+            applyShaderMatrix(false);
+        }
+        if ((currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE) && (nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE) && packPlayback) {
+            float progress = currentIcon == nextIcon ? (nextIcon == ICON_PAUSE ? 1 : 0)
+                    : nextIcon == ICON_PAUSE ? transitionProgress : 1 - transitionProgress;
+            packIconRenderer.drawPlayPause(canvas, packPlay, packPause, paint2,
+                    cx + AndroidUtilities.dp(1) * (1 - progress), cy, packSize, progress, overrideAlpha);
+        } else if (currentIcon != nextIcon && previousPack != null && previousPack == nextPack) {
+            packIconRenderer.draw(canvas, nextPack, paint, cx, cy, packSize, overrideAlpha, 0);
+        } else if (currentIcon == nextIcon) {
+            packIconRenderer.draw(canvas, nextPack, paint, cx, cy, packSize, overrideAlpha, 0);
+        } else {
+            float progress = nextIcon == ICON_CHECK ? Math.min(1, transitionProgress / CANCEL_TO_CHECK_STAGE1) : transitionProgress;
+            float previousScale = nextIcon == ICON_NONE && currentIcon != ICON_CANCEL && currentIcon != ICON_CANCEL_FILL
+                    ? 1 : 1 - progress;
+            if (currentIcon == ICON_FILE || currentIcon == ICON_UPDATE) {
+                previousScale = previowsDrawableScale;
+            } else if (currentIcon == ICON_CHECK || currentIcon == ICON_SECRETCHECK) {
+                previousScale = 1;
+            }
+            float nextProgress = nextIcon == ICON_CHECK
+                    ? Math.max(0, (transitionProgress - CANCEL_TO_CHECK_STAGE1) / CANCEL_TO_CHECK_STAGE2) : transitionProgress;
+            float nextScale = nextIcon == ICON_FILE || nextIcon == ICON_UPDATE ? drawableScale : nextProgress;
+            if (nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE) {
+                nextScale = drawableScale;
+            }
+            packIconRenderer.draw(canvas, previousPack, paint, cx + (currentIcon == ICON_PLAY ? AndroidUtilities.dp(1) : 0), cy, packSize * previousScale,
+                    overrideAlpha * (1 - progress), currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE ? 0 : -45 * progress);
+            packIconRenderer.draw(canvas, nextPack, paint, cx + (nextIcon == ICON_PLAY ? AndroidUtilities.dp(1) : 0), cy, packSize * nextScale,
+                    overrideAlpha * nextProgress, nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE ? 0 : 45 * (1 - nextProgress));
+        }
         long newTime = System.currentTimeMillis();
         long dt = newTime - lastAnimationTime;
         if (dt > 17) {

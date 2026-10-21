@@ -53,7 +53,9 @@
     <string name="NimarkoDisableProximity">Disable proximity sensor</string>
     <string name="NimarkoDisableProxyAds">Don\'t show proxy sponsor</string>
     <string name="NimarkoDisableUnarchiveSwipe">Disable unarchive swipe</string>
-    <string name="NimarkoDisableVMAutoplay">Disable voice msg autoplay</string>
+    <string name="NimarkoDisableVMAutoplay">Disable auto-next playback</string>
+    <string name="NM_DisableVoiceAutoNext_Desc">Stop after the current voice message or video message finishes. Play the next one manually.</string>
+    <string name="NM_DisableVoiceAutoNext_SearchTerms">voice message messages round video autoplay auto next</string>
     <string name="NimarkoDoubleTapEdit">Edit</string>
     <string name="NimarkoDoubleTapIn">Double-tap on incoming</string>
     <string name="NimarkoDoubleTapNone">None</string>
@@ -399,7 +401,7 @@
     <string name="NM_SettingsSummaryChatView">Header, wallpaper and message layout</string>
     <string name="NM_SettingsSummaryInputText">Emoji, editing and text rendering</string>
     <string name="NM_SettingsSummaryGesturesActions">Taps, swipes and quick actions</string>
-    <string name="NM_SettingsSummaryMediaPlayback">Photos, video and GIFs</string>
+    <string name="NM_SettingsSummaryMediaPlayback">Voice and video messages, photos, videos and GIFs</string>
     <string name="NM_SettingsSummaryReactionsEffects">Reactions and sticker effects</string>
     <string name="NM_SettingsSummaryChatNotifications">Sound and vibration</string>
     <string name="NM_SettingsSummaryChatTools">Sharing, message menu and filters</string>
@@ -481,6 +483,10 @@
     <string name="NM_SettingsDesc_CardsEnable">Show information cards above the chat list</string>
     <string name="NM_SettingsDesc_CardsInfinite">Repeat cards while scrolling through the list</string>
     <string name="NM_SettingsDesc_CardsAutoScroll">Automatically switch between information cards</string>
+    <string name="NM_CARDS_Side">Card position</string>
+    <string name="NM_CARDS_SideRight">Right</string>
+    <string name="NM_CARDS_SideLeft">Left</string>
+    <string name="NM_SettingsDesc_CardsSide">Set position</string>
     <string name="NM_SettingsDesc_ShowAccounts">Show accounts directly in Settings</string>
     <string name="NM_SettingsDesc_OldTime">Use the classic last-seen time format</string>
     <string name="NM_SettingsDesc_ReplacePunctuation">Replace typed punctuation with typographic variants</string>

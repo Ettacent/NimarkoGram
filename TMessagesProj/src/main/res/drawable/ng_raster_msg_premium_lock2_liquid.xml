@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="plus" android:fillColor="#00000000"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7.7,3V18 M2,10.5H13.4">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="lock" android:fillColor="#00000000"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M16,14H20.5A1.5,1.5 0,0 1,22,15.5V20A1.5,1.5 0,0 1,20.5,21.5H16A1.5,1.5 0,0 1,14.5,20V15.5A1.5,1.5 0,0 1,16,14Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="shackle" android:fillColor="#00000000"
+        android:strokeWidth="1.70" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M16.3,14V11.7A1.95,1.95 0,0 1,20.2,11.7V14">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

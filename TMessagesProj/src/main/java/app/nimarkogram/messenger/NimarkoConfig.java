@@ -1175,6 +1175,11 @@ public final class NimarkoConfig {
     public static boolean disablePremStickAutoPlay = getPreferences().getBoolean("disablePremStickAutoPlay", false);
     public static void toggleDisablePremStickAutoPlay() { disablePremStickAutoPlay = !disablePremStickAutoPlay; getEditor().putBoolean("disablePremStickAutoPlay", disablePremStickAutoPlay).apply(); }
 
+    public static boolean disableVoiceMessagesAutoNext = getPreferences().getBoolean("disableVoiceMessagesAutoNext", false);
+    public static void toggleDisableVoiceMessagesAutoNext() {
+        disableVoiceMessagesAutoNext = !disableVoiceMessagesAutoNext;
+        getEditor().putBoolean("disableVoiceMessagesAutoNext", disableVoiceMessagesAutoNext).apply();
+    }
     public static boolean disableReactionAnim = getPreferences().getBoolean("disableReactionAnim", false);
     public static void toggleDisableReactionAnim() { disableReactionAnim = !disableReactionAnim; getEditor().putBoolean("disableReactionAnim", disableReactionAnim).apply(); }
 

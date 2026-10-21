@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Forum;
 
 import android.content.Context;
@@ -53,7 +55,6 @@ import java.util.ArrayList;
 
 public class ForumUtilities {
 
-    static Drawable dialogGeneralIcon;
     static SparseArray<Drawable> dialogForumDrawables = new SparseArray();
 
     public static String getMonoForumTitle(int currentAccount, long dialogId, boolean showChannelName) {
@@ -193,14 +194,7 @@ public class ForumUtilities {
         }
 
         public GeneralTopicDrawable(Context context, float scale, int color, boolean isDialog, boolean large) {
-            if (isDialog) {
-                if (dialogGeneralIcon == null) {
-                    dialogGeneralIcon = context.getResources().getDrawable(large ? R.drawable.msg_filled_general_large : R.drawable.msg_filled_general).mutate();
-                }
-                this.icon = dialogGeneralIcon;
-            } else {
                 this.icon = context.getResources().getDrawable(large ? R.drawable.msg_filled_general_large : R.drawable.msg_filled_general).mutate();
-            }
             this.scale = scale;
             setColor(color);
         }

@@ -263,7 +263,7 @@ public class CryptoCard extends BaseInfoCard {
         options.add(R.drawable.msg_retry, LocaleController.getString(R.string.Refresh), () -> onUpdateData(true));
         options.add(R.drawable.msg_settings, LocaleController.getString(R.string.Settings),
                 () -> fragment.presentFragment(new InfoCardsPreferencesActivity()));
-        options.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
+        options.setGravity(InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT)
                 .show();
         return true;
     }
@@ -281,7 +281,7 @@ public class CryptoCard extends BaseInfoCard {
                 }
             });
         }
-        picker.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)
+        picker.setGravity(InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT)
                 .setMaxHeight(AndroidUtilities.dp(320))
                 .show();
     }

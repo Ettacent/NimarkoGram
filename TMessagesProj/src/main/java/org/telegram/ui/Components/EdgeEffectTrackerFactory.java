@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -23,6 +25,12 @@ public final class EdgeEffectTrackerFactory extends RecyclerView.EdgeEffectFacto
 
     public void removeEdgeEffectListener(OnEdgeEffectListener listener) {
         listeners.remove(listener);
+    }
+
+    public float getDistance(@EdgeDirection int direction) {
+        final TrackingEdgeEffect edge = edgeEffects[direction];
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && edge != null && !edge.isFinished()
+                ? edge.getDistance() : 0.0f;
     }
 
     public boolean hasVisibleEdges() {

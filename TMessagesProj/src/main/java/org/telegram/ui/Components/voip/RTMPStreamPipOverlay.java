@@ -64,6 +64,7 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.MediaControlIconHelper;
 import org.telegram.ui.Components.SimpleFloatPropertyCompat;
 import org.telegram.ui.LaunchActivity;
 import org.webrtc.RendererCommon;
@@ -608,7 +609,7 @@ public class RTMPStreamPipOverlay implements NotificationCenter.NotificationCent
         int buttonSize = 38;
 
         ImageView closeButton = new ImageView(context);
-        closeButton.setImageResource(R.drawable.pip_video_close);
+        MediaControlIconHelper.setImageResource(closeButton, R.drawable.pip_video_close);
         closeButton.setColorFilter(Theme.getColor(Theme.key_voipgroup_actionBarItems));
         closeButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
         closeButton.setPadding(padding, padding, padding, padding);
@@ -616,7 +617,7 @@ public class RTMPStreamPipOverlay implements NotificationCenter.NotificationCent
         controlsView.addView(closeButton, LayoutHelper.createFrame(buttonSize, buttonSize, Gravity.RIGHT, 0, margin, margin, 0));
 
         ImageView expandButton = new ImageView(context);
-        expandButton.setImageResource(R.drawable.pip_video_expand);
+        MediaControlIconHelper.setImageResource(expandButton, R.drawable.pip_video_expand);
         expandButton.setColorFilter(Theme.getColor(Theme.key_voipgroup_actionBarItems));
         expandButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
         expandButton.setPadding(padding, padding, padding, padding);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.ValueAnimator;
@@ -43,7 +45,7 @@ public class AttachBotIntroTopView extends View {
             anim.start();
         });
 
-        attachDrawable = ContextCompat.getDrawable(context, R.drawable.input_attach).mutate().getConstantState().newDrawable();
+        attachDrawable = ContextCompat.getDrawable(context, R.drawable.input_attach).mutate();
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(AndroidUtilities.dp(3));
         paint.setStrokeCap(Paint.Cap.ROUND);

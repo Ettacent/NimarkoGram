@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 
 import java.util.ArrayList;
@@ -16,6 +17,8 @@ import java.util.List;
 
 public final class InfoCardsConfig {
 
+    public static final int SIDE_RIGHT = 0;
+    public static final int SIDE_LEFT = 1;
     private static final String PREFS_NAME = "nm_pillstack";
 
     private static volatile SharedPreferences cached;
@@ -44,6 +47,27 @@ public final class InfoCardsConfig {
             InfoCardRates.prefetch();
         }
         notifyLayoutChanged();
+    }
+
+    public static int getSide() {
+        int side = prefs().getInt("side", LocaleController.isRTL ? SIDE_LEFT : SIDE_RIGHT);
+        return side == SIDE_LEFT ? SIDE_LEFT : SIDE_RIGHT;
+    }
+
+    public static boolean isOnLeft() {
+        return getSide() == SIDE_LEFT;
+    }
+
+    public static void setSide(int side) {
+        side = side == SIDE_LEFT ? SIDE_LEFT : SIDE_RIGHT;
+        int previous = getSide();
+        SharedPreferences p = prefs();
+        if (!p.contains("side") || p.getInt("side", SIDE_RIGHT) != side) {
+            p.edit().putInt("side", side).apply();
+        }
+        if (previous != side) {
+            notifyLayoutChanged();
+        }
     }
 
     private static List<Integer> defaultActive() {

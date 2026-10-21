@@ -69,6 +69,8 @@ import android.widget.ImageView;
 import android.widget.Scroller;
 import android.widget.TextView;
 
+import app.nimarkogram.messenger.icons.CompactIconHelper;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 import androidx.annotation.NonNull;
 import androidx.collection.LongSparseArray;
 import androidx.core.graphics.ColorUtils;
@@ -132,6 +134,7 @@ import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.ColorPicker;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Easings;
 import org.telegram.ui.Components.FragmentFloatingButton;
@@ -1128,7 +1131,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 dropDown.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
                 dropDown.setTypeface(AndroidUtilities.bold());
                 dropDown.setText(LocaleController.getString(R.string.ColorPickerMainColor));
-                Drawable dropDownDrawable = context.getResources().getDrawable(R.drawable.ic_arrow_drop_down).mutate();
+                Drawable dropDownDrawable = getEditorDropDownDrawable(context);
                 dropDownDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_actionBarDefaultTitle), PorterDuff.Mode.MULTIPLY));
                 dropDown.setCompoundDrawablesWithIntrinsicBounds(null, null, dropDownDrawable, null);
                 dropDown.setCompoundDrawablePadding(dp(4));
@@ -1640,7 +1643,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
                     backgroundPlayAnimationImageView = new ImageView(context);
                     backgroundPlayAnimationImageView.setScaleType(ImageView.ScaleType.CENTER);
-                    backgroundPlayAnimationImageView.setImageResource(R.drawable.bg_rotate_large);
+                    backgroundPlayAnimationImageView.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.bg_rotate_large));
                     backgroundPlayAnimationView.addView(backgroundPlayAnimationImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
                 }
 
@@ -1818,7 +1821,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
                     messagesPlayAnimationImageView = new ImageView(context);
                     messagesPlayAnimationImageView.setScaleType(ImageView.ScaleType.CENTER);
-                    messagesPlayAnimationImageView.setImageResource(R.drawable.bg_rotate_large);
+                    messagesPlayAnimationImageView.setImageDrawable(CompactIconHelper.getDrawable(context, R.drawable.bg_rotate_large));
                     messagesPlayAnimationView.addView(messagesPlayAnimationImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
 
                     for (int a = 0; a < 2; a++) {
@@ -3432,6 +3435,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     @Override
     public void onResume() {
         super.onResume();
+        refreshEditorActionIcons();
         if (dialogsAdapter != null) {
             dialogsAdapter.notifyDataSetChanged();
         }
@@ -3442,6 +3446,84 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             parallaxEffect.setEnabled(true);
         }
         Theme.disallowChangeServiceMessageColor = true;
+    }
+
+    private void refreshEditorActionIcons() {
+        if (dropDown != null) {
+            Drawable icon = getEditorDropDownDrawable(dropDown.getContext());
+            icon.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_actionBarDefaultTitle), PorterDuff.Mode.MULTIPLY));
+            dropDown.setCompoundDrawablesWithIntrinsicBounds(null, null, icon, null);
+        }
+        if (backgroundPlayAnimationImageView != null) {
+            backgroundPlayAnimationImageView.setImageDrawable(CompactIconHelper.getDrawable(backgroundPlayAnimationImageView.getContext(), R.drawable.bg_rotate_large));
+            backgroundPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
+        }
+        if (messagesPlayAnimationImageView != null) {
+            messagesPlayAnimationImageView.setImageDrawable(CompactIconHelper.getDrawable(messagesPlayAnimationImageView.getContext(), R.drawable.bg_rotate_large));
+            messagesPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
+        }
+    }
+
+    private static Drawable getEditorDropDownDrawable(Context context) {
+        Drawable icon = context.getResources().getDrawable(R.drawable.ic_arrow_drop_down, context.getTheme()).mutate();
+        if (!(context.getResources() instanceof NimarkoIconResources)
+                || !((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.ic_arrow_drop_down)) {
+            return icon;
+        }
+        Drawable stock = NimarkoIconResources.getStockDrawable(context, R.drawable.ic_arrow_drop_down).mutate();
+        RectF stockInk = getEditorDropDownInkBounds(stock);
+        RectF iconInk = getEditorDropDownInkBounds(icon);
+        if (stockInk == null || iconInk == null) {
+            return stock;
+        }
+        float scale = Math.min(stockInk.width() / iconInk.width(), stockInk.width() / iconInk.height());
+        int width = stock.getIntrinsicWidth();
+        int height = stock.getIntrinsicHeight();
+        int iconWidth = Math.max(1, Math.round(icon.getIntrinsicWidth() * scale));
+        int iconHeight = Math.max(1, Math.round(icon.getIntrinsicHeight() * scale));
+        CombinedDrawable result = new CombinedDrawable(new ColorDrawable(Color.TRANSPARENT), icon);
+        result.setCustomSize(width, height);
+        result.setIconSize(iconWidth, iconHeight);
+        result.setIconOffset(
+                Math.round(stockInk.centerX() - (width / 2 - iconWidth / 2 + iconInk.centerX() * iconWidth / icon.getIntrinsicWidth())),
+                Math.round(stockInk.centerY() - (height / 2 - iconHeight / 2 + iconInk.centerY() * iconHeight / icon.getIntrinsicHeight())));
+        return result;
+    }
+
+    private static RectF getEditorDropDownInkBounds(Drawable drawable) {
+        int width = drawable.getIntrinsicWidth();
+        int height = drawable.getIntrinsicHeight();
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        float scale = Math.min(1f, 128f / Math.max(width, height));
+        int sampleWidth = Math.max(1, Math.round(width * scale));
+        int sampleHeight = Math.max(1, Math.round(height * scale));
+        Bitmap sample = Bitmap.createBitmap(sampleWidth, sampleHeight, Bitmap.Config.ARGB_8888);
+        Rect bounds = new Rect(drawable.getBounds());
+        try {
+            drawable.setBounds(0, 0, sampleWidth, sampleHeight);
+            drawable.draw(new Canvas(sample));
+            int[] pixels = new int[sampleWidth * sampleHeight];
+            sample.getPixels(pixels, 0, sampleWidth, 0, 0, sampleWidth, sampleHeight);
+            int left = sampleWidth, top = sampleHeight, right = -1, bottom = -1;
+            for (int y = 0; y < sampleHeight; y++) {
+                for (int x = 0; x < sampleWidth; x++) {
+                    if (Color.alpha(pixels[y * sampleWidth + x]) > 25) {
+                        left = Math.min(left, x);
+                        top = Math.min(top, y);
+                        right = Math.max(right, x);
+                        bottom = Math.max(bottom, y);
+                    }
+                }
+            }
+            return right < left || bottom < top ? null : new RectF(
+                    left * (float) width / sampleWidth, top * (float) height / sampleHeight,
+                    (right + 1) * (float) width / sampleWidth, (bottom + 1) * (float) height / sampleHeight);
+        } finally {
+            drawable.setBounds(bounds);
+            sample.recycle();
+        }
     }
 
     @Override

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -3845,6 +3847,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         if (response != null) {
                             AndroidUtilities.runOnUIThread(() -> {
                                 nextCodeParams = params;
+                                if (response instanceof TLRPC.TL_auth_sentCodePaymentRequired) {
+                                    nextCodeAuth = null;
+                                    fillNextCodeParams(params, (TLRPC.TL_auth_sentCodePaymentRequired) response);
+                                    return;
+                                }
                                 nextCodeAuth = (TLRPC.TL_auth_sentCode) response;
                                 if (nextCodeAuth.type instanceof TLRPC.TL_auth_sentCodeTypeSmsPhrase) {
                                     nextType = AUTH_TYPE_PHRASE;
@@ -4192,6 +4199,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 nextPressed = false;
                 if (error == null) {
                     nextCodeParams = params;
+                    if (response instanceof TLRPC.TL_auth_sentCode) {
                     nextCodeAuth = (TLRPC.TL_auth_sentCode) response;
                     if (nextCodeAuth.type instanceof TLRPC.TL_auth_sentCodeTypeSmsPhrase) {
                         nextType = AUTH_TYPE_PHRASE;
@@ -4199,6 +4207,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         nextType = AUTH_TYPE_WORD;
                     }
                     fillNextCodeParams(nextCodeParams, nextCodeAuth);
+                    } else if (response instanceof TLRPC.TL_auth_sentCodePaymentRequired) {
+                        nextCodeAuth = null;
+                        final TLRPC.TL_auth_sentCodePaymentRequired auth = (TLRPC.TL_auth_sentCodePaymentRequired) response;
+                        params.putString("product", auth.store_product);
+                        params.putString("phoneHash", auth.phone_code_hash);
+                        params.putString("support_email_address", auth.support_email_address);
+                        params.putString("support_email_subject", auth.support_email_subject);
+                        params.putString("currency", auth.currency);
+                        params.putInt("premium_days", auth.premium_days);
+                        params.putLong("amount", auth.amount);
+                        setPage(VIEW_PAY, true, params, true);
+                    }
                 } else {
                     if (error.text != null) {
                         if (error.text.contains("PHONE_NUMBER_INVALID")) {
@@ -6940,6 +6960,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         } else if (error.text.contains("CODE_EMPTY") || error.text.contains("CODE_INVALID") || error.text.contains("EMAIL_CODE_INVALID") || error.text.contains("PHONE_CODE_INVALID")) {
                             shakeWrongCode();
                             isWrongCode = true;
+                        } else if (error.text.contains("EMAIL_NOT_ALLOWED")) {
+                            needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), getString(R.string.EmailNotAllowed));
                         } else if (error.text.contains("EMAIL_TOKEN_INVALID")) {
                             needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), getString(R.string.EmailTokenInvalid));
                         } else if (error.text.contains("EMAIL_VERIFY_EXPIRED")) {
@@ -9131,6 +9153,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         timeText.invalidate();
                         if (response != null) {
                             nextCodeParams = params;
+                            if (response instanceof TLRPC.TL_auth_sentCodePaymentRequired) {
+                                nextCodeAuth = null;
+                                fillNextCodeParams(params, (TLRPC.TL_auth_sentCodePaymentRequired) response);
+                                return;
+                            }
                             nextCodeAuth = (TLRPC.TL_auth_sentCode) response;
                             fillNextCodeParams(nextCodeParams, nextCodeAuth);
                         } else if (error != null && error.text != null) {

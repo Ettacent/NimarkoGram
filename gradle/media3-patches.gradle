@@ -39,8 +39,8 @@ new RandomAccessFile(lockFile, 'rw').withCloseable { lockHandle ->
     }
     try {
         def head = git(['rev-parse', 'HEAD'])
-        if (head[0] != 0 || head[1].trim() != 'c430d207677071b1873f9f18266d55ec45722180') {
-            throw new GradleException('Media3 patch requires pinned revision c430d207677071b1873f9f18266d55ec45722180')
+        if (head[0] != 0 || head[1].trim() != '09b6c97c0d691c50cd4541e1573995d4066d6f5c') {
+            throw new GradleException('Media3 patch requires pinned revision 09b6c97c0d691c50cd4541e1573995d4066d6f5c')
         }
         if (!mediaPatch.isFile()) {
             throw new GradleException('Required Media3 source patch is missing')

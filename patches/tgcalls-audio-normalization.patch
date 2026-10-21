@@ -1,0 +1,35 @@
+diff --git a/tgcalls/group/GroupAudioCapturePostProcessor.cpp b/tgcalls/group/GroupAudioCapturePostProcessor.cpp
+--- a/tgcalls/group/GroupAudioCapturePostProcessor.cpp
++++ b/tgcalls/group/GroupAudioCapturePostProcessor.cpp
+@@ -1,9 +1,11 @@
++/* Modifications Copyright (C) 2026 Ettacent */
+ #include "group/GroupAudioCapturePostProcessor.h"
+
+ #include <algorithm>
+ #include <cmath>
+ #include <cstring>
+
++#include "common_audio/include/audio_util.h"
+ #include "modules/audio_processing/audio_buffer.h"
+
+ #if USE_RNNOISE
+@@ -81,6 +83,18 @@
+         size_t sourceSampleRate = _currentSampleRate;
+         webrtc::AudioBuffer *newBuffer = new webrtc::AudioBuffer(sourceSampleRate, 1, 48000, 1, 48000, 1);
+         webrtc::StreamConfig config((int)sourceSampleRate, 1);
+-        newBuffer->CopyFrom(buffer->channels(), config);
++        if (sourceSampleRate == 16000 || sourceSampleRate == 32000) {
++            std::vector<float> normalizedSamples;
++            float *normalizedData = _frameSamples.data();
++            if (buffer->num_frames() > _frameSamples.size()) {
++                normalizedSamples.resize(buffer->num_frames());
++                normalizedData = normalizedSamples.data();
++            }
++            webrtc::FloatS16ToFloat(buffer->channels()[0], buffer->num_frames(), normalizedData);
++            const float *normalizedChannels[] = { normalizedData };
++            newBuffer->CopyFrom(normalizedChannels, config);
++        } else {
++            newBuffer->CopyFrom(buffer->channels(), config);
++        }
+         buffer = newBuffer;
+     }

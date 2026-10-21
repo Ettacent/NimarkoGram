@@ -65,6 +65,8 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
     private ListAdapter listAdapter;
     private RecyclerListView listView;
 
+    private int pendingSearchTitle;
+    private SettingsSearchHighlight searchHighlight;
     private int filtersHeaderRow;
     private int enableFilterRow;
     private int filterWordsRow;
@@ -99,6 +101,53 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
     private static final int done_button = 1;
     private ActionBarMenuItem doneButton;
 
+    public MessageFiltersPreferencesActivity openAtSetting(int titleRes) {
+        pendingSearchTitle = titleRes;
+        return this;
+    }
+
+    private int getSearchRow(int titleRes) {
+        if (titleRes == R.string.NM_MF_Filter) return enableFilterRow;
+        if (titleRes == R.string.NM_MF_Field) return filterWordsRow;
+        if (titleRes == R.string.NM_MF_Translit) return detectTranslitRow;
+        if (titleRes == R.string.NM_MF_Exact_Words) return exactWordMatchRow;
+        if (titleRes == R.string.NM_MF_Exclusions) return exclusionsRow;
+        if (titleRes == R.string.NM_MF_Entities) return detectEntitiesRow;
+        if (titleRes == R.string.NM_MF_HideAll) return hideAllRow;
+        if (titleRes == R.string.NM_Message_Filtering_Collapse) return collapseAutomaticallyRow;
+        if (titleRes == R.string.NM_MF_Transparent) return makeTransparentRow;
+        if (titleRes == R.string.NM_MF_UseRegex) return useRegexRow;
+        if (titleRes == R.string.NM_MF_RegexPatterns) return regexPatternsRow;
+        if (titleRes == R.string.NM_MF_LogicMode) return logicModeRow;
+        if (titleRes == R.string.NM_MF_ChatWhitelist) return chatWhitelistRow;
+        if (titleRes == R.string.NM_MF_ChatBlacklist) return chatBlacklistRow;
+        return -1;
+    }
+
+    private void clearSearchHighlight() {
+        if (searchHighlight != null) {
+            searchHighlight.run();
+            searchHighlight = null;
+        }
+    }
+
+    @Override
+    public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
+        super.onTransitionAnimationEnd(isOpen, backward);
+        if (!isOpen || isFinished || listView == null || pendingSearchTitle == 0) return;
+        final int titleRes = pendingSearchTitle;
+        pendingSearchTitle = 0;
+        if (getSearchRow(titleRes) < 0) return;
+        clearSearchHighlight();
+        searchHighlight = new SettingsSearchHighlight(listView, () -> getSearchRow(titleRes));
+    }
+
+    @Override
+    public void onPause() {
+        pendingSearchTitle = 0;
+        clearSearchHighlight();
+        super.onPause();
+    }
     @Override
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
@@ -123,12 +172,15 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
 
     @Override
     public void onFragmentDestroy() {
+        pendingSearchTitle = 0;
+        clearSearchHighlight();
         checkDone(true);
         super.onFragmentDestroy();
     }
 
     @Override
     public View createView(Context context) {
+        clearSearchHighlight();
         actionBar.setBackButtonDrawable(new BackDrawable(false));
 
         actionBar.setTitle(getString(R.string.NM_MF_Title));
@@ -315,6 +367,12 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         ViewCompat.setOnApplyWindowInsetsListener(frameLayout, this::onInsetsInternal);
         ViewCompat.requestApplyInsets(frameLayout);
 
+        int searchRow = getSearchRow(pendingSearchTitle);
+        if (searchRow >= 0 && searchRow < rowCount) {
+            ((LinearLayoutManager) listView.getLayoutManager()).scrollToPositionWithOffset(searchRow, dp(80));
+        } else {
+            pendingSearchTitle = 0;
+        }
         return fragmentView;
     }
 
@@ -716,7 +774,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
     }
 
     private void checkDone(boolean finish) {
-        if (doneButton == null || outlineEditText == null) return;
+        if (doneButton == null || outlineEditText == null && regexEditText == null) return;
 
         if (finish && hasChanges()) {
             doOnDone(this);

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram pill_weather.xml geometry; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24.0dip" android:width="24.0dip" android:viewportWidth="24.0" android:viewportHeight="24.0">
+    <path android:fillColor="#ffffffff" android:pathData="M11 5.24c-2.76 0-5 2.17-5 4.86-2.2 0-4 1.74-4 3.88 0 2.15 1.8 3.9 4 3.9h12c2.21 0 4-1.75 4-3.9 0-2.14-1.79-3.88-4-3.88h-2c0-2.69-2.24-4.86-5-4.86Z" android:strokeColor="#ffffffff" android:strokeWidth="0.3" android:strokeAlpha="1" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

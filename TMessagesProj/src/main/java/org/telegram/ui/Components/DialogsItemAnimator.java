@@ -28,7 +28,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
 
     private static TimeInterpolator sDefaultInterpolator = new DecelerateInterpolator();
 
-    private static final TimeInterpolator MOVE_INTERPOLATOR = new PathInterpolator(0.2f, 0f, 0f, 1f);
+    private static final TimeInterpolator MOVE_INTERPOLATOR = new PathInterpolator(0.2f, 0.8f, 0.2f, 1f);
     private ArrayList<ViewHolder> mPendingRemovals = new ArrayList<>();
     private ArrayList<ViewHolder> mPendingAdditions = new ArrayList<>();
     private ArrayList<MoveInfo> mPendingMoves = new ArrayList<>();
@@ -68,7 +68,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
 
     public DialogsItemAnimator(RecyclerListView listView) {
         setSupportsChangeAnimations(false);
-        setMoveDuration(160);
+        setMoveDuration(140);
         this.listView = listView;
     }
 
@@ -367,7 +367,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
     private long moveDurationFor(float deltaX, float deltaY, int rowHeight) {
         float distance = Math.max(Math.abs(deltaX), Math.abs(deltaY));
         float fraction = Math.min(1f, distance / Math.max(1, rowHeight));
-        return Math.round(getMoveDuration() * (0.75f + 0.25f * fraction));
+        return Math.round(getMoveDuration() * (0.35f + 0.65f * (float) Math.sqrt(fraction)));
     }
 
     private boolean hasClippedRemovalAnimation() {
@@ -421,6 +421,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
         mMoveAnimations.add(holder);
         final boolean syncRemoval = hasClippedRemovalAnimation();
         animation.setInterpolator(syncRemoval ? sDefaultInterpolator : MOVE_INTERPOLATOR)
+                .setStartDelay(0)
                 .setDuration(syncRemoval ? deleteDuration : moveDurationFor(deltaX, deltaY, view.getHeight()))
                 .setListener(new AnimatorListenerAdapter() {
             @Override
@@ -457,6 +458,9 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
 
     @Override
     public boolean animateChange(ViewHolder oldHolder, ViewHolder newHolder,ItemHolderInfo info, int fromX, int fromY, int toX, int toY) {
+        if (oldHolder == newHolder) {
+            return animateMove(oldHolder, info, fromX, fromY, toX, toY);
+        }
         if (oldHolder.itemView instanceof DialogCell) {
             resetAnimation(oldHolder);
             resetAnimation(newHolder);

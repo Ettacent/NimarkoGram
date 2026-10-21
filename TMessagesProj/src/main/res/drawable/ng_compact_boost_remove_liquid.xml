@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="16dp" android:height="16dp"
+    android:viewportWidth="16" android:viewportHeight="16">
+    <group>
+        <clip-path android:pathData="M1.7,0 H16 V14.3 Z" />
+        <path android:pathData="M9.3,1.5 L3.5,8.7 H7 L6.4,14.5 L12.5,6.5 H9 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="4" android:startY="2"
+                    android:endX="12" android:endY="14"
+                    android:startColor="#F2FFFFFF" android:endColor="#CCFFFFFF" />
+            </aapt:attr>
+        </path>
+    </group>
+    <group>
+        <clip-path android:pathData="M0,1.7 L14.3,16 H0 Z" />
+        <path android:pathData="M9.3,1.5 L3.5,8.7 H7 L6.4,14.5 L12.5,6.5 H9 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="4" android:startY="2"
+                    android:endX="12" android:endY="14"
+                    android:startColor="#F2FFFFFF" android:endColor="#CCFFFFFF" />
+            </aapt:attr>
+        </path>
+    </group>
+    <path android:pathData="M2,2 L14,14"
+        android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" android:strokeLineCap="round" />
+</vector>

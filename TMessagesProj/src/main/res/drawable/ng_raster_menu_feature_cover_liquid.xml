@@ -1,0 +1,35 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Copyright (C) 2026 Ettacent -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:name="cover_frame" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,3H17A4,4 0,0 1,21,7 M21,14V17A4,4 0,0 1,17,21 M8,21H7A4,4 0,0 1,3,17V10">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="portrait" android:fillColor="#00000000"
+        android:strokeWidth="1.55" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M15.3,9.7A3.3,3.3 0,1 1,8.7,9.7A3.3,3.3 0,1 1,15.3,9.7 M7.7,17H16.3">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+    <path android:name="cover_sparkles" android:fillColor="#00000000"
+        android:strokeWidth="1.05" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3.2,4.3L3.6,5.3999999999999995L4.7,5.8L3.6,6.2L3.2,7.3L2.8000000000000003,6.2L1.7000000000000002,5.8L2.8000000000000003,5.3999999999999995ZM20.7,9.5L21.099999999999998,10.6L22.2,11L21.099999999999998,11.4L20.7,12.5L20.3,11.4L19.2,11L20.3,10.6ZM13.4,19.8L13.8,20.900000000000002L14.9,21.3L13.8,21.7L13.4,22.8L13,21.7L11.9,21.3L13,20.900000000000002Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="2" android:startY="2"
+                android:endX="22" android:endY="22" android:startColor="#F5FFFFFF"
+                android:centerColor="#A8FFFFFF" android:endColor="#E0FFFFFF"/>
+        </aapt:attr>
+    </path>
+</vector>

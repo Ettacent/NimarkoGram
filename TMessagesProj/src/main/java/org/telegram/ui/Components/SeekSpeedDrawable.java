@@ -26,6 +26,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.Locale;
 
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
 public class SeekSpeedDrawable extends Drawable {
 
     private final boolean isRound, isPiP;
@@ -34,6 +35,9 @@ public class SeekSpeedDrawable extends Drawable {
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
+    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
+    private NimarkoIconResources.PreparedIcon measuredPlayIcon;
+    private float playInkWidth, playInkHeight, playCenterOffsetX, playCenterOffsetY;
     private RLottieDrawable hintDrawable;
     private final Path hintArrow = new Path();
     private final Text hintText = Text.ui(LocaleController.getString(R.string.SeekSpeedHint), 14);
@@ -116,6 +120,8 @@ public class SeekSpeedDrawable extends Drawable {
         final float shown = animatedShown.set(this.shown);
         final float direction = animatedDirection.set(this.direction);
         if (shown <= 0.0f) return;
+        final NimarkoIconResources.PreparedIcon playIcon = MediaActionDrawable.PackIconRenderer.get(
+                NimarkoIconResources.activeNavigationIcons(), R.drawable.ic_action_play);
         final float speed = animatedSpeed.set(Math.abs(this.lastSpeed));
 
         final long now = System.currentTimeMillis();
@@ -146,11 +152,11 @@ public class SeekSpeedDrawable extends Drawable {
         canvas.translate(speedRect.centerX() - speedRectWidth / 2.0f + dp(9) - dp(30) * (1.0f - Math.max(0, -direction)), speedRect.centerY());
         p = ((float)Math.sin((t) * Math.PI)/2.0f+1.0f);
         arrowPaint.setColor(Theme.multAlpha(0xFFFFFFFF, Math.max(0, -direction) * shown * (.2f + .75f * p)));
-        canvas.drawPath(leftArrow, arrowPaint);
+        drawSeekArrow(canvas, playIcon, true);
         canvas.translate(dp(10.66f), 0);
         p = ((float)Math.sin((t+.17f) * Math.PI)/2.0f+1.0f);
         arrowPaint.setColor(Theme.multAlpha(0xFFFFFFFF, Math.max(0, -direction) * shown * (.2f + .75f * p)));
-        canvas.drawPath(leftArrow, arrowPaint);
+        drawSeekArrow(canvas, playIcon, true);
         canvas.restore();
 
         canvas.save();
@@ -163,11 +169,11 @@ public class SeekSpeedDrawable extends Drawable {
         canvas.translate(speedRect.centerX() + speedRectWidth / 2.0f - dp(30) + dp(30) * (1.0f - Math.max(0, direction)), speedRect.centerY());
         p = ((float)Math.sin((t) * Math.PI)/2.0f+1.0f);
         arrowPaint.setColor(Theme.multAlpha(0xFFFFFFFF, Math.max(0, direction) * shown * (.2f + .75f * p)));
-        canvas.drawPath(rightArrow, arrowPaint);
+        drawSeekArrow(canvas, playIcon, false);
         canvas.translate(dp(10.66f), 0);
         p = ((float)Math.sin((t-.17f) * Math.PI)/2.0f+1.0f);
         arrowPaint.setColor(Theme.multAlpha(0xFFFFFFFF, Math.max(0, direction) * shown * (.2f + .75f * p)));
-        canvas.drawPath(rightArrow, arrowPaint);
+        drawSeekArrow(canvas, playIcon, false);
         canvas.restore();
 
         canvas.restore();
@@ -218,6 +224,42 @@ public class SeekSpeedDrawable extends Drawable {
         }
     }
 
+    private void drawSeekArrow(Canvas canvas, NimarkoIconResources.PreparedIcon icon, boolean backwards) {
+        if (icon == null) {
+            canvas.drawPath(backwards ? leftArrow : rightArrow, arrowPaint);
+            return;
+        }
+        if (measuredPlayIcon != icon) {
+            final int width = icon.bitmap.getWidth(), height = icon.bitmap.getHeight();
+            int left = width, top = height, right = 0, bottom = 0;
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    if ((icon.bitmap.getPixel(x, y) >>> 24) != 0) {
+                        left = Math.min(left, x);
+                        top = Math.min(top, y);
+                        right = Math.max(right, x + 1);
+                        bottom = Math.max(bottom, y + 1);
+                    }
+                }
+            }
+            final float dimension = Math.max(width, height);
+            playInkWidth = Math.max(0, right - left) / dimension;
+            playInkHeight = Math.max(0, bottom - top) / dimension;
+            playCenterOffsetX = (width - left - right) / (2f * dimension);
+            playCenterOffsetY = (height - top - bottom) / (2f * dimension);
+            measuredPlayIcon = icon;
+        }
+        if (playInkWidth <= 0 || playInkHeight <= 0) {
+            canvas.drawPath(backwards ? leftArrow : rightArrow, arrowPaint);
+            return;
+        }
+        final float size = Math.min(dp(8.66f) / playInkWidth, 2f * dp(12.66f / 2f) / playInkHeight);
+        final float sign = backwards ? -1f : 1f;
+        packIconRenderer.draw(canvas, icon, arrowPaint,
+                dp(8.66f) / 2f + sign * playCenterOffsetX * size,
+                sign * playCenterOffsetY * size, size,
+                arrowPaint.getAlpha() / 255f, backwards ? 180f : 0f);
+    }
     public void setShown(boolean shown, boolean animated) {
         this.shown = shown;
         if (!animated) {

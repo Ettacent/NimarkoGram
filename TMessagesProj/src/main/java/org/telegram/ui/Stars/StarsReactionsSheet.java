@@ -1600,7 +1600,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
 
             final long now = NimarkoUiAnimationClock.now();
             final int clockEpoch = NimarkoUiAnimationClock.epoch();
-            if (lastTime >= 0 && clockEpoch != lastClockEpoch) {
+            if (lastTime >= 0 && (clockEpoch != lastClockEpoch || now - lastTime > 250L)) {
                 final long elapsed = Math.max(0L, now - lastTime);
                 for (int i = 0; i < particles.size(); ++i) {
                     particles.get(i).start += elapsed;
@@ -1616,7 +1616,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 float lifetime = p.lifetime <= 0 ? 2f : (now - p.start) / (float) p.lifetime;
                 if (lifetime > 1f) {
                     gen(p, now, firstDraw);
-                    lifetime = 0f;
+                    lifetime = p.lifetime <= 0 ? 0f : (now - p.start) / (float) p.lifetime;
                 }
                 p.x += p.vx * deltaTime;
                 p.y += p.vy * deltaTime;
@@ -1798,7 +1798,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
             } else {
                 p.vx = bounds.centerX() - p.x;
                 p.vy = bounds.centerY() - p.y;
-                final float d = dp(lerp(1f, 4f, Utilities.fastRandom.nextFloat())) / (float) Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+                final float d = dp(lerp(1f, 4f, Utilities.fastRandom.nextFloat())) / Math.max(1f, (float) Math.sqrt(p.vx * p.vx + p.vy * p.vy));
                 p.vx *= d;
                 p.vy *= d;
             }

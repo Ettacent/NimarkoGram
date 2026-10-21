@@ -1,11 +1,13 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -13,12 +15,15 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Region;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
+import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 
@@ -42,12 +47,19 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
     private Drawable drawable;
     private Bitmap activeBitmap;
 
+    private int drawableIcon;
+    private Resources iconResources;
+    private long iconGeneration;
+    private int iconDensity;
+    private boolean iconDark;
+    private float invert;
     private int currentIcon;
     private float scale = 1f;
     private ValueAnimator animator;
 
     public void setIcon(int iconRes, boolean animated) {
         if (currentIcon == iconRes) {
+            refreshResourceDrawable();
             return;
         }
         currentIcon = iconRes;
@@ -77,6 +89,7 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
     }
 
     public void setIcon(Drawable iconDrawable, boolean animated) {
+        currentIcon = 0;
         if (drawable == iconDrawable) {
             return;
         }
@@ -119,6 +132,7 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
 
     @Override
     public void setInvert(float invert) {
+        this.invert = invert;
         if (drawable != null) {
             drawable.setColorFilter(new PorterDuffColorFilter(ColorUtils.blendARGB(0xffffffff, 0xff000000, invert), PorterDuff.Mode.MULTIPLY));
         }
@@ -127,33 +141,59 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
     }
 
     public void setDrawable(int iconRes) {
-        drawable = getContext().getResources().getDrawable(iconRes).mutate();
-        if (activeBitmap != null) {
-            activeBitmap.recycle();
-            activeBitmap = null;
-        }
-        if (activeBitmap == null && iconRes != 0) {
-            activeBitmap = BitmapFactory.decodeResource(getResources(), iconRes);
-        }
-        invalidate();
+        setDrawable(iconRes, getResources());
+    }
+
+    private void setDrawable(int iconRes, Resources resources) {
+        drawableIcon = iconRes;
+        iconResources = resources;
+        iconGeneration = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        iconDensity = resources.getDisplayMetrics().densityDpi;
+        iconDark = Theme.isCurrentThemeDark();
+        drawable = iconRes == 0 ? null : resources.getDrawable(iconRes).mutate();
+        rebuildActiveBitmap();
+        setInvert(invert);
     }
 
     public void setDrawable(Drawable drawable) {
+        currentIcon = 0;
+        drawableIcon = 0;
         this.drawable = drawable;
-        if (activeBitmap != null) {
-            activeBitmap.recycle();
+        rebuildActiveBitmap();
+        invalidate();
+    }
+
+    private void rebuildActiveBitmap() {
             activeBitmap = null;
-        }
         if (activeBitmap == null && drawable != null && drawable.getIntrinsicWidth() > 0 && drawable.getIntrinsicHeight() > 0) {
             activeBitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+            Rect bounds = new Rect(drawable.getBounds());
+            try {
             drawable.setBounds(0, 0, activeBitmap.getWidth(), activeBitmap.getHeight());
             drawable.draw(new Canvas(activeBitmap));
+            } finally {
+                drawable.setBounds(bounds);
+            }
         }
-        invalidate();
+    }
+
+    private void refreshResourceDrawable() {
+        final Resources resources = getResources();
+        final long generation = resources instanceof NimarkoIconResources
+                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        if (drawableIcon != 0 && (iconResources != resources || iconGeneration != generation
+                || iconDensity != resources.getDisplayMetrics().densityDpi
+                || iconDark != Theme.isCurrentThemeDark())) {
+            setDrawable(drawableIcon, resources);
+        } else if (activeBitmap == null && drawable != null) {
+            rebuildActiveBitmap();
+        }
     }
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        refreshResourceDrawable();
         if (drawable == null) {
             return;
         }
@@ -195,9 +235,7 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        if (activeBitmap == null && currentIcon != 0) {
-            activeBitmap = BitmapFactory.decodeResource(getResources(), currentIcon);
-        }
+        refreshResourceDrawable();
     }
 
     @Override

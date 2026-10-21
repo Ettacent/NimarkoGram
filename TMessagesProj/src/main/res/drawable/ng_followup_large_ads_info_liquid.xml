@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram/NimarkoGram large_ads_info source artwork; GPL v2 or later.
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:width="65dp" android:height="65dp" android:viewportWidth="65" android:viewportHeight="65">
+    <path android:name="bubble_megaphone_cutouts" android:pathData="M33 10.6 C19.9 10.6 9.3 20.2 9.3 32.1 C9.3 37.8 11.7 42.9 15.5 46.8 C15 49.7 13.5 52.6 12.4 53.9 Q11.7 54.9 13 55 C17.2 55.2 20.7 53.6 23.1 51.7 C26.1 53 29.4 53.8 33 53.8 C46.1 53.8 56.7 44.1 56.7 32.1 C56.7 20.2 46.1 10.6 33 10.6 ZM23.6 26.3 H29.6 Q32.6 26.3 32.6 29.3 V33.3 Q32.6 36.3 29.6 36.3 H23.6 Q20.5 36.3 20.5 33.3 V29.3 Q20.5 26.3 23.6 26.3 ZM34.7 26.5 L40.5 22.5 Q43.7 20.4 43.7 24.4 V36.6 Q43.7 40.6 40.5 38.5 L34.7 35.1 ZM26.4 37.7 H32.2 L33.1 42.6 Q33.4 44.6 31.3 44.7 Q29.7 44.6 28.8 43.1 Z" android:fillType="evenOdd">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="16.25" android:endY="65">
+                <item android:offset="0" android:color="#FAFFFFFF" />
+                <item android:offset="0.32" android:color="#E0FFFFFF" />
+                <item android:offset="0.56" android:color="#8FFFFFFF" />
+                <item android:offset="0.78" android:color="#B8FFFFFF" />
+                <item android:offset="1" android:color="#F5FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

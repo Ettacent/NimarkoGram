@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modifications Copyright (C) 2026 Ettacent -->
-
 <resources>
     <string name="NM_WL_Route">Маршрут</string>
     <string name="NM_WL_Ordinary">Обычный обход</string>
     <string name="NM_WL_Title">Обход белых списков</string>
     <string name="NM_WL_Network">Все операторы</string>
+    <string name="NM_WL_Enable">Использовать обход</string>
     <string name="NM_WL_About">Для сетей с белыми списками.</string>
     <string name="NM_WL_Request">Подписка</string>
     <string name="NM_WL_Status">Статус доступа</string>
@@ -14,6 +14,7 @@
     <string name="NM_WL_Privacy">Текущая цена указана на этом экране. Доступ оплачивается за месяц. Нужна активная платная подписка, в том числе ранее одобренным аккаунтам. Оплата открывается напрямую в ЮKassa и автоматически проверяется сервером. Один оплаченный аккаунт на устройстве покрывает все локальные аккаунты. Для первоначальной проверки нужно соединение с Telegram. После выхода из оплаченного аккаунта общий доступ прекращается, если другого оплаченного аккаунта нет.</string>
     <string name="NM_WL_Checking">Проверка…</string>
     <string name="NM_WL_Approved">Активна</string>
+    <string name="NM_WL_ActivationPending">Подписка активна. Подключение ещё не подтверждено; повторная оплата не нужна.</string>
     <string name="NM_WL_Blocked">Доступ заблокирован</string>
     <string name="NM_WL_Expired">Подписка истекла</string>
     <string name="NM_WL_Busy">Попробуйте немного позже</string>
@@ -22,7 +23,6 @@
     <string name="NM_WL_AccountChanged">Аккаунт изменился. Повторите действие.</string>
     <string name="NM_WL_Error">Не удалось проверить доступ. Повторите позже.</string>
     <string name="NM_WL_Details">Условия доступа и данные</string>
-    <string name="NM_WL_Enable">Использовать обход</string>
     <string name="NM_WL_Expiry">Оплачено до</string>
     <string name="NM_WL_Price">Стоимость</string>
     <string name="NM_WL_MonthlyPrice">%1$s / месяц</string>
@@ -37,5 +37,4 @@
     <string name="NM_WL_PaymentDelayed">Оплата ещё проверяется. Откройте этот экран позже.</string>
     <string name="NM_WL_PaymentRequired">Доступ не активирован</string>
     <string name="NM_WL_PriceUnknown">Цена недоступна</string>
-    <string name="NM_WL_ActivationPending">Подписка активна. Подключение ещё не подтверждено; повторная оплата не нужна.</string>
 </resources>

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 include ':TMessagesProj'
 include ':TMessagesProj_App'
 include ':TMessagesProj_AppHuawei'
@@ -15,5 +17,6 @@ dependencyResolutionManagement {
 }
 
 gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
+apply from: file("gradle/tgcalls-patches.gradle")
 apply from: file("gradle/media3-patches.gradle")
 apply from: file("TMessagesProj_Modules/media/core_settings.gradle")

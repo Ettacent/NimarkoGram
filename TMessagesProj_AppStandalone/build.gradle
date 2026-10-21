@@ -202,9 +202,6 @@ if (nimarkoFirebaseEnabled) {
 
 androidComponents {
     onVariants(selector().withBuildType('standalone')) { variant ->
-        if (!nimarkoCrashlyticsUploadEnabled) {
-            return
-        }
         def variantName = variant.name.capitalize()
         if (!nimarkoCompactStandalone) {
             tasks.withType(com.google.firebase.crashlytics.buildtools.gradle.tasks.InjectMappingFileIdTask).configureEach {
@@ -212,8 +209,16 @@ androidComponents {
                     useBlankMappingFileId.set(false)
                 }
             }
-            tasks.register("uploadCrashlyticsMappingFile${variantName}",
-                    com.google.firebase.crashlytics.buildtools.gradle.tasks.UploadMappingFileTask) {
+        }
+        if (!nimarkoCrashlyticsUploadEnabled) {
+            return
+        }
+        if (!nimarkoCompactStandalone) {
+            def mappingTaskName = "uploadCrashlyticsMappingFile${variantName}"
+            def mappingTask = tasks.names.contains(mappingTaskName)
+                    ? tasks.named(mappingTaskName, com.google.firebase.crashlytics.buildtools.gradle.tasks.UploadMappingFileTask)
+                    : tasks.register(mappingTaskName, com.google.firebase.crashlytics.buildtools.gradle.tasks.UploadMappingFileTask)
+            mappingTask.configure {
                 dependsOn ':TMessagesProj:minifyStandaloneWithR8', "process${variantName}GoogleServices"
                 mergedMappingFile.set(project(':TMessagesProj').layout.buildDirectory.file('outputs/mapping/standalone/mapping.txt'))
                 mappingFileIdFile.set(tasks.named("injectCrashlyticsMappingFileId${variantName}").flatMap { it.mappingFileIdFile })

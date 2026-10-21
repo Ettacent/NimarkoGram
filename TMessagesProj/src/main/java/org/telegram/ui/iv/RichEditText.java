@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import android.content.Context;
@@ -59,6 +61,11 @@ public class RichEditText extends EditTextCaption {
     private boolean softEnterNewline;
     private boolean accentHint;
     private boolean locked;
+    private boolean nativeTouchActive;
+    private boolean nativeTapCandidate;
+    private int nativeTapPointerId = -1;
+    private float nativeTapRawX, nativeTapRawY;
+    private long nativeTapDownTime;
     private boolean allowNewlines;
     private boolean centerEmptyHint;
     private boolean applyingEmptyHint;
@@ -302,6 +309,8 @@ public class RichEditText extends EditTextCaption {
 
     @Override
     protected void onDetachedFromWindow() {
+        resetNativeTapIntent();
+        nativeTouchActive = false;
         AndroidUtilities.cancelRunOnUIThread(inlineButtonLongPressRunnable);
         pressedInlineButton = null;
         inlineButtonLongPressed = false;
@@ -348,6 +357,22 @@ public class RichEditText extends EditTextCaption {
     public void setLocked(boolean locked) {
         if (this.locked == locked) return;
         this.locked = locked;
+        if (locked) {
+            resetNativeTapIntent();
+            cancelLongPress();
+            AndroidUtilities.cancelRunOnUIThread(inlineButtonLongPressRunnable);
+            if (pressedInlineButton != null) pressedInlineButton.setPressed(false);
+            pressedInlineButton = null;
+            inlineButtonLongPressed = false;
+            if (nativeTouchActive) {
+                nativeTouchActive = false;
+                final long now = android.os.SystemClock.uptimeMillis();
+                MotionEvent cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+                try { super.onTouchEvent(cancel); } finally { cancel.recycle(); }
+            }
+            hideActionMode();
+            finishActionMode();
+        }
         InputFilter[] cur = getFilters();
         boolean present = false;
         for (InputFilter f : cur) if (f == lockingFilter) { present = true; break; }
@@ -404,9 +429,8 @@ public class RichEditText extends EditTextCaption {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN && listener != null && isEnabled() && isFocusable()) {
-            listener.onRequestWindowFocusable(this, true);
-        }
+        if (locked) return true;
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) resetNativeTapIntent();
         if (!locked) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 mathDownX = event.getX();
@@ -446,13 +470,74 @@ public class RichEditText extends EditTextCaption {
                 if (tap) {
                     final MathSpan span = mathSpanAt(event.getX(), event.getY());
                     if (span != null) {
+                        resetNativeTapIntent();
+                        if (nativeTouchActive) {
+                            nativeTouchActive = false;
+                            MotionEvent cancel = MotionEvent.obtain(event);
+                            cancel.setAction(MotionEvent.ACTION_CANCEL);
+                            try { super.onTouchEvent(cancel); } finally { cancel.recycle(); }
+                        }
                         openMathEditor(span);
                         return true;
                     }
                 }
             }
         }
+        trackNativeTapIntent(event);
+        if (event.getActionMasked() == MotionEvent.ACTION_UP && nativeTapCandidate
+                && listener != null && isEnabled() && isFocusable()) {
+            listener.onRequestWindowFocusable(this, true);
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) nativeTouchActive = true;
+        if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            nativeTouchActive = false;
+            resetNativeTapIntent();
+        }
         return super.onTouchEvent(event);
+    }
+
+    private void resetNativeTapIntent() {
+        nativeTapCandidate = false;
+        nativeTapPointerId = -1;
+    }
+
+    private void trackNativeTapIntent(MotionEvent event) {
+        final int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            nativeTapCandidate = event.getPointerCount() == 1;
+            nativeTapPointerId = event.getPointerId(0);
+            nativeTapRawX = event.getRawX();
+            nativeTapRawY = event.getRawY();
+            nativeTapDownTime = event.getDownTime();
+            return;
+        }
+        if (!nativeTapCandidate) return;
+        final long duration = event.getEventTime() - nativeTapDownTime;
+        if (!nativeTouchActive || action == MotionEvent.ACTION_CANCEL
+                || action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP
+                || event.getPointerCount() != 1 || event.getPointerId(0) != nativeTapPointerId
+                || event.getDownTime() != nativeTapDownTime || duration < 0
+                || duration >= ViewConfiguration.getLongPressTimeout()) {
+            resetNativeTapIntent();
+            return;
+        }
+        if (touchSlop == 0) touchSlop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+        final float slopSquared = touchSlop * touchSlop;
+        float dx = event.getRawX() - nativeTapRawX, dy = event.getRawY() - nativeTapRawY;
+        if (dx * dx + dy * dy > slopSquared) {
+            resetNativeTapIntent();
+            return;
+        }
+        final float rawOffsetX = event.getRawX() - event.getX();
+        final float rawOffsetY = event.getRawY() - event.getY();
+        for (int i = 0; i < event.getHistorySize(); i++) {
+            dx = event.getHistoricalX(i) + rawOffsetX - nativeTapRawX;
+            dy = event.getHistoricalY(i) + rawOffsetY - nativeTapRawY;
+            if (dx * dx + dy * dy > slopSquared) {
+                resetNativeTapIntent();
+                return;
+            }
+        }
     }
 
     private RichInlineButtonSpan inlineButtonSpanAt(float x, float y) {

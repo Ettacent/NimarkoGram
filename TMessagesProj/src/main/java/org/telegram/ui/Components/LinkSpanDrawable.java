@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -13,6 +15,7 @@ import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.SystemClock;
 import android.text.Layout;
 import android.text.Spannable;
@@ -29,6 +32,7 @@ import android.widget.TextView;
 
 import androidx.core.graphics.ColorUtils;
 
+import app.nimarkogram.messenger.diagnostics.CrashDiagnostics;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LiteMode;
@@ -735,7 +739,15 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
                 }
                 canvas.restore();
             }
+            try {
             super.onDraw(canvas);
+            } catch (Throwable failure) {
+                try {
+                    recordDrawFailure(failure);
+                } catch (Throwable ignored) {
+                }
+                throw failure;
+            }
             boolean restore = false;
             try {
                 Layout layout = getLayout();
@@ -757,6 +769,44 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             if (restore) {
                 canvas.restore();
             }
+        }
+
+        private void recordDrawFailure(Throwable failure) {
+            int width = -1;
+            int height = -1;
+            try {
+                width = getWidth();
+                height = getHeight();
+            } catch (Throwable ignored) {
+            }
+            Paint paint = null;
+            try {
+                paint = getPaint();
+            } catch (Throwable ignored) {
+            }
+            int color = 0;
+            boolean colorAvailable = false;
+            long colorLong = 0;
+            boolean colorLongAvailable = false;
+            if (paint != null) {
+                try {
+                    color = paint.getColor();
+                    colorAvailable = true;
+                } catch (Throwable ignored) {
+                }
+                if (Build.VERSION.SDK_INT >= 29) {
+                    try {
+                        colorLong = paint.getColorLong();
+                        colorLongAvailable = true;
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            CrashDiagnostics.recordFailure("ui", "links_text_draw",
+                    "current_state w=" + width + " h=" + height
+                            + " argb=" + color + " argb_ok=" + colorAvailable
+                            + " color_long=" + colorLong + " color_long_ok=" + colorLongAvailable
+                            + " argument_observed=false", failure);
         }
 
         protected int emojiCacheType() {

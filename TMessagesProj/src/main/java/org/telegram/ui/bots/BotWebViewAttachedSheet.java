@@ -693,6 +693,11 @@ public class BotWebViewAttachedSheet implements NotificationCenter.NotificationC
 
         actionBar = new ActionBar(getContext(), resourcesProvider) {
             @Override
+            protected boolean shouldUseAdaptiveCenterTitle() {
+                return shouldCenterTitle();
+            }
+
+            @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             }
@@ -968,6 +973,8 @@ public class BotWebViewAttachedSheet implements NotificationCenter.NotificationC
             title = Emoji.replaceEmoji(title, tp.getFontMetricsInt(), false);
         } catch (Exception ignore) {}
         actionBar.setTitle(title);
+        actionBar.getTitleTextView().setEllipsizeByGradient(false);
+        actionBar.getTitleTextView().setOutsideRightDrawableTextClipInset(0);
         TLRPC.UserFull userInfo = MessagesController.getInstance(currentAccount).getUserFull(botId);
         if (userbot != null && userbot.verified || userInfo != null && userInfo.user != null && userInfo.user.verified) {
             verifiedDrawable = getContext().getResources().getDrawable(R.drawable.verified_profile).mutate();

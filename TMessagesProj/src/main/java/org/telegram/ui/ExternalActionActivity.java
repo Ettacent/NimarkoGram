@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -11,6 +13,7 @@ package org.telegram.ui;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -52,6 +55,16 @@ import java.util.ArrayList;
 
 public class ExternalActionActivity extends Activity implements INavigationLayout.INavigationLayoutDelegate {
 
+    private app.nimarkogram.messenger.icons.NimarkoActivityIconResources nmIconResources;
+
+    @Override
+    public synchronized Resources getResources() {
+        Resources base = super.getResources();
+        if (nmIconResources == null) {
+            nmIconResources = new app.nimarkogram.messenger.icons.NimarkoActivityIconResources();
+        }
+        return nmIconResources.getResources(base);
+    }
     private boolean finished;
     private static final ArrayList<BaseFragment> mainFragmentsStack = new ArrayList<>();
     private static final ArrayList<BaseFragment> layerFragmentsStack = new ArrayList<>();

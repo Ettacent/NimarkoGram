@@ -852,8 +852,12 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
 
     public boolean hasFrontFaceCamera() {
         ArrayList<CameraInfo> cameraInfos = CameraController.getInstance().getCameras();
+        if (cameraInfos == null) {
+            return false;
+        }
         for (int a = 0; a < cameraInfos.size(); a++) {
-            if (cameraInfos.get(a).frontCamera != 0) {
+            CameraInfo cameraInfo = cameraInfos.get(a);
+            if (cameraInfo != null && cameraInfo.frontCamera != 0) {
                 return true;
             }
         }

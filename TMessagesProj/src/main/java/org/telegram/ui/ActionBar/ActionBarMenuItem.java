@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -974,6 +976,8 @@ public class ActionBarMenuItem extends FrameLayout {
             searchContainerAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (searchContainerAnimator != animation) return;
+                    searchContainerAnimator = null;
                     searchContainer.setAlpha(0);
                     for (int i = 0; i < menuIcons.size(); i++) {
                         menuIcons.get(i).setAlpha(1f);
@@ -1020,6 +1024,8 @@ public class ActionBarMenuItem extends FrameLayout {
             searchContainerAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    if (searchContainerAnimator != animation) return;
+                    searchContainerAnimator = null;
                     searchContainer.setAlpha(1f);
                     for (int i = 0; i < menuIcons.size(); i++) {
                         menuIcons.get(i).setAlpha(0f);
@@ -1029,7 +1035,10 @@ public class ActionBarMenuItem extends FrameLayout {
             searchContainerAnimator.start();
             setVisibility(GONE);
             clearSearchFilters();
+            animateClear = false;
             searchField.setText("");
+            checkClearButton();
+            animateClear = true;
             searchField.requestFocus();
             if (openKeyboard) {
                 AndroidUtilities.showKeyboard(searchField);
@@ -1353,7 +1362,7 @@ public class ActionBarMenuItem extends FrameLayout {
                 @Override
                 public void setAlpha(float alpha) {
                     super.setAlpha(alpha);
-                    if (clearButton != null && clearButton.getTag() != null) {
+                    if (wrapSearchInScrollView && clearButton != null && clearButton.getTag() != null) {
                         clearButton.setAlpha(alpha);
                         clearButton.setScaleX(alpha);
                         clearButton.setScaleY(alpha);
@@ -1695,16 +1704,22 @@ public class ActionBarMenuItem extends FrameLayout {
         super.setOnClickListener(onClickListener = l);
     }
 
+    private void cancelClearButtonAnimation() {
+        AnimatorSet animator = clearButtonAnimator;
+        clearButtonAnimator = null;
+        if (animator != null) {
+            animator.removeAllListeners();
+            animator.cancel();
+        }
+    }
     private void checkClearButton() {
         if (clearButton != null) {
             if (!hasRemovableFilters() && TextUtils.isEmpty(searchField.getText()) &&
                     (listener == null || !listener.forceShowClear()) &&
                     (searchFieldCaption == null || searchFieldCaption.getVisibility() != VISIBLE || listener != null && !listener.showClearForCaption())) {
-                if (clearButton.getTag() != null) {
+                if (clearButton.getTag() != null || !animateClear) {
                     clearButton.setTag(null);
-                    if (clearButtonAnimator != null) {
-                        clearButtonAnimator.cancel();
-                    }
+                    cancelClearButtonAnimation();
                     if (animateClear) {
                         AnimatorSet animator = new AnimatorSet().setDuration(180);
                         animator.setInterpolator(new DecelerateInterpolator());
@@ -1725,29 +1740,31 @@ public class ActionBarMenuItem extends FrameLayout {
                         animator.addListener(new AnimatorListenerAdapter() {
                             @Override
                             public void onAnimationEnd(Animator animation) {
+                                if (clearButtonAnimator != animation) return;
                                 clearButton.setVisibility(INVISIBLE);
 
                                 clearButtonAnimator = null;
                             }
                         });
+                        clearButtonAnimator = animator;
                         animator.start();
 
-                        clearButtonAnimator = animator;
                     } else {
                         clearButton.setAlpha(0.0f);
                         clearButton.setRotation(45);
                         clearButton.setScaleX(0.0f);
                         clearButton.setScaleY(0.0f);
                         clearButton.setVisibility(INVISIBLE);
+                        if (searchAdditionalButton != null) {
+                            searchAdditionalButton.setTranslationX(AndroidUtilities.dp(32));
+                        }
                         animateClear = true;
                     }
                 }
             } else {
-                if (clearButton.getTag() == null) {
+                if (clearButton.getTag() == null || !animateClear) {
                     clearButton.setTag(1);
-                    if (clearButtonAnimator != null) {
-                        clearButtonAnimator.cancel();
-                    }
+                    cancelClearButtonAnimation();
                     clearButton.setVisibility(VISIBLE);
                     if (animateClear) {
                         AnimatorSet animator = new AnimatorSet().setDuration(180);
@@ -1769,12 +1786,13 @@ public class ActionBarMenuItem extends FrameLayout {
                         animator.addListener(new AnimatorListenerAdapter() {
                             @Override
                             public void onAnimationEnd(Animator animation) {
+                                if (clearButtonAnimator != animation) return;
                                 clearButtonAnimator = null;
                             }
                         });
+                        clearButtonAnimator = animator;
                         animator.start();
 
-                        clearButtonAnimator = animator;
                     } else {
                         clearButton.setAlpha(1.0f);
                         clearButton.setRotation(0);
@@ -2417,6 +2435,7 @@ public class ActionBarMenuItem extends FrameLayout {
         public CharSequence text;
         public boolean dismiss, needCheck;
         public View viewToSwipeBack;
+        private Utilities.Callback0Return<View> swipeBackViewFactory;
         public int textSizeDp;
 
         private View view;
@@ -2513,6 +2532,10 @@ public class ActionBarMenuItem extends FrameLayout {
                 layoutParams.width = LayoutHelper.MATCH_PARENT;
                 layoutParams.height = AndroidUtilities.dp(48);
                 cell.setLayoutParams(layoutParams);
+                if (swipeBackViewFactory != null) {
+                    viewToSwipeBack = swipeBackViewFactory.run();
+                    swipeBackViewFactory = null;
+                }
                 int swipeBackIndex = parent.popupLayout.addViewToSwipeBack(viewToSwipeBack);
                 cell.openSwipeBackLayout = () -> {
                     if (parent.popupLayout.getSwipeBack() != null) {
@@ -2608,6 +2631,11 @@ public class ActionBarMenuItem extends FrameLayout {
     }
     public Item lazilyAddSwipeBackItem(int icon, Drawable iconDrawable, String text, View viewToSwipeBack) {
         return putLazyItem(Item.asSwipeBackItem(icon, iconDrawable, text, viewToSwipeBack));
+    }
+    public Item lazilyAddSwipeBackItem(int icon, Drawable iconDrawable, String text, Utilities.Callback0Return<View> viewFactory) {
+        Item item = Item.asSwipeBackItem(icon, iconDrawable, text, null);
+        item.swipeBackViewFactory = viewFactory;
+        return putLazyItem(item);
     }
     public void moveLazyItemToStart(Item item) {
         if (item != null && lazyList != null && lazyList.remove(item)) {

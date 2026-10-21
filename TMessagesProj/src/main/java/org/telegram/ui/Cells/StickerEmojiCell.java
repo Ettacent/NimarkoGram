@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -61,7 +63,7 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
     private boolean changingAlpha;
     private long lastUpdateTime;
     private boolean scaled;
-    private float scale;
+    private float scale = 1f;
     private long time;
     private boolean recent;
     private static AccelerateInterpolator interpolator = new AccelerateInterpolator(0.5f);
@@ -86,8 +88,10 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
         imageView = new ImageReceiver() {
             @Override
             protected boolean setImageBitmapByKey(Drawable drawable, String key, int type, boolean memCache, int guid) {
-                if (drawable instanceof BitmapDrawable && editModeIconColor == 0) {
+                boolean accepted = super.setImageBitmapByKey(drawable, key, type, memCache, guid);
+                if (accepted && drawable instanceof BitmapDrawable && editModeIconColor == 0) {
                     Bitmap bitmap = ((BitmapDrawable) drawable).getBitmap();
+                    if (bitmap == null || bitmap.isRecycled()) return accepted;
                     editModeIconColor = AndroidUtilities.getDominantColor(bitmap);
                     if (editModeIconColor == Color.WHITE || editModeIconColor == 0) {
                         editModeIconColor = Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider);
@@ -95,7 +99,7 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
                     editModeIcon.setBackground(Theme.createRoundRectDrawable(dp(12), editModeIconColor));
                     invalidate();
                 }
-                return super.setImageBitmapByKey(drawable, key, type, memCache, guid);
+                return accepted;
             }
         };
         imageView.setCrossfadeOnReady(true);
@@ -198,6 +202,7 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
     }
 
     public void setSticker(TLRPC.Document document, SendMessagesHelper.ImportingSticker path, Object parent, String emoji, boolean showEmoji, boolean editModeEnabled) {
+        bindStickerIdentity(document, path, parent);
         currentEmoji = emoji;
         isPremiumSticker = MessageObject.isPremiumSticker(document);
         drawInParentView = false;
@@ -214,7 +219,6 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
             premiumIconView.setWaitingImage();
         }
         if (path != null) {
-            stickerPath = path;
             if (path.validated) {
                 imageView.setImage(ImageLocation.getForPath(path.path), "80_80", null, null, DocumentObject.getSvgRectThumb(Theme.key_dialogBackgroundGray, 1.0f), 0, path.animated ? "tgs" : null, 0, 1);
             } else {
@@ -227,8 +231,6 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
                 emojiTextView.setVisibility(INVISIBLE);
             }
         } else if (document != null) {
-            sticker = document;
-            parentObject = parent;
             //boolean isVideoSticker = MessageObject.isVideoSticker(document);
             TLRPC.PhotoSize thumb = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, 90);
             SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(document, fromEmojiPanel ? Theme.key_emptyListPlaceholder : Theme.key_windowBackgroundGray, fromEmojiPanel ? 0.2f : 1.0f, 1f, resourceProvider);
@@ -284,15 +286,34 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
             } else {
                 emojiTextView.setVisibility(INVISIBLE);
             }
+        } else {
+            imageView.setImageBitmap((Drawable) null);
+            emojiTextView.setVisibility(INVISIBLE);
         }
         updatePremiumStatus(false);
         imageView.setAlpha(alpha * premiumAlpha);
-        if (drawInParentView) {
-            imageView.setInvalidateAll(true);
-            imageView.setParentView((View) getParent());
-        } else {
-            imageView.setParentView(this);
+        updateImageParent();
+    }
+
+    private void bindStickerIdentity(TLRPC.Document document, SendMessagesHelper.ImportingSticker path, Object parent) {
+        boolean sameDocument = path == null && stickerPath == null && document != null && sticker != null
+                && (document == sticker || document.id != 0 && document.id == sticker.id && document.dc_id == sticker.dc_id);
+        boolean sameImport = path != null && stickerPath == path;
+        if (!sameDocument && !sameImport) {
+            changingAlpha = false;
+            alpha = 1f;
+            scaled = false;
+            scale = 1f;
+            time = 0;
         }
+        sticker = path == null ? document : null;
+        stickerPath = path;
+        parentObject = parent;
+    }
+
+    private void updateImageParent() {
+        imageView.setInvalidateAll(drawInParentView);
+        imageView.setParentView(drawInParentView && getParent() instanceof View ? (View) getParent() : this);
     }
 
     private void updatePremiumStatus(boolean animated) {
@@ -391,12 +412,7 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        if (drawInParentView) {
-            imageView.setInvalidateAll(true);
-            imageView.setParentView((View) getParent());
-        } else {
-            imageView.setParentView(this);
-        }
+        updateImageParent();
         imageView.onAttachedToWindow();
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.currentUserPremiumStatusChanged);
     }
@@ -460,18 +476,19 @@ public class StickerEmojiCell extends FrameLayout implements NotificationCenter.
             view.invalidate();
         }
         int size = Math.min(AndroidUtilities.dp(STICKER_SIZE), Math.min(getMeasuredHeight(), getMeasuredWidth()));
+        if (size <= 0) return;
         int cX = getMeasuredWidth() >> 1;
         int cY = getMeasuredHeight() >> 1;
         imageView.setImageCoords(cX - size / 2f, cY - size / 2f, size, size);
         imageView.setAlpha(alpha * premiumAlpha);
 
-        if (scale != 1f) {
-            canvas.save();
-            canvas.scale(scale, scale, cX, cY);
+        final int save = canvas.save();
+        try {
+            canvas.clipRect(cX - size / 2f, cY - size / 2f, cX + size / 2f, cY + size / 2f);
+            if (scale != 1f) canvas.scale(scale, scale, cX, cY);
             imageView.draw(canvas);
-            canvas.restore();
-        } else {
-            imageView.draw(canvas);
+        } finally {
+            canvas.restoreToCount(save);
         }
     }
 }

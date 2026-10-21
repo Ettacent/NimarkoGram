@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1443,6 +1445,9 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
         @Override
         public void draw(@NonNull Canvas canvas) {
+            if (ownsReceiverFade && !waitingForReady && !isDrawableReady(drawable)) {
+                ownsReceiverFade = false;
+            }
             if (waitingForReady && isDrawableReady(drawable)) {
                 waitingForReady = false;
                 changeProgress.set(0, true);
@@ -1567,6 +1572,7 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
 
         public void resetAnimation() {
+            if (!isDrawableReady(drawable)) ownsReceiverFade = false;
             transitioning = waitingForReady = false;
             applyPendingParticles(false);
             particlesAlpha.set(hasParticles, true);
@@ -1719,6 +1725,7 @@ public class AnimatedEmojiDrawable extends Drawable {
             }
             outgoingDrawables.clear();
             transitioning = waitingForReady = false;
+            ownsReceiverFade = false;
             applyPendingParticles(false);
             changeProgress.set(1, true);
             particlesAlpha.set(hasParticles, true);

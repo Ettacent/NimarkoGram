@@ -35,6 +35,7 @@ import org.telegram.ui.LaunchActivity;
 import java.util.ArrayList;
 import java.util.List;
 
+import java.util.Locale;
 public class AdjustPanLayoutHelper {
 
     public static boolean USE_ANDROID11_INSET_ANIMATOR = false;

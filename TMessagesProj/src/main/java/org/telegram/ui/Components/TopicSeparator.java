@@ -47,6 +47,7 @@ public class TopicSeparator {
     private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path arrowPath = new Path();
 
+    private final CompactChevronRenderer arrowRenderer = new CompactChevronRenderer();
     private final RectF clickBounds = new RectF();
     private final ButtonBounce bounce;
     private Runnable onClickListener;
@@ -213,7 +214,9 @@ public class TopicSeparator {
             canvas.translate(sideMenuWidth / 2f + left + width - dp(11.25f), top + dp(16.5f));
             arrowPaint.setColor(Theme.multAlpha(textColor, .75f * alpha));
             arrowPaint.setStrokeWidth(dp(1.66f));
+            if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, CompactChevronRenderer.RIGHT)) {
             canvas.drawPath(arrowPath, arrowPaint);
+            }
             canvas.restore();
         }
     }

@@ -29,7 +29,7 @@ import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.InstantCameraViewBase;
 import org.telegram.ui.Components.RecyclerListView;
-import org.telegram.utils.camera.roundvideo.RoundVideoSession;
+import org.telegram.utils.recorder.round.RoundVideoSession;
 
 public class RoundVideoSettingsActivity extends BaseFragment {
     private static final int TYPE_HEADER = 0;

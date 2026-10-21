@@ -1,0 +1,19 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Based on Telegram Android resources (GPL v2 or later).
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group android:translateX="0.48" android:translateY="0.48"
+        android:scaleX="0.96" android:scaleY="0.96">
+        <path android:fillColor="#59FFFFFF" android:fillType="evenOdd"
+            android:pathData="M7.84 1.92 H16.16 C19.4295 1.92 22.08 4.5705 22.08 7.84 V12 C22.08 17.567 17.567 22.08 12 22.08 H7.84 C4.5705 22.08 1.92 19.4295 1.92 16.16 V7.84 C1.92 4.5705 4.5705 1.92 7.84 1.92 Z M7.2 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M14.24 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M7.289 15.229 C8.76 16.824 10.354 17.55 12 17.55 C13.67 17.55 14.993 17.17 15.73 16.37 A.75 .75 0 0 0 14.67 15.31 C14.11 15.92 13.276 16.05 12 16.05 C10.66 16.05 9.48 15.39 8.391 14.211 A.75 .75 0 0 0 7.289 15.229 Z"/>
+        <path android:name="stickerFace" android:fillColor="#FFFFFFFF"
+            android:pathData="M7.2 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M14.24 10.08 a1.2444 1.6 0 1 0 2.4888 0 a1.2444 1.6 0 1 0 -2.4888 0 Z M7.289 15.229 C8.76 16.824 10.354 17.55 12 17.55 C13.67 17.55 14.993 17.17 15.73 16.37 A.75 .75 0 0 0 14.67 15.31 C14.11 15.92 13.276 16.05 12 16.05 C10.66 16.05 9.48 15.39 8.391 14.211 A.75 .75 0 0 0 7.289 15.229 Z"/>
+        <group>
+            <clip-path android:pathData="M7.84 1.92 H16.16 C19.4295 1.92 22.08 4.5705 22.08 7.84 V12 C22.08 17.567 17.567 22.08 12 22.08 H7.84 C4.5705 22.08 1.92 19.4295 1.92 16.16 V7.84 C1.92 4.5705 4.5705 1.92 7.84 1.92 Z"/>
+            <path android:name="stickerPeel" android:fillColor="#FFFFFFFF" android:pathData="M12 22.08 C17.567 22.08 22.08 17.567 22.08 12 V13.44 C22.08 14.6771 21.0771 15.68 19.84 15.68 H18.88 C17.1127 15.68 15.68 17.1127 15.68 18.88 V19.84 C15.68 21.0771 14.6771 22.08 13.44 22.08 H12 Z"/>
+        </group>
+    </group>
+</vector>

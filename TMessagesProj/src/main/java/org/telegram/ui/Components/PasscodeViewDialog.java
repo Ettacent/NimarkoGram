@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.app.Dialog;
@@ -48,6 +50,7 @@ public class PasscodeViewDialog extends Dialog {
             @Override
             protected void onHidden() {
                 PasscodeViewDialog.super.dismiss();
+                PasscodeViewDialog.this.onHidden();
                 if (LaunchActivity.instance == null) return;
                 DrawerLayoutContainer drawerLayoutContainer = LaunchActivity.instance.drawerLayoutContainer;
                 drawerLayoutContainer.setScaleX(1f);
@@ -63,6 +66,9 @@ public class PasscodeViewDialog extends Dialog {
             }
         };
         windowView.addView(passcodeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
+    }
+
+    protected void onHidden() {
     }
 
     @Override

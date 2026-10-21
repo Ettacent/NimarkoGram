@@ -101,6 +101,7 @@ import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AnimationProperties;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.PeriodPackRenderer;
 import org.telegram.ui.Components.PlayPauseDrawable;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.Scroller;
@@ -155,6 +156,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
     private class SecretDeleteTimer extends FrameLayout {
 
+        private final PeriodPackRenderer periodPackRenderer = new PeriodPackRenderer();
         private Paint afterDeleteProgressPaint;
         private Paint circlePaint;
         private Paint particlePaint;
@@ -265,7 +267,8 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                 onceLayout.draw(canvas);
                 canvas.restore();
 
-                canvas.drawArc(deleteProgressRect, 90, 180, false, afterDeleteProgressPaint);
+                final int pack = periodPackRenderer.selection();
+                periodPackRenderer.drawArc(canvas, deleteProgressRect, 90, 180, afterDeleteProgressPaint, pack);
                 final int dashes = 5;
                 final int gaps = dashes + 1;
                 final float dashWeight = 1f, gapWeight = 1.5f;
@@ -273,7 +276,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                 final float gapSweep = gapWeight / (dashes * dashWeight + gaps * gapWeight) * 180;
                 float a = gapSweep;
                 for (int i = 0; i < dashes; ++i) {
-                    canvas.drawArc(deleteProgressRect, 270 + a, dashSweep, false, afterDeleteProgressPaint);
+                    periodPackRenderer.drawArc(canvas, deleteProgressRect, 270 + a, dashSweep, afterDeleteProgressPaint, pack);
                     a += dashSweep + gapSweep;
                 }
                 timerParticles.draw(canvas, particlePaint, deleteProgressRect, 0, 1.0f);
