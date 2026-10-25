@@ -33,8 +33,8 @@ import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.CrashContext;
 import app.nimarkogram.messenger.plugins.hooks.PluginsHooks;
 import app.nimarkogram.messenger.plugins.pip.PipController;
 import app.nimarkogram.messenger.plugins.models.DividerSetting;
@@ -1089,7 +1089,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 throw new IOException(
                         "Could not remove plugin host preferences");
             }
-            if (!NimarkoConfig.removePluginPinnedDurably(
+            if (!AppConfig.removePluginPinnedDurably(
                     pluginId)) {
                 throw new IOException(
                         "Could not remove pinned plugin state");
@@ -1819,7 +1819,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         try {
             String owner = runtimeToken == null ? ""
                     : runtimeToken.getGeneration() + ":" + runtimeToken.getInstanceId();
-            NimarkoCrashContext.pythonPhase(token, NimarkoCrashContext.invocationStartedMs(token),
+            CrashContext.pythonPhase(token, CrashContext.invocationStartedMs(token),
                     phase, target, runtimeToken == null ? "" : runtimeToken.getPluginId(), owner);
         } catch (Throwable ignored) {
 
@@ -2022,7 +2022,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
                 registerPluginsMetadataOnly(
                         PYTHON_RUNTIME_ABANDONED.get()
-                                || NimarkoConfig.pluginsSafeMode);
+                                || AppConfig.pluginsSafeMode);
                 getPluginsController().reportInitializationProgress(initializationAttempt);
                 getPluginsController().notifyPluginsChanged();
                 if (PYTHON_RUNTIME_ABANDONED.get()) {
@@ -2035,7 +2035,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     return;
                 }
 
-                if (NimarkoConfig.pluginsSafeMode) {
+                if (AppConfig.pluginsSafeMode) {
                     FileLog.d("nimarko: safe mode active, skipping Python engine init");
 
                     if (runnable != null) {
@@ -2055,7 +2055,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 getPluginsController().reportInitializationProgress(initializationAttempt);
 
                 recoverInterruptedPluginUpdates(getPluginsController());
-                if (!NimarkoConfig.pluginsSafeMode) {
+                if (!AppConfig.pluginsSafeMode) {
                     try {
                         String[] strArr = getPython().getModule("plugin_settings").callAttr("init", getPluginsController().pluginsDir.getAbsolutePath(), getPluginsController().preferences.getAll()).toJava(String[].class);
                         if (strArr.length > 0) {
@@ -2085,7 +2085,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public void checkDevServer() {
-        if (NimarkoConfig.pluginsDevMode) {
+        if (AppConfig.pluginsDevMode) {
             runDevServer();
         } else {
             stopDevServer();
@@ -2313,7 +2313,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     && (minVersion == null
                     || SharedConfig.versionBiggerOrEqual(
                     BuildVars.BUILD_VERSION_STRING, minVersion))) {
-                plugin = new Plugin(id, name);
+                plugin = new com.exteragram.messenger.plugins.Plugin(id, name);
                 plugin.setAuthor(metadata.getOrDefault(
                         "author", LocaleController.getString(
                         R.string.PluginNoAuthor)));
@@ -2329,7 +2329,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         } catch (Throwable ignored) {
         }
         if (plugin == null) {
-            plugin = new Plugin(expectedId, expectedId);
+            plugin = new com.exteragram.messenger.plugins.Plugin(expectedId, expectedId);
             plugin.setAuthor(LocaleController.getString(
                     R.string.PluginNoAuthor));
             plugin.setVersion("1.0");
@@ -2408,7 +2408,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
 
                     module.callAttr("setswitchinterval", 0.01d);
-                    if (NimarkoConfig.pluginsSafeMode) {
+                    if (AppConfig.pluginsSafeMode) {
                         getPluginsController().notifyPluginsChanged();
                         if (runnable != null) {
                             AndroidUtilities.runOnUIThread(runnable);
@@ -2703,7 +2703,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             throw new IllegalStateException(
                     "Internal plugin loader is pluginsQueue-only");
         }
-        NimarkoCrashContext.python(str, "PythonPluginsEngine.loadPlugin", 0);
+        CrashContext.python(str, "PythonPluginsEngine.loadPlugin", 0);
         if (PYTHON_RUNTIME_ABANDONED.get()) {
             throw new IOException(
                     "Python runtime was abandoned after a lifecycle timeout; "
@@ -2840,7 +2840,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 legacyOverlayProbes.put(runtimeToken, overlayProbe);
             }
             loadPhase = "import";
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticToken = CrashContext.beginInvocation();
             diagnosticPythonPhase(diagnosticToken, "engine_enter",
                     "PythonPluginsEngine.loadPlugin", runtimeToken);
             PyObject module = getPython().getModule("plugin_imports").callAttr(
@@ -2980,7 +2980,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw cancelled;
         } catch (Exception failure) {
-            NimarkoCrashContext.failure("plugin_load", str,
+            CrashContext.failure("plugin_load", str,
                     "PythonPluginsEngine." + loadPhase, failure);
             if (!"on_plugin_load".equals(loadPhase)) {
                 reportPluginLoadFailure(str, loadPhase, failure);
@@ -2996,7 +2996,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             throw failure;
         } catch (Error failure) {
-            NimarkoCrashContext.failure("plugin_load", str,
+            CrashContext.failure("plugin_load", str,
                     "PythonPluginsEngine." + loadPhase, failure);
             if (!"on_plugin_load".equals(loadPhase)) {
                 reportPluginLoadFailure(str, loadPhase, failure);
@@ -3035,7 +3035,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             loadSucceeded && cleanupSucceeded && !forceInstantiate);
                 }
             } finally {
-                NimarkoCrashContext.endInvocation(diagnosticToken);
+                CrashContext.endInvocation(diagnosticToken);
             }
         }
     }
@@ -3213,7 +3213,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             return;
         }
-        if (z && NimarkoConfig.pluginsSafeMode) {
+        if (z && AppConfig.pluginsSafeMode) {
             FileLog.w("nimarko: setPluginEnabled(true) blocked by safe mode for " + str);
             if (callback != null) {
                 AndroidUtilities.runOnUIThread(() -> callback.run(LocaleController.getString(R.string.NM_SafeModeBlocked)));
@@ -3496,7 +3496,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                             + pluginId);
                         }
                         pyObject.put("enabled", false);
-                        diagnosticToken = NimarkoCrashContext.beginInvocation();
+                        diagnosticToken = CrashContext.beginInvocation();
                         diagnosticPythonPhase(diagnosticToken, "engine_enter",
                                 "PythonPluginsEngine.onPluginUnload", runtimeToken);
                         pyObject.callAttr(PluginsConstants.ON_PLUGIN_UNLOAD);
@@ -3524,7 +3524,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             scheduleActualReturn(operation);
                         }
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             });
@@ -3657,7 +3657,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         throw new EnableCancelledException(pluginId);
                     }
                     claimEnableCode(pluginId, enableGeneration);
-                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticToken = CrashContext.beginInvocation();
                     diagnosticPythonPhase(diagnosticToken, "engine_enter",
                             "PythonPluginsEngine.onPluginLoad", runtimeToken);
                     pyObject.callAttr(PluginsConstants.ON_PLUGIN_LOAD);
@@ -3685,7 +3685,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             }
                         }
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             });
@@ -4285,7 +4285,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
     boolean isCurrentDevInstallBridge(
             PluginDevInstallBridge bridge, long generation) {
         synchronized (installPublicationLock) {
-            return NimarkoConfig.pluginsDevMode
+            return AppConfig.pluginsDevMode
                     && bridge != null
                     && bridge == devInstallBridge
                     && bridge.isMarkedActive()
@@ -4417,7 +4417,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             candidate.cleanup();
             return;
         }
-        if (NimarkoConfig.pluginsSafeMode) {
+        if (AppConfig.pluginsSafeMode) {
             if (callback != null) {
                 AndroidUtilities.runOnUIThread(() -> callback.run(
                         LocaleController.getString(R.string.PluginsSafeModeOn)));
@@ -5663,7 +5663,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             + BuildVars.BUILD_VERSION_STRING);
         }
 
-        Plugin plugin = new Plugin(pluginId, pluginName);
+        Plugin plugin = new com.exteragram.messenger.plugins.Plugin(pluginId, pluginName);
         plugin.setEngine(PluginsConstants.PYTHON);
         plugin.setAuthor(pluginMetadata.getOrDefault(
                 "author",
@@ -5795,7 +5795,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 }
                 getPluginsController().getWatchdog().onPluginExecutionStarted(str);
                 watchdogStarted = true;
-                diagnosticToken = NimarkoCrashContext.beginInvocation();
+                diagnosticToken = CrashContext.beginInvocation();
                 diagnosticPythonPhase(diagnosticToken, "engine_enter",
                         "PythonPluginsEngine.createSettings", runtimeToken);
                 PyObject pyObjectCallAttr = pyObject.callAttr(PluginsConstants.CREATE_SETTINGS);
@@ -5832,14 +5832,14 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     }
                 }
             } finally {
-                NimarkoCrashContext.endInvocation(diagnosticToken);
+                CrashContext.endInvocation(diagnosticToken);
             }
         }
     }
 
     @Override
     public void executeOnAppEvent(String str) {
-        if (NimarkoConfig.pluginsSafeMode) {
+        if (AppConfig.pluginsSafeMode) {
             return;
         }
         if (getPython() == null) {
@@ -5854,7 +5854,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             if (pyObject == null) {
                 return;
             }
-            eventDiagnosticToken = NimarkoCrashContext.beginInvocation();
+            eventDiagnosticToken = CrashContext.beginInvocation();
             diagnosticPythonPhase(eventDiagnosticToken, "engine_enter",
                     "PythonPluginsEngine.createAppEvent", null);
             pyObjectCall = pyObject.call(str);
@@ -5866,7 +5866,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 diagnosticPythonPhase(eventDiagnosticToken, "engine_exit",
                         "PythonPluginsEngine.createAppEvent", null);
             } finally {
-                NimarkoCrashContext.endInvocation(eventDiagnosticToken);
+                CrashContext.endInvocation(eventDiagnosticToken);
             }
         }
 
@@ -5875,7 +5875,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 long diagnosticToken = 0;
                 try {
 
-                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticToken = CrashContext.beginInvocation();
                     diagnosticPythonPhase(diagnosticToken, "engine_enter",
                             "PythonPluginsEngine.debuggerAppEvent", null);
                     pyObject2.callAttr(PluginsConstants.ON_APP_EVENT, pyObjectCall);
@@ -5886,7 +5886,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         diagnosticPythonPhase(diagnosticToken, "engine_exit",
                                 "PythonPluginsEngine.debuggerAppEvent", null);
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             }
@@ -5912,7 +5912,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 getPluginsController().getWatchdog().onPluginExecutionStarted(pid);
                 long diagnosticToken = 0;
                 try {
-                    diagnosticToken = NimarkoCrashContext.beginInvocation();
+                    diagnosticToken = CrashContext.beginInvocation();
                     diagnosticPythonPhase(diagnosticToken, "engine_enter",
                             "PythonPluginsEngine.onAppEvent", runtimeToken);
                     PyObject callback = plugin != null && plugin.boundHooks != null
@@ -5938,7 +5938,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                             getPluginsController().exitPluginRuntime(runtimeToken);
                         }
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             }
@@ -5997,7 +5997,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         getPluginsController().getWatchdog().onPluginExecutionStarted(str);
         long diagnosticToken = 0;
         try {
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticToken = CrashContext.beginInvocation();
             diagnosticPythonPhase(diagnosticToken, "engine_enter",
                     "PythonPluginsEngine.executeHook", runtimeToken);
             return executeHook(instance, t, cls, str2, pyMethodCaller, callback);
@@ -6014,7 +6014,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     getPluginsController().exitPluginRuntime(runtimeToken);
                 }
             } finally {
-                NimarkoCrashContext.endInvocation(diagnosticToken);
+                CrashContext.endInvocation(diagnosticToken);
             }
         }
     }
@@ -6112,7 +6112,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         getPluginsController().getWatchdog().onPluginExecutionStarted(str2);
         long diagnosticToken = 0;
         try {
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
+            diagnosticToken = CrashContext.beginInvocation();
             diagnosticPythonPhase(diagnosticToken, "engine_enter",
                     "PythonPluginsEngine.postRequestHook", runtimeToken);
             return executePostRequestHook(str, i, tLObject, tL_error, instance);
@@ -6129,7 +6129,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     getPluginsController().exitPluginRuntime(runtimeToken);
                 }
             } finally {
-                NimarkoCrashContext.endInvocation(diagnosticToken);
+                CrashContext.endInvocation(diagnosticToken);
             }
         }
     }
@@ -6550,7 +6550,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             return;
         }
         if (!PluginUiRegistry.isFragmentUiActive(baseFragment)
-                || !NimarkoConfig.pluginsEngine || NimarkoConfig.pluginsSafeMode
+                || !AppConfig.pluginsEngine || AppConfig.pluginsSafeMode
                 || pluginInstallParams == null || TextUtils.isEmpty(pluginInstallParams.filePath)) return;
         final String path = pluginInstallParams.filePath;
         final Object operation = new Object();
@@ -6562,7 +6562,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             AuthorizedCandidate candidate = null;
             String error = null;
             try {
-                if (NimarkoConfig.pluginsEngine && !NimarkoConfig.pluginsSafeMode) {
+                if (AppConfig.pluginsEngine && !AppConfig.pluginsSafeMode) {
                     candidate = stageAuthorizedCandidate(path, null);
                 }
             } catch (Throwable failure) {
@@ -6576,7 +6576,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 if (current) pendingInstallDialogs.remove(fragment);
                 if (!current || !PluginUiRegistry.isFragmentUiActive(fragment)
                         || fragment.getFragmentView() != viewRef.get()
-                        || !NimarkoConfig.pluginsEngine || NimarkoConfig.pluginsSafeMode
+                        || !AppConfig.pluginsEngine || AppConfig.pluginsSafeMode
                         || prepared != null && prepared.cleaned.get()) {
                     if (prepared != null) {
                         Utilities.globalQueue.postRunnable(prepared::cleanup);
@@ -6748,7 +6748,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                     getPluginsController().getWatchdog().onPluginExecutionStarted(plugin.getId());
                                     PyObject pyObjectCall;
                                     try {
-                                        diagnosticToken = NimarkoCrashContext.beginInvocation();
+                                        diagnosticToken = CrashContext.beginInvocation();
                                         diagnosticPythonPhase(diagnosticToken, "engine_enter",
                                                 "PythonPluginsEngine.createSubFragment", callbackToken);
                                         pyObjectCall = textSetting2.createSubFragmentCallback.call();
@@ -6776,7 +6776,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                                     .exitPluginRuntime(callbackToken);
                                         }
                                     } finally {
-                                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                                        CrashContext.endInvocation(diagnosticToken);
                                     }
                                 }
                                 textSetting = textSetting2;

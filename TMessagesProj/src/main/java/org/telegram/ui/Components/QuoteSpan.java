@@ -36,7 +36,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.R;
@@ -766,7 +766,7 @@ public class QuoteSpan implements LeadingMarginSpan {
             final float expand = animatedState.set(state);
             final float p = dpf2(2.51f);
 
-            NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+            IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
             if (packExpanded.prepare(icons, R.drawable.voice_expand)
                     && packCollapsed.prepare(icons, R.drawable.voice_minimize) && !getBounds().isEmpty()) {
                 float aw = dpf2(4.66f), ah = dpf2(2.16f);

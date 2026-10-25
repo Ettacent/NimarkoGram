@@ -197,7 +197,7 @@ public class Browser {
         if (equals) {
             return url.equals("telegra.ph") || url.equals("te.legra.ph") || url.equals("graph.org");
         }
-        return url.matches("^(https" + (forceHttps ? "" : "?") + "://)?(te\\.?legra\\.ph|graph\\.org)(/.*|$)"); 
+        return url.matches("^(https" + (forceHttps ? "" : "?") + "://)?(te\\.?legra\\.ph|graph\\.org)(/.*|$)");
     }
 
     public static String extractUsername(String link) {
@@ -226,12 +226,15 @@ public class Browser {
     public static boolean urlMustNotHaveConfirmation(String url) {
         return (
             isTelegraphUrl(url, false, true) ||
-            url.matches("^(https://)?t\\.me/iv\\??(/.*|$)") || 
-            url.matches("^(https://)?telegram\\.org/(blog|tour)(/.*|$)") || 
-            url.matches("^(https://)?fragment\\.com(/.*|$)") 
+            url.matches("^(https://)?t\\.me/iv\\??(/.*|$)") ||
+            url.matches("^(https://)?telegram\\.org/(blog|tour)(/.*|$)") ||
+            url.matches("^(https://)?fragment\\.com(/.*|$)")
         );
     }
 
+    public static boolean isGetPremiumUrl(String url) {
+        return url != null && url.matches("(?i)^(https?://)?(t\\.me|telegram\\.me|telegram\\.dog)/getpremium([/?#].*)?$");
+    }
     public static class Progress {
 
         private Runnable onInitListener;
@@ -379,7 +382,7 @@ public class Browser {
                     .appendQueryParameter("autologin_token", autologin_token)
                     .build();
             }
-            
+
             if (allowCustom && !(uri != null && MessagesController.getInstance(currentAccount).isWebBrowserOpenInApp(uri.toString())) && MessagesController.getInstance(currentAccount).isWebBrowserUseCustomTabs() && !internalUri && !scheme.equals("tel") && !isTonsite(uri.toString())) {
                 if (forceBrowser[0] || !openInExternalApp(context, uri.toString(), false) || !hasAppToOpen(context, uri.toString())) {
                     if (MessagesController.getInstance(currentAccount).authDomains.contains(host)) {
@@ -415,7 +418,7 @@ public class Browser {
 
             final boolean inappBrowser = (
                 allowInAppBrowser && BubbleActivity.instance == null &&
-                
+
                 uri != null && MessagesController.getInstance(currentAccount).isWebBrowserOpenInApp(uri.toString()) &&
                 TextUtils.isEmpty(browserPackage) &&
                 (uri.getScheme() == null || "https".equals(uri.getScheme()) || "http".equals(uri.getScheme()) || "tonsite".equals(uri.getScheme()))

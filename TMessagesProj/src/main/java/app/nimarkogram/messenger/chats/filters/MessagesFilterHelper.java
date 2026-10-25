@@ -30,7 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class MessagesFilterHelper {
 
@@ -46,7 +46,7 @@ public class MessagesFilterHelper {
     private static final char[] TRANSLIT_KEYS;
     private static final char[] TRANSLIT_VALUES;
     static {
-        
+
         char[][] pairs = {
                 {'a', 1072}, {'@', 1072}, {'b', 1073}, {'c', 1089}, {231,  1089},
                 {'d', 1076}, {'e', 1077}, {1105, 1077}, {233,  1077},
@@ -56,7 +56,7 @@ public class MessagesFilterHelper {
                 {'s', 1089}, {'$', 1089}, {'t', 1090}, {'7', 1090},
                 {'u', 1091}, {'v', 1074}, {'w', 1074}, {'x', 1093}, {'y', 1091},
                 {'z', 1079}, {'3', 1079},
-                
+
                 {1072,1072},{1073,1073},{1074,1074},{1075,1075},{1076,1076},
                 {1077,1077},{1078,1078},{1079,1079},{1080,1080},{1081,1081},
                 {1082,1082},{1083,1083},{1084,1084},{1085,1085},{1086,1086},
@@ -146,7 +146,7 @@ public class MessagesFilterHelper {
         List<String> keywords = getKeywords();
         if (keywords.isEmpty()) return text;
         String original = text.toString();
-        boolean translit = NimarkoConfig.isMsgFiltersDetectTranslit();
+        boolean translit = AppConfig.isMsgFiltersDetectTranslit();
         FoldedText folded = foldForSearch(original, translit);
         StringBuilder sb = new StringBuilder(text.toString());
         for (String kw : keywords) {
@@ -232,8 +232,8 @@ public class MessagesFilterHelper {
 
     public ArrayList<String> getArrayList(int account, String key) {
         String raw = EXCLUDED_LIST_KEY.equals(key)
-                ? NimarkoConfig.getMsgFiltersExcludedChats(account)
-                : NimarkoConfig.prefs().getString(key, "");
+                ? AppConfig.getMsgFiltersExcludedChats(account)
+                : AppConfig.prefs().getString(key, "");
         ArrayList<String> out = new ArrayList<>();
         if (TextUtils.isEmpty(raw)) {
             return out;
@@ -266,9 +266,9 @@ public class MessagesFilterHelper {
             }
         }
         if (EXCLUDED_LIST_KEY.equals(key)) {
-            return NimarkoConfig.setMsgFiltersExcludedChats(account, ownerUid, sb.toString());
+            return AppConfig.setMsgFiltersExcludedChats(account, ownerUid, sb.toString());
         } else {
-            NimarkoConfig.editor().putString(key, sb.toString()).apply();
+            AppConfig.editor().putString(key, sb.toString()).apply();
             return true;
         }
     }
@@ -282,17 +282,17 @@ public class MessagesFilterHelper {
     }
 
     private List<String> getKeywords() {
-        String raw = NimarkoConfig.getMsgFiltersElements();
+        String raw = AppConfig.getMsgFiltersElements();
         if (raw == null) raw = "";
-        boolean exact = NimarkoConfig.isMsgFiltersMatchExactWord();
-        boolean translit = NimarkoConfig.isMsgFiltersDetectTranslit();
+        boolean exact = AppConfig.isMsgFiltersMatchExactWord();
+        boolean translit = AppConfig.isMsgFiltersDetectTranslit();
         synchronized (lock) {
             if (raw.equals(cachedKeywordSource) && exact == cachedExactWord && translit == cachedTranslit) {
                 return cachedKeywords;
             }
             List<String> compiled = new ArrayList<>();
             if (!raw.isEmpty()) {
-                
+
                 ArrayList<String> tokens = new ArrayList<>();
                 try {
                     Matcher pm = Pattern.compile("\\(([^)]+)\\)").matcher(raw);
@@ -304,7 +304,7 @@ public class MessagesFilterHelper {
                         }
                     }
                 } catch (PatternSyntaxException ignored) {
-                    
+
                 }
                 String remainder = raw.replaceAll("\\([^)]+\\)", "");
                 for (String token : remainder.split("[,;\\s]+")) {
@@ -327,7 +327,7 @@ public class MessagesFilterHelper {
     private boolean isInExcluded(long dialogId, int account) {
         ArrayList<String> excluded = getArrayList(account, EXCLUDED_LIST_KEY);
         if (excluded.isEmpty()) return false;
-        
+
         String s = String.valueOf(dialogId);
         if (excluded.contains(s)) return true;
         if (dialogId > 0 && excluded.contains("-" + s)) return true;
@@ -336,8 +336,8 @@ public class MessagesFilterHelper {
     }
 
     private List<Pattern> getRegexPatterns() {
-        boolean enabled = NimarkoConfig.isMsgFiltersUseRegex();
-        String raw = NimarkoConfig.getMsgFiltersRegexPatterns();
+        boolean enabled = AppConfig.isMsgFiltersUseRegex();
+        String raw = AppConfig.getMsgFiltersRegexPatterns();
         if (raw == null) raw = "";
         synchronized (lock) {
             if (enabled == cachedRegexEnabled && raw.equals(cachedRegexSource)) {
@@ -345,7 +345,7 @@ public class MessagesFilterHelper {
             }
             List<Pattern> compiled = new ArrayList<>();
             if (enabled && !raw.isEmpty()) {
-                
+
                 String[] tokens = raw.split("\\n");
                 for (String token : tokens) {
                     String trimmed = token.trim();
@@ -353,7 +353,7 @@ public class MessagesFilterHelper {
                     try {
                         compiled.add(Pattern.compile(trimmed, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE));
                     } catch (PatternSyntaxException ignored) {
-                        
+
                     }
                 }
             }
@@ -381,7 +381,7 @@ public class MessagesFilterHelper {
     }
 
     private Set<Long> getChatWhitelist(int account) {
-        String raw = NimarkoConfig.getMsgFiltersChatWhitelist(account);
+        String raw = AppConfig.getMsgFiltersChatWhitelist(account);
         if (raw == null) raw = "";
         String identity = filterIdentity(account);
         synchronized (lock) {
@@ -396,7 +396,7 @@ public class MessagesFilterHelper {
     }
 
     private Set<Long> getChatBlacklist(int account) {
-        String raw = NimarkoConfig.getMsgFiltersChatBlacklist(account);
+        String raw = AppConfig.getMsgFiltersChatBlacklist(account);
         if (raw == null) raw = "";
         String identity = filterIdentity(account);
         synchronized (lock) {
@@ -415,7 +415,7 @@ public class MessagesFilterHelper {
     }
 
     public boolean isChatFiltered(long chatId, int account) {
-        
+
         try {
             if (chatId == UserConfig.getInstance(account).getClientUserId()) return false;
         } catch (Throwable ignored) {}
@@ -436,7 +436,7 @@ public class MessagesFilterHelper {
             try {
                 if (p.matcher(hay).find()) return true;
             } catch (Throwable ignored) {
-                
+
             }
         }
         return false;
@@ -447,20 +447,20 @@ public class MessagesFilterHelper {
     }
 
     public boolean matchesAnyRule(CharSequence text, long chatId, int account) {
-        if (!NimarkoConfig.isEnableMsgFilters()) return false;
+        if (!AppConfig.isEnableMsgFilters()) return false;
         if (!isChatFiltered(chatId, account)) return false;
         if (text == null || text.length() == 0) return false;
 
-        boolean useRegex = NimarkoConfig.isMsgFiltersUseRegex();
+        boolean useRegex = AppConfig.isMsgFiltersUseRegex();
         boolean hasKeywords = !getKeywords().isEmpty();
         boolean hasRegex = useRegex && !getRegexPatterns().isEmpty();
 
-        int logic = NimarkoConfig.getMsgFiltersLogic();
-        if (logic == NimarkoConfig.MSG_FILTERS_LOGIC_AND && hasKeywords && hasRegex) {
-            
+        int logic = AppConfig.getMsgFiltersLogic();
+        if (logic == AppConfig.MSG_FILTERS_LOGIC_AND && hasKeywords && hasRegex) {
+
             return matchesAnyKeyword(text) && matchesAnyRegex(text);
         }
-        
+
         if (hasKeywords && matchesAnyKeyword(text)) return true;
         if (hasRegex && matchesAnyRegex(text)) return true;
         return false;
@@ -471,9 +471,9 @@ public class MessagesFilterHelper {
         List<String> keywords = getKeywords();
         if (keywords.isEmpty()) return false;
         String original = haystack.toString();
-        boolean exact = NimarkoConfig.isMsgFiltersMatchExactWord();
-        boolean translit = NimarkoConfig.isMsgFiltersDetectTranslit();
-        
+        boolean exact = AppConfig.isMsgFiltersMatchExactWord();
+        boolean translit = AppConfig.isMsgFiltersDetectTranslit();
+
         FoldedText hayFolded = foldForSearch(original, translit);
         for (String kw : keywords) {
             if (kw.isEmpty()) continue;
@@ -492,7 +492,7 @@ public class MessagesFilterHelper {
 
     public boolean shouldBlockMessage(MessageObject msg) {
         if (msg == null) return false;
-        if (!NimarkoConfig.isEnableMsgFilters()) return false;
+        if (!AppConfig.isEnableMsgFilters()) return false;
 
         long dialogId;
         try {
@@ -500,10 +500,10 @@ public class MessagesFilterHelper {
         } catch (Throwable t) {
             dialogId = 0L;
         }
-        
+
         if (!isChatFiltered(dialogId, msg.currentAccount)) return false;
 
-        if (NimarkoConfig.isMsgFiltersHideFromBlocked() && msg.messageOwner != null && msg.messageOwner.from_id != null) {
+        if (AppConfig.isMsgFiltersHideFromBlocked() && msg.messageOwner != null && msg.messageOwner.from_id != null) {
             try {
                 long fromId = senderPeerId(msg);
                 MessagesController controller = MessagesController.getInstance(msg.currentAccount);
@@ -511,7 +511,7 @@ public class MessagesFilterHelper {
                     return true;
                 }
             } catch (Throwable ignored) {
-                
+
             }
         }
 
@@ -548,12 +548,12 @@ public class MessagesFilterHelper {
     }
 
     public boolean shouldCollapseMessage(MessageObject msg) {
-        if (msg == null || !NimarkoConfig.isMsgFiltersCollapseAutomatically()) return false;
+        if (msg == null || !AppConfig.isMsgFiltersCollapseAutomatically()) return false;
         return shouldCollapseMessage(msg, shouldBlockMessage(msg));
     }
 
     public boolean shouldCollapseMessage(MessageObject msg, boolean blocked) {
-        if (msg == null || !NimarkoConfig.isMsgFiltersCollapseAutomatically() || !blocked) return false;
+        if (msg == null || !AppConfig.isMsgFiltersCollapseAutomatically() || !blocked) return false;
         String key = messageKey(msg);
         if (key == null) return false;
         synchronized (revealedMessages) {
@@ -596,13 +596,13 @@ public class MessagesFilterHelper {
                                                              CharSequence target,
                                                              ArrayList<TLRPC.MessageEntity> orig) {
         ArrayList<TLRPC.MessageEntity> out = orig != null ? new ArrayList<>(orig) : new ArrayList<>();
-        if (!NimarkoConfig.isEnableMsgFilters()) return out;
+        if (!AppConfig.isEnableMsgFilters()) return out;
         if (msg == null) return out;
         long dialogId;
         try { dialogId = msg.getDialogId(); } catch (Throwable t) { dialogId = 0L; }
-        
+
         if (!isChatFiltered(dialogId, msg.currentAccount)) return out;
-        if (NimarkoConfig.isMsgFiltersHideAll() && shouldBlockMessage(msg)) {
+        if (AppConfig.isMsgFiltersHideAll() && shouldBlockMessage(msg)) {
             if (target != null && target.length() > 0) {
                 boolean covered = false;
                 for (int i = 0; i < out.size(); i++) {
@@ -633,7 +633,7 @@ public class MessagesFilterHelper {
 
     public CharSequence addSpoilerEntities(CharSequence text) {
         if (text == null || text.length() == 0) return text;
-        if (!NimarkoConfig.isEnableMsgFilters()) return text;
+        if (!AppConfig.isEnableMsgFilters()) return text;
         return obfuscatePreview(text);
     }
 
@@ -642,10 +642,10 @@ public class MessagesFilterHelper {
         List<String> keywords = getKeywords();
         if (keywords.isEmpty()) return;
         String original = text.toString();
-        boolean exact = NimarkoConfig.isMsgFiltersMatchExactWord();
-        boolean translit = NimarkoConfig.isMsgFiltersDetectTranslit();
-        boolean detectEntities = NimarkoConfig.isMsgFiltersDetectEntities();
-        
+        boolean exact = AppConfig.isMsgFiltersMatchExactWord();
+        boolean translit = AppConfig.isMsgFiltersDetectTranslit();
+        boolean detectEntities = AppConfig.isMsgFiltersDetectEntities();
+
         FoldedText haySearch = foldForSearch(original, translit);
         HashSet<Long> seenSpans = new HashSet<>();
         for (String kw : keywords) {
@@ -659,7 +659,7 @@ public class MessagesFilterHelper {
                 int originalStart = haySearch.originalOffset(idx);
                 int originalEnd = haySearch.originalOffset(idx + kwLen);
                 if (exact) {
-                    
+
                     if (!isWordBoundary(original, originalStart, originalEnd - originalStart)) {
                         from = idx + 1;
                         continue;
@@ -667,7 +667,7 @@ public class MessagesFilterHelper {
                     start = originalStart;
                     len = originalEnd - originalStart;
                 } else {
-                    
+
                     int[] exp = expandWordBoundary(original, originalStart, originalEnd);
                     start = exp[0];
                     len = exp[1] - exp[0];
@@ -684,8 +684,8 @@ public class MessagesFilterHelper {
                 from = idx + kwLen;
             }
         }
-        
-        if (NimarkoConfig.isMsgFiltersUseRegex()) {
+
+        if (AppConfig.isMsgFiltersUseRegex()) {
             String hayOriginal = text.toString();
             for (Pattern p : getRegexPatterns()) {
                 try {
@@ -702,13 +702,13 @@ public class MessagesFilterHelper {
                         out.add(spoiler);
                     }
                 } catch (Throwable ignored) {
-                    
+
                 }
             }
         }
-        
+
         if (detectEntities) {
-            
+
             int size = out.size();
             for (int i = 0; i < size; i++) {
                 TLRPC.MessageEntity e = out.get(i);
@@ -735,14 +735,14 @@ public class MessagesFilterHelper {
     }
 
     private Object configurationToken(int account) {
-        List<Object> next = Arrays.asList(NimarkoConfig.isEnableMsgFilters(), NimarkoConfig.getMsgFiltersElements(),
-                NimarkoConfig.isMsgFiltersDetectTranslit(), NimarkoConfig.isMsgFiltersMatchExactWord(),
-                NimarkoConfig.isMsgFiltersDetectEntities(), NimarkoConfig.isMsgFiltersHideFromBlocked(),
-                NimarkoConfig.isMsgFiltersHideAll(), filterIdentity(account),
-                NimarkoConfig.getMsgFiltersExcludedChats(account),
-                NimarkoConfig.isMsgFiltersUseRegex(), NimarkoConfig.getMsgFiltersRegexPatterns(),
-                NimarkoConfig.getMsgFiltersChatWhitelist(account), NimarkoConfig.getMsgFiltersChatBlacklist(account),
-                NimarkoConfig.getMsgFiltersLogic());
+        List<Object> next = Arrays.asList(AppConfig.isEnableMsgFilters(), AppConfig.getMsgFiltersElements(),
+                AppConfig.isMsgFiltersDetectTranslit(), AppConfig.isMsgFiltersMatchExactWord(),
+                AppConfig.isMsgFiltersDetectEntities(), AppConfig.isMsgFiltersHideFromBlocked(),
+                AppConfig.isMsgFiltersHideAll(), filterIdentity(account),
+                AppConfig.getMsgFiltersExcludedChats(account),
+                AppConfig.isMsgFiltersUseRegex(), AppConfig.getMsgFiltersRegexPatterns(),
+                AppConfig.getMsgFiltersChatWhitelist(account), AppConfig.getMsgFiltersChatBlacklist(account),
+                AppConfig.getMsgFiltersLogic());
         List<Object> current = cachedConfigurationToken;
         if (next.equals(current)) return current;
         synchronized (lock) {
@@ -772,7 +772,7 @@ public class MessagesFilterHelper {
     }
 
     public Object messageVerdictToken(MessageObject message) {
-        boolean blocked = NimarkoConfig.isMsgFiltersHideFromBlocked() && isSenderBlockedNow(message);
+        boolean blocked = AppConfig.isMsgFiltersHideFromBlocked() && isSenderBlockedNow(message);
         if (message == null) {
             return Arrays.asList(configurationToken(), -1, 0L, blocked, null, null, null,
                     Collections.emptyList());

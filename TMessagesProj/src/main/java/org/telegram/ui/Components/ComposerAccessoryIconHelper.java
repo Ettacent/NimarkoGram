@@ -14,7 +14,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.R;
 
 public final class ComposerAccessoryIconHelper {
@@ -43,7 +43,7 @@ public final class ComposerAccessoryIconHelper {
         private float density;
         private ColorFilter filter;
         private Drawable icon;
-        private NimarkoIconResources.PreparedIcon prepared;
+        private IconResources.PreparedIcon prepared;
         private boolean preparedFits;
 
         AccessoryDrawable(Context context, boolean badge) {
@@ -57,15 +57,15 @@ public final class ComposerAccessoryIconHelper {
 
         private void refresh() {
             Resources next = context.getResources();
-            long nextGeneration = next instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) next).getReplacementGeneration() : -1L;
+            long nextGeneration = next instanceof IconResources
+                    ? ((IconResources) next).getReplacementGeneration() : -1L;
             if (icon != null && resources == next && generation == nextGeneration
                     && densityDpi == next.getDisplayMetrics().densityDpi
                     && density == next.getDisplayMetrics().density
                     && next.getConfiguration().equals(configuration)) {
                 return;
             }
-            Drawable stock = NimarkoIconResources.getStockDrawable(context, stockId).mutate();
+            Drawable stock = IconResources.getStockDrawable(context, stockId).mutate();
             width = stock.getIntrinsicWidth();
             height = stock.getIntrinsicHeight();
             Drawable replacement = stock;
@@ -74,8 +74,8 @@ public final class ComposerAccessoryIconHelper {
             try {
                 if (badge) {
                     measure(stock, nativeInk);
-                } else if (next instanceof NimarkoIconResources) {
-                    NimarkoIconResources pack = (NimarkoIconResources) next;
+                } else if (next instanceof IconResources) {
+                    IconResources pack = (IconResources) next;
                     int role = pack.hasReplacement(stockId) ? stockId : R.drawable.msg_delete;
                     if (pack.hasReplacement(role)) {
                         Drawable candidate = next.getDrawable(role, context.getTheme()).mutate();
@@ -108,11 +108,11 @@ public final class ComposerAccessoryIconHelper {
             preparedFits = false;
         }
 
-        private NimarkoIconResources.PreparedIcon currentPrepared() {
-            NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-            if (!(resources instanceof NimarkoIconResources) || icons == null
+        private IconResources.PreparedIcon currentPrepared() {
+            IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+            if (!(resources instanceof IconResources) || icons == null
                     || icons.generation != generation || icons.densityDpi != densityDpi
-                    || icons.selection != ((NimarkoIconResources) resources).getAppliedSelection()) {
+                    || icons.selection != ((IconResources) resources).getAppliedSelection()) {
                 return null;
             }
             return MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_secret);
@@ -128,7 +128,7 @@ public final class ComposerAccessoryIconHelper {
                 canvas.translate(bounds.left, bounds.top);
                 canvas.scale((float) bounds.width() / width, (float) bounds.height() / height);
                 if (badge) {
-                    NimarkoIconResources.PreparedIcon next = currentPrepared();
+                    IconResources.PreparedIcon next = currentPrepared();
                     if (next != prepared) {
                         prepared = next;
                         preparedFits = next != null && inkBounds(next.bitmap, packInk)

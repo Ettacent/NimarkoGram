@@ -721,7 +721,7 @@ public class EditTextBoldCursor extends EditTextEffects {
         }
         checkHeaderVisibility(true);
         if (!(this instanceof EditTextCaption)) {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(this, focused);
+            app.nimarkogram.messenger.textanim.TextAnim.onEditorFocusChanged(this, focused);
         }
     }
 
@@ -754,7 +754,7 @@ public class EditTextBoldCursor extends EditTextEffects {
         if (!TextUtils.isEmpty(text)) {
             hintTextRevealStart = 0;
         } else if (lengthBefore > 0) {
-            hintTextRevealStart = app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+            hintTextRevealStart = app.nimarkogram.messenger.AppConfig.nimarkoTextAnim
                     && !transformHintToHeader && hintVisible && isFocused()
                     && getWindowToken() != null ? -1 : 0;
         }
@@ -808,7 +808,7 @@ public class EditTextBoldCursor extends EditTextEffects {
             return super.onTouchEvent(event);
         } finally {
             if (!(this instanceof EditTextCaption)) {
-                app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorTouch(this);
+                app.nimarkogram.messenger.textanim.TextAnim.onEditorTouch(this);
             }
         }
     }
@@ -833,7 +833,7 @@ public class EditTextBoldCursor extends EditTextEffects {
 
     public int hintLayoutOffset;
     private float getHintTextRevealAlpha() {
-        if (!app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+        if (!app.nimarkogram.messenger.AppConfig.nimarkoTextAnim
                 || transformHintToHeader || !hintVisible || length() != 0) {
             hintTextRevealStart = 0;
             return 1f;
@@ -951,13 +951,13 @@ public class EditTextBoldCursor extends EditTextEffects {
             drawEditorContents(canvas);
             return;
         }
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.beforeEditorDraw(this);
+        app.nimarkogram.messenger.textanim.TextAnim.beforeEditorDraw(this);
         int save = canvas.save();
         try {
             drawEditorContents(canvas);
         } finally {
             canvas.restoreToCount(save);
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
+            app.nimarkogram.messenger.textanim.TextAnim.afterEditorDraw(this, canvas);
         }
     }
     private void drawEditorContents(Canvas canvas) {
@@ -1248,7 +1248,7 @@ public class EditTextBoldCursor extends EditTextEffects {
     protected void onDetachedFromWindow() {
         hintTextRevealStart = 0;
         if (!(this instanceof EditTextCaption)) {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(this, false);
+            app.nimarkogram.messenger.textanim.TextAnim.onEditorFocusChanged(this, false);
         }
         super.onDetachedFromWindow();
         attachedToWindow = null;

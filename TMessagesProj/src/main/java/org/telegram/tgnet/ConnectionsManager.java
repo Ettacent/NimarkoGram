@@ -454,8 +454,10 @@ public class ConnectionsManager extends BaseController {
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("send request " + object + " with token = " + requestToken);
         }
+        NativeByteBuffer buffer = null;
+        boolean submitted = false;
         try {
-            NativeByteBuffer buffer = new NativeByteBuffer(object.getObjectSize());
+            buffer = new NativeByteBuffer(object.getObjectSize());
             object.serializeToStream(buffer);
             object.freeResources();
 
@@ -504,7 +506,7 @@ public class ConnectionsManager extends BaseController {
                             FileLog.e(object + " got error " + error.code + " " + error.text);
                         }
                         // NimarkoGram (CG parity): surface RPC errors as toasts when debug flag is on.
-                        if (app.nimarkogram.messenger.NimarkoConfig.showRPCErrors && error.code != -2000) {
+                        if (app.nimarkogram.messenger.AppConfig.showRPCErrors && error.code != -2000) {
                             final int dbgCode = error.code;
                             final String dbgText = error.text;
                             final String dbgObj = object.toString();
@@ -570,8 +572,16 @@ public class ConnectionsManager extends BaseController {
                 }
             }
             native_sendRequest(currentAccount, buffer.address, flags, datacenterId, connectionType, immediate, requestToken, downloadSize);
+            submitted = true;
         } catch (Exception e) {
             FileLog.e(e);
+        } finally {
+            if (!submitted) {
+                requestCallbacks.remove(requestToken);
+                if (buffer != null) {
+                    buffer.reuse();
+                }
+            }
         }
     }
 
@@ -722,7 +732,7 @@ public class ConnectionsManager extends BaseController {
         // NimarkoGram: force slow-network mode when the user opts in (uses smaller chunk sizes
         // and a more conservative retry profile inside tgnet).
         native_setNetworkAvailable(currentAccount, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(),
-                ApplicationLoader.isConnectionSlow() || app.nimarkogram.messenger.NimarkoConfig.slowNetworkMode);
+                ApplicationLoader.isConnectionSlow() || app.nimarkogram.messenger.AppConfig.slowNetworkMode);
     }
 
     public void setPushConnectionEnabled(boolean value) {

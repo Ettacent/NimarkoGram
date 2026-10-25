@@ -1,3 +1,7 @@
+/*
+ * Copyright @immat0x1, 2023
+ */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -43,7 +47,7 @@ import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.Objects;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper;
 
 @SuppressLint("ViewConstructor")
@@ -130,7 +134,7 @@ public class FoldersPreviewCell extends FrameLayout {
                 );
                 canvas.clipPath(frameClip);
 
-                if (NimarkoConfig.tabStyleStroke) {
+                if (AppConfig.tabStyleStroke) {
                     outlinePaint2.setStyle(Paint.Style.STROKE);
                     outlinePaint2.setStrokeWidth(Math.max(5, AndroidUtilities.dp(0.5f)));
                     outlinePaint2.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
@@ -174,7 +178,7 @@ public class FoldersPreviewCell extends FrameLayout {
 
                         canvas.drawRoundRect(startX, chipTop, chipRight, chipBottom, cornerRadius, cornerRadius, Theme.dialogs_onlineCirclePaint);
 
-                        if (NimarkoConfig.tabStyleStroke) {
+                        if (AppConfig.tabStyleStroke) {
                             canvas.drawRoundRect(startX, chipTop, chipRight, chipBottom, cornerRadius, cornerRadius, outlinePaint2);
                         }
 
@@ -260,7 +264,7 @@ public class FoldersPreviewCell extends FrameLayout {
     }
 
     public void updateTabTitle(boolean animate) {
-        float to = NimarkoConfig.tabMode != NimarkoConfig.TAB_TYPE_ICON ? 1 : 0;
+        float to = AppConfig.tabMode != AppConfig.TAB_TYPE_ICON ? 1 : 0;
         if (to == titleProgress && animate)
             return;
         if (animate) {
@@ -278,7 +282,7 @@ public class FoldersPreviewCell extends FrameLayout {
     }
 
     public void updateTabIcons(boolean animate) {
-        float to = NimarkoConfig.tabMode != NimarkoConfig.TAB_TYPE_TEXT ? 1 : 0;
+        float to = AppConfig.tabMode != AppConfig.TAB_TYPE_TEXT ? 1 : 0;
         if (to == iconProgress && animate)
             return;
         if (animate) {
@@ -296,7 +300,7 @@ public class FoldersPreviewCell extends FrameLayout {
     }
 
     public void updateTabCounter(boolean animate) {
-        float to = !NimarkoConfig.tabsNoUnread ? 1 : 0;
+        float to = !AppConfig.tabsNoUnread ? 1 : 0;
         if (to == counterProgress && animate)
             return;
         if (animate) {
@@ -314,11 +318,11 @@ public class FoldersPreviewCell extends FrameLayout {
     }
 
     private String getAllChatsTabName() {
-        return NimarkoConfig.tabsHideAllChats ? filters[6][0] : filters[0][0];
+        return AppConfig.tabsHideAllChats ? filters[6][0] : filters[0][0];
     }
 
     private String getAllChatsTabIcon() {
-        return NimarkoConfig.tabsHideAllChats ? filters[6][1] : filters[0][1];
+        return AppConfig.tabsHideAllChats ? filters[6][1] : filters[0][1];
     }
 
     @Override

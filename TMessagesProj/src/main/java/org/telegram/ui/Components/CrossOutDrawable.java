@@ -22,7 +22,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class CrossOutDrawable extends Drawable {
 
     Drawable iconDrawable;
@@ -52,12 +52,12 @@ public class CrossOutDrawable extends Drawable {
     public CrossOutDrawable(Context context, int iconRes, int colorKey, Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
         preserveBellReversal = (iconRes == R.drawable.input_notify_on || iconRes == R.drawable.input_notify_off)
-                && context.getResources() instanceof NimarkoIconResources
-                && ((NimarkoIconResources) context.getResources()).hasReplacement(iconRes);
+                && context.getResources() instanceof IconResources
+                && ((IconResources) context.getResources()).hasReplacement(iconRes);
         iconDrawable = ContextCompat.getDrawable(context, iconRes);
-        if (resourcesProvider != null && context.getResources() instanceof NimarkoIconResources
-                && ((NimarkoIconResources) context.getResources()).hasReplacement(iconRes)) {
-            Drawable copy = NimarkoIconResources.copyDrawable(iconDrawable, context.getResources(), resourcesProvider::isDark);
+        if (resourcesProvider != null && context.getResources() instanceof IconResources
+                && ((IconResources) context.getResources()).hasReplacement(iconRes)) {
+            Drawable copy = IconResources.copyDrawable(iconDrawable, context.getResources(), resourcesProvider::isDark);
             if (copy != null) {
                 iconDrawable = copy;
             }

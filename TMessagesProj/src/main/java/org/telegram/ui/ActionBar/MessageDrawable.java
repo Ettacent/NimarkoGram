@@ -331,7 +331,7 @@ public class MessageDrawable extends Drawable {
     }
 
     public Drawable getBackgroundDrawable() {
-        int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
+        int shapeGen = app.nimarkogram.messenger.AppConfig.bubbleShapeGeneration;
         if (lastBackgroundShapeGen != shapeGen) {
             lastBackgroundShapeGen = shapeGen;
             for (int[] row : currentBackgroundDrawableRadius) {
@@ -428,7 +428,7 @@ public class MessageDrawable extends Drawable {
     }
 
     public Drawable getTransitionDrawable(int color) {
-        int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
+        int shapeGen = app.nimarkogram.messenger.AppConfig.bubbleShapeGeneration;
         if (lastTransitionShapeGen != shapeGen) {
             lastTransitionShapeGen = shapeGen;
             transitionDrawable = null;
@@ -469,7 +469,7 @@ public class MessageDrawable extends Drawable {
         if (gradientShader == null && !isSelected && crossfadeFromDrawable == null) {
             return null;
         }
-        int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
+        int shapeGen = app.nimarkogram.messenger.AppConfig.bubbleShapeGeneration;
         if (lastShadowShapeGen != shapeGen) {
             lastShadowShapeGen = shapeGen;
             Arrays.fill(currentShadowDrawableRadius, -1);
@@ -776,7 +776,7 @@ public class MessageDrawable extends Drawable {
         radius = Math.max(0, Math.min(radius, heightHalf));
         nearRadius = Math.max(0, Math.min(nearRadius, heightHalf));
         final int smallRadius = Math.max(0, Math.min(dp(6), heightHalf));
-        final boolean hideTail = app.nimarkogram.messenger.NimarkoConfig.hideBubbleTail;
+        final boolean hideTail = app.nimarkogram.messenger.AppConfig.hideBubbleTail;
 
         final float left;
         final float right;
@@ -819,7 +819,7 @@ public class MessageDrawable extends Drawable {
         if (rad > heightHalf) {
             rad = heightHalf;
         }
-        final boolean hideTail = app.nimarkogram.messenger.NimarkoConfig.hideBubbleTail;
+        final boolean hideTail = app.nimarkogram.messenger.AppConfig.hideBubbleTail;
         if (isOut) {
             // LEFT-BOTTOM <- RIGHT-BOTTOM
             if (drawFullBubble || currentType == TYPE_PREVIEW || customPaint || drawFullBottom) {
@@ -1022,7 +1022,7 @@ public class MessageDrawable extends Drawable {
         int lastBubbleShapeGen = -1;
 
         public boolean invalidatePath(Rect bounds, boolean drawFullBottom, boolean drawFullTop) {
-            int shapeGen = app.nimarkogram.messenger.NimarkoConfig.bubbleShapeGeneration;
+            int shapeGen = app.nimarkogram.messenger.AppConfig.bubbleShapeGeneration;
             boolean invalidate = lastBubbleShapeGen != shapeGen || lastRect.isEmpty() || lastRect.top != bounds.top || lastRect.bottom != bounds.bottom || lastRect.right != bounds.right || lastRect.left != bounds.left || lastDrawFullTop != drawFullTop || lastDrawFullBottom != drawFullBottom || !drawFullTop || !drawFullBottom;
             lastBubbleShapeGen = shapeGen;
             lastDrawFullTop = drawFullTop;

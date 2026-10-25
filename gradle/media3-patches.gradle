@@ -3,7 +3,11 @@ import java.nio.channels.OverlappingFileLockException
 import java.util.concurrent.TimeUnit
 
 def mediaDirectory = new File(settingsDir, 'TMessagesProj_Modules/media')
-def mediaPatch = new File(settingsDir, 'patches/media3-ffmpeg-video.patch')
+def mediaPatches = [
+    new File(settingsDir, 'patches/media3-ffmpeg-video.patch'),
+    new File(settingsDir, 'patches/media3-retiring-player-release.patch'),
+    new File(settingsDir, 'patches/media3-audio-release-lifecycle.patch')
+]
 def lockFile = new File(settingsDir, '.gradle/media3-patches.lock')
 lockFile.parentFile.mkdirs()
 
@@ -42,17 +46,19 @@ new RandomAccessFile(lockFile, 'rw').withCloseable { lockHandle ->
         if (head[0] != 0 || head[1].trim() != '09b6c97c0d691c50cd4541e1573995d4066d6f5c') {
             throw new GradleException('Media3 patch requires pinned revision 09b6c97c0d691c50cd4541e1573995d4066d6f5c')
         }
-        if (!mediaPatch.isFile()) {
-            throw new GradleException('Required Media3 source patch is missing')
-        }
-        if (git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
-            def check = git(['apply', '--check', mediaPatch.absolutePath])
-            if (check[0] != 0) {
-                throw new GradleException('Media3 source patch conflicts with the working tree: ' + check[1])
+        mediaPatches.each { mediaPatch ->
+            if (!mediaPatch.isFile()) {
+                throw new GradleException('Required Media3 source patch is missing: ' + mediaPatch.name)
             }
-            def applied = git(['apply', mediaPatch.absolutePath])
-            if (applied[0] != 0 || git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
-                throw new GradleException('Media3 source patch did not apply completely: ' + applied[1])
+            if (git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
+                def check = git(['apply', '--check', mediaPatch.absolutePath])
+                if (check[0] != 0) {
+                    throw new GradleException('Media3 source patch conflicts with the working tree: ' + check[1])
+                }
+                def applied = git(['apply', mediaPatch.absolutePath])
+                if (applied[0] != 0 || git(['apply', '--reverse', '--check', mediaPatch.absolutePath])[0] != 0) {
+                    throw new GradleException('Media3 source patch did not apply completely: ' + applied[1])
+                }
             }
         }
     } finally {

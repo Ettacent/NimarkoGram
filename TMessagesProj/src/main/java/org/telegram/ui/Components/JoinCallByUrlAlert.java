@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -75,7 +77,7 @@ public class JoinCallByUrlAlert extends BottomSheet {
         setCustomView(linearLayout);
 
         BackupImageView avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(90));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(90));
         linearLayout.addView(avatarImageView, LayoutHelper.createLinear(90, 90, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 29, 0, 0));
 
         AvatarDrawable avatarDrawable = new AvatarDrawable(chat);

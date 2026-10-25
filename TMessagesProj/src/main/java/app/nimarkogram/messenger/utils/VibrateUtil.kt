@@ -21,7 +21,7 @@ import android.view.ViewGroup
 import androidx.core.view.children
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
-import app.nimarkogram.messenger.NimarkoConfig
+import app.nimarkogram.messenger.AppConfig
 
 object VibrateUtil {
 
@@ -35,7 +35,7 @@ object VibrateUtil {
     @JvmOverloads
     fun vibrate(time: Long = 200L) {
 
-        if (NimarkoConfig.disableVibration) return
+        if (AppConfig.disableVibration) return
 
         if (!VibrateUtil::vibrator.isInitialized) {
             vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

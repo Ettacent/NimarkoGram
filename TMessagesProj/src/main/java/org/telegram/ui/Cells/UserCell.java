@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -86,7 +88,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
     private int badgeOwnerAccount = -1;
     private long badgeOwnerId;
     private boolean badgeOwnerBound;
-    
+
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable nimarkoBadgeEmoji;
     private app.nimarkogram.messenger.api.dto.BadgeDTO currentNimarkoBadge;
     private ImageView closeView;
@@ -193,7 +195,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
                 return super.onTouchEvent(event);
             }
         };
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(48));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(48));
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 7 + padding, 6, LocaleController.isRTL ? 7 + padding : 0, 0));
         setClipChildren(false);
 
@@ -510,7 +512,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         nameTextView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 30 : (66 + padding), 10, LocaleController.isRTL ? (66 + padding) : 30, 0));
         statusTextView.setTextSize(13);
         statusTextView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 30 : (66 + padding), 32, LocaleController.isRTL ? (66 + padding) : 30, 0));
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(44));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(44));
         avatarImageView.setLayoutParams(LayoutHelper.createFrame(44, 44, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 8 + padding, 6, LocaleController.isRTL ? 8 + padding : 0, 0));
         if (checkBox != null) {
             checkBox.setLayoutParams(LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 37 + padding, 32, LocaleController.isRTL ? 37 + padding : 0, 0));
@@ -710,7 +712,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
             botVerification.setColor(Theme.getColor(Theme.key_chats_verifiedBackground, resourcesProvider));
             nameTextView.setLeftDrawable(botVerification);
         }
-        if (currentUser != null && MessagesController.getInstance(currentAccount).isPremiumUser(currentUser) && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
+        if (currentUser != null && MessagesController.getInstance(currentAccount).isPremiumUser(currentUser) && !MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) {
             if (DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status) != 0) {
                 final boolean animated = isAttachedToWindow() && emojiStatusUserId == currentUser.id
                         && emojiStatusAccount == currentAccount && nameTextView.getRightDrawable() == emojiStatus;
@@ -772,8 +774,8 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
                     statusTextView.setText(getString(R.string.Online));
                 } else {
                     statusTextView.setTextColor(statusColor);
-                    
-                    statusTextView.setText(app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle
+
+                    statusTextView.setText(app.nimarkogram.messenger.AppConfig.oldTimeStyle
                             ? LocaleController.formatUserStatus(currentAccount, currentUser)
                             : LocaleController.formatUserStatusIOS(currentAccount, currentUser));
                 }
@@ -795,7 +797,7 @@ public class UserCell extends FrameLayout implements NotificationCenter.Notifica
         }
 
         avatarImageView.setRoundRadius(isCommunity ? dp(46 * 20 / 72f) :
-                app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(48, currentChat != null && currentChat.forum));
+                app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(48, currentChat != null && currentChat.forum));
 
         nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
     }

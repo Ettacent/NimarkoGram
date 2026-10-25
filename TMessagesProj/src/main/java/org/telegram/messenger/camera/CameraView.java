@@ -124,7 +124,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     private int focusAreaSize;
     private Drawable thumbDrawable;
 
-    private boolean useCamera2 = app.nimarkogram.messenger.NimarkoConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_2;
+    private boolean useCamera2 = app.nimarkogram.messenger.AppConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_2;
     private boolean useCameraX = app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX();
     private final CameraSessionWrapper[] cameraSession = new CameraSessionWrapper[2];
     private CameraSessionWrapper cameraSessionRecording;
@@ -155,16 +155,16 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     private final int[] nmCameraXOpenGeneration = new int[2];
     private static final int NM_CAMERA2_MAX_OPEN_RETRIES = 2;
     private final Object nmCameraXCloseLock = new Object();
-    private final ArrayList<app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession>
+    private final ArrayList<app.nimarkogram.messenger.camera.CameraXSurfaceSession>
             nmClosingCameraXSessions = new ArrayList<>(2);
     private final ArrayList<Runnable> nmCameraXCloseWaiters = new ArrayList<>(1);
     private static final long NM_CAMERAX_INITIAL_WIDE_TIMEOUT_MS = 1450L;
-    private volatile app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession
+    private volatile app.nimarkogram.messenger.camera.CameraXSurfaceSession
             nmCameraXInitialWideWaitSession;
     private volatile long nmCameraXInitialWideWaitStartedMs;
 
     private Size getCameraXStoryCaptureSize() {
-        int shortSide = app.nimarkogram.messenger.NimarkoConfig.cameraResolution;
+        int shortSide = app.nimarkogram.messenger.AppConfig.cameraResolution;
         if (shortSide <= 0) shortSide = 720;
         shortSide = Math.max(240, Math.min(shortSide, 2160));
         int longSide = Math.round(shortSide * 16f / 9f);
@@ -182,7 +182,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
             }
             return;
         }
-        final app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession cameraXSession =
+        final app.nimarkogram.messenger.camera.CameraXSurfaceSession cameraXSession =
                 session.cameraXSession;
         if (cameraXSession == null) {
             session.destroy(async, before, after);
@@ -213,7 +213,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     }
 
     private void nmOnCameraXSessionClosed(
-            app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session) {
+            app.nimarkogram.messenger.camera.CameraXSurfaceSession session) {
         ArrayList<Runnable> waiters = null;
         synchronized (nmCameraXCloseLock) {
             if (!nmClosingCameraXSessions.remove(session)
@@ -247,7 +247,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     }
 
     private void nmSetCameraXInitialWideWait(
-            app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session,
+            app.nimarkogram.messenger.camera.CameraXSurfaceSession session,
             boolean wait) {
         nmCameraXInitialWideWaitSession = wait ? session : null;
         nmCameraXInitialWideWaitStartedMs = wait
@@ -255,7 +255,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
     }
 
     private void nmClearCameraXInitialWideWait(
-            app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session) {
+            app.nimarkogram.messenger.camera.CameraXSurfaceSession session) {
         if (session == null || nmCameraXInitialWideWaitSession == session) {
             nmCameraXInitialWideWaitSession = null;
             nmCameraXInitialWideWaitStartedMs = 0L;
@@ -264,14 +264,14 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
 
     private boolean nmShouldHoldCameraXStoryInitialWideFrame(
             CameraSessionWrapper session, boolean primaryFrameUpdated) {
-        final app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession waitingSession =
+        final app.nimarkogram.messenger.camera.CameraXSurfaceSession waitingSession =
                 nmCameraXInitialWideWaitSession;
         if (waitingSession == null || session == null
                 || session.cameraXSession != waitingSession) {
             return false;
         }
         if (!useCameraX || !isStory || dual || isFrontface
-                || !app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam) {
+                || !app.nimarkogram.messenger.AppConfig.startFromUltraWideCam) {
             nmClearCameraXInitialWideWait(waitingSession);
             return false;
         }
@@ -1050,7 +1050,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                 if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW) {
                     photoMaxWidth = 1280;
                     photoMaxHeight = 960;
-                } else if (app.nimarkogram.messenger.NimarkoConfig.largePhotos) {
+                } else if (app.nimarkogram.messenger.AppConfig.largePhotos) {
                     photoMaxWidth = 2560;
                     photoMaxHeight = 1920;
                 } else {
@@ -1065,7 +1065,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                 if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_LOW) {
                     photoMaxWidth = 1280;
                     photoMaxHeight = 960;
-                } else if (app.nimarkogram.messenger.NimarkoConfig.largePhotos && !isStory) {
+                } else if (app.nimarkogram.messenger.AppConfig.largePhotos && !isStory) {
                     photoMaxWidth = 2560;
                     photoMaxHeight = 1440;
                 } else {
@@ -2779,12 +2779,12 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                 final Size cameraXTarget = isStory ? getCameraXStoryCaptureSize() : previewSize[slot];
                 final int targetWidth = cameraXTarget != null ? cameraXTarget.getWidth() : 1280;
                 final int targetHeight = cameraXTarget != null ? cameraXTarget.getHeight() : 720;
-                final app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession[] holder =
-                        new app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession[1];
-                holder[0] = new app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession(
+                final app.nimarkogram.messenger.camera.CameraXSurfaceSession[] holder =
+                        new app.nimarkogram.messenger.camera.CameraXSurfaceSession[1];
+                holder[0] = new app.nimarkogram.messenger.camera.CameraXSurfaceSession(
                         getContext(), surfaceTexture, slot == 0 ? isFrontface : !isFrontface,
                         targetWidth, targetHeight, true, dual, isStory,
-                        new app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession.Callback() {
+                        new app.nimarkogram.messenger.camera.CameraXSurfaceSession.Callback() {
                             @Override
                             public void onReady(int width, int height) {
                                 if (generation != nmCameraXOpenGeneration[slot]
@@ -2845,7 +2845,7 @@ public class CameraView extends app.nimarkogram.messenger.camera.BaseCameraView 
                 if (slot == 0) {
                     nmSetCameraXInitialWideWait(holder[0], isStory && !dual
                             && !isFrontface
-                            && app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam);
+                            && app.nimarkogram.messenger.AppConfig.startFromUltraWideCam);
                 }
                 cameraSession[slot] = CameraSessionWrapper.of(holder[0]);
                 cameraThread.setCurrentSession(cameraSession[slot], slot);

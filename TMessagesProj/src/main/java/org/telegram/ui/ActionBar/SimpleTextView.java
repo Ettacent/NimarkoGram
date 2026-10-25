@@ -10,7 +10,7 @@
 
 package org.telegram.ui.ActionBar;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
@@ -232,7 +232,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
     }
 
     private boolean isScrollPresentationVisible() {
-        if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || !hasWindowFocus()
+        if (UiAnimationClock.isPaused() || !isAttachedToWindow() || !hasWindowFocus()
                 || getWindowVisibility() != VISIBLE || !isShown()) return false;
         for (View view = this; view != null;
                 view = view.getParent() instanceof View ? (View) view.getParent() : null) {
@@ -900,7 +900,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             lastDrawnScrollingOffset = 0f;
         }
         if (lastUpdateTime != 0) {
-            lastUpdateTime = NimarkoUiAnimationClock.now();
+            lastUpdateTime = UiAnimationClock.now();
         }
         recreateLayoutMaybe();
         checkUi_layerType();
@@ -1554,7 +1554,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             pauseScrollAnimation();
             return;
         }
-        long newUpdateTime = NimarkoUiAnimationClock.now();
+        long newUpdateTime = UiAnimationClock.now();
         long dt = lastUpdateTime == 0 ? 0 : Math.max(0, newUpdateTime - lastUpdateTime);
         lastUpdateTime = newUpdateTime;
         if (dt > 17) {

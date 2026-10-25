@@ -2555,7 +2555,7 @@ public class AndroidUtilities {
     }
 
     public static int getShadowHeight() {
-        if (app.nimarkogram.messenger.NimarkoConfig.disableDividers) {
+        if (app.nimarkogram.messenger.AppConfig.disableDividers) {
             return 0;
         }
         if (density >= 4.0f) {
@@ -3119,9 +3119,9 @@ public class AndroidUtilities {
     }
 
     public static boolean isTabletForce() {
-        int mode = app.nimarkogram.messenger.NimarkoConfig.tabletMode;
-        if (mode != app.nimarkogram.messenger.NimarkoConfig.TABLET_AUTO) {
-            return mode == app.nimarkogram.messenger.NimarkoConfig.TABLET_ENABLE;
+        int mode = app.nimarkogram.messenger.AppConfig.tabletMode;
+        if (mode != app.nimarkogram.messenger.AppConfig.TABLET_AUTO) {
+            return mode == app.nimarkogram.messenger.AppConfig.TABLET_ENABLE;
         }
         return ApplicationLoader.applicationContext != null && ApplicationLoader.applicationContext.getResources().getBoolean(R.bool.isTablet);
     }
@@ -3194,7 +3194,7 @@ public class AndroidUtilities {
     }
 
     public static int getPhotoSize(boolean highQuality) {
-        if (highQuality || app.nimarkogram.messenger.NimarkoConfig.largePhotos) {
+        if (highQuality || app.nimarkogram.messenger.AppConfig.largePhotos) {
             if (highQualityPhotoSize == null) {
                 highQualityPhotoSize = 2560;
             }
@@ -3682,7 +3682,7 @@ public class AndroidUtilities {
         if (view == null) {
             return;
         }
-        if (!app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled()) {
+        if (!app.nimarkogram.messenger.AppConfig.isSpringAnimationEnabled()) {
             if (endCallback != null) endCallback.run();
             return;
         }
@@ -6635,7 +6635,7 @@ public class AndroidUtilities {
     }
 
     public static void vibrateCursor(View view) {
-        if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
+        if (app.nimarkogram.messenger.AppConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
@@ -6645,25 +6645,25 @@ public class AndroidUtilities {
     }
 
     public static void vibrate(View view) {
-        if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) return;
+        if (app.nimarkogram.messenger.AppConfig.disableVibration) return;
         try {
             if (view == null || view.getContext() == null) return;
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
             if (!((Vibrator) view.getContext().getSystemService(Context.VIBRATOR_SERVICE)).hasAmplitudeControl()) return;
             int hapticType;
-            switch (app.nimarkogram.messenger.NimarkoConfig.vibrateInChats) {
-                case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_DISABLE:
+            switch (app.nimarkogram.messenger.AppConfig.vibrateInChats) {
+                case app.nimarkogram.messenger.AppConfig.VIBRATE_DISABLE:
                     return; // user opted-out at this granularity
-                case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_CLICK:
+                case app.nimarkogram.messenger.AppConfig.VIBRATE_CLICK:
                     hapticType = HapticFeedbackConstants.VIRTUAL_KEY;
                     break;
-                case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_WAVE:
+                case app.nimarkogram.messenger.AppConfig.VIBRATE_WAVE:
                     hapticType = HapticFeedbackConstants.CONFIRM;
                     break;
-                case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_LONG:
+                case app.nimarkogram.messenger.AppConfig.VIBRATE_LONG:
                     hapticType = HapticFeedbackConstants.LONG_PRESS;
                     break;
-                case app.nimarkogram.messenger.NimarkoConfig.VIBRATE_KEYBOARD:
+                case app.nimarkogram.messenger.AppConfig.VIBRATE_KEYBOARD:
                 default:
                     hapticType = HapticFeedbackConstants.KEYBOARD_TAP;
                     break;

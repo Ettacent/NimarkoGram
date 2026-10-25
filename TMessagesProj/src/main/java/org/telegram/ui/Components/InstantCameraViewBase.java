@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -7,7 +9,7 @@ import android.view.TextureView;
 import android.view.View;
 import android.widget.FrameLayout;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.utils.settings.SharedSettings;
@@ -64,7 +66,7 @@ public abstract class InstantCameraViewBase extends FrameLayout {
     public static boolean isUsingCamera2Implementation() {
 
 
-        return NimarkoConfig.cameraType != NimarkoConfig.CAMERA_X
+        return AppConfig.cameraType != AppConfig.CAMERA_X
                 && SharedSettings.roundVideoCamera2Enabled.get();
     }
 

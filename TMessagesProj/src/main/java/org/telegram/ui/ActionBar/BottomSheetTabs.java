@@ -70,7 +70,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class BottomSheetTabs extends FrameLayout {
 
     private static final int MAX_LIVE_WEB_TABS = 3;
@@ -777,8 +777,8 @@ public class BottomSheetTabs extends FrameLayout {
 
     public static class TabDrawable {
 
-        private static final app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec CLOSE_ICON = app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec.single(R.drawable.ic_close_white);
-        private static final app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec EXPAND_ICON = app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec.single(R.drawable.arrow_more);
+        private static final app.nimarkogram.messenger.icons.AnimatedIconSpec CLOSE_ICON = app.nimarkogram.messenger.icons.AnimatedIconSpec.single(R.drawable.ic_close_white);
+        private static final app.nimarkogram.messenger.icons.AnimatedIconSpec EXPAND_ICON = app.nimarkogram.messenger.icons.AnimatedIconSpec.single(R.drawable.arrow_more);
         public final WebTabData tab;
         public final View parentView;
 
@@ -792,7 +792,7 @@ public class BottomSheetTabs extends FrameLayout {
         private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint faviconPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
-        private final app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer packIconRenderer = new app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer();
+        private final app.nimarkogram.messenger.icons.AnimatedIconRenderer packIconRenderer = new app.nimarkogram.messenger.icons.AnimatedIconRenderer();
         private final RectF packIconBounds = new RectF();
         public int closeRippleColor;
         public final Drawable closeRipple = Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_CIRCLE_20DP);
@@ -852,8 +852,8 @@ public class BottomSheetTabs extends FrameLayout {
             if (resources == null) {
                 return null;
             }
-            final long generation = resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            final long generation = resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
             final int density = resources.getDisplayMetrics().densityDpi;
             final Configuration configuration = resources.getConfiguration();
             final boolean reload = iconDrawableResources != resources
@@ -919,7 +919,7 @@ public class BottomSheetTabs extends FrameLayout {
         private final Path closePath = new Path();
         private final Path expandPath = new Path();
 
-        private boolean drawPackIcon(Canvas canvas, app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec spec, float cx, float cy, float rotation, int color) {
+        private boolean drawPackIcon(Canvas canvas, app.nimarkogram.messenger.icons.AnimatedIconSpec spec, float cx, float cy, float rotation, int color) {
             final float halfSize = dp(24) / 2f;
             packIconBounds.set(cx - halfSize, cy - halfSize, cx + halfSize, cy + halfSize);
             final int save = canvas.save();

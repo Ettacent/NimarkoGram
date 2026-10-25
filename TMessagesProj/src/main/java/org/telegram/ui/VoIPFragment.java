@@ -2,7 +2,7 @@
 
 package org.telegram.ui;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.isTablet;
 import static org.telegram.ui.GroupCallActivity.TRANSITION_DURATION;
@@ -416,7 +416,7 @@ public class VoIPFragment implements
         WindowManager wm = (WindowManager) activity.getSystemService(Context.WINDOW_SERVICE);
         WindowManager.LayoutParams layoutParams = windowView.createWindowLayoutParams();
         wm.addView(windowView, layoutParams);
-        NimarkoAppMotionBlur.attachRoot(windowView);
+        AppMotionBlur.attachRoot(windowView);
         View view = fragment.createView(activity);
         windowView.addView(view);
 
@@ -3211,7 +3211,7 @@ public class VoIPFragment implements
         if (isFinished || uiDestroyed || instance != this) return false;
         this.firstFrameCallback = firstFrameCallback;
 
-        NimarkoAppMotionBlur.attachRoot(windowView);
+        AppMotionBlur.attachRoot(windowView);
         windowViewSkipRender = false;
         updateViewState();
         windowView.invalidate();

@@ -18,7 +18,7 @@ import org.telegram.ui.ActionBar.Theme;
  * Created by grishka on 10.02.17.
  */
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class BetterRatingView extends View {
 	private Drawable filledStar, hollowStar;
 	private Resources starResources;
@@ -37,8 +37,8 @@ public class BetterRatingView extends View {
 
 	private void updateStarDrawables() {
 		Resources resources = getContext().getResources();
-		long generation = resources instanceof NimarkoIconResources
-				? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+		long generation = resources instanceof IconResources
+				? ((IconResources) resources).getReplacementGeneration() : -1L;
 		int density = resources.getDisplayMetrics().densityDpi;
 		if (starResources != resources || starGeneration != generation || starDensity != density) {
 			filledStar = resources.getDrawable(R.drawable.ic_rating_star_filled).mutate();

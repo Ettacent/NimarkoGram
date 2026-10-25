@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.icons.icon_replaces;
 
 import org.telegram.messenger.R;
@@ -259,7 +259,7 @@ public final class PlumpyFullReplace extends BaseIconReplace {
         IconReplaceUtils.put(replaces, R.drawable.ic_action_previous, R.drawable.ic_action_previous_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.ic_again, R.drawable.ic_again_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.ic_againinline, R.drawable.ic_againinline_plumpy);
-        IconReplaceUtils.put(replaces, R.drawable.ic_arrow_drop_down, R.drawable.ic_arrow_drop_down_solar);
+        IconReplaceUtils.put(replaces, R.drawable.ic_arrow_drop_down, R.drawable.arrow_more_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.ic_call, R.drawable.ic_call_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.ic_call_end_white_24dp, R.drawable.ic_call_end_white_24dp_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.ic_call_notification_answer, R.drawable.ic_call_notification_answer_plumpy);
@@ -584,7 +584,7 @@ public final class PlumpyFullReplace extends BaseIconReplace {
         IconReplaceUtils.put(replaces, R.drawable.msg2_folder, R.drawable.msg2_folder_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg2_gif, R.drawable.msg2_gif_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg2_help, R.drawable.msg2_help_plumpy);
-        IconReplaceUtils.put(replaces, R.drawable.msg2_language, R.drawable.msg2_language_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.msg2_language, R.drawable.ng_globe_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg2_link2, R.drawable.msg2_link2_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg2_notifications, R.drawable.msg2_notifications_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg2_permissions, R.drawable.msg2_permissions_plumpy);
@@ -852,8 +852,8 @@ public final class PlumpyFullReplace extends BaseIconReplace {
         IconReplaceUtils.put(replaces, R.drawable.msg_invited_solar, R.drawable.msg_invited_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg_jobtitle, R.drawable.msg_jobtitle_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg_jobtitle_solar, R.drawable.msg_jobtitle_plumpy);
-        IconReplaceUtils.put(replaces, R.drawable.msg_language, R.drawable.msg_language_plumpy);
-        IconReplaceUtils.put(replaces, R.drawable.msg_language_solar, R.drawable.msg_language_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.msg_language, R.drawable.ng_globe_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.msg_language_solar, R.drawable.ng_globe_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg_leave, R.drawable.msg_leave_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg_leave_solar, R.drawable.msg_leave_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.msg_limit_accounts, R.drawable.msg_limit_accounts_plumpy);
@@ -1338,7 +1338,7 @@ public final class PlumpyFullReplace extends BaseIconReplace {
         IconReplaceUtils.put(replaces, R.drawable.settings_gift, R.drawable.settings_gift_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.settings_group, R.drawable.outline_groups_24_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.settings_invite, R.drawable.filled_new_contact_24_plumpy);
-        IconReplaceUtils.put(replaces, R.drawable.settings_language, R.drawable.settings_language_plumpy);
+        IconReplaceUtils.put(replaces, R.drawable.settings_language, R.drawable.ng_globe_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.settings_policy, R.drawable.outline_shield_check_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.settings_power, R.drawable.settings_power_plumpy);
         IconReplaceUtils.put(replaces, R.drawable.settings_premium, R.drawable.settings_premium_plumpy);

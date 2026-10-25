@@ -7,7 +7,7 @@ import com.chaquo.python.PyObject;
 import android.os.Handler;
 import android.os.Looper;
 import app.nimarkogram.messenger.plugins.PluginsController;
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLog;
@@ -43,8 +43,6 @@ public final class PythonRunnable implements
         if (!PluginsController.getInstance()
                 .registerRuntimeCallbackHolder(runtimeToken, this)) {
             callbackState.drop();
-            throw new IllegalArgumentException(
-                    "Python Runnable runtime is not current");
         }
     }
 
@@ -104,16 +102,16 @@ public final class PythonRunnable implements
         try {
             decorSnapshot = Looper.myLooper() == Looper.getMainLooper()
                     ? PluginUiRegistry.captureDecorChildren() : null;
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
-            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+            diagnosticToken = CrashContext.beginInvocation();
+            diagnosticStart = CrashContext.invocationStartedMs(diagnosticToken);
+            CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                     "runnable_enter", "PythonRunnable.run", pluginId, diagnosticOwner);
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
             watchdogStarted = true;
             callable.call();
         } catch (Throwable error) {
-            
-            NimarkoCrashContext.failure("python_runnable", pluginId, "PythonRunnable.run", error);
+
+            CrashContext.failure("python_runnable", pluginId, "PythonRunnable.run", error);
             controller.getWatchdog().onPluginExecutionFailed(
                     pluginId, error);
             FileLog.e("NimarkoGram: queued Python callback failed", error);
@@ -121,7 +119,7 @@ public final class PythonRunnable implements
         } finally {
             try {
                 try {
-                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                             "runnable_exit", "PythonRunnable.run", pluginId, diagnosticOwner);
                 } finally {
                     try {
@@ -148,7 +146,7 @@ public final class PythonRunnable implements
                         controller.unregisterRuntimeCallbackHolder(
                                 runtimeToken, this);
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             }

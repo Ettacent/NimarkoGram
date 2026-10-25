@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /**
@@ -27,7 +28,7 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
@@ -52,13 +53,13 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionInterfaceInput)));
         items.add(UItem.asCheck(ID_SHOW_ACCOUNTS, LocaleController.getString(R.string.NM_DBG_ShowAccounts))
-                .setChecked(NimarkoConfig.showAccounts));
+                .setChecked(AppConfig.showAccounts));
         items.add(UItem.asCheck(ID_OLD_TIME_STYLE, LocaleController.getString(R.string.NM_DBG_OldTimeStyle))
-                .setChecked(NimarkoConfig.oldTimeStyle));
+                .setChecked(AppConfig.oldTimeStyle));
         items.add(UItem.asCheck(ID_REPLACE_PUNCT, LocaleController.getString(R.string.NM_DBG_ReplacePunctuation))
-                .setChecked(NimarkoConfig.replacePunctuationMarks));
+                .setChecked(AppConfig.replacePunctuationMarks));
         items.add(UItem.asCheck(ID_EDIT_TEXT_FIX, LocaleController.getString(R.string.NM_DBG_EditTextFix))
-                .setChecked(NimarkoConfig.editTextSuggestionsFix));
+                .setChecked(AppConfig.editTextSuggestionsFix));
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionMediaRecording)));
@@ -66,19 +67,19 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
             items.add(asSettingsValue(ID_AUDIO_SOURCE, IconBackgroundColors.BLUE,
                     R.drawable.msg_voice_unmuted,
                     LocaleController.getString(R.string.NM_DBG_AudioSource),
-                    audioSourceLabel(NimarkoConfig.audioSource)));
+                    audioSourceLabel(AppConfig.audioSource)));
         }
         items.add(UItem.asCheck(ID_HIDE_VIDEO_TS, LocaleController.getString(R.string.NM_DBG_HideVideoTimestamp))
-                .setChecked(NimarkoConfig.hideVideoTimestamp));
+                .setChecked(AppConfig.hideVideoTimestamp));
         items.add(UItem.asCheck(ID_SEND_MAX_QUALITY, LocaleController.getString(R.string.NM_DBG_SendMaxQuality))
-                .setChecked(NimarkoConfig.sendVideosAtMaxQuality));
+                .setChecked(AppConfig.sendVideosAtMaxQuality));
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionDiagnosticsCompatibility)));
         items.add(UItem.asCheck(ID_SHOW_RPC_ERRORS, LocaleController.getString(R.string.NM_DBG_ShowRPCErrors))
-                .setChecked(NimarkoConfig.showRPCErrors));
+                .setChecked(AppConfig.showRPCErrors));
         items.add(UItem.asCheck(ID_JACKSON_JSON, LocaleController.getString(R.string.NM_DBG_JacksonJSONProvider))
-                .setChecked(NimarkoConfig.jacksonJSON_Provider));
+                .setChecked(AppConfig.jacksonJSON_Provider));
         items.add(UItem.asShadow(null));
 
         if (BuildVars.DEBUG_VERSION) {
@@ -93,45 +94,45 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
     public void onClick(UItem item, View view, int position, float x, float y) {
         int id = item.id;
         if (id == ID_SHOW_RPC_ERRORS) {
-            NimarkoConfig.toggleShowRPCErrors();
-            applyCheck(item, view, NimarkoConfig.showRPCErrors);
+            AppConfig.toggleShowRPCErrors();
+            applyCheck(item, view, AppConfig.showRPCErrors);
             showRestartBulletin();
         } else if (id == ID_OLD_TIME_STYLE) {
-            NimarkoConfig.toggleOldTimeStyle();
-            applyCheck(item, view, NimarkoConfig.oldTimeStyle);
+            AppConfig.toggleOldTimeStyle();
+            applyCheck(item, view, AppConfig.oldTimeStyle);
         } else if (id == ID_AUDIO_SOURCE) {
             PopupHelper.showSimpleAlert(this,
                     LocaleController.getString(R.string.NM_DBG_AudioSource),
-                    audioSourceOptions(), audioSourceSelection(NimarkoConfig.audioSource), sel -> {
+                    audioSourceOptions(), audioSourceSelection(AppConfig.audioSource), sel -> {
                         int[] values = audioSourceValues();
                         int source = sel >= 0 && sel < values.length
-                                ? values[sel] : NimarkoConfig.AUDIO_SOURCE_DEFAULT;
-                        NimarkoConfig.setAudioSource(source);
+                                ? values[sel] : AppConfig.AUDIO_SOURCE_DEFAULT;
+                        AppConfig.setAudioSource(source);
                         SettingsHelper.updateButtonValue(view, audioSourceLabel(source));
                         if (listView != null && listView.adapter != null) listView.adapter.update(true);
                     });
         } else if (id == ID_JACKSON_JSON) {
-            NimarkoConfig.toggleJacksonJSON_Provider();
-            applyCheck(item, view, NimarkoConfig.jacksonJSON_Provider);
+            AppConfig.toggleJacksonJSON_Provider();
+            applyCheck(item, view, AppConfig.jacksonJSON_Provider);
             showRestartBulletin();
         } else if (id == ID_HIDE_VIDEO_TS) {
-            NimarkoConfig.toggleHideVideoTimestamp();
-            applyCheck(item, view, NimarkoConfig.hideVideoTimestamp);
+            AppConfig.toggleHideVideoTimestamp();
+            applyCheck(item, view, AppConfig.hideVideoTimestamp);
         } else if (id == ID_REPLACE_PUNCT) {
-            NimarkoConfig.toggleReplacePunctuationMarks();
-            applyCheck(item, view, NimarkoConfig.replacePunctuationMarks);
+            AppConfig.toggleReplacePunctuationMarks();
+            applyCheck(item, view, AppConfig.replacePunctuationMarks);
             showRestartBulletin();
         } else if (id == ID_EDIT_TEXT_FIX) {
-            NimarkoConfig.toggleEditTextSuggestionsFix();
-            applyCheck(item, view, NimarkoConfig.editTextSuggestionsFix);
+            AppConfig.toggleEditTextSuggestionsFix();
+            applyCheck(item, view, AppConfig.editTextSuggestionsFix);
             showRestartBulletin();
         } else if (id == ID_SHOW_ACCOUNTS) {
-            NimarkoConfig.toggleShowAccounts();
-            applyCheck(item, view, NimarkoConfig.showAccounts);
+            AppConfig.toggleShowAccounts();
+            applyCheck(item, view, AppConfig.showAccounts);
             showRestartBulletin();
         } else if (id == ID_SEND_MAX_QUALITY) {
-            NimarkoConfig.toggleSendVideosAtMaxQuality();
-            applyCheck(item, view, NimarkoConfig.sendVideosAtMaxQuality);
+            AppConfig.toggleSendVideosAtMaxQuality();
+            applyCheck(item, view, AppConfig.sendVideosAtMaxQuality);
         } else if (id == ID_FORCE_CRASH && BuildVars.DEBUG_VERSION) {
             throw new RuntimeException("NimarkoGram debug: force-crash button");
         }
@@ -154,7 +155,7 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
     }
 
     private int audioSourceSelection(int value) {
-        int sanitized = NimarkoConfig.sanitizeAudioSource(value);
+        int sanitized = AppConfig.sanitizeAudioSource(value);
         int[] values = audioSourceValues();
         for (int i = 0; i < values.length; i++) {
             if (values[i] == sanitized) return i;
@@ -163,13 +164,13 @@ public class DebugPreferencesActivity extends BasePreferencesActivity {
     }
 
     private String audioSourceLabel(int v) {
-        switch (NimarkoConfig.sanitizeAudioSource(v)) {
-            case NimarkoConfig.AUDIO_SOURCE_MIC: return "MIC";
-            case NimarkoConfig.AUDIO_SOURCE_CAMCORDER: return "CAMCORDER";
-            case NimarkoConfig.AUDIO_SOURCE_VOICE_RECOGNITION: return "VOICE_RECOGNITION";
-            case NimarkoConfig.AUDIO_SOURCE_VOICE_COMMUNICATION: return "VOICE_COMMUNICATION";
-            case NimarkoConfig.AUDIO_SOURCE_UNPROCESSED: return "UNPROCESSED";
-            case NimarkoConfig.AUDIO_SOURCE_VOICE_PERFORMANCE: return "VOICE_PERFORMANCE";
+        switch (AppConfig.sanitizeAudioSource(v)) {
+            case AppConfig.AUDIO_SOURCE_MIC: return "MIC";
+            case AppConfig.AUDIO_SOURCE_CAMCORDER: return "CAMCORDER";
+            case AppConfig.AUDIO_SOURCE_VOICE_RECOGNITION: return "VOICE_RECOGNITION";
+            case AppConfig.AUDIO_SOURCE_VOICE_COMMUNICATION: return "VOICE_COMMUNICATION";
+            case AppConfig.AUDIO_SOURCE_UNPROCESSED: return "UNPROCESSED";
+            case AppConfig.AUDIO_SOURCE_VOICE_PERFORMANCE: return "VOICE_PERFORMANCE";
             default: return "DEFAULT";
         }
     }

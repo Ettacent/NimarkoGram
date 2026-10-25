@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -116,7 +118,7 @@ public class TagEditCell extends LinearLayout {
 
         avatarDrawable = new AvatarDrawable();
         avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(42));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(42));
         chatView.addView(avatarImageView, LayoutHelper.createFrame(42, 42, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 0, 12));
 
         addView(chatView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.FILL_HORIZONTAL));

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -226,7 +228,7 @@ public class StatisticPostInfoCell extends FrameLayout {
         } else {
             text = messageObject.caption != null ? messageObject.caption : messageObject.messageText;
             if (text != null && text.toString().contains("$")) {
-                text = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(text.toString());
+                text = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(text.toString());
             }
         }
         SpannableStringBuilder stringBuilder = new SpannableStringBuilder(text == null ? "" : text);

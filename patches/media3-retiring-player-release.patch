@@ -1,0 +1,440 @@
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImpl.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImpl.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImpl.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImpl.java
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ /*
+  * Copyright (C) 2016 The Android Open Source Project
+  *
+@@ -238,6 +240,10 @@
+   @Nullable private PriorityTaskManager priorityTaskManager;
+   private boolean isPriorityTaskManagerRegistered;
+   private boolean playerReleased;
++  private boolean retiringReleaseStarted;
++  private boolean retiringReleaseFinished;
++  @Nullable private SurfaceTexture retiringSurfaceTexture;
++  @Nullable private SurfaceTexture ownedSurfaceTexture;
+   private DeviceInfo deviceInfo;
+   private VideoSize videoSize;
+   private long seekBackIncrementMs;
+@@ -1121,6 +1127,10 @@
+
+   @Override
+   public void release() {
++    if (retiringReleaseStarted) {
++      verifyApplicationThread();
++      return;
++    }
+     Log.i(
+         TAG,
+         "Release "
+@@ -1133,19 +1143,7 @@
+             + MediaLibraryInfo.registeredModules()
+             + "]");
+     verifyApplicationThread();
+-    audioBecomingNoisyManager.setEnabled(false);
+-    if (streamVolumeManager != null) {
+-      streamVolumeManager.release();
+-    }
+-    wakeLockManager.setStayAwake(false);
+-    wifiLockManager.setStayAwake(false);
+-    if (suitableOutputChecker != null) {
+-      suitableOutputChecker.disable();
+-    }
+-    if (virtualDeviceIdChangeListener != null && SDK_INT >= 34) {
+-      virtualDeviceIdChangeListener.release();
+-    }
+-    stuckPlayerDetector.release();
++    releaseApplicationResources();
+     if (!internalPlayer.release()) {
+       // One of the renderers timed out releasing its resources.
+       listeners.sendEvent(
+@@ -1156,6 +1154,116 @@
+                       new ExoTimeoutException(ExoTimeoutException.TIMEOUT_OPERATION_RELEASE),
+                       PlaybackException.ERROR_CODE_TIMEOUT)));
+     }
++    finishRelease();
++  }
++
++  boolean releaseRetiringPlayer(@Nullable TextureView retiringView) {
++    verifyApplicationThread();
++    if (retiringReleaseStarted || playerReleased) {
++      return true;
++    }
++    if (workerQueue != null || surfaceHolder != null || sphericalGLSurfaceView != null) {
++      return false;
++    }
++    boolean withoutOutput = videoOutput == null && ownedSurface == null && ownedSurfaceTexture == null;
++    if (retiringView == null) {
++      if (textureView != null || !withoutOutput) {
++        return false;
++      }
++    } else {
++      if (textureView != retiringView || retiringView.getSurfaceTextureListener() != componentListener) {
++        return false;
++      }
++      if (withoutOutput) {
++        if (retiringView.isAvailable() || retiringView.getSurfaceTexture() != null) {
++          return false;
++        }
++      } else if (ownedSurface == null || videoOutput != ownedSurface
++          || retiringView.getSurfaceTexture() != ownedSurfaceTexture) {
++        return false;
++      }
++    }
++    if (!RetiringPlayerRelease.tryRetain(this)) {
++      return false;
++    }
++    try {
++      Handler completionHandler = new Handler(applicationLooper);
++      if (retiringView != null) {
++        if (withoutOutput) {
++          retiringView.setSurfaceTextureListener(null);
++        } else {
++          RetiringPlayerRelease.DetachedTexture detached =
++              RetiringPlayerRelease.DetachedTexture.detach(retiringView, componentListener);
++          if (detached == null) {
++            return false;
++          }
++          retiringSurfaceTexture = detached.surfaceTexture;
++        }
++        textureView = null;
++      }
++      retiringReleaseStarted = true;
++      playerReleased = true;
++      videoListeners.clear();
++      try {
++        listeners.release();
++        releaseApplicationResources();
++      } catch (RuntimeException e) {
++        Log.e(TAG, "Retiring player application cleanup failed", e);
++      }
++      if (!internalPlayer.releaseAsync(
++          () -> {
++            if (!completionHandler.post(this::finishRetiringRelease)) {
++              Log.e(TAG, "Retiring player completion looper stopped; retaining output");
++            }
++          })) {
++        Log.e(TAG, "Retiring player playback looper stopped; retaining output");
++      }
++      return true;
++    } catch (RuntimeException e) {
++      Log.e(TAG, "Retiring player initialization failed", e);
++      return retiringReleaseStarted;
++    } finally {
++      if (!retiringReleaseStarted) {
++        RetiringPlayerRelease.complete(this);
++      }
++    }
++  }
++
++  private void finishRetiringRelease() {
++    verifyApplicationThread();
++    if (retiringReleaseFinished) {
++      return;
++    }
++    try {
++      finishRelease();
++      if (retiringSurfaceTexture != null) {
++        retiringSurfaceTexture.release();
++        retiringSurfaceTexture = null;
++      }
++      retiringReleaseFinished = true;
++      RetiringPlayerRelease.complete(this);
++    } catch (RuntimeException e) {
++      Log.e(TAG, "Retiring player final cleanup failed; retaining output", e);
++    }
++  }
++
++  private void releaseApplicationResources() {
++    audioBecomingNoisyManager.setEnabled(false);
++    if (streamVolumeManager != null) {
++      streamVolumeManager.release();
++    }
++    wakeLockManager.setStayAwake(false);
++    wifiLockManager.setStayAwake(false);
++    if (suitableOutputChecker != null) {
++      suitableOutputChecker.disable();
++    }
++    if (virtualDeviceIdChangeListener != null && SDK_INT >= 34) {
++      virtualDeviceIdChangeListener.release();
++    }
++    stuckPlayerDetector.release();
++  }
++
++  private void finishRelease() {
+     listeners.release();
+     playbackInfoUpdateHandler.removeCallbacksAndMessages(null);
+     bandwidthMeter.removeEventListener(analyticsCollector);
+@@ -1171,6 +1279,7 @@
+     if (ownedSurface != null) {
+       ownedSurface.release();
+       ownedSurface = null;
++      ownedSurfaceTexture = null;
+     }
+     if (isPriorityTaskManagerRegistered) {
+       checkNotNull(priorityTaskManager).remove(priority);
+@@ -2209,6 +2318,9 @@
+   }
+
+   private void handlePlaybackInfo(ExoPlayerImplInternal.PlaybackInfoUpdate playbackInfoUpdate) {
++    if (retiringReleaseStarted) {
++      return;
++    }
+     pendingOperationAcks -= playbackInfoUpdate.operationAcks;
+     if (playbackInfoUpdate.positionDiscontinuity) {
+       pendingDiscontinuityReason = playbackInfoUpdate.discontinuityReason;
+@@ -2976,6 +3088,7 @@
+     Surface surface = new Surface(surfaceTexture);
+     setVideoOutputInternal(surface);
+     ownedSurface = surface;
++    ownedSurfaceTexture = surfaceTexture;
+   }
+
+   private void setVideoOutputInternal(@Nullable Object videoOutput) {
+@@ -2993,6 +3106,7 @@
+
+         }
+         ownedSurface = null;
++        ownedSurfaceTexture = null;
+       }
+     }
+     this.videoOutput = videoOutput;
+@@ -3574,6 +3688,9 @@
+     }
+
+     public void onSurfaceTextureAvailableInternal(SurfaceTexture surfaceTexture, int width, int height) {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       setSurfaceTextureInternal(surfaceTexture);
+       maybeNotifySurfaceSizeChanged(width, height);
+     }
+@@ -3591,11 +3708,17 @@
+
+
+     public void onSurfaceTextureSizeChangedInternal(SurfaceTexture surfaceTexture, int width, int height) {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       maybeNotifySurfaceSizeChanged(width, height);
+     }
+
+     @Override
+     public boolean onSurfaceTextureDestroyed(SurfaceTexture surfaceTexture) {
++      if (retiringReleaseStarted) {
++        return surfaceTexture != retiringSurfaceTexture;
++      }
+       for (VideoListener videoListener : videoListeners) {
+         if (videoListener.onSurfaceDestroyed(surfaceTexture)) {
+           return false;
+@@ -3612,6 +3735,9 @@
+     }
+
+     public void onSurfaceTextureDestroyedInternal(SurfaceTexture surfaceTexture) {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       setVideoOutputInternal(/* videoOutput= */ null);
+       maybeNotifySurfaceSizeChanged(/* width= */ 0, /* height= */ 0);
+     }
+@@ -3650,6 +3776,9 @@
+
+     @Override
+     public void onAudioBecomingNoisy() {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       updatePlayWhenReady(
+           /* playWhenReady= */ false, Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY);
+     }
+@@ -3677,6 +3806,9 @@
+
+     @Override
+     public void onSleepingForOffloadChanged(boolean sleepingForOffload) {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       updateWakeAndWifiLock();
+     }
+
+@@ -3684,6 +3816,9 @@
+
+     @Override
+     public void onStuckPlayerDetected(StuckPlayerException exception) {
++      if (retiringReleaseStarted) {
++        return;
++      }
+       stopInternal(
+           ExoPlaybackException.createForUnexpected(
+               exception, PlaybackException.ERROR_CODE_TIMEOUT));
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImplInternal.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImplInternal.java
+--- a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImplInternal.java
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/ExoPlayerImplInternal.java
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ /*
+  * Copyright (C) 2016 The Android Open Source Project
+  *
+@@ -247,6 +249,8 @@
+   private PlaybackInfo playbackInfo;
+   private PlaybackInfoUpdate playbackInfoUpdate;
+   private boolean releasedOnApplicationThread;
++  private boolean asynchronousRelease;
++  private boolean releaseFailed;
+   private boolean pauseAtEndOfWindow;
+   private boolean pendingPauseAtEndOfPeriod;
+   private boolean isRebuffering;
+@@ -636,6 +640,26 @@
+
+   // Playlist.PlaylistInfoRefreshListener implementation.
+
++  public boolean releaseAsync(Runnable completion) {
++    if (releasedOnApplicationThread || !playbackLooper.getThread().isAlive()) {
++      return false;
++    }
++    releasedOnApplicationThread = true;
++    return handler.post(
++        () -> {
++          asynchronousRelease = true;
++          try {
++            releaseInternal(new ConditionVariable(clock));
++            if (!releaseFailed) {
++              completion.run();
++            } else {
++              Log.e(TAG, "Retiring player reset failed; retaining output");
++            }
++          } catch (RuntimeException e) {
++            Log.e(TAG, "Retiring player release failed; retaining output", e);
++          }
++        });
++  }
+   @Override
+   public void onPlaylistUpdateRequested() {
+     handler.removeMessages(MSG_DO_SOME_WORK);
+@@ -2001,6 +2025,9 @@
+       disableRenderers();
+     } catch (RuntimeException | ExoPlaybackException e) {
+       // There's nothing we can do.
++      if (asynchronousRelease) {
++        releaseFailed = true;
++      }
+       Log.e(TAG, "Disable failed.", e);
+     }
+     if (resetRenderers) {
+@@ -2009,6 +2036,9 @@
+           rendererHolder.reset();
+         } catch (RuntimeException e) {
+           // There's nothing we can do.
++          if (asynchronousRelease) {
++            releaseFailed = true;
++          }
+           Log.e(TAG, "Reset failed.", e);
+         }
+       }
+diff --git a/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/RetiringPlayerRelease.java b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/RetiringPlayerRelease.java
+new file mode 100644
+--- /dev/null
++++ b/libraries/exoplayer/src/main/java/androidx/media3/exoplayer/RetiringPlayerRelease.java
+@@ -0,0 +1,99 @@
++/* Copyright (C) 2026 Ettacent */
++
++/* Modifications Copyright (C) 2026 Ettacent */
++
++package androidx.media3.exoplayer;
++
++import android.graphics.SurfaceTexture;
++import android.os.Looper;
++import android.view.TextureView;
++import android.view.ViewGroup;
++import androidx.annotation.Nullable;
++import androidx.media3.common.util.UnstableApi;
++import java.util.Collections;
++import java.util.IdentityHashMap;
++import java.util.Set;
++
++@UnstableApi
++public final class RetiringPlayerRelease {
++  private static final int MAX_PENDING_RELEASES = 4;
++  private static final Set<ExoPlayerImpl> pending =
++      Collections.newSetFromMap(new IdentityHashMap<>());
++
++  private RetiringPlayerRelease() {}
++
++  public static boolean release(ExoPlayer player, @Nullable TextureView retiringView) {
++    if (Looper.myLooper() != Looper.getMainLooper()
++        || player.getApplicationLooper() != Looper.myLooper()) {
++      throw new IllegalStateException("Retiring player release requires the main application looper");
++    }
++    return player instanceof ExoPlayerImpl
++        && ((ExoPlayerImpl) player).releaseRetiringPlayer(retiringView);
++  }
++
++  static boolean tryRetain(ExoPlayerImpl player) {
++    if (pending.size() >= MAX_PENDING_RELEASES || pending.contains(player)) {
++      return false;
++    }
++    return pending.add(player);
++  }
++
++  static void complete(ExoPlayerImpl player) {
++    pending.remove(player);
++  }
++
++  static final class DetachedTexture implements TextureView.SurfaceTextureListener {
++    final SurfaceTexture surfaceTexture;
++    private boolean destroyed;
++
++    private DetachedTexture(SurfaceTexture surfaceTexture) {
++      this.surfaceTexture = surfaceTexture;
++    }
++
++    @Nullable
++    static DetachedTexture detach(
++        TextureView view, TextureView.SurfaceTextureListener owner) {
++      if (view.getSurfaceTextureListener() != owner
++          || !view.isAvailable()
++          || !(view.getParent() instanceof ViewGroup)) {
++        return null;
++      }
++      SurfaceTexture surfaceTexture = view.getSurfaceTexture();
++      if (surfaceTexture == null) {
++        return null;
++      }
++      DetachedTexture detached = new DetachedTexture(surfaceTexture);
++      view.setSurfaceTextureListener(detached);
++      try {
++        ((ViewGroup) view.getParent()).removeView(view);
++      } catch (RuntimeException e) {
++        if (!detached.destroyed) {
++          return null;
++        }
++      } finally {
++        if (view.getSurfaceTextureListener() == detached) {
++          view.setSurfaceTextureListener(detached.destroyed ? null : owner);
++        }
++      }
++      return detached.destroyed ? detached : null;
++    }
++
++    @Override
++    public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
++      if (surface != surfaceTexture) {
++        return true;
++      }
++      destroyed = true;
++      return false;
++    }
++
++    @Override
++    public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {}
++
++    @Override
++    public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {}
++
++    @Override
++    public void onSurfaceTextureUpdated(SurfaceTexture surface) {}
++  }
++}

@@ -141,6 +141,7 @@ dependencies {
     // Kotlin stdlib pinned to 1.9.0 (matches buildscript classpath).
     implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
     // Pine xposed-style hooks (used by extera plugins.xposed). We keep the 0.3.0 AAR for its Java classes,
+
     // for TWO reasons: (1) 16KB-page alignment — the stock 0.3.0 .so is 4KB-aligned and fails to load on
     // 16KB-page Android 15/16 devices, crashing the plugin engine; our jni/<abi>/libpine.so is built with
     // -Wl,-z,max-page-size=16384. (2) A Java-side guard in Pine.handleCall that turns Pine 0.3.0's arm64
@@ -166,8 +167,8 @@ dependencies {
     // Gson — extera api uses it heavily. Note: TG already pulls gson 2.11.0;
     // explicit pin keeps extera api/dto contract stable at 2.10.1 semantics.
     implementation 'com.google.code.gson:gson:2.10.1'
-    // Jackson — NimarkoJsonBottomSheet's "Switch to Jackson" toggle uses ObjectMapper
-    // for pretty-printing the TLRPC.Message when NimarkoConfig.jacksonJSON_Provider
+
+
     // is on (default off). Mirrors CG's JsonBottomSheet behaviour.
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
     // Room — extera api/db. (kapt processor disabled; we use the pre-generated *_Impl.java.)
@@ -249,6 +250,10 @@ android {
 
 
     defaultConfig {
+
+
+
+
         def telegramApiId = nimarkoBuildValue('TELEGRAM_API_ID', '0')
         if (!(telegramApiId ==~ /[0-9]+/) || new BigInteger(telegramApiId) > Integer.MAX_VALUE) {
             throw new GradleException('TELEGRAM_API_ID must be a non-negative integer')

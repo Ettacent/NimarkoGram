@@ -404,7 +404,7 @@ public class Emoji {
             }
 
             // NimarkoGram: render system emoji typeface when systemEmoji flag is on.
-            if (app.nimarkogram.messenger.NimarkoConfig.systemEmoji) {
+            if (app.nimarkogram.messenger.AppConfig.systemEmoji) {
                 String emoji = fixEmoji(EmojiData.data[info.page][info.emojiIndex]);
                 if (fadeOwner != null && (systemEmojiOwner == null || systemEmojiOwner.get() != fadeOwner)) {
                     systemEmojiOwner = new WeakReference<>(fadeOwner);
@@ -984,7 +984,7 @@ public class Emoji {
         if (count == null) {
             count = 0;
         }
-        int cap = Math.max(1, app.nimarkogram.messenger.NimarkoConfig.recentEmojisAmplifier);
+        int cap = Math.max(1, app.nimarkogram.messenger.AppConfig.recentEmojisAmplifier);
         if (count == 0 && emojiUseHistory.size() >= cap) {
             String emoji = recentEmoji.get(recentEmoji.size() - 1);
             emojiUseHistory.remove(emoji);
@@ -1022,7 +1022,7 @@ public class Emoji {
             }
             return 0;
         });
-        int sortCap = Math.max(1, app.nimarkogram.messenger.NimarkoConfig.recentEmojisAmplifier);
+        int sortCap = Math.max(1, app.nimarkogram.messenger.AppConfig.recentEmojisAmplifier);
         while (recentEmoji.size() > sortCap) {
             recentEmoji.remove(recentEmoji.size() - 1);
         }

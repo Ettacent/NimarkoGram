@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components.Reactions;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.ui.Components.ReactionsContainerLayout.TYPE_MESSAGE_EFFECTS;
 import static org.telegram.ui.Components.ReactionsContainerLayout.TYPE_STICKER_SET_EMOJI;
@@ -257,7 +257,7 @@ public class CustomEmojiReactionsWindow {
         if (reactionsContainerLayout != null) {
             selectAnimatedEmojiDialog.setPaused(reactionsContainerLayout.paused, reactionsContainerLayout.pausedExceptSelected);
         }
-        
+
         selectAnimatedEmojiDialog.setOnLongPressedListener(new SelectAnimatedEmojiDialog.onLongPressedListener() {
             @Override
             public void onLongPressed(SelectAnimatedEmojiDialog.ImageViewEmoji view) {
@@ -302,7 +302,7 @@ public class CustomEmojiReactionsWindow {
             windowManager = AndroidUtilities.findActivity(context).getWindowManager();
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, lp);
             windowManager.addView(windowView, lp);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
         }
 
         this.reactionsContainerLayout = reactionsContainerLayout;

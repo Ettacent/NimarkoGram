@@ -201,7 +201,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
                     if (action == MotionEvent.ACTION_DOWN) {
                         pressed = true;
                     } else {
-                        if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                        if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                             try {
                                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                             } catch (Exception ignored) {}

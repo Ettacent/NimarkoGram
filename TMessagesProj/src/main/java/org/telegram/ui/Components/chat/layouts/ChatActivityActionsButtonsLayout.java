@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.chat.layouts;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -33,8 +35,8 @@ import me.vkryl.android.AnimatorUtils;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoResourcesHelper;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.AppResourcesHelper;
 
 @SuppressLint("ViewConstructor")
 public class ChatActivityActionsButtonsLayout extends LinearLayout {
@@ -64,9 +66,9 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         forwardButton.button.setOnClickListener(v -> {});
         ScaleStateListAnimator.apply(forwardButton.button, .065f, 2f);
 
-        int replyButtonIcon = NimarkoResourcesHelper.getLeftActionButtonDrawable(noForwards);
-        String replyButtonText = NimarkoResourcesHelper.getLeftActionButtonText(noForwards);
-        boolean replyIconLeft = NimarkoConfig.actionsBarLeftButton != NimarkoConfig.ACTIONS_LEFT_REPLY;
+        int replyButtonIcon = AppResourcesHelper.getLeftActionButtonDrawable(noForwards);
+        String replyButtonText = AppResourcesHelper.getLeftActionButtonText(noForwards);
+        boolean replyIconLeft = AppConfig.actionsBarLeftButton != AppConfig.ACTIONS_LEFT_REPLY;
 
         addTextView(replyButton, replyButtonText, replyButtonIcon, replyIconLeft);
         addTextView(forwardButton, LocaleController.getString(R.string.Forward), R.drawable.input_forward, !replyIconLeft);
@@ -100,7 +102,7 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
         forwardButton.setTextColor(Theme.getColor(Theme.key_glass_defaultText, resourcesProvider));
         forwardButton.setTypeface(AndroidUtilities.bold());
 
-        if (button == replyButton && NimarkoConfig.actionsBarLeftButton != NimarkoConfig.ACTIONS_LEFT_REPLY) {
+        if (button == replyButton && AppConfig.actionsBarLeftButton != AppConfig.ACTIONS_LEFT_REPLY) {
             forwardButton.setSingleLine(true);
             forwardButton.setEllipsize(TextUtils.TruncateAt.MARQUEE);
             forwardButton.setMarqueeRepeatLimit(-1);
@@ -116,7 +118,7 @@ public class ChatActivityActionsButtonsLayout extends LinearLayout {
 
         button.textView = forwardButton;
         button.button.addView(forwardButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
-         
+
     }
 
     public void showReplyButton(boolean visible, boolean animated) {

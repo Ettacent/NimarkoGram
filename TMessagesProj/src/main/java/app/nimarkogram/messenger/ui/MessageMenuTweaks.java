@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.Theme;
@@ -31,20 +31,20 @@ public final class MessageMenuTweaks {
             boolean drop = false;
             switch (optBoxed) {
                 case ChatActivity.OPTION_REPLY:
-                    drop = !NimarkoConfig.showReply;
+                    drop = !AppConfig.showReply;
                     break;
                 case ChatActivity.OPTION_SAVE_TO_GALLERY:
                 case ChatActivity.OPTION_SAVE_TO_GALLERY2:
-                    drop = !NimarkoConfig.showSaveToGallery;
+                    drop = !AppConfig.showSaveToGallery;
                     break;
                 case ChatActivity.OPTION_SAVE_TO_DOWNLOADS_OR_MUSIC:
-                    drop = !NimarkoConfig.showSaveToDownloads;
+                    drop = !AppConfig.showSaveToDownloads;
                     break;
                 case ChatActivity.OPTION_SHARE:
-                    drop = !NimarkoConfig.showShare;
+                    drop = !AppConfig.showShare;
                     break;
                 case ChatActivity.OPTION_FORWARD:
-                    drop = !NimarkoConfig.showForward;
+                    drop = !AppConfig.showForward;
                     break;
                 default:
                     break;
@@ -78,7 +78,7 @@ public final class MessageMenuTweaks {
     public static void reorderMenuItems(ArrayList<CharSequence> items,
                                         ArrayList<Integer> options,
                                         ArrayList<Integer> icons) {
-        List<Integer> order = NimarkoConfig.messageMenuOrder;
+        List<Integer> order = AppConfig.messageMenuOrder;
         if (order == null || order.isEmpty()) return;
         if (items == null || options == null || icons == null) return;
         if (options.size() != items.size() || options.size() != icons.size()) return;
@@ -121,7 +121,7 @@ public final class MessageMenuTweaks {
 
     public static void playHaptic(View view) {
         if (view == null) return;
-        if (!NimarkoConfig.messageMenuHaptic) return;
+        if (!AppConfig.messageMenuHaptic) return;
         try {
             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
         } catch (Throwable ignored) {}

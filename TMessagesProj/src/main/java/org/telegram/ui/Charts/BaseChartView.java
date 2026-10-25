@@ -762,7 +762,7 @@ public abstract class BaseChartView<T extends ChartData, L extends LineViewData>
             int cY = pickerRect.top + r;
 
             if (middleCap != null) {
-               
+
             } else {
                 ChartPickerDelegate.CapturesData lCap = pickerDelegate.getLeftCaptured();
                 ChartPickerDelegate.CapturesData rCap = pickerDelegate.getRightCaptured();
@@ -845,7 +845,7 @@ public abstract class BaseChartView<T extends ChartData, L extends LineViewData>
         measureHeightThreshold();
 
         long t = System.currentTimeMillis();
-        
+
         if (t - lastTime < 320 && !force) {
             return;
         }
@@ -1487,8 +1487,8 @@ public abstract class BaseChartView<T extends ChartData, L extends LineViewData>
         legendSignatureView.setVisibility(VISIBLE);
         selectionA = 1f;
         moveLegend(chartFullWidth * (pickerDelegate.pickerStart) - HORIZONTAL_PADDING);
-        
-        if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+        if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignored) {}

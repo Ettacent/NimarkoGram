@@ -160,7 +160,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     LinearLayoutManager layoutManager;
     AnimatedTextView titleView;
     ActionBarAnimatedSubtitleOverlayContainer subtitleOverlayContainer;
-    
+
     TextView telegramLogoView;
     ImageView emojiStatusView;
     AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
@@ -330,7 +330,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         titleView.setAllowCancel(true);
         titleView.setGravity(Gravity.LEFT);
         titleView.setTextColor(getTextLogoColor());
-        
+
         titleView.setTypeface(AndroidUtilities.bold());
         titleView.setPadding(0, dp(8), 0, dp(8));
         titleView.setTextSize(dp(!AndroidUtilities.isTablet() && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 18 : 20));
@@ -339,8 +339,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         telegramLogoView = new TextView(context);
-        
-        telegramLogoView.setText(app.nimarkogram.messenger.NimarkoConfig.resolveMainTitle(getString(R.string.AppName)));
+
+        telegramLogoView.setText(app.nimarkogram.messenger.AppConfig.resolveMainTitle(getString(R.string.AppName)));
         telegramLogoView.setContentDescription(telegramLogoView.getText());
         telegramLogoView.setTextColor(getTextLogoColor());
         telegramLogoView.setTypeface(AndroidUtilities.bold());
@@ -822,7 +822,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
 
                 float translationX = 0;
                 float toX = 0;
-                
+
                 if (adapterPosition <= animateFromPosition) {
                     toX = 0;
                 } else if (adapterPosition == animateFromPosition + 1) {
@@ -934,7 +934,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         final boolean needSaveLayer = progress != 0 && clipRightPadding > 0;
         if (needSaveLayer) {
             final float clipWidth = getWidth() - clipRightPadding;
-            final float layerWidth = getWidth(); 
+            final float layerWidth = getWidth();
             canvas.saveLayer(0, 0, layerWidth, getHeight(), null);
             canvas.save();
             canvas.clipRect(0, 0, clipWidth, getHeight());
@@ -1174,7 +1174,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         if (subtitleOverlayContainer != null) {
             subtitleOverlayContainer.updateColors();
         }
-        
+
         telegramLogoView.setTextColor(getTextLogoColor());
         AndroidUtilities.forEachViews(recyclerListView, view -> {
             StoryCell cell = (StoryCell) view;
@@ -1297,7 +1297,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         }
         telegramLogoView.setText(title);
         telegramLogoView.setContentDescription(title);
-        
+
         requestLayout();
     }
 
@@ -1891,7 +1891,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             float distance = AndroidUtilities.lerp(getMeasuredWidth(), dp(COLLAPSED_DIS), p);
             radius += AndroidUtilities.dpf2(3.5f);
             if (distance < radius * 2) {
-                
+
                 return (float) Math.toDegrees(Math.acos((distance / 2f) / radius)) * 2;
             } else {
                 return 0;

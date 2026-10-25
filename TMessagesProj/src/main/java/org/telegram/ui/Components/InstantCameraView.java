@@ -116,10 +116,10 @@ import org.telegram.ui.Stories.recorder.StoryEntry;
 
 import app.nimarkogram.messenger.camera.SlideControlView;
 import app.nimarkogram.messenger.camera.CameraXRoundLensTransition;
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoMotionBlurEffect;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.MotionBlurEffect;
 import app.nimarkogram.messenger.camera.CameraXLensFrame;
-import app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession;
+import app.nimarkogram.messenger.camera.CameraXSurfaceSession;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -219,9 +219,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private final boolean useCameraX =
             app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX();
     private final boolean useCamera2 =
-            app.nimarkogram.messenger.NimarkoConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_2;
-    private final app.nimarkogram.messenger.camera.NimarkoVideoMessagesHelper videoMessagesHelper =
-            new app.nimarkogram.messenger.camera.NimarkoVideoMessagesHelper();
+            app.nimarkogram.messenger.AppConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_2;
+    private final app.nimarkogram.messenger.camera.VideoMessagesHelper videoMessagesHelper =
+            new app.nimarkogram.messenger.camera.VideoMessagesHelper();
     private CameraSession cameraSession;
     private boolean bothCameras;
     private Camera2Session[] camera2Sessions = new Camera2Session[2];
@@ -250,7 +250,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void onCameraXSessionReady(
-            app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session,
+            app.nimarkogram.messenger.camera.CameraXSurfaceSession session,
             int width, int height) {
 
         if (!useCameraX || session == null || !session.hasTransformationInfo()) return;
@@ -304,7 +304,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         // used by the single-camera path; otherwise dual mode visibly starts
         // on 1x and jumps to the ultra-wide lens about a second later.
         cameraXInitialWideWaitActive = (!isFrontface || dual)
-                && app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam;
+                && app.nimarkogram.messenger.AppConfig.startFromUltraWideCam;
         cameraXInitialWideWaitStartedMs = cameraXInitialWideWaitActive
                 ? SystemClock.elapsedRealtime() : 0L;
         cameraXInitialWideWaitTimeoutMs = dual
@@ -484,7 +484,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private boolean flipAnimationInProgress;
     private volatile boolean cameraXSingleSwitchAwaitingBind;
-    private volatile app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession
+    private volatile app.nimarkogram.messenger.camera.CameraXSurfaceSession
             pendingCameraXSingleSession;
     private volatile int pendingCameraXSingleSessionGeneration;
     // Preserve a switch tap made while an advertised dual graph has only one
@@ -503,7 +503,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private boolean cameraXSingleSwitchFinishing;
     private long cameraXSingleSwitchWaitStartedMs;
     private volatile CameraXRoundLensTransition cameraXRearLensTransition;
-    private volatile NimarkoCameraXSurfaceSession cameraXRearLensSession;
+    private volatile CameraXSurfaceSession cameraXRearLensSession;
     // CameraX may accept 0.6x before the logical rear graph actually moves
     // from its main physical child to the ultra-wide child. Keep startup
     // covered until CaptureResult confirms the requested lens.
@@ -584,7 +584,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (useCameraX && !isRoundCameraXZoomReady() && roundZoomSession != null) {
                 stopRoundZoomSpring();
             }
-            boolean visible = useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale
+            boolean visible = useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale
                     && roundZoomControlSpace && opened && !cancelled && videoPlayer == null
                     && !isMessageTransition;
             float min = visible ? videoMessagesHelper.getMinZoomRatio() : 1f;
@@ -599,7 +599,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 roundZoomAwaitingInitialValue = false;
             }
             boolean startingWide = roundZoomAwaitingInitialValue
-                    && !isFrontface && NimarkoConfig.startFromUltraWideCam;
+                    && !isFrontface && AppConfig.startFromUltraWideCam;
             float[] shortcuts = metadataReady ? videoMessagesHelper.getZoomShortcuts() : null;
             boolean rangeReady = metadataReady && RoundZoomScale.valid(min, max)
                     && shortcuts != null && shortcuts.length > 0;
@@ -624,7 +624,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             visible = visible && !fixedRange && roundZoomControl.hasKnownRange();
             roundZoomControl.setInteractionReady(rangeReady && isRoundZoomControlReady());
             roundZoomControl.setPresented(visible);
-            if (useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale) postDelayed(this, 120);
+            if (useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale) postDelayed(this, 120);
         }
     };
 
@@ -727,7 +727,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 if (roundZoomControl != null && useCameraX
-                        && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale
+                        && app.nimarkogram.messenger.AppConfig.roundZoomScale
                         && getBackground() == null) {
                     roundZoomControl.drawControlsBackgroundFallback(canvas, getWidth(), getHeight());
                 }
@@ -760,7 +760,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 28, 0, 28, 64));
 
         buttonsLayout.setOrientation(LinearLayout.HORIZONTAL);
-        if (app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons) {
+        if (app.nimarkogram.messenger.AppConfig.centerCameraControlButtons) {
             buttonsLayout.setGravity(Gravity.CENTER);
             addView(buttonsLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 56, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 0, 0, 0, 0));
         } else {
@@ -895,7 +895,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             flashing = !flashing;
             updateFlash();
             // NimarkoGram (CG parity): consume one round-video flash hint per toggle.
-            app.nimarkogram.messenger.NimarkoConfig.decrementVideoMessagesHintCount();
+            app.nimarkogram.messenger.AppConfig.decrementVideoMessagesHintCount();
         });
         updateFlash();
 
@@ -940,18 +940,18 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     }
 
     public void setButtonsBackground(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
-        if (useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale) {
+        if (useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale) {
             colorProvider = RoundZoomControl.createControlColorProvider(resourcesProvider, colorProvider);
         }
         BlurredBackgroundDrawable drawable = factory.create(buttonsLayout, colorProvider);
         drawable.setPadding(dp(6));
         drawable.setRadius(dp(21));
-        if (useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale) {
+        if (useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale) {
             RoundZoomControl.configureGlassMaterial(drawable);
             drawable.setRadius(dp(22));
         }
         buttonsLayout.setBackground(drawable);
-        if (roundZoomControl != null && useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale) {
+        if (roundZoomControl != null && useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale) {
             roundZoomControl.setBlurBackground(factory, colorProvider);
         }
     }
@@ -1041,14 +1041,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             final int height = MeasureSpec.getSize(heightMeasureSpec);
             final int availableWidth = Math.max(0, width - getPaddingLeft() - getPaddingRight());
             final int availableHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
-            boolean centered = app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons;
+            boolean centered = app.nimarkogram.messenger.AppConfig.centerCameraControlButtons;
             int zoomMargin = dp(centered ? 28 : 16);
             final int zoomWidth = Math.max(0, availableWidth - zoomMargin * 2);
             final int progressInset = dp(8) + (int) Math.ceil(paint.getStrokeWidth() / 2f);
             int reservedControlsHeight = centered
                     ? dp(64) + roundZoomControl.getReservedHeight()
                     : dp(16 + 56) + roundZoomControl.getReservedHeight();
-            roundZoomControlSpace = useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale
+            roundZoomControlSpace = useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale
                     && availableHeight >= dp(240) && zoomWidth >= dp(192)
                     && availableHeight - reservedControlsHeight - dp(12) - progressInset * 2 >= dp(120);
             updateRoundControlsLayout();
@@ -1111,8 +1111,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private void updateRoundControlsLayout() {
         if (buttonsLayout == null || roundZoomControl == null) return;
-        boolean centered = app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons;
-        boolean right = !centered && app.nimarkogram.messenger.NimarkoConfig.cameraControlButtonsRight;
+        boolean centered = app.nimarkogram.messenger.AppConfig.centerCameraControlButtons;
+        boolean right = !centered && app.nimarkogram.messenger.AppConfig.cameraControlButtonsRight;
         LayoutParams buttons = (LayoutParams) buttonsLayout.getLayoutParams();
         if (buttons == null) return;
         int gravity = Gravity.BOTTOM | (centered ? Gravity.CENTER_HORIZONTAL : right ? Gravity.RIGHT : Gravity.LEFT);
@@ -1282,7 +1282,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private boolean setVisibilityFromPause;
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        if (useCameraX && app.nimarkogram.messenger.NimarkoConfig.roundZoomScale) {
+        if (useCameraX && app.nimarkogram.messenger.AppConfig.roundZoomScale) {
             int color = RoundZoomControl.getControlForegroundColor(resourcesProvider);
             if (!roundControlColorsSet || roundControlIconColor != color) {
                 roundControlColorsSet = true;
@@ -1354,11 +1354,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private void prepareRoundZoomPreview(boolean switching) {
         app.nimarkogram.messenger.camera.CameraXUtils.ZoomPreview preview = useCameraX
-                && !(switching ? bothCameras : app.nimarkogram.messenger.NimarkoConfig.useDualCamera)
+                && !(switching ? bothCameras : app.nimarkogram.messenger.AppConfig.useDualCamera)
                 ? app.nimarkogram.messenger.camera.CameraXUtils.getZoomPreview(isFrontface,
-                app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam) : null;
+                app.nimarkogram.messenger.AppConfig.startFromUltraWideCam) : null;
         if (preview == null) return;
-        float value = !isFrontface && app.nimarkogram.messenger.NimarkoConfig.startFromUltraWideCam
+        float value = !isFrontface && app.nimarkogram.messenger.AppConfig.startFromUltraWideCam
                 ? preview.minimum : 1f;
         if (switching) {
             roundZoomControl.prepareForCameraSwitch(preview.minimum, preview.maximum, preview.getShortcuts(), value);
@@ -1512,7 +1512,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         textureOverlayView.setScaleX(1f);
         textureOverlayView.setScaleY(1f);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            NimarkoMotionBlurEffect.setBaseEffect(textureOverlayView, null);
+            MotionBlurEffect.setBaseEffect(textureOverlayView, null);
         }
         textureOverlayView.invalidate();
         if (lastBitmap == null) {
@@ -1530,7 +1530,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 isFrontface = true;
             }
             // NimarkoGram: round-video camera (front / rear / ask) resolved just before recording.
-            isFrontface = app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront;
+            isFrontface = app.nimarkogram.messenger.AppConfig.pendingRoundFront;
             updateFlash();
             recordedTime = 0;
             progress = 0;
@@ -1580,13 +1580,13 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             nmCameraXActiveFrameObserved = false;
             nmCameraXFrameMask = 0;
             bothCameras = DualCameraView.roundDualAvailableStatic(getContext())
-                    && app.nimarkogram.messenger.NimarkoConfig.useDualCamera;
-            int cameraSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
+                    && app.nimarkogram.messenger.AppConfig.useDualCamera;
+            int cameraSize = app.nimarkogram.messenger.AppConfig.getVideoMessagesResolutionPx(512);
             int captureSize = Math.min(1200, Math.max(cameraSize, cameraSize * 2));
             previewSize[0] = new Size(captureSize, captureSize);
             previewSize[1] = bothCameras ? new Size(captureSize, captureSize) : null;
         } else if (useCamera2) {
-            bothCameras = DualCameraView.roundDualAvailableStatic(getContext()) && app.nimarkogram.messenger.NimarkoConfig.useDualCamera;
+            bothCameras = DualCameraView.roundDualAvailableStatic(getContext()) && app.nimarkogram.messenger.AppConfig.useDualCamera;
             if (bothCameras) {
                 for (int a = 0; a < 2; ++a) {
                     if (camera2Sessions[a] == null) {
@@ -2101,15 +2101,15 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         // (384); reading it raw would size the camera session for 384 while the encoder (startRecording re-reads
         // getVideoMessagesResolutionPx) writes the user preset — a resolution desync on the very first circle.
         final MessagesController mc = MessagesController.getInstance(UserConfig.selectedAccount);
-        mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
+        mc.roundVideoSize = app.nimarkogram.messenger.AppConfig.getVideoMessagesResolutionPx(512);
         final int size = mc.roundVideoSize;
         final int capH = nmRoundCaptureHeight(size);
-        final boolean preferLogical = !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled && !nmRoundLogicalSlowThisSession;
+        final boolean preferLogical = !app.nimarkogram.messenger.AppConfig.roundCamLogicalDisabled && !nmRoundLogicalSlowThisSession;
         Camera2Session s = Camera2Session.create(front, size, size, preferLogical, capH, true);   // true: no JPEG still stream -> faster configure
         if (s == null && preferLogical) {
             // The logical multi-camera produced no usable record size here — remember it and retry on the
             // physical main lens (the one the legacy Camera1 path records with, id=0 / OIS).
-            app.nimarkogram.messenger.NimarkoConfig.setRoundCamLogicalDisabled(true);
+            app.nimarkogram.messenger.AppConfig.setRoundCamLogicalDisabled(true);
             s = Camera2Session.create(front, size, size, false, capH, true);   // physical retry, still no JPEG stream
         }
         return s;
@@ -2133,7 +2133,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
         Camera2Session s = expectedSession;
         final boolean wasLogical = s != null && s.isLogical();
-        if (wasLogical && !app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled) {
+        if (wasLogical && !app.nimarkogram.messenger.AppConfig.roundCamLogicalDisabled) {
             // Persist "logical can't record round video here" only for a STRUCTURAL failure — the framework
             // refusing the fused camera (ERROR_MAX_CAMERAS_IN_USE) or our own open/configure/closed/no-size path
             // (surfaced as code -1). A transient external grab (in-use/disabled/service) still recovers this
@@ -2142,7 +2142,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     errorCode == android.hardware.camera2.CameraDevice.StateCallback.ERROR_MAX_CAMERAS_IN_USE
                     || errorCode == -1;
             if (structural) {
-                app.nimarkogram.messenger.NimarkoConfig.setRoundCamLogicalDisabled(true);
+                app.nimarkogram.messenger.AppConfig.setRoundCamLogicalDisabled(true);
             }
             if (!bothCameras) {
                 nmReopenSinglePhysical();
@@ -2198,7 +2198,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (cancelled || cameraReady || bothCameras
                     || camera2SessionCurrent != watched
                     || camera2SessionCurrent == null || !camera2SessionCurrent.isLogical()
-                    || app.nimarkogram.messenger.NimarkoConfig.roundCamLogicalDisabled || nmRoundLogicalSlowThisSession) {
+                    || app.nimarkogram.messenger.AppConfig.roundCamLogicalDisabled || nmRoundLogicalSlowThisSession) {
                 return;
             }
             // Slow/silent logical camera: treat exactly like the structural error path.
@@ -2343,7 +2343,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
      */
     private boolean nmShouldHoldCameraXInitialWideFrame(long frameTimestamp) {
         if (!cameraXInitialWideWaitActive) return false;
-        app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session =
+        app.nimarkogram.messenger.camera.CameraXSurfaceSession session =
                 videoMessagesHelper.getRearSession();
         boolean lensReady = session != null && session.isInitialLensReady(frameTimestamp);
         long waitMs = SystemClock.elapsedRealtime()
@@ -2523,7 +2523,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             // surface. Keep the proven GL surface, rebind CameraX in place and
             // only swap slots when both concurrent cameras already exist.
             videoMessagesHelper.switchCameraX(this);
-            app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession current =
+            app.nimarkogram.messenger.camera.CameraXSurfaceSession current =
                     videoMessagesHelper.getCurrentSession();
             if (current != null && cameraThread != null) {
                 if (bothCameras) {
@@ -2814,10 +2814,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private void requestRoundCameraXZoom(float ratio) {
         if (Float.isNaN(ratio) || Float.isInfinite(ratio) || cancelled) return;
         if (flipAnimationInProgress || cameraXSingleSwitchAwaitingBind) return;
-        final NimarkoCameraXSurfaceSession session = videoMessagesHelper.getCurrentSession();
+        final CameraXSurfaceSession session = videoMessagesHelper.getCurrentSession();
         final CameraGLThread thread = cameraThread;
         if (session == null) return;
-        if (!NimarkoConfig.smoothCameraModuleTransitions || session.isFrontFacing()
+        if (!AppConfig.smoothCameraModuleTransitions || session.isFrontFacing()
                 || !cameraReady || !recording || thread == null) {
             cancelCameraXRearLensTransition();
             session.setZoomRatio(ratio);
@@ -2841,10 +2841,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private float onCameraXRearLensFrame(long timestamp) {
         CameraXRoundLensTransition transition = cameraXRearLensTransition;
-        final NimarkoCameraXSurfaceSession session = videoMessagesHelper.getCurrentSession();
+        final CameraXSurfaceSession session = videoMessagesHelper.getCurrentSession();
         final CameraGLThread thread = cameraThread;
         if (session == null || thread == null || session.isFrontFacing()
-                || !NimarkoConfig.smoothCameraModuleTransitions) return 0f;
+                || !AppConfig.smoothCameraModuleTransitions) return 0f;
         int generation = session.getSurfaceRequestGeneration();
         if (thread.rearLensMetadataOwner != session || thread.rearLensMetadataGeneration != generation) {
             thread.rearLensMetadata = null;
@@ -3860,7 +3860,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         public void setCurrentSession(
-                app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session) {
+                app.nimarkogram.messenger.camera.CameraXSurfaceSession session) {
             Handler handler = getHandler();
             if (handler != null) {
                 sendMessage(handler.obtainMessage(DO_SETSESSION_MESSAGE,
@@ -3939,9 +3939,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         private int getSessionSurfaceIndex(Object session) {
-            if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
+            if (session instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
                 int index = videoMessagesHelper.getSessionIndex(
-                        (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session);
+                        (app.nimarkogram.messenger.camera.CameraXSurfaceSession) session);
                 if (index >= 0) return index;
             } else if (session instanceof Camera2Session) {
                 // A normal single-camera Camera2 graph always binds the
@@ -3967,8 +3967,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 rotationAngle = ((CameraSession) session).getWorldAngle();
             } else if (session instanceof Camera2Session) {
                 rotationAngle = ((Camera2Session) session).getWorldAngle();
-            } else if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-                NimarkoCameraXSurfaceSession cameraXSession = (NimarkoCameraXSurfaceSession) session;
+            } else if (session instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
+                CameraXSurfaceSession cameraXSession = (CameraXSurfaceSession) session;
 
                 surfaceSessionGenerations[index] = cameraXSession.getSurfaceRequestGeneration();
                 rotationAngle = cameraXSession.getWorldAngle();
@@ -3979,9 +3979,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (rotationAngle != 0) {
                 android.opengl.Matrix.rotateM(matrix, 0, rotationAngle, 0, 0, 1);
             }
-            if (session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-                app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession cameraXSession =
-                        (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) session;
+            if (session instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
+                app.nimarkogram.messenger.camera.CameraXSurfaceSession cameraXSession =
+                        (app.nimarkogram.messenger.camera.CameraXSurfaceSession) session;
                 // With an intermediate/effect Surface the camera transform is
                 // absent from SurfaceTexture, so mirror screen X after the
                 // explicit vertex rotation. Direct CameraX surfaces already
@@ -4047,11 +4047,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         private boolean hasCurrentCameraXFrame(int index) {
             if (!cameraFrameLatched[index]
-                    || !(surfaceSessions[index] instanceof NimarkoCameraXSurfaceSession)) {
+                    || !(surfaceSessions[index] instanceof CameraXSurfaceSession)) {
                 return false;
             }
-            NimarkoCameraXSurfaceSession session =
-                    (NimarkoCameraXSurfaceSession) surfaceSessions[index];
+            CameraXSurfaceSession session =
+                    (CameraXSurfaceSession) surfaceSessions[index];
             return videoMessagesHelper.getSessionIndex(session) == index
                     && session.isSurfaceRequestCurrent(surfaceSessionGenerations[index]);
         }
@@ -4243,12 +4243,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 rearLensFrameMix = hasCurrentCameraXFrame(surfaceIndex)
                         ? onCameraXRearLensFrame(rearLensFrameTimestamp) : 0f;
             }
-            if (!NimarkoConfig.smoothCameraModuleTransitions) {
+            if (!AppConfig.smoothCameraModuleTransitions) {
                 rearLensFrameMix = 0f;
             }
             if (useCameraX && !bothCameras && updatedTexImage1
                     && cameraXSingleSwitchAwaitingBind) {
-                app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession pending =
+                app.nimarkogram.messenger.camera.CameraXSurfaceSession pending =
                         pendingCameraXSingleSession;
                 if (pending != null && pending.isFrontFacing() == isFrontface
                         && pending.isSurfaceRequestCurrent(pendingCameraXSingleSessionGeneration)) {
@@ -4297,7 +4297,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     nmOnCameraXFrameAvailable(1);
                 }
                 if (bothCameras && isFrontface && cameraXInitialWideWaitActive) {
-                    NimarkoCameraXSurfaceSession rear = videoMessagesHelper.getRearSession();
+                    CameraXSurfaceSession rear = videoMessagesHelper.getRearSession();
                     int rearIndex = videoMessagesHelper.getSessionIndex(rear);
                     if (rearIndex >= 0 && rearIndex < cameraFrameTimestamp.length
                             && (rearIndex == 0 ? updatedTexImage1 : updatedTexImage2)
@@ -4335,9 +4335,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 return;
             }
 
-            final NimarkoCameraXSurfaceSession liveCameraXSession =
-                    surfaceSessions[surfaceIndex] instanceof NimarkoCameraXSurfaceSession
-                            ? (NimarkoCameraXSurfaceSession) surfaceSessions[surfaceIndex] : null;
+            final CameraXSurfaceSession liveCameraXSession =
+                    surfaceSessions[surfaceIndex] instanceof CameraXSurfaceSession
+                            ? (CameraXSurfaceSession) surfaceSessions[surfaceIndex] : null;
             final int liveSurfaceGeneration = surfaceSessionGenerations[surfaceIndex];
             if (useCameraX && !snapshotTransition && (liveCameraXSession == null
                     || videoMessagesHelper.getSessionIndex(liveCameraXSession) != surfaceIndex
@@ -4395,11 +4395,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 updateFlash();
             }
 
-            rearFrameCrossfade = useCameraX && NimarkoConfig.smoothCameraModuleTransitions
+            rearFrameCrossfade = useCameraX && AppConfig.smoothCameraModuleTransitions
                     && !snapshotTransition && !dualSurfaceSwitching && !dualVideoSwitching
                     && cameraTextureAlpha >= 1f
-                    && surfaceSessions[surfaceIndex] instanceof NimarkoCameraXSurfaceSession
-                    && !((NimarkoCameraXSurfaceSession) surfaceSessions[surfaceIndex]).isFrontFacing()
+                    && surfaceSessions[surfaceIndex] instanceof CameraXSurfaceSession
+                    && !((CameraXSurfaceSession) surfaceSessions[surfaceIndex]).isFrontFacing()
                     && hasCurrentCameraXFrame(surfaceIndex);
             if (!rearFrameCrossfade) {
                 rearCrossfade.resetHistory();
@@ -4647,17 +4647,17 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         FileLog.d("InstantCamera set gl renderer session");
                     }
                     Object newSession = inputMessage.obj;
-                    if (newSession instanceof NimarkoCameraXSurfaceSession) {
-                        NimarkoCameraXSurfaceSession session = (NimarkoCameraXSurfaceSession) newSession;
+                    if (newSession instanceof CameraXSurfaceSession) {
+                        CameraXSurfaceSession session = (CameraXSurfaceSession) newSession;
                         if (videoMessagesHelper.getSessionIndex(session) < 0
                                 || !session.isSurfaceRequestCurrent(inputMessage.arg1)) break;
                     }
                     int sessionSurface = getSessionSurfaceIndex(newSession);
                     boolean firstCameraXSessionWithLatchedFrame =
-                            newSession instanceof NimarkoCameraXSurfaceSession
+                            newSession instanceof CameraXSurfaceSession
                             && surfaceSessions[sessionSurface] == null
                             && cameraFrameLatched[sessionSurface];
-                    if (newSession instanceof NimarkoCameraXSurfaceSession
+                    if (newSession instanceof CameraXSurfaceSession
                             && surfaceSessions[sessionSurface] != null
                             && (surfaceSessions[sessionSurface] != newSession
                             || surfaceSessionGenerations[sessionSurface] != inputMessage.arg1)) {
@@ -4667,7 +4667,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         cameraFrameTimestamp[sessionSurface] = 0;
                         if (sessionSurface == surfaceIndex) cameraTextureAvailable = false;
                     }
-                    if (newSession instanceof NimarkoCameraXSurfaceSession && !bothCameras
+                    if (newSession instanceof CameraXSurfaceSession && !bothCameras
                             && currentSession != null && sessionSurface == surfaceIndex
                             && (surfaceSessions[sessionSurface] != newSession
                             || surfaceSessionGenerations[sessionSurface] != inputMessage.arg1)) {
@@ -4894,7 +4894,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private static final class CameraVideoFrameState {
         final Integer cameraId;
         final CameraGLThread liveSource;
-        final NimarkoCameraXSurfaceSession liveCameraXSession;
+        final CameraXSurfaceSession liveCameraXSession;
         final int liveSurfaceGeneration;
         final boolean singleCameraXTransition;
         final boolean replacementFrameReady;
@@ -4922,8 +4922,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 float[] liveSTMatrix, float[] liveMVPMatrix) {
             this.cameraId = cameraId;
             this.liveSource = liveSource;
-            this.liveCameraXSession = liveSource.surfaceSessions[activeSurfaceIndex] instanceof NimarkoCameraXSurfaceSession
-                    ? (NimarkoCameraXSurfaceSession) liveSource.surfaceSessions[activeSurfaceIndex] : null;
+            this.liveCameraXSession = liveSource.surfaceSessions[activeSurfaceIndex] instanceof CameraXSurfaceSession
+                    ? (CameraXSurfaceSession) liveSource.surfaceSessions[activeSurfaceIndex] : null;
             this.liveSurfaceGeneration = liveSource.surfaceSessionGenerations[activeSurfaceIndex];
             this.singleCameraXTransition = singleCameraXTransition;
             this.replacementFrameReady = replacementFrameReady;
@@ -5443,9 +5443,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 setHeavyOperationsStopped(true);
             }
             MessagesController mc = MessagesController.getInstance(currentAccount);
-            mc.roundVideoSize = app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512);
-            mc.roundVideoBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesBitrateKbps;
-            mc.roundAudioBitrate = app.nimarkogram.messenger.NimarkoConfig.videoMessagesAudioBitrateKbps;
+            mc.roundVideoSize = app.nimarkogram.messenger.AppConfig.getVideoMessagesResolutionPx(512);
+            mc.roundVideoBitrate = app.nimarkogram.messenger.AppConfig.videoMessagesBitrateKbps;
+            mc.roundAudioBitrate = app.nimarkogram.messenger.AppConfig.videoMessagesAudioBitrateKbps;
             int resolution = mc.roundVideoSize;
             int bitrate = mc.roundVideoBitrate * 1024;
             recordedVideoBitrate = bitrate;
@@ -5461,8 +5461,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             // which dynamically falls back to 30 fps still produces a correct
             // 30 fps file. Camera1/Camera2 keep Telegram's proven 30 fps path.
             frameRate = useCameraX
-                    && app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange
-                    == app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60
+                    && app.nimarkogram.messenger.AppConfig.cameraXFpsRange
+                    == app.nimarkogram.messenger.AppConfig.CameraXFpsRange30to60
                     ? HIGH_FRAME_RATE : DEFAULT_FRAME_RATE;
             sharedEglContext = sharedContext;
 
@@ -6907,7 +6907,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private MediaCodec createConfiguredVideoEncoder() throws Exception {
             MediaCodec candidate = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
             String candidateName = candidate.getName();
-            app.nimarkogram.messenger.NimarkoCrashContext.event(
+            app.nimarkogram.messenger.CrashContext.event(
                     "media", "video_encoder_created", "InstantCameraView",
                     "codec=" + candidateName + " size=" + videoWidth + "x" + videoHeight
                             + " requested_fps=" + frameRate + " bitrate=" + videoBitrate);
@@ -6937,7 +6937,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 FileLog.e(
                         "InstantCamera: AVC High Profile rejected, retrying platform profile",
                         preferredError);
-                app.nimarkogram.messenger.NimarkoCrashContext.event(
+                app.nimarkogram.messenger.CrashContext.event(
                         "media", "video_encoder_profile_fallback", "InstantCameraView",
                         "codec=" + candidateName + " requested_fps=" + frameRate);
                 candidate = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
@@ -7040,7 +7040,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
             try {
                 if (!fromPause) {
-                    wideMicrophoneCapture = useCameraX && app.nimarkogram.messenger.NimarkoConfig.cameraXMultiMicrophone;
+                    wideMicrophoneCapture = useCameraX && app.nimarkogram.messenger.AppConfig.cameraXMultiMicrophone;
                     audioInputChannels = wideMicrophoneCapture ? 2 : 1;
                     audioChannelsLocked = false;
                 }
@@ -7080,14 +7080,14 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
                 audioRecorder = createStartedAudioRecorder(
                         wideMicrophoneCapture ? MediaRecorder.AudioSource.CAMCORDER
-                                : app.nimarkogram.messenger.NimarkoConfig.getMediaRecorderAudioSource(), bufferSize);
+                                : app.nimarkogram.messenger.AppConfig.getMediaRecorderAudioSource(), bufferSize);
                 if (audioRecorder == null) {
                     throw new IllegalStateException("No usable AudioRecord source");
                 }
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("InstantCamera initied audio record with channels " + audioRecorder.getChannelCount() + " sample rate = " + audioRecorder.getSampleRate() + " bufferSize = " + bufferSize);
                 }
-                app.nimarkogram.messenger.NimarkoCrashContext.event(
+                app.nimarkogram.messenger.CrashContext.event(
                         "media", "audio_record_started", "InstantCameraView",
                         "channels=" + audioRecorder.getChannelCount()
                                 + " sample_rate=" + audioRecorder.getSampleRate()
@@ -7273,7 +7273,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             thread.setPriority(Thread.MAX_PRIORITY);
             AndroidUtilities.runOnUIThread(() -> {
                 if (cancelled || startupFailed || isStopRequested() || InstantCameraView.this.videoEncoder != this) return;
-                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignore) {}
@@ -7792,7 +7792,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
         if (useCameraX && videoPlayer == null && !isRoundCameraXZoomReady()) {
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && recording
-                    && app.nimarkogram.messenger.NimarkoConfig.roundVideoTapFocus) {
+                    && app.nimarkogram.messenger.AppConfig.roundVideoTapFocus) {
                 AndroidUtilities.rectTmp.set(cameraContainer.getX(), cameraContainer.getY(),
                         cameraContainer.getX() + cameraContainer.getMeasuredWidth(),
                         cameraContainer.getY() + cameraContainer.getMeasuredHeight());
@@ -7846,7 +7846,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     singleZoomStartRatio = currentRoundZoomRatio();
                     roundZoomGestureFilter.reset(0, ev.getEventTime());
                     roundFocusTapMaybe = (useCameraX || useCamera2)
-                            && app.nimarkogram.messenger.NimarkoConfig.roundVideoTapFocus;
+                            && app.nimarkogram.messenger.AppConfig.roundVideoTapFocus;
                     roundFocusTapX = ev.getX();
                     roundFocusTapY = ev.getY();
                     roundFocusTouchTime = SystemClock.elapsedRealtime();
@@ -7971,7 +7971,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         if ((!useCameraX && !useCamera2) || !recording || cameraContainer == null) {
             return;
         }
-        NimarkoCameraXSurfaceSession session = useCameraX
+        CameraXSurfaceSession session = useCameraX
                 ? videoMessagesHelper.getCurrentSession() : null;
         if ((useCameraX && session == null) || (useCamera2 && camera2SessionCurrent == null)
                 || cameraContainer.getMeasuredWidth() <= 0
@@ -8088,7 +8088,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             new app.nimarkogram.messenger.camera.RoundZoomGestureFilter();
     private boolean roundZoomSpringRunning;
     private Object roundZoomSession;
-    private NimarkoCameraXSurfaceSession roundZoomBindingSession;
+    private CameraXSurfaceSession roundZoomBindingSession;
     private int roundZoomBindingGeneration = -1;
     private Object roundZoomBindingToken;
     private long roundZoomFrameTime;
@@ -8133,7 +8133,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private Object roundZoomSessionIdentity() {
         if (!useCameraX) return useCamera2 ? camera2SessionCurrent : cameraSession;
-        NimarkoCameraXSurfaceSession current = videoMessagesHelper.getCurrentSession();
+        CameraXSurfaceSession current = videoMessagesHelper.getCurrentSession();
         if (current == null) return null;
         int generation = current.getSurfaceRequestGeneration();
         if (current != roundZoomBindingSession || generation != roundZoomBindingGeneration

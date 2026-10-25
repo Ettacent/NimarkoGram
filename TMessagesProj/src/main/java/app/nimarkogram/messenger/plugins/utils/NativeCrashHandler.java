@@ -11,7 +11,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
 
-import app.nimarkogram.messenger.NimarkoCrashHandler;
+import app.nimarkogram.messenger.CrashHandler;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -170,14 +170,14 @@ public final class NativeCrashHandler {
         if (reason == ApplicationExitInfo.REASON_CRASH
                 || reason == ApplicationExitInfo.REASON_CRASH_NATIVE) return true;
         if (reason != ApplicationExitInfo.REASON_SIGNALED) return false;
-        
+
         int signal = info.getStatus();
-        return signal == 4   
-                || signal == 6   
-                || signal == 7   
-                || signal == 8   
-                || signal == 11  
-                || signal == 31; 
+        return signal == 4
+                || signal == 6
+                || signal == 7
+                || signal == 8
+                || signal == 11
+                || signal == 31;
     }
 
     private static boolean isNativeCrashExit(ApplicationExitInfo info) {
@@ -202,7 +202,7 @@ public final class NativeCrashHandler {
         if (loadStartedAtMs <= 0L || loadPid <= 0) return LoadCrashEvidence.NO_MATCH;
         if (!isSupportedMainProcess()) return LoadCrashEvidence.UNKNOWN;
         ApplicationExitInfo info = lastExitInfo();
-        
+
         if (info == null) return LoadCrashEvidence.UNKNOWN;
         if (info.getTimestamp() < loadStartedAtMs) {
             synchronized (EXIT_INFO_LOCK) {
@@ -227,13 +227,13 @@ public final class NativeCrashHandler {
     }
 
     public static boolean conservativePre30LoadCrash(long loadStartedAtMs) {
-        
+
         return false;
     }
 
     public static boolean lastExitWasBenignKill() {
         try {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false; 
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false;
             return lastExitWasBenignKillR();
         } catch (Throwable t) {
             return false;
@@ -246,13 +246,13 @@ public final class NativeCrashHandler {
         int reason = info.getReason();
         return reason == ApplicationExitInfo.REASON_LOW_MEMORY
                 || reason == ApplicationExitInfo.REASON_USER_REQUESTED
-                
+
                 || (reason == ApplicationExitInfo.REASON_SIGNALED && info.getStatus() == 9);
     }
 
     private static void writeExitReport(ApplicationExitInfo info, boolean legacyFlagSeen) {
         try {
-            File dir = NimarkoCrashHandler.getLogDir();
+            File dir = CrashHandler.getLogDir();
             if (dir == null) return;
             String timestamp = new SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US)
                     .format(new Date(info.getTimestamp()));

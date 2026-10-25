@@ -13,7 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ImageLoader;
 
@@ -435,7 +435,7 @@ public final class CrashDiagnostics {
     private static void publish(boolean initialize) {
         if (!primaryProcess) return;
         try {
-            NimarkoCrashContext.publishRuntimeDiagnostics(identity(), memoryState, buffer.lastFailure(), stallState, initialize);
+            CrashContext.publishRuntimeDiagnostics(identity(), memoryState, buffer.lastFailure(), stallState, initialize);
         } catch (Throwable ignored) {
         }
     }
@@ -490,6 +490,9 @@ public final class CrashDiagnostics {
     public static String captureFatal(String legacyReportId, Throwable failure, boolean oom) {
         beginFatal();
         try {
+            if (oom) {
+                return "deferred_oom_capture=disabled_for_stability";
+            }
             String snapshot = oom ? oomSnapshot(legacyReportId, failure)
                     : snapshotNow("fatal", failure) + "\nlegacy_report=" + CrashDiagnosticBuffer.bounded(legacyReportId, 96);
             CrashDiagnosticStore ready = store;

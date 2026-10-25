@@ -56,7 +56,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
 public class MessageFiltersPreferencesActivity extends BaseFragment {
@@ -227,12 +227,12 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                 return;
             }
             if (position == enableFilterRow) {
-                NimarkoConfig.putBoolean("enableMsgFilters", !NimarkoConfig.isEnableMsgFilters());
+                AppConfig.putBoolean("enableMsgFilters", !AppConfig.isEnableMsgFilters());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isEnableMsgFilters());
+                    ((TextCheckCell) view).setChecked(AppConfig.isEnableMsgFilters());
                 }
 
-                if (!NimarkoConfig.isEnableMsgFilters()) {
+                if (!AppConfig.isEnableMsgFilters()) {
                     AndroidUtilities.runOnUIThread(() -> AndroidUtilities.hideKeyboard(listView), 50);
                 }
 
@@ -242,22 +242,22 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         useRegexRow, regexPatternsRow, logicModeRow, chatWhitelistRow,
                         chatBlacklistRow);
             } else if (position == detectTranslitRow) {
-                NimarkoConfig.putBoolean("msgFiltersDetectTranslit", !NimarkoConfig.isMsgFiltersDetectTranslit());
+                AppConfig.putBoolean("msgFiltersDetectTranslit", !AppConfig.isMsgFiltersDetectTranslit());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersDetectTranslit());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersDetectTranslit());
 
-                    if (NimarkoConfig.isMsgFiltersDetectTranslit() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    if (AppConfig.isMsgFiltersDetectTranslit() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
                 }
             } else if (position == exactWordMatchRow) {
-                NimarkoConfig.putBoolean("msgFiltersMatchExactWord", !NimarkoConfig.isMsgFiltersMatchExactWord());
+                AppConfig.putBoolean("msgFiltersMatchExactWord", !AppConfig.isMsgFiltersMatchExactWord());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersMatchExactWord());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersMatchExactWord());
 
-                    if (NimarkoConfig.isMsgFiltersMatchExactWord() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    if (AppConfig.isMsgFiltersMatchExactWord() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
                 }
@@ -291,60 +291,60 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     presentFragment(activity);
                 }, 300);
             } else if (position == detectEntitiesRow) {
-                NimarkoConfig.putBoolean("msgFiltersDetectEntities", !NimarkoConfig.isMsgFiltersDetectEntities());
+                AppConfig.putBoolean("msgFiltersDetectEntities", !AppConfig.isMsgFiltersDetectEntities());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersDetectEntities());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersDetectEntities());
 
-                    if (NimarkoConfig.isMsgFiltersDetectEntities() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    if (AppConfig.isMsgFiltersDetectEntities() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
                 }
             } else if (position == hideAllRow) {
-                NimarkoConfig.putBoolean("msgFiltersHideAll", !NimarkoConfig.isMsgFiltersHideAll());
+                AppConfig.putBoolean("msgFiltersHideAll", !AppConfig.isMsgFiltersHideAll());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersHideAll());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersHideAll());
 
-                    if (NimarkoConfig.isMsgFiltersHideAll() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    if (AppConfig.isMsgFiltersHideAll() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
                 }
             } else if (position == collapseAutomaticallyRow) {
-                NimarkoConfig.toggleMsgFiltersCollapseAutomatically();
+                AppConfig.toggleMsgFiltersCollapseAutomatically();
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersCollapseAutomatically());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersCollapseAutomatically());
                 }
-                if (NimarkoConfig.isMsgFiltersCollapseAutomatically() && !NimarkoConfig.isEnableMsgFilters()) {
-                    NimarkoConfig.putBoolean("enableMsgFilters", true);
+                if (AppConfig.isMsgFiltersCollapseAutomatically() && !AppConfig.isEnableMsgFilters()) {
+                    AppConfig.putBoolean("enableMsgFilters", true);
                     notifyRowChanged(enableFilterRow);
                 }
             } else if (position == makeTransparentRow) {
-                NimarkoConfig.putBoolean("msgFilterTransparentMsg", !NimarkoConfig.isMsgFilterTransparentMsg());
+                AppConfig.putBoolean("msgFilterTransparentMsg", !AppConfig.isMsgFilterTransparentMsg());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFilterTransparentMsg());
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFilterTransparentMsg());
 
-                    if (NimarkoConfig.isMsgFilterTransparentMsg() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    if (AppConfig.isMsgFilterTransparentMsg() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
                 }
             } else if (position == useRegexRow) {
-                NimarkoConfig.setMsgFiltersUseRegex(!NimarkoConfig.isMsgFiltersUseRegex());
+                AppConfig.setMsgFiltersUseRegex(!AppConfig.isMsgFiltersUseRegex());
                 if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(NimarkoConfig.isMsgFiltersUseRegex());
-                    if (NimarkoConfig.isMsgFiltersUseRegex() && !NimarkoConfig.isEnableMsgFilters()) {
-                        NimarkoConfig.putBoolean("enableMsgFilters", true);
+                    ((TextCheckCell) view).setChecked(AppConfig.isMsgFiltersUseRegex());
+                    if (AppConfig.isMsgFiltersUseRegex() && !AppConfig.isEnableMsgFilters()) {
+                        AppConfig.putBoolean("enableMsgFilters", true);
                         notifyRowChanged(enableFilterRow);
                     }
 
                     notifyRowChanged(regexPatternsRow);
                 }
             } else if (position == logicModeRow) {
-                int next = NimarkoConfig.getMsgFiltersLogic() == NimarkoConfig.MSG_FILTERS_LOGIC_OR
-                        ? NimarkoConfig.MSG_FILTERS_LOGIC_AND
-                        : NimarkoConfig.MSG_FILTERS_LOGIC_OR;
-                NimarkoConfig.setMsgFiltersLogic(next);
+                int next = AppConfig.getMsgFiltersLogic() == AppConfig.MSG_FILTERS_LOGIC_OR
+                        ? AppConfig.MSG_FILTERS_LOGIC_AND
+                        : AppConfig.MSG_FILTERS_LOGIC_OR;
+                AppConfig.setMsgFiltersLogic(next);
                 notifyRowChanged(logicModeRow);
             } else if (position == chatWhitelistRow) {
                 presentChatPicker(true);
@@ -432,10 +432,10 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         headerCell.setEnabled(true, null);
                         headerCell.setText(getString(R.string.General));
                     } else if (position == miscellaneousHeaderRow) {
-                        headerCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        headerCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         headerCell.setText(getString(R.string.NM_MF_Miscellaneous));
                     } else if (position == advancedHeaderRow) {
-                        headerCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        headerCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         headerCell.setText(getString(R.string.NM_MF_Advanced));
                     }
                     break;
@@ -444,7 +444,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     textCell.setEnabled(false);
 
                     if (position == exclusionsRow) {
-                        textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
+                        textCell.setEnabled(AppConfig.isEnableMsgFilters());
                         textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_Exclusions),
                                 String.valueOf(MessagesFilterHelper.INSTANCE.getExcludedChatsCount(currentAccount)),
@@ -454,11 +454,11 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         textCell.setColorfulIcon(IconBackgroundColors.ORANGE.top,
                                 IconBackgroundColors.ORANGE.bottom, R.drawable.msg_notspam);
                     } else if (position == logicModeRow) {
-                        textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
-                        int logic = NimarkoConfig.getMsgFiltersLogic();
+                        textCell.setEnabled(AppConfig.isEnableMsgFilters());
+                        int logic = AppConfig.getMsgFiltersLogic();
                         textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_LogicMode),
-                                getString(logic == NimarkoConfig.MSG_FILTERS_LOGIC_AND
+                                getString(logic == AppConfig.MSG_FILTERS_LOGIC_AND
                                         ? R.string.NM_MF_LogicAnd
                                         : R.string.NM_MF_LogicOr),
                                 R.drawable.msg_customize,
@@ -467,20 +467,20 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         textCell.setColorfulIcon(IconBackgroundColors.BLUE.top,
                                 IconBackgroundColors.BLUE.bottom, R.drawable.msg_customize);
                     } else if (position == chatWhitelistRow) {
-                        textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
+                        textCell.setEnabled(AppConfig.isEnableMsgFilters());
                         textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_ChatWhitelist),
-                                String.valueOf(countCsvIds(NimarkoConfig.getMsgFiltersChatWhitelist(currentAccount))),
+                                String.valueOf(countCsvIds(AppConfig.getMsgFiltersChatWhitelist(currentAccount))),
                                 R.drawable.msg_contacts,
                                 true
                         );
                         textCell.setColorfulIcon(IconBackgroundColors.GREEN.top,
                                 IconBackgroundColors.GREEN.bottom, R.drawable.msg_contacts);
                     } else if (position == chatBlacklistRow) {
-                        textCell.setEnabled(NimarkoConfig.isEnableMsgFilters());
+                        textCell.setEnabled(AppConfig.isEnableMsgFilters());
                         textCell.setTextAndValueAndIcon(
                                 getString(R.string.NM_MF_ChatBlacklist),
-                                String.valueOf(countCsvIds(NimarkoConfig.getMsgFiltersChatBlacklist(currentAccount))),
+                                String.valueOf(countCsvIds(AppConfig.getMsgFiltersChatBlacklist(currentAccount))),
                                 R.drawable.msg_block,
                                 false
                         );
@@ -490,77 +490,77 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     break;
                 case VIEW_TYPE_TEXT_CHECK:
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
-                    textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                    textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
 
                     if (position == enableFilterRow) {
                         textCheckCell.setEnabled(true, null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_Filter),
                                 getString(R.string.NM_MF_Filter_Desc),
-                                NimarkoConfig.isEnableMsgFilters(),
+                                AppConfig.isEnableMsgFilters(),
                                 true,
                                 true
                         );
                     } else if (position == detectTranslitRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_Translit),
                                 getString(R.string.NM_MF_Translit_Desc),
-                                NimarkoConfig.isMsgFiltersDetectTranslit(),
+                                AppConfig.isMsgFiltersDetectTranslit(),
                                 true,
                                 true
                         );
                     } else if (position == exactWordMatchRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_Exact_Words),
                                 getString(R.string.NM_MF_Exact_Words_Desc),
-                                NimarkoConfig.isMsgFiltersMatchExactWord(),
+                                AppConfig.isMsgFiltersMatchExactWord(),
                                 true,
                                 true
                         );
                     } else if (position == detectEntitiesRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_Entities),
                                 getString(R.string.NM_MF_EntitiesDesc),
-                                NimarkoConfig.isMsgFiltersDetectEntities(),
+                                AppConfig.isMsgFiltersDetectEntities(),
                                 true,
                                 true
                         );
                     } else if (position == hideAllRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_HideAll),
                                 getString(R.string.NM_MF_HideAllDesc),
-                                NimarkoConfig.isMsgFiltersHideAll(),
+                                AppConfig.isMsgFiltersHideAll(),
                                 true,
                                 true
                         );
                     } else if (position == collapseAutomaticallyRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_Message_Filtering_Collapse),
                                 getString(R.string.NM_Message_Filtering_Collapse_Desc),
-                                NimarkoConfig.isMsgFiltersCollapseAutomatically(),
+                                AppConfig.isMsgFiltersCollapseAutomatically(),
                                 true,
                                 true
                         );
                     } else if (position == makeTransparentRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_Transparent),
                                 getString(R.string.NM_MF_Transparent_Desc),
-                                NimarkoConfig.isMsgFilterTransparentMsg(),
+                                AppConfig.isMsgFilterTransparentMsg(),
                                 true,
                                 true
                         );
                     } else if (position == useRegexRow) {
-                        textCheckCell.setEnabled(NimarkoConfig.isEnableMsgFilters(), null);
+                        textCheckCell.setEnabled(AppConfig.isEnableMsgFilters(), null);
                         textCheckCell.setTextAndValueAndCheck(
                                 getString(R.string.NM_MF_UseRegex),
                                 getString(R.string.NM_MF_UseRegex_Desc),
-                                NimarkoConfig.isMsgFiltersUseRegex(),
+                                AppConfig.isMsgFiltersUseRegex(),
                                 true,
                                 true
                         );
@@ -580,8 +580,8 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     editView.setPadding(dp(16), dp(12), dp(16), dp(12));
                     if (position == filterWordsRow) {
                         outlineEditText = editView;
-                        outlineEditText.setEnabled(NimarkoConfig.isEnableMsgFilters());
-                        outlineEditText.getEditText().setEnabled(NimarkoConfig.isEnableMsgFilters());
+                        outlineEditText.setEnabled(AppConfig.isEnableMsgFilters());
+                        outlineEditText.getEditText().setEnabled(AppConfig.isEnableMsgFilters());
                         if (filterWordsWatcher != null) {
                             outlineEditText.getEditText().removeTextChangedListener(filterWordsWatcher);
                         }
@@ -600,12 +600,12 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         outlineEditText.getEditText().addTextChangedListener(filterWordsWatcher);
                         outlineEditText.getEditText().setSingleLine(false);
                         outlineEditText.setHint(getString(R.string.NM_MF_Field));
-                        outlineEditText.getEditText().setText(NimarkoConfig.getMsgFiltersElements());
+                        outlineEditText.getEditText().setText(AppConfig.getMsgFiltersElements());
                         outlineEditText.setMinimumHeight(200);
                         outlineEditText.getEditText().setPadding(dp(16), dp(12), dp(16), dp(12));
                     } else if (position == regexPatternsRow) {
                         regexEditText = editView;
-                        boolean enabled = NimarkoConfig.isEnableMsgFilters() && NimarkoConfig.isMsgFiltersUseRegex();
+                        boolean enabled = AppConfig.isEnableMsgFilters() && AppConfig.isMsgFiltersUseRegex();
                         regexEditText.setEnabled(enabled);
                         regexEditText.getEditText().setEnabled(enabled);
                         if (regexPatternsWatcher != null) {
@@ -622,7 +622,7 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                         regexEditText.getEditText().addTextChangedListener(regexPatternsWatcher);
                         regexEditText.getEditText().setSingleLine(false);
                         regexEditText.setHint(getString(R.string.NM_MF_RegexPatterns));
-                        regexEditText.getEditText().setText(NimarkoConfig.getMsgFiltersRegexPatterns());
+                        regexEditText.getEditText().setText(AppConfig.getMsgFiltersRegexPatterns());
                         regexEditText.setMinimumHeight(200);
                         regexEditText.getEditText().setPadding(dp(16), dp(12), dp(16), dp(12));
                     }
@@ -721,9 +721,9 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
 
     private boolean hasChanges() {
         boolean keywordsChanged = outlineEditText != null
-                && !TextUtils.equals(NimarkoConfig.getMsgFiltersElements(), outlineEditText.getEditText().getText().toString());
+                && !TextUtils.equals(AppConfig.getMsgFiltersElements(), outlineEditText.getEditText().getText().toString());
         boolean regexChanged = regexEditText != null
-                && !TextUtils.equals(NimarkoConfig.getMsgFiltersRegexPatterns(), regexEditText.getEditText().getText().toString());
+                && !TextUtils.equals(AppConfig.getMsgFiltersRegexPatterns(), regexEditText.getEditText().getText().toString());
         return keywordsChanged || regexChanged;
     }
 
@@ -741,8 +741,8 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         final long ownerUid = UserConfig.getInstance(account).getClientUserId();
         if (ownerUid <= 0) return;
         String currentCsv = whitelist
-                ? NimarkoConfig.getMsgFiltersChatWhitelist(account)
-                : NimarkoConfig.getMsgFiltersChatBlacklist(account);
+                ? AppConfig.getMsgFiltersChatWhitelist(account)
+                : AppConfig.getMsgFiltersChatBlacklist(account);
         ArrayList<Long> initial = new ArrayList<>();
         if (currentCsv != null && !currentCsv.isEmpty()) {
             for (String tok : currentCsv.split(",")) {
@@ -761,11 +761,11 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                 }
             }
             if (whitelist) {
-                if (NimarkoConfig.setMsgFiltersChatWhitelist(account, ownerUid, sb.toString())) {
+                if (AppConfig.setMsgFiltersChatWhitelist(account, ownerUid, sb.toString())) {
                     notifyRowChanged(chatWhitelistRow);
                 }
             } else {
-                if (NimarkoConfig.setMsgFiltersChatBlacklist(account, ownerUid, sb.toString())) {
+                if (AppConfig.setMsgFiltersChatBlacklist(account, ownerUid, sb.toString())) {
                     notifyRowChanged(chatBlacklistRow);
                 }
             }
@@ -812,20 +812,20 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
         }
 
         if (outlineEditText != null) {
-            NimarkoConfig.putString(
+            AppConfig.putString(
                     "msgFiltersElements",
                     outlineEditText.getEditText().getText().toString()
             );
             outlineEditText.getEditText().clearFocus();
         }
         if (regexEditText != null) {
-            NimarkoConfig.setMsgFiltersRegexPatterns(regexEditText.getEditText().getText().toString());
+            AppConfig.setMsgFiltersRegexPatterns(regexEditText.getEditText().getText().toString());
             regexEditText.getEditText().clearFocus();
         }
 
         AndroidUtilities.runOnUIThread(() -> AndroidUtilities.hideKeyboard(listView), 50);
 
-        if (NimarkoConfig.isMsgFiltersHideFromBlocked()) {
+        if (AppConfig.isMsgFiltersHideFromBlocked()) {
             getMessagesController().getBlockedPeers(false);
         }
     }

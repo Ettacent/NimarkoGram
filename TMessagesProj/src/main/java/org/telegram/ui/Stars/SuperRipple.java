@@ -22,7 +22,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.utils.NimarkoMotionBlurEffect;
+import app.nimarkogram.messenger.utils.MotionBlurEffect;
 @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
 public class SuperRipple extends ISuperRipple {
 
@@ -162,7 +162,7 @@ public class SuperRipple extends ISuperRipple {
                 effect = RenderEffect.createRuntimeShaderEffect(shader, "img");
             }
         }
-        NimarkoMotionBlurEffect.setBaseEffect(view, effects.isEmpty() ? null : effect);
+        MotionBlurEffect.setBaseEffect(view, effects.isEmpty() ? null : effect);
         if (changed) {
             view.invalidate();
         }

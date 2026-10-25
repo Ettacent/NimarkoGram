@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
 
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 public final class PythonInterfaceProxy implements
         InvocationHandler, PluginUiRegistry.RuntimeOwnedUi {
 
@@ -94,7 +94,7 @@ public final class PythonInterfaceProxy implements
         Object result = Proxy.newProxyInstance(loader, checked, handler);
         handler.proxy.set(result);
         PluginUiRegistry.trackRuntimeOwnedUi(runtimeToken, handler);
-        
+
         if (!PluginsController.getInstance()
                 .isPluginRuntimeCurrent(runtimeToken)) {
             handler.clearPythonReference();
@@ -151,9 +151,9 @@ public final class PythonInterfaceProxy implements
         try {
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
             watchdogStarted = true;
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
-            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+            diagnosticToken = CrashContext.beginInvocation();
+            diagnosticStart = CrashContext.invocationStartedMs(diagnosticToken);
+            CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                     "interface_enter", method.getName(), pluginId, diagnosticOwner);
             PyObject result;
             if (method.getDeclaringClass() == DialogsActivity.DialogsActivityDelegate.class
@@ -182,7 +182,7 @@ public final class PythonInterfaceProxy implements
             return converted != null || !returnType.isPrimitive()
                     ? converted : defaultValue(returnType);
         } catch (PyException failure) {
-            NimarkoCrashContext.failure("python", pluginId, method.getName(), failure);
+            CrashContext.failure("python", pluginId, method.getName(), failure);
             controller.getWatchdog().onPluginExecutionFailed(
                     pluginId, failure);
             FileLog.e("Python interface callback failed for "
@@ -190,7 +190,7 @@ public final class PythonInterfaceProxy implements
             return defaultValue(method.getReturnType());
         } catch (Throwable failure) {
             rethrowIfFatal(failure);
-            NimarkoCrashContext.failure("python", pluginId, method.getName(), failure);
+            CrashContext.failure("python", pluginId, method.getName(), failure);
             controller.getWatchdog().onPluginExecutionFailed(
                     pluginId, failure);
             FileLog.e("Python interface bridge failed for "
@@ -199,7 +199,7 @@ public final class PythonInterfaceProxy implements
         } finally {
             try {
                 try {
-                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                             "interface_exit", method.getName(), pluginId, diagnosticOwner);
                 } finally {
                     if (watchdogStarted) {
@@ -210,7 +210,7 @@ public final class PythonInterfaceProxy implements
                 try {
                     controller.exitPluginRuntime(runtimeToken);
                 } finally {
-                    NimarkoCrashContext.endInvocation(diagnosticToken);
+                    CrashContext.endInvocation(diagnosticToken);
                 }
             }
         }

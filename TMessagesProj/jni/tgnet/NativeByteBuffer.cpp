@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -685,6 +687,16 @@ void NativeByteBuffer::reuse() {
         return;
     }
     BuffersStorage::getInstance().reuseFreeBuffer(this);
+}
+
+bool NativeByteBuffer::tryMarkFreePool() {
+    bool expected = false;
+    return inFreePool.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
+void NativeByteBuffer::markInUse() {
+    inFreePool.store(false, std::memory_order_release);
 }
 
 #ifdef ANDROID

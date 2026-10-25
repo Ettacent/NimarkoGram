@@ -828,7 +828,7 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     }
                     cell3 = btn;
                 }
-                if (!app.nimarkogram.messenger.NimarkoConfig.disableDividers) {
+                if (!app.nimarkogram.messenger.AppConfig.disableDividers) {
                     final boolean prev = prevItem != null && !isShadow(prevItem.viewType);
                     final boolean next = nextItem != null && !isShadow(nextItem.viewType);
                     if (listView.hasSections()) {

@@ -23,8 +23,8 @@ import org.telegram.ui.Components.RLottieDrawable;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.AppConfig;
 public class DownloadProgressIcon extends View implements NotificationCenter.NotificationCenterDelegate {
 
     Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -45,7 +45,7 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
     private boolean colorsInitialized;
     private boolean wasDrawn;
 
-    private int appliedIconPack = NimarkoConfig.ICON_REPLACE_NONE;
+    private int appliedIconPack = AppConfig.ICON_REPLACE_NONE;
     public DownloadProgressIcon(int currentAccount, Context context) {
         super(context);
         this.currentAccount = currentAccount;
@@ -76,9 +76,9 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
     }
 
     private int updateImageBounds() {
-        appliedIconPack = NimarkoConfig.ICON_REPLACE_NONE;
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(R.drawable.ng_header_download);
+        appliedIconPack = AppConfig.ICON_REPLACE_NONE;
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(R.drawable.ng_header_download);
         if (icon != null && icon.bitmap != null && !icon.bitmap.isRecycled()) {
             appliedIconPack = icons.selection;
             int size = Math.max(0, Math.min(AndroidUtilities.dp(24), Math.min(getMeasuredWidth(), getMeasuredHeight())));
@@ -113,8 +113,8 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             paint2.setAlpha(100);
         }
 
-        int materialAlpha = appliedIconPack == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS ? 128
-                : appliedIconPack == NimarkoConfig.ICON_REPLACE_PLUMPY ? 89 : 255;
+        int materialAlpha = appliedIconPack == AppConfig.ICON_REPLACE_LIQUID_GLASS ? 128
+                : appliedIconPack == AppConfig.ICON_REPLACE_PLUMPY ? 89 : 255;
         int foregroundAlpha = Color.alpha(currentColor);
         paint.setAlpha((foregroundAlpha * materialAlpha + 127) / 255);
         paint2.setAlpha(customIconSize >= 0 ? Math.round(100f * materialAlpha * foregroundAlpha / (255f * 255f)) : 100);

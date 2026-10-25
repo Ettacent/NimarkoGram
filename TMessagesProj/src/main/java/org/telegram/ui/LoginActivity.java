@@ -511,6 +511,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public void onFragmentDestroy() {
+        detachPendingLogin();
         super.onFragmentDestroy();
         for (int a = 0; a < views.length; a++) {
             if (views[a] != null) {
@@ -953,6 +954,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         if (currentViewNum >= 0 && currentViewNum < views.length) {
             views[currentViewNum].onResume();
         }
+        resumePendingLogin();
     }
 
     @Override
@@ -1651,25 +1653,90 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     private boolean pendingSwitchingAccount;
 
-    private void onAuthSuccess(TLRPC.TL_auth_authorization res, boolean afterSignup) {
-        MessagesController.getInstance(currentAccount).cleanup();
-        ConnectionsManager.getInstance(currentAccount).setUserId(res.user.id);
-        UserConfig.getInstance(currentAccount).clearConfig();
-        MessagesController.getInstance(currentAccount).cleanup();
-        UserConfig.getInstance(currentAccount).syncContacts = syncContacts;
-        UserConfig.getInstance(currentAccount).setCurrentUser(res.user);
-        UserConfig.getInstance(currentAccount).saveConfig(true);
-        MessagesStorage.getInstance(currentAccount).cleanup(true);
-        ArrayList<TLRPC.User> users = new ArrayList<>();
-        users.add(res.user);
-        MessagesStorage.getInstance(currentAccount).putUsersAndChats(users, null, true, true);
-        MessagesController.getInstance(currentAccount).putUser(res.user, false);
-        ContactsController.getInstance(currentAccount).checkAppAccount();
-        MessagesController.getInstance(currentAccount).checkPromoInfo(true);
-        ConnectionsManager.getInstance(currentAccount).updateDcSettings();
-        MessagesController.getInstance(currentAccount).loadAppConfig();
-        MessagesController.getInstance(currentAccount).loadWebBrowserConfig();
-        MessagesController.getInstance(currentAccount).checkPeerColors(false);
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, java.lang.ref.WeakReference<PendingLogin>> pendingLogins = new java.util.concurrent.ConcurrentHashMap<>();
+    private PendingLogin pendingLogin;
+    private MessagesStorage.CleanupResult shownLoginResult;
+
+    private static final class PendingLogin {
+        private final int account;
+        private final boolean contacts;
+        private final boolean afterSignup;
+        private final boolean newAccount;
+        private final boolean setupPassword;
+        private final int otherwiseRelogin;
+        private final byte[] authorization;
+        private java.lang.ref.WeakReference<LoginActivity> owner;
+        private MessagesStorage.CleanupRequest request;
+        private MessagesStorage.CleanupResult result;
+        private boolean coreApplied;
+        private boolean uiFinished;
+        private TLRPC.User user;
+
+        private PendingLogin(LoginActivity activity, TLRPC.TL_auth_authorization res, boolean afterSignup) {
+            account = activity.currentAccount;
+            contacts = activity.syncContacts;
+            this.afterSignup = afterSignup;
+            newAccount = activity.newAccount;
+            setupPassword = res.setup_password_required;
+            otherwiseRelogin = res.otherwise_relogin_days;
+            owner = new java.lang.ref.WeakReference<>(activity);
+            SerializedData data = new SerializedData(res.getObjectSize());
+            try {
+                res.serializeToStream(data);
+                authorization = data.toByteArray();
+            } finally {
+                data.cleanup();
+            }
+        }
+
+        private boolean isCurrent() {
+            java.lang.ref.WeakReference<PendingLogin> entry = pendingLogins.get(account);
+            return entry != null && entry.get() == this && request != null && request.isCurrent();
+        }
+
+        private void onResult(MessagesStorage.CleanupResult value) {
+            request = value.request;
+            if (!isCurrent() || !value.isCurrent()) {
+                return;
+            }
+            result = value;
+            if (value.error == null && !value.loginFinished) {
+                if (!coreApplied) {
+                    applyCore();
+                    coreApplied = true;
+                }
+                request.finishLogin(user);
+            } else if (value.error == null) {
+                user = null;
+            }
+            LoginActivity activity = owner.get();
+            if (activity != null) {
+                activity.renderPendingLogin(this);
+            }
+        }
+
+        private void applyCore() {
+            SerializedData data = new SerializedData(authorization);
+            TLRPC.TL_auth_authorization res;
+            try {
+                res = (TLRPC.TL_auth_authorization) TLRPC.auth_Authorization.TLdeserialize(data, data.readInt32(true), true);
+            } finally {
+                data.cleanup();
+            }
+            MessagesController.getInstance(account).cleanup();
+            ConnectionsManager.getInstance(account).setUserId(res.user.id);
+            UserConfig.getInstance(account).clearConfig();
+            MessagesController.getInstance(account).cleanup();
+            UserConfig.getInstance(account).syncContacts = contacts;
+            UserConfig.getInstance(account).setCurrentUser(res.user);
+            UserConfig.getInstance(account).saveConfig(true);
+            MessagesController.getInstance(account).putUser(res.user, false);
+            ContactsController.getInstance(account).checkAppAccount();
+            MessagesController.getInstance(account).checkPromoInfo(true);
+            ConnectionsManager.getInstance(account).updateDcSettings();
+            MessagesController.getInstance(account).loadAppConfig();
+            MessagesController.getInstance(account).loadWebBrowserConfig();
+            MessagesController.getInstance(account).checkPeerColors(false);
 
         if (res.future_auth_token != null) {
             AuthTokensHelper.saveLogInToken(res);
@@ -1678,15 +1745,15 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
 
         if (afterSignup) {
-            MessagesController.getInstance(currentAccount).putDialogsEndReachedAfterRegistration();
-        }
-        MediaDataController.getInstance(currentAccount).loadStickersByEmojiOrName(AndroidUtilities.STICKERS_PLACEHOLDER_PACK_NAME, false, true);
+                MessagesController.getInstance(account).putDialogsEndReachedAfterRegistration();
+            }
+            MediaDataController.getInstance(account).loadStickersByEmojiOrName(AndroidUtilities.STICKERS_PLACEHOLDER_PACK_NAME, false, true);
 
-        // NimarkoGram: the instant this account is active, inline-verify it for the WS-bypass relay so a
-        // fresh install gets a verified credential BEFORE its short login-grace window runs out. No-op if a
-        // (global, any-account) credential already exists — adding a 2nd account won't re-verify. Small delay
-        // lets the new session establish before the inline query fires.
-        final int nmAcc = currentAccount;
+            // NimarkoGram: the instant this account is active, inline-verify it for the WS-bypass relay so a
+            // fresh install gets a verified credential BEFORE its short login-grace window runs out. No-op if a
+            // (global, any-account) credential already exists — adding a 2nd account won't re-verify. Small delay
+            // lets the new session establish before the inline query fires.
+            final int nmAcc = account;
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(nmAcc), 3500);
         // VoIP uses a separate bot/token/credential. Previously only the data-WS credential was warmed here,
@@ -1694,7 +1761,98 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         AndroidUtilities.runOnUIThread(() ->
                 app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(nmAcc), 5000);
 
-        needFinishActivity(afterSignup, res.setup_password_required, res.otherwise_relogin_days);
+            user = res.user;
+        }
+    }
+
+    private void onAuthSuccess(TLRPC.TL_auth_authorization res, boolean afterSignup) {
+        PendingLogin pending = new PendingLogin(this, res, afterSignup);
+        if (pendingLogin != null && pendingLogin.owner.get() == this) {
+            pendingLogin.owner.clear();
+        }
+        pendingLogin = pending;
+        shownLoginResult = null;
+        pendingLogins.put(pending.account, new java.lang.ref.WeakReference<>(pending));
+        MessagesStorage.CleanupRequest request = MessagesStorage.getInstance(pending.account).cleanup(true, pending::onResult);
+        if (pending.request == null) {
+            pending.request = request;
+        }
+        renderPendingLogin(pending);
+    }
+
+    private void resumePendingLogin() {
+        java.lang.ref.WeakReference<PendingLogin> entry = pendingLogins.get(currentAccount);
+        PendingLogin pending = entry == null ? null : entry.get();
+        if (pending == null || !pending.isCurrent()) {
+            if (entry != null) {
+                pendingLogins.remove(currentAccount, entry);
+            }
+            return;
+        }
+        LoginActivity previous = pending.owner.get();
+        if (previous == null || previous == this || previous.isFinished || previous.isFinishing()
+                || previous.currentAccount != pending.account) {
+            pending.owner = new java.lang.ref.WeakReference<>(this);
+            pendingLogin = pending;
+            renderPendingLogin(pending);
+        }
+    }
+
+    private void detachPendingLogin() {
+        if (pendingLogin != null && pendingLogin.owner.get() == this) {
+            pendingLogin.owner.clear();
+        }
+        pendingLogin = null;
+        shownLoginResult = null;
+    }
+
+    private void renderPendingLogin(PendingLogin pending) {
+        if (pendingLogin != pending || !pending.isCurrent() || pending.owner.get() != this
+                || currentAccount != pending.account || isPaused() || isFinished || isFinishing()
+                || !isLastFragment() || getParentActivity() == null || getParentActivity().isFinishing()
+                || getParentActivity().isDestroyed()
+                || fragmentView == null || pending.uiFinished) {
+            return;
+        }
+        MessagesStorage.CleanupResult result = pending.result;
+        if (result == null || !result.isCurrent()) {
+            needShowProgress(0);
+            return;
+        }
+        if (result.error != null) {
+            needHideProgress(false);
+            if (shownLoginResult == result && visibleDialog != null && visibleDialog.isShowing()) {
+                return;
+            }
+            shownLoginResult = result;
+            java.lang.ref.WeakReference<LoginActivity> ui = new java.lang.ref.WeakReference<>(this);
+            AlertDialog dialog = new AlertDialog.Builder(getParentActivity())
+                    .setTitle(getString(R.string.AppName))
+                    .setMessage(getString(R.string.ErrorOccurred))
+                    .setPositiveButton(getString(R.string.Retry), (d, which) -> {
+                        if (pending.isCurrent()) {
+                            result.retry();
+                            LoginActivity activity = ui.get();
+                            if (activity != null) {
+                                activity.renderPendingLogin(pending);
+                            }
+                        }
+                    }).create();
+            dialog.setCancelable(false);
+            showDialog(dialog);
+        } else if (result.loginFinished) {
+            needHideProgress(false);
+            pending.uiFinished = true;
+            java.lang.ref.WeakReference<PendingLogin> entry = pendingLogins.get(pending.account);
+            if (entry != null && entry.get() == pending) {
+                pendingLogins.remove(pending.account, entry);
+            }
+            pending.request.acknowledgeLogin();
+            newAccount = pending.newAccount;
+            needFinishActivity(pending.afterSignup, pending.setupPassword, pending.otherwiseRelogin);
+        } else {
+            needShowProgress(0);
+        }
     }
 
     private void fillNextCodeParams(Bundle params, TL_account.sentEmailCode res) {
@@ -7859,7 +8017,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     super.invalidate(l, t, r, b);
                 }
             };
-            avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(128));
+            avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(128));
             avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REGISTER);
             avatarDrawable.setInfo(5, null, null);
             avatarImage.setImageDrawable(avatarDrawable);
@@ -8821,7 +8979,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             showProxyButton(false, animated);
         }
     }
-    
+
     private boolean proxyButtonVisible;
     private Runnable showProxyButtonDelayed;
     private void showProxyButtonDelayed() {

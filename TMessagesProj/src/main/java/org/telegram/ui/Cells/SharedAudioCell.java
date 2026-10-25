@@ -206,7 +206,7 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
         if (currentMessageObject.hasHighlightedWords()) {
             String rawAudioMsg = currentMessageObject.messageOwner.message;
             if (rawAudioMsg != null && rawAudioMsg.contains("$")) {
-                rawAudioMsg = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(rawAudioMsg);
+                rawAudioMsg = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(rawAudioMsg);
             }
             CharSequence caption = TextUtils.isEmpty(rawAudioMsg) ? "" : Emoji.replaceEmoji(rawAudioMsg.replace("\n", " ").replaceAll(" +", " ").trim(), Theme.chat_msgTextPaint.getFontMetricsInt(), false);
             CharSequence sequence = AndroidUtilities.highlightText(caption, currentMessageObject.highlightedWords, resourcesProvider);

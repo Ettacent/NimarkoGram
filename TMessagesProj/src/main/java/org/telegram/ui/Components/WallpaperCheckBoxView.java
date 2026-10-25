@@ -28,8 +28,8 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.AppConfig;
 public class WallpaperCheckBoxView extends View {
 
     Theme.ResourcesProvider resourcesProvider;
@@ -198,7 +198,7 @@ public class WallpaperCheckBoxView extends View {
                     backgroundPaint.setAlpha(ringAlpha);
                     drawCanvas.drawRoundRect(rect, rect.width() / 2, rect.height() / 2, backgroundPaint);
                 }
-                float ringInset = packCheckSelection == NimarkoConfig.ICON_REPLACE_SOLAR
+                float ringInset = packCheckSelection == AppConfig.ICON_REPLACE_SOLAR
                         ? checkSize * 1.5f / 24f : AndroidUtilities.dp(2);
                 rect.set(ringInset + bounce, ringInset + bounce,
                         checkSize - ringInset - bounce, checkSize - ringInset - bounce);
@@ -256,8 +256,8 @@ public class WallpaperCheckBoxView extends View {
 
     private Drawable getPackCheckDrawable(int size) {
         Resources resources = getContext().getResources();
-        long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         int densityDpi = resources.getDisplayMetrics().densityDpi;
         float density = resources.getDisplayMetrics().density;
         Configuration configuration = resources.getConfiguration();
@@ -279,18 +279,18 @@ public class WallpaperCheckBoxView extends View {
         packCheckDrawable = null;
         packRingBitmap = null;
         packCheckTint = null;
-        if (!(resources instanceof NimarkoIconResources)
-                || !((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_ab_done)) {
+        if (!(resources instanceof IconResources)
+                || !((IconResources) resources).hasReplacement(R.drawable.ic_ab_done)) {
             return null;
         }
-        packCheckSelection = ((NimarkoIconResources) resources).getAppliedSelection();
-        if (packCheckSelection != NimarkoConfig.ICON_REPLACE_SOLAR
-                && packCheckSelection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                && packCheckSelection != NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        packCheckSelection = ((IconResources) resources).getAppliedSelection();
+        if (packCheckSelection != AppConfig.ICON_REPLACE_SOLAR
+                && packCheckSelection != AppConfig.ICON_REPLACE_LIQUID_GLASS
+                && packCheckSelection != AppConfig.ICON_REPLACE_PLUMPY) {
             return null;
         }
         try {
-            if (packCheckSelection != NimarkoConfig.ICON_REPLACE_SOLAR && !preparePackRing(resources)) {
+            if (packCheckSelection != AppConfig.ICON_REPLACE_SOLAR && !preparePackRing(resources)) {
                 return null;
             }
             Drawable glyph = resources.getDrawable(R.drawable.ic_ab_done).mutate();
@@ -313,7 +313,7 @@ public class WallpaperCheckBoxView extends View {
     }
 
     private boolean preparePackRing(Resources resources) {
-        if (!((NimarkoIconResources) resources).hasReplacement(R.drawable.photo_circle)) {
+        if (!((IconResources) resources).hasReplacement(R.drawable.photo_circle)) {
             return false;
         }
         Drawable circle = resources.getDrawable(R.drawable.photo_circle);

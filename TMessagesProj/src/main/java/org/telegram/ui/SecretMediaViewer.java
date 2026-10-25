@@ -10,7 +10,7 @@
 
 package org.telegram.ui;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 
@@ -1381,7 +1381,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         if (parentActivity == null || messageObject == null || !messageObject.needDrawBluredPreview() || provider == null) {
             return;
         }
-        final PhotoViewer.PlaceProviderObject object = provider.getPlaceForPhoto(messageObject, null, 0, true, false);
+        final PhotoViewer.PlaceProviderObject object = provider.getPlaceForPhoto(messageObject, null, 0, false, false);
         if (object == null) {
             return;
         }
@@ -1574,7 +1574,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
         WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
         wm.addView(windowView, windowLayoutParams);
-        NimarkoAppMotionBlur.attachRoot(windowView);
+        AppMotionBlur.attachRoot(windowView);
         secretDeleteTimer.invalidate();
         isVisible = true;
 
@@ -2019,7 +2019,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
         if (currentProvider == null || currentMessageObject.messageOwner.media.photo instanceof TLRPC.TL_photoEmpty || currentMessageObject.messageOwner.media.document instanceof TLRPC.TL_documentEmpty) {
             object = null;
         } else {
-            object = currentProvider.getPlaceForPhoto(currentMessageObject, null, 0, true, false);
+            object = currentProvider.getPlaceForPhoto(currentMessageObject, null, 0, false, false);
         }
         if (videoPlayer != null) {
             videoPlayer.pause();

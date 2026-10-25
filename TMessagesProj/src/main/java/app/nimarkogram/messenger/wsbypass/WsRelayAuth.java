@@ -24,8 +24,8 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.net.SocketTimeoutException;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoInlineAuth;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.InlineAuth;
 
 public final class WsRelayAuth {
 
@@ -102,14 +102,14 @@ public final class WsRelayAuth {
         activeConnections.clear();
     }
 
-    private static NimarkoInlineAuth.Backend backendFor(final long uid) {
-        return new NimarkoInlineAuth.Backend() {
+    private static InlineAuth.Backend backendFor(final long uid) {
+        return new InlineAuth.Backend() {
             @Override public String cachedToken() {
-                String t = NimarkoConfig.getWsRelayTokenForUid(uid);
+                String t = AppConfig.getWsRelayTokenForUid(uid);
                 return (t == null || t.isEmpty()) ? null : t;
             }
-            @Override public void cacheToken(String t) { NimarkoConfig.setWsRelayTokenForUid(uid, t); }
-            @Override public NimarkoInlineAuth.Reg register(long u) { return httpRegister(u); }
+            @Override public void cacheToken(String t) { AppConfig.setWsRelayTokenForUid(uid, t); }
+            @Override public InlineAuth.Reg register(long u) { return httpRegister(u); }
             @Override public String poll(long u, String code) { return httpPoll(u, code); }
         };
     }
@@ -187,7 +187,7 @@ public final class WsRelayAuth {
     private static Credential get(int account, boolean forceRefresh) {
         if (!isAuthAllowed()) return null;
         final long generation = authGeneration.get();
-        final NimarkoInlineAuth.EnablePredicate permit = new NimarkoInlineAuth.EnablePredicate() {
+        final InlineAuth.EnablePredicate permit = new InlineAuth.EnablePredicate() {
             @Override public boolean isEnabled() {
                 return generation == authGeneration.get() && isAuthAllowed();
             }
@@ -218,9 +218,9 @@ public final class WsRelayAuth {
                     if (!isAuthAllowed() || authRemainingMs() <= 0) break;
                     long uid = uidOf(acc);
                     if (uid == 0 || acc == account && uid != ownerUid) continue;
-                    NimarkoInlineAuth.Backend backend = backendFor(uid);
+                    InlineAuth.Backend backend = backendFor(uid);
                     if (!isAuthAllowed()) break;
-                    String token = NimarkoInlineAuth.ensureToken(
+                    String token = InlineAuth.ensureToken(
                             acc, uid, lock, backend, permit);
                     if (token == null || !permit.isEnabled()) continue;
                     Credential fresh = fetchCredential(token, status);
@@ -238,7 +238,7 @@ public final class WsRelayAuth {
                             continue;
                         }
                         token = authRemainingMs() > 0 && permit.isEnabled()
-                                ? NimarkoInlineAuth.ensureToken(
+                                ? InlineAuth.ensureToken(
                                         acc, uid, lock, backend, permit) : null;
                         if (token != null) fresh = fetchCredential(token, status);
                     }
@@ -315,8 +315,8 @@ public final class WsRelayAuth {
                 && Arrays.equals(a.hmac, b.hmac);
     }
 
-    private static NimarkoInlineAuth.Reg httpRegister(long uid) {
-        NimarkoInlineAuth.Reg reg = new NimarkoInlineAuth.Reg();
+    private static InlineAuth.Reg httpRegister(long uid) {
+        InlineAuth.Reg reg = new InlineAuth.Reg();
         long generation = authGeneration.get();
         if (!isAuthAllowed()) return reg;
         HttpURLConnection con = null;
@@ -343,13 +343,13 @@ public final class WsRelayAuth {
 
     private static String httpPoll(long uid, String code) {
         long generation = authGeneration.get();
-        if (!isAuthAllowed() || authRemainingMs() <= 0) return NimarkoInlineAuth.GIVE_UP;
+        if (!isAuthAllowed() || authRemainingMs() <= 0) return InlineAuth.GIVE_UP;
         HttpURLConnection con = null;
         try {
             URL url = new URL(API_URL + "/api/v1/kws/poll?user_id=" + uid
                     + "&code=" + URLEncoder.encode(code, "UTF-8"));
             con = (HttpURLConnection) url.openConnection();
-            if (!registerConnection(con, generation)) return NimarkoInlineAuth.GIVE_UP;
+            if (!registerConnection(con, generation)) return InlineAuth.GIVE_UP;
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
@@ -361,7 +361,7 @@ public final class WsRelayAuth {
                 return token.isEmpty() ? null : token;
             }
             if (rc == 202) return null;
-            return NimarkoInlineAuth.GIVE_UP;
+            return InlineAuth.GIVE_UP;
         } catch (Throwable t) {
             Log.e(TAG, "poll failed: " + t);
             return null;
@@ -452,14 +452,14 @@ public final class WsRelayAuth {
 
     private static long reconcileAccountLocked(int account) {
         try {
-            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = WsBypassConfig.prefs();
             long currentUid = uidOf(account);
             long priorUid = prefs.getLong(PREF_SLOT_UID + account, 0L);
             if (priorUid != currentUid) {
                 SharedPreferences.Editor editor = prefs.edit();
                 if (priorUid > 0) {
                     editor.remove(credentialKey(priorUid));
-                    NimarkoConfig.setWsRelayTokenForUid(priorUid, null);
+                    AppConfig.setWsRelayTokenForUid(priorUid, null);
                 }
                 if (currentUid > 0) editor.putLong(PREF_SLOT_UID + account, currentUid);
                 else editor.remove(PREF_SLOT_UID + account);
@@ -477,11 +477,11 @@ public final class WsRelayAuth {
             cancelPendingAuthLocked();
             cached.remove(account);
             try {
-                SharedPreferences.Editor editor = NimarkoWsBypassConfig.prefs().edit()
+                SharedPreferences.Editor editor = WsBypassConfig.prefs().edit()
                         .remove(PREF_SLOT_UID + account).remove(PREF_CRED);
                 if (uid > 0) {
                     editor.remove(credentialKey(uid));
-                    NimarkoConfig.setWsRelayTokenForUid(uid, null);
+                    AppConfig.setWsRelayTokenForUid(uid, null);
                 }
                 editor.apply();
             } catch (Throwable ignore) {}
@@ -496,7 +496,7 @@ public final class WsRelayAuth {
 
     private static void saveCredentialToDiskLocked(int account, Credential c) {
         try {
-            SharedPreferences p = NimarkoWsBypassConfig.prefs();
+            SharedPreferences p = WsBypassConfig.prefs();
             long uid = reconcileAccountLocked(account);
             if (c == null || c.hmac == null || uid <= 0 || c.uid != uid) {
                 if (uid > 0) p.edit().remove(credentialKey(uid)).apply();
@@ -509,7 +509,7 @@ public final class WsRelayAuth {
 
     private static Credential loadCredentialFromDisk(int account, long uid) {
         try {
-            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = WsBypassConfig.prefs();
             String s = prefs.getString(credentialKey(uid), null);
             boolean legacy = false;
             if (s == null) {

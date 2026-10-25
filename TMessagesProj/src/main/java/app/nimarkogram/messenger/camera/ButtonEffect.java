@@ -85,10 +85,10 @@ public class ButtonEffect extends RelativeLayout {
 
     private int getIconRes(int icon) {
         return switch (icon) {
-            case NimarkoCameraXController.CAMERA_HDR -> R.drawable.magic_stick_solar;
-            case NimarkoCameraXController.CAMERA_NIGHT -> R.drawable.camera_moon_solar;
-            case NimarkoCameraXController.CAMERA_AUTO -> R.drawable.magic_stick_filled_solar;
-            case NimarkoCameraXController.CAMERA_WIDE -> R.drawable.camera_panorama_solar;
+            case CameraXController.CAMERA_HDR -> R.drawable.magic_stick_solar;
+            case CameraXController.CAMERA_NIGHT -> R.drawable.camera_moon_solar;
+            case CameraXController.CAMERA_AUTO -> R.drawable.magic_stick_filled_solar;
+            case CameraXController.CAMERA_WIDE -> R.drawable.camera_panorama_solar;
             default -> R.drawable.instant_camera_attach_solar;
         };
     }

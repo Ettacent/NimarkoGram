@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -92,7 +94,7 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         groupInfoContainer.setPadding(AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8), AndroidUtilities.dp(8));
 
         avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(44));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(44));
         groupInfoContainer.addView(avatarImageView, LayoutHelper.createFrame(44, 44));
         groupInfoContainer.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.3f))));
         groupInfoContainer.setOnClickListener(view -> {

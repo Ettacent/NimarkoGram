@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -250,7 +252,7 @@ public class PhotoViewerWebView extends FrameLayout {
         this.photoViewer = photoViewer;
 
         pipItem = pip;
-        webView = new WebView(context) {
+        webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context)) {
             @Override
             public boolean onTouchEvent(MotionEvent event) {
                 processTouch(event);
@@ -662,11 +664,11 @@ public class PhotoViewerWebView extends FrameLayout {
     }
 
     public void showControls() {
-        
+
     }
 
     public void hideControls() {
-        
+
     }
 
     public void playVideo() {
@@ -694,10 +696,10 @@ public class PhotoViewerWebView extends FrameLayout {
         if (webView == null) return;
 
         if (isYouTube) {
-            
+
             runJsCode("pauseVideo();");
         } else {
-            
+
             runJsCode("(function(){"
                     + "try{document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();}catch(e){}});}catch(e){}"
                     + "try{if(window.player&&typeof window.player.pause==='function'){window.player.pause();}}catch(e){}"
@@ -711,7 +713,7 @@ public class PhotoViewerWebView extends FrameLayout {
         isPlaying = false;
         checkPlayingPoll(true);
         try {
-            
+
             webView.onPause();
         } catch (Throwable t) {
             FileLog.e(t);

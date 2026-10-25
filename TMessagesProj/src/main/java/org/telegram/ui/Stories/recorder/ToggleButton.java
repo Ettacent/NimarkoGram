@@ -22,7 +22,7 @@ import android.view.View;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
@@ -67,8 +67,8 @@ public class ToggleButton extends View implements FlashViews.Invertable {
 
     private void refreshResourceDrawables() {
         final Resources resources = getResources();
-        final long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         final int density = resources.getDisplayMetrics().densityDpi;
         final boolean dark = Theme.isCurrentThemeDark();
         if (iconResources != resources || iconGeneration != generation || iconDensity != density || iconDark != dark) {

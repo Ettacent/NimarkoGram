@@ -24,9 +24,9 @@ import androidx.core.content.ContextCompat;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoMessageMenuInjector;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.MessageMenuInjector;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -93,11 +93,11 @@ public class MessageMenuCompactView extends LinearLayout {
     }
 
     public static boolean allowCompactStyle() {
-        return NimarkoConfig.msgMenuItemsCompactView;
+        return AppConfig.msgMenuItemsCompactView;
     }
 
     public static boolean allowCompactStyle(long dialogId) {
-        return NimarkoConfig.isCompactForChat(dialogId);
+        return AppConfig.isCompactForChat(dialogId);
     }
 
     public static boolean install(
@@ -137,8 +137,8 @@ public class MessageMenuCompactView extends LinearLayout {
                 available,
                 ChatActivity.OPTION_COPY,
                 ChatActivity.OPTION_COPY_LINK,
-                NimarkoMessageMenuInjector.OPTION_COPY_PHOTO,
-                NimarkoMessageMenuInjector.OPTION_COPY_PHOTO_AS_STICKER,
+                MessageMenuInjector.OPTION_COPY_PHOTO,
+                MessageMenuInjector.OPTION_COPY_PHOTO_AS_STICKER,
                 ChatActivity.OPTION_SAVE_TO_GALLERY,
                 ChatActivity.OPTION_SAVE_TO_GALLERY2,
                 ChatActivity.OPTION_SAVE_TO_DOWNLOADS_OR_MUSIC
@@ -147,7 +147,7 @@ public class MessageMenuCompactView extends LinearLayout {
                 selected,
                 available,
                 ChatActivity.OPTION_FORWARD,
-                NimarkoMessageMenuInjector.OPTION_FORWARD_WO_AUTHOR,
+                MessageMenuInjector.OPTION_FORWARD_WO_AUTHOR,
                 ChatActivity.OPTION_SHARE
         );
         addFirst(selected, available, ChatActivity.OPTION_EDIT);
@@ -394,7 +394,7 @@ public class MessageMenuCompactView extends LinearLayout {
         if (sourceDrawable == null) {
             return null;
         }
-        Drawable copy = NimarkoIconResources.copyDrawable(sourceDrawable, getResources());
+        Drawable copy = IconResources.copyDrawable(sourceDrawable, getResources());
         return copy == null ? sourceDrawable : copy;
     }
 

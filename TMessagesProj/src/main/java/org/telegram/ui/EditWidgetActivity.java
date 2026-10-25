@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 7.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -61,6 +63,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
+import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -71,6 +74,7 @@ import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackgroundGradientDrawable;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.ForegroundColorSpanThemable;
 import org.telegram.ui.Components.InviteMembersBottomSheet;
@@ -79,6 +83,7 @@ import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 
 public class EditWidgetActivity extends BaseFragment {
@@ -92,6 +97,12 @@ public class EditWidgetActivity extends BaseFragment {
 
     private ArrayList<Long> selectedDialogs = new ArrayList<>();
 
+    private boolean dialogsLoaded;
+    private boolean dialogsLoading;
+    private int dialogsLoadGeneration;
+    private int dialogsAccount = -1;
+    private long dialogsUserId;
+    private ActionBarMenuItem doneButton;
     private WidgetPreviewCell widgetPreviewCell;
 
     private int previewRow;
@@ -134,6 +145,9 @@ public class EditWidgetActivity extends BaseFragment {
 
         @Override
         public boolean onMove(RecyclerView recyclerView, RecyclerView.ViewHolder source, RecyclerView.ViewHolder target) {
+            if (!ensureDialogsLoaded()) {
+                return false;
+            }
             if (source.getItemViewType() != target.getItemViewType()) {
                 return false;
             }
@@ -231,8 +245,16 @@ public class EditWidgetActivity extends BaseFragment {
 
             shadowDrawable = Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow);
         }
-        
+
         public void updateDialogs() {
+            for (ViewGroup cell : cells) {
+                if (cell != null) {
+                    cell.setVisibility(dialogsLoaded ? View.VISIBLE : View.INVISIBLE);
+                }
+            }
+            if (!dialogsLoaded) {
+                return;
+            }
             if (widgetType == TYPE_CHATS) {
                 for (int a = 0; a < 2; a++) {
                     TLRPC.Dialog dialog;
@@ -408,7 +430,7 @@ public class EditWidgetActivity extends BaseFragment {
                                     } else {
                                         innerMessage = message.messageText.toString();
                                         if (innerMessage.contains("$")) {
-                                            innerMessage = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(innerMessage);
+                                            innerMessage = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(innerMessage);
                                         }
                                     }
                                     innerMessage = innerMessage.replace('\n', ' ');
@@ -421,7 +443,7 @@ public class EditWidgetActivity extends BaseFragment {
                                 } else if (message.messageOwner.message != null) {
                                     String mess = message.messageOwner.message;
                                     if (mess.contains("$")) {
-                                        mess = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(mess);
+                                        mess = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(mess);
                                     }
                                     if (mess.length() > 150) {
                                         mess = mess.substring(0, 150);
@@ -740,16 +762,90 @@ public class EditWidgetActivity extends BaseFragment {
         super();
         widgetType = type;
         currentWidgetId = widgetId;
-        ArrayList<TLRPC.User> users = new ArrayList<>();
-        ArrayList<TLRPC.Chat> chats = new ArrayList<>();
-        getMessagesStorage().getWidgetDialogIds(currentWidgetId, widgetType, selectedDialogs, users, chats, true);
-        getMessagesController().putUsers(users, true);
-        getMessagesController().putChats(chats, true);
         updateRows();
     }
 
+    private void loadSelectedDialogs() {
+        if (dialogsLoaded || dialogsLoading || isFinished || isFinishing()) {
+            return;
+        }
+        dialogsLoading = true;
+        selectedDialogs.clear();
+        updateRows();
+        updateLoadingState();
+        final int generation = ++dialogsLoadGeneration;
+        final int account = currentAccount;
+        final AccountInstance owner = AccountInstance.getInstance(account);
+        final long uid = owner.getUserConfig().getClientUserId();
+        final WeakReference<EditWidgetActivity> reference = new WeakReference<>(this);
+        owner.getMessagesStorage().getWidgetDialogIdsAsync(currentWidgetId, widgetType, true, (dialogs, users, chats) -> {
+            EditWidgetActivity fragment = reference.get();
+            if (fragment == null || fragment.isFinished || fragment.isFinishing()
+                    || fragment.dialogsLoadGeneration != generation
+                    || (fragment.getParentActivity() != null && fragment.getParentActivity().isFinishing())) {
+                return;
+            }
+            fragment.dialogsLoading = false;
+            fragment.updateLoadingState();
+            if (fragment.currentAccount != account || owner.getUserConfig().getClientUserId() != uid) {
+                fragment.updateRows();
+                return;
+            }
+            if (dialogs == null) {
+                fragment.updateRows();
+                if (fragment.fragmentView != null && fragment.getParentActivity() != null) {
+                    BulletinFactory.of(fragment).createErrorBulletin(LocaleController.getString(R.string.ErrorOccurred)).show();
+                }
+                return;
+            }
+            owner.getMessagesController().putUsers(users, true);
+            owner.getMessagesController().putChats(chats, true);
+            fragment.selectedDialogs.addAll(dialogs);
+            fragment.dialogsLoaded = true;
+            fragment.dialogsAccount = account;
+            fragment.dialogsUserId = uid;
+            fragment.updateRows();
+            if (fragment.widgetPreviewCell != null) {
+                fragment.widgetPreviewCell.updateDialogs();
+            }
+        });
+    }
+
+    private void updateLoadingState() {
+        if (widgetPreviewCell != null && !dialogsLoaded) {
+            widgetPreviewCell.updateDialogs();
+        }
+        if (doneButton != null) {
+            doneButton.setEnabled(!dialogsLoading);
+            doneButton.setAlpha(dialogsLoading ? 0.5f : 1f);
+        }
+    }
+
+    private boolean ensureDialogsLoaded() {
+        if (isFinished || isFinishing() || (getParentActivity() != null && getParentActivity().isFinishing())) {
+            return false;
+        }
+        if (dialogsLoaded && (dialogsAccount != currentAccount || dialogsUserId != getUserConfig().getClientUserId())) {
+            dialogsLoaded = false;
+        }
+        if (!dialogsLoaded) {
+            loadSelectedDialogs();
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        dialogsLoadGeneration++;
+        dialogsLoading = false;
+        dialogsLoaded = false;
+        doneButton = null;
+        super.onFragmentDestroy();
+    }
     @Override
     public boolean onFragmentCreate() {
+        loadSelectedDialogs();
         DialogsActivity.loadDialogs(AccountInstance.getInstance(currentAccount));
         getMediaDataController().loadHints(true);
         return super.onFragmentCreate();
@@ -792,7 +888,8 @@ public class EditWidgetActivity extends BaseFragment {
             actionBar.setTitle(LocaleController.getString(R.string.WidgetShortcuts));
         }
         ActionBarMenu menu = actionBar.createMenu();
-        menu.addItem(done_item, LocaleController.getString(R.string.Done).toUpperCase());
+        doneButton = menu.addItem(done_item, LocaleController.getString(R.string.Done).toUpperCase());
+        updateLoadingState();
 
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -804,7 +901,7 @@ public class EditWidgetActivity extends BaseFragment {
                     }
                     finishFragment();
                 } else if (id == done_item) {
-                    if (getParentActivity() == null) {
+                    if (getParentActivity() == null || !ensureDialogsLoaded()) {
                         return;
                     }
 
@@ -850,9 +947,13 @@ public class EditWidgetActivity extends BaseFragment {
         itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
         itemTouchHelper.attachToRecyclerView(listView);
         listView.setOnItemClickListener((view, position) -> {
-            if (position == selectChatsRow) {
+            if (position == selectChatsRow && ensureDialogsLoaded()) {
+                final int selectionGeneration = dialogsLoadGeneration;
                 InviteMembersBottomSheet bottomSheet = new InviteMembersBottomSheet(context, currentAccount, null, 0, EditWidgetActivity.this, null);
                 bottomSheet.setDelegate(dids -> {
+                    if (selectionGeneration != dialogsLoadGeneration || !ensureDialogsLoaded()) {
+                        return;
+                    }
                     selectedDialogs.clear();
                     selectedDialogs.addAll(dids);
                     updateRows();
@@ -870,17 +971,20 @@ public class EditWidgetActivity extends BaseFragment {
 
             @Override
             public boolean onItemClick(View view, int position, float x, float y) {
-                if (getParentActivity() == null || !(view instanceof GroupCreateUserCell)) {
+                if (getParentActivity() == null || !(view instanceof GroupCreateUserCell)
+                        || !ensureDialogsLoaded() || position < chatsStartRow || position >= chatsEndRow) {
                     return false;
                 }
                 ImageView imageView = (ImageView) view.getTag(R.id.object_tag);
                 imageView.getHitRect(rect);
                 if (!rect.contains((int) x, (int) y)) {
+                    final int selectionGeneration = dialogsLoadGeneration;
+                    final Long dialogId = selectedDialogs.get(position - chatsStartRow);
                     AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                     CharSequence[] items = new CharSequence[]{LocaleController.getString(R.string.Delete)};
                     builder.setItems(items, (dialogInterface, i) -> {
-                        if (i == 0) {
-                            selectedDialogs.remove(position - chatsStartRow);
+                        if (i == 0 && selectionGeneration == dialogsLoadGeneration
+                                && ensureDialogsLoaded() && selectedDialogs.remove(dialogId)) {
                             updateRows();
                             if (widgetPreviewCell != null) {
                                 widgetPreviewCell.updateDialogs();
@@ -931,7 +1035,7 @@ public class EditWidgetActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == 1 || type == 3;
+            return !dialogsLoading && (type == 1 || type == 3);
         }
 
         @Override

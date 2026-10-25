@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Bitmap;
@@ -155,7 +157,7 @@ public class FilterShaders {
                 "highp float distanceFromCenter = abs((texCoordToUse.x - excludePoint.x) * aspectRatio * cos(angle) + (texCoordToUse.y - excludePoint.y) * sin(angle));" +
                 "gl_FragColor = mix(sharpImageColor, blurredImageColor, smoothstep(excludeSize - excludeBlurSize, excludeSize, distanceFromCenter));" +
             "}";
-    
+
     private static String vertexShaderForOptimizedBlurOfRadius(int blurRadius, float sigma) {
         float[] standardGaussianWeights = new float[blurRadius * 2 + 1];
         float sumOfWeights = 0.0f;
@@ -944,7 +946,7 @@ public class FilterShaders {
                 GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 256, 1, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, curveBuffer);
             }
         }
-        
+
         public int getCurveTexture() {
             return curveTexture[0];
         }
@@ -1598,17 +1600,15 @@ public class FilterShaders {
             if (calcBuffer == null) {
                 calcBuffer = ByteBuffer.allocateDirect(PGPhotoEnhanceSegments * PGPhotoEnhanceSegments * 2 * 4 * (1 + PGPhotoEnhanceHistogramBins));
             }
+            hsvBuffer.clear();
+            cdtBuffer.clear();
+            calcBuffer.clear();
             GLES20.glReadPixels(0, 0, renderBufferWidth, renderBufferHeight, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, hsvBuffer);
             Utilities.calcCDT(hsvBuffer, renderBufferWidth, renderBufferHeight, cdtBuffer, calcBuffer);
 
             GLES20.glBindTexture(GL10.GL_TEXTURE_2D, enhanceTextures[1]);
             GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, 256, 16, 0, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, cdtBuffer);
 
-            if (!isVideo) {
-                hsvBuffer = null;
-                cdtBuffer = null;
-                calcBuffer = null;
-            }
             hsvGenerated = true;
         }
 
@@ -1633,6 +1633,13 @@ public class FilterShaders {
         GLES20.glEnableVertexAttribArray(enhancePositionHandle);
         GLES20.glVertexAttribPointer(enhancePositionHandle, 2, GLES20.GL_FLOAT, false, 8, vertexBuffer);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
+    }
+
+    public void releaseEnhanceBuffers() {
+        hsvBuffer = null;
+        cdtBuffer = null;
+        calcBuffer = null;
+        hsvGenerated = false;
     }
 
     public void drawSharpenPass() {

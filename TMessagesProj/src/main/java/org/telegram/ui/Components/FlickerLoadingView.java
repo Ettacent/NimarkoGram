@@ -14,7 +14,7 @@ import android.graphics.Shader;
 import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.View;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -475,7 +475,7 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
             int k = 0;
             int avatarSize = dp(46);
             int avatarLeft = paddingLeft + dp(16);
-            float radius = Math.max(0f, Math.min(avatarSize / 2f, NimarkoConfig.getAvatarCorners(48)));
+            float radius = Math.max(0f, Math.min(avatarSize / 2f, AppConfig.getAvatarCorners(48)));
             while (h <= getMeasuredHeight()) {
                 int avatarTop = h + dp(6);
                 rectF.set(avatarLeft, avatarTop, avatarLeft + avatarSize, avatarTop + avatarSize);

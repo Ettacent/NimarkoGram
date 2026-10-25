@@ -21,7 +21,7 @@ import app.nimarkogram.messenger.plugins.bridge.PythonBoundarySanitizer;
 import app.nimarkogram.messenger.plugins.bridge.PythonBoundarySanitizer.ScanResult;
 import app.nimarkogram.messenger.plugins.bridge.PythonInterfaceProxy;
 import app.nimarkogram.messenger.plugins.PluginsController;
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 public final class PineAdapter extends MethodHook {
 
     private static final Method BEFORE_HOOKED_METHOD;
@@ -125,7 +125,7 @@ public final class PineAdapter extends MethodHook {
                 if (owner == PluginHookGuard.class || owner == PineAdapter.class
                         || owner == PythonBoundarySanitizer.class
                         || owner == PythonInterfaceProxy.class
-                        || owner == NimarkoCrashContext.class
+                        || owner == CrashContext.class
                         || owner.getName().startsWith("app.nimarkogram.messenger.diagnostics.")) {
                     throw new IllegalArgumentException("Plugin bridge implementation cannot be hooked");
                 }
@@ -151,11 +151,11 @@ public final class PineAdapter extends MethodHook {
     }
 
     private AdapterParam claim(Pine.CallFrame cf) {
-        long token = NimarkoCrashContext.beginInvocation();
-        long startedMs = NimarkoCrashContext.invocationStartedMs(token);
+        long token = CrashContext.beginInvocation();
+        long startedMs = CrashContext.invocationStartedMs(token);
         boolean claimed = false;
         try {
-            NimarkoCrashContext.phase(token, startedMs, "adapter_claim", diagnosticTarget,
+            CrashContext.phase(token, startedMs, "adapter_claim", diagnosticTarget,
                     diagnosticPlugin, diagnosticRuntime);
             AdapterParam p;
             synchronized (params) {
@@ -177,7 +177,7 @@ public final class PineAdapter extends MethodHook {
             claimed = true;
             return p;
         } finally {
-            if (!claimed) NimarkoCrashContext.endInvocation(token);
+            if (!claimed) CrashContext.endInvocation(token);
         }
     }
 
@@ -215,7 +215,7 @@ public final class PineAdapter extends MethodHook {
                 }
             }
         } finally {
-            NimarkoCrashContext.endInvocation(diagnosticToken);
+            CrashContext.endInvocation(diagnosticToken);
         }
     }
 
@@ -406,7 +406,7 @@ public final class PineAdapter extends MethodHook {
             }
             diagnosticPhase(param, "before_baseline_receiver_scan");
             if (receiverMismatched(cf)) {
-                NimarkoCrashContext.anomaly("receiver_mismatch", diagnosticTarget,
+                CrashContext.anomaly("receiver_mismatch", diagnosticTarget,
                         diagnosticPlugin, diagnosticRuntime);
                 skipCallbacks(cf, param, true);
                 return;
@@ -430,7 +430,7 @@ public final class PineAdapter extends MethodHook {
                     }
                 }
             } catch (Throwable t) {
-                NimarkoCrashContext.failure("pine_before_callback", diagnosticPlugin, diagnosticTarget,
+                CrashContext.failure("pine_before_callback", diagnosticPlugin, diagnosticTarget,
                         t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
                 PluginHookGuard.error("nimarko: hook callback threw for " + member, t);
@@ -484,13 +484,13 @@ public final class PineAdapter extends MethodHook {
         if (runtimeSupportMethod && PluginHookGuard.isActive()) return;
         AdapterParam param = popActive(cf);
         if (param == null && activeParam.get() != null) {
-            NimarkoCrashContext.anomaly("unmatched_after_state", diagnosticTarget,
+            CrashContext.anomaly("unmatched_after_state", diagnosticTarget,
                     diagnosticPlugin, diagnosticRuntime);
             return;
         }
         try {
             if (param == null && cf != null) {
-                NimarkoCrashContext.anomaly("missing_before_state", diagnosticTarget,
+                CrashContext.anomaly("missing_before_state", diagnosticTarget,
                         diagnosticPlugin, diagnosticRuntime);
                 param = claim(cf);
             }
@@ -510,7 +510,7 @@ public final class PineAdapter extends MethodHook {
             }
             diagnosticPhase(param, "after_receiver_check");
             if (receiverMismatched(cf)) {
-                NimarkoCrashContext.anomaly("after_receiver_mismatch", diagnosticTarget,
+                CrashContext.anomaly("after_receiver_mismatch", diagnosticTarget,
                         diagnosticPlugin, diagnosticRuntime);
                 return;
             }
@@ -549,7 +549,7 @@ public final class PineAdapter extends MethodHook {
                     }
                 }
             } catch (Throwable t) {
-                NimarkoCrashContext.failure("pine_after_callback", diagnosticPlugin, diagnosticTarget,
+                CrashContext.failure("pine_after_callback", diagnosticPlugin, diagnosticTarget,
                         t instanceof InvocationTargetException && t.getCause() != null
                                 ? t.getCause() : t);
                 PluginHookGuard.error("nimarko: afterHookedMethod threw", t);
@@ -597,7 +597,7 @@ public final class PineAdapter extends MethodHook {
 
     private void diagnosticPhase(AdapterParam param, String phase) {
         if (param != null && param.diagnosticToken != 0) {
-            NimarkoCrashContext.phase(param.diagnosticToken, param.diagnosticStartedMs, phase, diagnosticTarget,
+            CrashContext.phase(param.diagnosticToken, param.diagnosticStartedMs, phase, diagnosticTarget,
                     diagnosticPlugin, diagnosticRuntime);
         }
     }

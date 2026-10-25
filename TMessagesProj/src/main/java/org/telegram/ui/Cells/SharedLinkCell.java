@@ -98,7 +98,7 @@ public class SharedLinkCell extends FrameLayout {
         public void run() {
             if (checkingForLongPress && getParent() != null && currentPressCount == pressCount) {
                 checkingForLongPress = false;
-                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                     try {
                         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                     } catch (Exception ignored) {}
@@ -337,7 +337,7 @@ public class SharedLinkCell extends FrameLayout {
         if (message != null && !message.messageOwner.entities.isEmpty()) {
             for (int a = 0; a < message.messageOwner.entities.size(); a++) {
                 TLRPC.MessageEntity entity = message.messageOwner.entities.get(a);
-                if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(
+                if (app.nimarkogram.messenger.utils.LocalEmoji.isLocalEmojiLink(
                         message.messageOwner.message, entity)) {
                     continue;
                 }
@@ -519,7 +519,7 @@ public class SharedLinkCell extends FrameLayout {
         if (message != null && !TextUtils.isEmpty(message.messageOwner.message)) {
             String rawMsg = message.messageOwner.message;
             if (rawMsg.contains("$")) {
-                rawMsg = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(rawMsg);
+                rawMsg = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(rawMsg);
             }
             CharSequence caption = Emoji.replaceEmoji(rawMsg.replace("\n", " ").replaceAll(" +", " ").trim(), Theme.chat_msgTextPaint.getFontMetricsInt(), false);
             CharSequence sequence = AndroidUtilities.highlightText(caption, message.highlightedWords, null);

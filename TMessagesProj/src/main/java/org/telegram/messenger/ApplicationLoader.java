@@ -10,12 +10,12 @@
 
 package org.telegram.messenger;
 
-import static app.nimarkogram.messenger.NimarkoCrashContext.initializationPhase;
+import static app.nimarkogram.messenger.CrashContext.initializationPhase;
 
-import app.nimarkogram.messenger.NimarkoCrashContext.PineInitPhase;
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationLifecycle;
+import app.nimarkogram.messenger.CrashContext.PineInitPhase;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationLifecycle;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
@@ -97,7 +97,7 @@ public class ApplicationLoader extends Application {
         }
 
         try {
-            app.nimarkogram.messenger.NimarkoCrashHandler.install(base);
+            app.nimarkogram.messenger.CrashHandler.install(base);
         } catch (Throwable ignored) {
         }
     }
@@ -243,7 +243,7 @@ public class ApplicationLoader extends Application {
 
                     }
 
-                    boolean isSlow = isConnectionSlow() || app.nimarkogram.messenger.NimarkoConfig.slowNetworkMode;
+                    boolean isSlow = isConnectionSlow() || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
                     for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                         ConnectionsManager.getInstance(a).checkConnection();
                         FileLoader.getInstance(a).onNetworkChanged(isSlow);
@@ -292,11 +292,11 @@ public class ApplicationLoader extends Application {
             Utilities.globalQueue.postRunnable(org.telegram.ui.CastSync::preload);
         } catch (Throwable ignored) {}
 
-        try { app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector.start(); } catch (Throwable ignored) {}
-        try { app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().ensureStartedSync(); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.wsbypass.VpnDetector.start(); } catch (Throwable ignored) {}
+        try { app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().ensureStartedSync(); } catch (Throwable ignored) {}
 
         try {
-            if (app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled
+            if (app.nimarkogram.messenger.wsbypass.WsBypassConfig.enabled
                     && app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig.isVoipBypassEnabled()) {
                 AndroidUtilities.runOnUIThread(() ->
                         app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(UserConfig.selectedAccount), 4000);
@@ -304,7 +304,7 @@ public class ApplicationLoader extends Application {
         } catch (Throwable ignored) {}
 
         try {
-            if (app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled) {
+            if (app.nimarkogram.messenger.wsbypass.WsBypassConfig.enabled) {
                 AndroidUtilities.runOnUIThread(() ->
                         app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(UserConfig.selectedAccount), 4500);
             }
@@ -325,7 +325,7 @@ public class ApplicationLoader extends Application {
         }
 
         try {
-            if (app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().blockedByVpn()) {
+            if (app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().blockedByVpn()) {
                 app.nimarkogram.messenger.wsbypass.ProxyApplier.suspendForVpn(
                         app.nimarkogram.messenger.wsbypass.WsBypassCore.LOCAL_PROXY_HOST);
             }
@@ -349,7 +349,7 @@ public class ApplicationLoader extends Application {
         super();
     }
 
-    private volatile app.nimarkogram.messenger.icons.NimarkoIconResources nmAppResources;
+    private volatile app.nimarkogram.messenger.icons.IconResources nmAppResources;
     private volatile android.content.res.AssetManager nmAppAssets;
     private static final ThreadLocal<Boolean> nmWrappingResources = new ThreadLocal<>();
     private final Object nmAppResourcesLock = new Object();
@@ -360,7 +360,7 @@ public class ApplicationLoader extends Application {
         android.content.res.Resources base = super.getResources();
         try {
             if (base == null || !nmAppResourcesReady || applicationContext == null
-                    || app.nimarkogram.messenger.NimarkoConfig.iconReplacement == app.nimarkogram.messenger.NimarkoConfig.ICON_REPLACE_NONE) {
+                    || app.nimarkogram.messenger.AppConfig.iconReplacement == app.nimarkogram.messenger.AppConfig.ICON_REPLACE_NONE) {
                 return base;
             }
             if (Boolean.TRUE.equals(nmWrappingResources.get())) {
@@ -372,7 +372,7 @@ public class ApplicationLoader extends Application {
                     if (nmAppAssets != base.getAssets()) {
                         nmWrappingResources.set(Boolean.TRUE);
                         try {
-                            nmAppResources = new app.nimarkogram.messenger.icons.NimarkoIconResources(base);
+                            nmAppResources = new app.nimarkogram.messenger.icons.IconResources(base);
                         } finally {
                             nmWrappingResources.set(Boolean.FALSE);
                         }
@@ -407,7 +407,6 @@ public class ApplicationLoader extends Application {
         return applicationContext != null ? applicationContext.getResources() : null;
     }
 
-    private static final int NG_PINE_MAX_TESTED_SDK = 36;
     private static final String NG_PINE_RUNTIME_PREFS = "nimarko_pine_runtime";
     private static final String NG_PINE_INIT_SIGNATURE = "init_signature";
     private static final String NG_PINE_INIT_STARTED_AT = "init_started_at";
@@ -593,16 +592,14 @@ public class ApplicationLoader extends Application {
     private static synchronized void installPineRuntimeGuardIfNeeded(boolean finalAttempt) {
         preparePineRecoveryGuard();
         if (ngPineRecoveryPending && finalAttempt) preparePineRecoveryGuard();
-        boolean unsupportedRuntime = Build.VERSION.SDK_INT > NG_PINE_MAX_TESTED_SDK;
         boolean unavailableHistory = ngPineRecoveryPending && finalAttempt;
-        if ((!unsupportedRuntime && !ngPineBlockedByRecovery && !unavailableHistory)
+        if ((!ngPineBlockedByRecovery && !unavailableHistory)
                 || ngPineRuntimeGuardInstalled) {
             return;
         }
         final String reason = ngPineBlockedByRecovery
                 ? "Pine recovery guard is active for this build"
-                : unavailableHistory ? "Pine initialization deferred: previous exit could not be verified"
-                : "Pine is not validated on Android SDK " + Build.VERSION.SDK_INT;
+                : "Pine initialization deferred: previous exit could not be verified";
         try {
             top.canyie.pine.PineConfig.sdkLevel = Build.VERSION.SDK_INT;
             top.canyie.pine.PineConfig.disableHooks = true;
@@ -610,7 +607,7 @@ public class ApplicationLoader extends Application {
                 throw new UnsupportedOperationException(reason);
             };
         } catch (Throwable t) {
-            FileLog.e("nimarko: unable to install unsupported-runtime Pine guard", t);
+            FileLog.e("nimarko: unable to install Pine recovery guard", t);
         } finally {
             ngPineRuntimeGuardInstalled = true;
             ngPineInitAttempted = true;
@@ -636,7 +633,7 @@ public class ApplicationLoader extends Application {
             ngPineReady.countDown();
             return;
         }
-        app.nimarkogram.messenger.NimarkoCrashContext.initialization(true, false);
+        app.nimarkogram.messenger.CrashContext.initialization(true, false);
         try {
 
             boolean hiddenApiBypassReady = false;
@@ -667,6 +664,7 @@ public class ApplicationLoader extends Application {
 
             top.canyie.pine.PineConfig.disableHiddenApiPolicy = false;
             top.canyie.pine.PineConfig.disableHiddenApiPolicyForPlatformDomain = false;
+            app.nimarkogram.messenger.plugins.bridge.ManagedHookBridge.install(applicationContext);
             initializationPhase(PineInitPhase.CONFIG_END);
             initializationPhase(PineInitPhase.ENGINE_BEGIN);
             top.canyie.pine.Pine.ensureInitialized();
@@ -702,7 +700,7 @@ public class ApplicationLoader extends Application {
                     + ", initialised=" + pineReady
                     + ", hookMode=" + top.canyie.pine.Pine.getHookMode());
         } catch (Throwable t) {
-            app.nimarkogram.messenger.NimarkoCrashContext.failure(
+            app.nimarkogram.messenger.CrashContext.failure(
                     "pine", null, "ApplicationLoader.ensurePineInited", t);
             ngPineUnavailableReason = t.getClass().getSimpleName()
                     + (t.getMessage() == null ? "" : ": " + t.getMessage());
@@ -710,7 +708,7 @@ public class ApplicationLoader extends Application {
         } finally {
 
             ngPineInited = pineReady;
-            app.nimarkogram.messenger.NimarkoCrashContext.initialization(false, pineReady);
+            app.nimarkogram.messenger.CrashContext.initialization(false, pineReady);
             if (!pineReady) {
                 try {
                     top.canyie.pine.PineConfig.disableHooks = true;
@@ -985,7 +983,7 @@ public class ApplicationLoader extends Application {
     @Override
     public void onCreate() {
         applicationLoaderInstance = this;
-        NimarkoAppMotionBlur.install(this);
+        AppMotionBlur.install(this);
         try {
             applicationContext = getApplicationContext();
         } catch (Throwable ignore) {
@@ -995,7 +993,7 @@ public class ApplicationLoader extends Application {
         app.nimarkogram.messenger.diagnostics.CrashDiagnostics.install(this);
         app.nimarkogram.messenger.diagnostics.CrashDiagnostics.recordEvent("startup", "on_create", "begin");
         try {
-            app.nimarkogram.messenger.NimarkoCrashHandler.install(this);
+            app.nimarkogram.messenger.CrashHandler.install(this);
         } catch (Throwable ignored) {}
 
         try {
@@ -1005,7 +1003,7 @@ public class ApplicationLoader extends Application {
 
         try {
             org.telegram.messenger.SharedConfig.loadConfig();
-            int ignoredSel = app.nimarkogram.messenger.NimarkoConfig.iconReplacement;
+            int ignoredSel = app.nimarkogram.messenger.AppConfig.iconReplacement;
             nmAppResourcesReady = true;
         } catch (Throwable ignored) {}
         try {
@@ -1017,7 +1015,7 @@ public class ApplicationLoader extends Application {
         super.onCreate();
 
         app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
-                nmRawResources().getConfiguration(), app.nimarkogram.messenger.NimarkoConfig.systemFonts);
+                nmRawResources().getConfiguration(), app.nimarkogram.messenger.AppConfig.systemFonts);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 app.nimarkogram.messenger.plugins.utils.NativeCrashHandler
@@ -1035,7 +1033,7 @@ public class ApplicationLoader extends Application {
         }
 
         try {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.initIfEnabled();
+            app.nimarkogram.messenger.textanim.TextAnim.initIfEnabled();
         } catch (Throwable t) {
             FileLog.e("nimarko-textanim: init failed", t);
         }
@@ -1079,7 +1077,8 @@ public class ApplicationLoader extends Application {
         try {
             ConnectionsManager.native_setJava(false);
         } catch (UnsatisfiedLinkError error) {
-            throw new RuntimeException("can't load native libraries " +  Build.CPU_ABI + " lookup folder " + NativeLoader.getAbiFolder());
+            Error loadError = NativeLoader.getLoadError();
+            throw new RuntimeException("can't load native libraries " +  Build.CPU_ABI + " lookup folder " + NativeLoader.getAbiFolder(), loadError != null ? loadError : error);
         }
         new ForegroundDetector(this) {
             @Override
@@ -1091,8 +1090,8 @@ public class ApplicationLoader extends Application {
                 }
             }
         };
-        NimarkoUiAnimationClock.install(ForegroundDetector.getInstance());
-        NimarkoUiAnimationLifecycle.install(this);
+        UiAnimationClock.install(ForegroundDetector.getInstance());
+        UiAnimationLifecycle.install(this);
         if (BuildConfig.DEBUG_VERSION) {
             new ANRDetector(FileLog::dumpANR);
         }
@@ -1103,19 +1102,19 @@ public class ApplicationLoader extends Application {
 
         applicationHandler = new Handler(applicationContext.getMainLooper());
 
-        app.nimarkogram.messenger.NimarkoCrashContext.install(applicationContext);
+        app.nimarkogram.messenger.CrashContext.install(applicationContext);
         AndroidUtilities.runOnUIThread(ApplicationLoader::startPushService);
 
         LauncherIconController.tryFixLauncherIconIfNeeded();
         ProxyRotationController.init();
 
         try {
-            app.nimarkogram.messenger.NimarkoFeatureHooks.setDiscussInsteadOfMute(
-                    app.nimarkogram.messenger.NimarkoConfig.discussInsteadOfMute);
+            app.nimarkogram.messenger.FeatureHooks.setDiscussInsteadOfMute(
+                    app.nimarkogram.messenger.AppConfig.discussInsteadOfMute);
         } catch (Throwable ignored) {}
 
         try {
-            if (app.nimarkogram.messenger.NimarkoConfig.pluginsEngine) {
+            if (app.nimarkogram.messenger.AppConfig.pluginsEngine) {
                 app.nimarkogram.messenger.plugins.PluginsController.getInstance().init(() -> {
                     if (!app.nimarkogram.messenger.plugins.PluginsController
                             .getInstance().isInitialized()) {
@@ -1124,14 +1123,6 @@ public class ApplicationLoader extends Application {
                     app.nimarkogram.messenger.plugins.PluginsController.getInstance()
                             .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_START);
 
-                    org.telegram.messenger.Utilities.pluginsQueue.postRunnable(() -> {
-                        try {
-                            app.nimarkogram.messenger.plugins.PluginsController.getInstance()
-                                    .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_RESUME);
-                        } catch (Throwable wt) {
-                            org.telegram.messenger.FileLog.e("nimarko: plugin warmup ping failed", wt);
-                        }
-                    }, 2000L);
                 });
             } else {
                 FileLog.d("NimarkoGram: pluginsEngine disabled, skipping plugin init");
@@ -1163,7 +1154,7 @@ public class ApplicationLoader extends Application {
             enabled = mainSettings.getBoolean("keepAliveService", false);
         }
 
-        boolean residentEnabled = app.nimarkogram.messenger.NimarkoConfig.residentNotification
+        boolean residentEnabled = app.nimarkogram.messenger.AppConfig.residentNotification
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && Build.VERSION.SDK_INT < 35;
         if (residentEnabled) {
@@ -1194,7 +1185,7 @@ public class ApplicationLoader extends Application {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
-                newConfig, app.nimarkogram.messenger.NimarkoConfig.systemFonts);
+                newConfig, app.nimarkogram.messenger.AppConfig.systemFonts);
         try {
             LocaleController.getInstance().onDeviceConfigurationChange(newConfig);
             AndroidUtilities.checkDisplaySize(applicationContext, newConfig);

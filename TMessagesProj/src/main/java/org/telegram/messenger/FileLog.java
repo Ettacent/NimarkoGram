@@ -52,33 +52,52 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class FileLog {
     private OutputStreamWriter streamWriter = null;
-    private FastDateFormat dateFormat = null;
-    private FastDateFormat fileDateFormat = null;
-    private DispatchQueue logQueue = null;
+    private final FastDateFormat dateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss.SSS", Locale.US);
+    private final FastDateFormat fileDateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss", Locale.US);
+    private volatile DispatchQueue logQueue = null;
+    private final Object initLock = new Object();
 
     private static final int MAX_PENDING_WRITES = 4096;
     private final AtomicInteger pendingWrites = new AtomicInteger();
 
     private boolean postLog(Runnable r) {
-        if (logQueue == null || streamWriter == null) {
+        return postTask(r, pendingWrites, MAX_PENDING_WRITES, true);
+    }
+
+    private boolean postTask(Runnable r, AtomicInteger pending, int limit, boolean requireWriter) {
+        if (pending.incrementAndGet() > limit) {
+            pending.decrementAndGet();
             return false;
         }
-        if (pendingWrites.get() > MAX_PENDING_WRITES) {
-            return false;
-        }
-        pendingWrites.incrementAndGet();
-        return logQueue.postRunnable(() -> {
-            try {
-                r.run();
-            } finally {
-                pendingWrites.decrementAndGet();
+        boolean accepted = false;
+        try {
+            init();
+            DispatchQueue queue = logQueue;
+            if (queue != null) {
+                accepted = queue.postRunnable(() -> {
+                    try {
+                        if (!requireWriter || streamWriter != null) {
+                            r.run();
+                        }
+                    } finally {
+                        pending.decrementAndGet();
+                    }
+                });
             }
-        });
+            return accepted;
+        } catch (Exception | OutOfMemoryError e) {
+            Log.e(tag, "Unable to queue log", e);
+            return false;
+            } finally {
+            if (!accepted) {
+                pending.decrementAndGet();
+            }
+        }
     }
 
     private File currentFile = null;
-    private File networkFile = null;
-    private File tonlibFile = null;
+    private volatile File networkFile = null;
+    private volatile File tonlibFile = null;
     private volatile boolean initied;
 
     private final AtomicBoolean initStarted = new AtomicBoolean();
@@ -98,11 +117,11 @@ public class FileLog {
                 localInstance = Instance;
                 if (localInstance == null) {
                     Instance = localInstance = new FileLog();
-                    if (BuildVars.LOGS_ENABLED) {
-                        localInstance.init();
-                    }
                 }
             }
+        }
+                    if (BuildVars.LOGS_ENABLED) {
+                        localInstance.init();
         }
         return localInstance;
     }
@@ -117,27 +136,18 @@ public class FileLog {
     private static final AtomicInteger pendingProtocolDumps = new AtomicInteger();
 
     private static void postProtocolDump(Runnable dump) {
-        if (pendingProtocolDumps.incrementAndGet() > MAX_PENDING_PROTOCOL_DUMPS) {
-            pendingProtocolDumps.decrementAndGet();
-            return;
-        }
         try {
             FileLog logger = getInstance();
-            if (logger.logQueue == null) {
-                pendingProtocolDumps.decrementAndGet();
-                return;
-            }
-            logger.logQueue.postRunnable(() -> {
+            logger.postTask(() -> {
                 try {
+                    if (logger.tlStreamWriter != null) {
                     dump.run();
+                    }
                 } catch (Throwable e) {
                     Log.e(tag, "Unable to serialize asynchronous protocol dump", e);
-                } finally {
-                    pendingProtocolDumps.decrementAndGet();
                 }
-            });
+            }, pendingProtocolDumps, MAX_PENDING_PROTOCOL_DUMPS, false);
         } catch (Throwable e) {
-            pendingProtocolDumps.decrementAndGet();
             Log.e(tag, "Unable to queue protocol dump", e);
         }
     }
@@ -341,52 +351,86 @@ public class FileLog {
             return;
         }
 
-        if (!initStarted.compareAndSet(false, true)) {
-            return;
+        synchronized (initLock) {
+            if (initied || !initStarted.compareAndSet(false, true)) {
+                return;
+            }
+            boolean scheduled = false;
+            try {
+                if (logQueue == null) {
+                    DispatchQueue queue = new DispatchQueue("logQueue", false);
+                    queue.start(this::openWriters);
+                    logQueue = queue;
+                    scheduled = true;
+                } else {
+                    scheduled = logQueue.postRunnable(this::openWriters);
+                }
+            } catch (RuntimeException | OutOfMemoryError e) {
+                Log.e(tag, "Unable to start log initialization", e);
+            } finally {
+                if (!scheduled) {
+                    initStarted.set(false);
+                }
+            }
         }
-        dateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss.SSS", Locale.US);
-        fileDateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss", Locale.US);
-        String date = fileDateFormat.format(System.currentTimeMillis());
+    }
+
+    private void openWriters() {
+        OutputStreamWriter writer = null;
+        OutputStreamWriter protocolWriter = null;
         try {
+        String date = fileDateFormat.format(System.currentTimeMillis());
             File dir = AndroidUtilities.getLogsDir();
             if (dir == null) {
 
-                initStarted.set(false);
                 return;
             }
-            currentFile = new File(dir, date + ".txt");
-            tlRequestsFile = new File(dir, date + "_mtproto.txt");
-        } catch (Exception e) {
-            e.printStackTrace();
+            File logFile = new File(dir, date + ".txt");
+            File protocolFile = new File(dir, date + "_mtproto.txt");
+            writer = openWriter(logFile);
+            writer.write("-----start log " + date + "-----\n");
+            writer.flush();
+            protocolWriter = openWriter(protocolFile);
+            protocolWriter.write("-----start log " + date + "-----\n");
+            protocolWriter.flush();
+            currentFile = logFile;
+            tlRequestsFile = protocolFile;
+            streamWriter = writer;
+            tlStreamWriter = protocolWriter;
+            writer = null;
+            protocolWriter = null;
+            initied = true;
+        } catch (Exception | OutOfMemoryError e) {
+            Log.e(tag, "Unable to initialize log files", e);
+        } finally {
+            closeWriter(writer);
+            closeWriter(protocolWriter);
+                initStarted.set(false);
         }
+    }
+
+    private static void closeWriter(OutputStreamWriter writer) {
+        if (writer != null) {
+            try {
+                writer.close();
+            } catch (IOException e) {
+                Log.e(tag, "Unable to close log file", e);
+            }
+        }
+    }
+
+    private static OutputStreamWriter openWriter(File file) throws IOException {
+        FileOutputStream stream = new FileOutputStream(file);
         try {
-
-            logQueue = new DispatchQueue("logQueue");
-            final File openCurrentFile = currentFile;
-            final File openTlRequestsFile = tlRequestsFile;
-            final String openDate = date;
-            logQueue.postRunnable(() -> {
-                try {
-                    openCurrentFile.createNewFile();
-                    FileOutputStream stream = new FileOutputStream(openCurrentFile);
-                    OutputStreamWriter sw = new OutputStreamWriter(stream);
-                    sw.write("-----start log " + openDate + "-----\n");
-                    sw.flush();
-                    streamWriter = sw;
-
-                    FileOutputStream tlStream = new FileOutputStream(openTlRequestsFile);
-                    OutputStreamWriter tlsw = new OutputStreamWriter(tlStream);
-                    tlsw.write("-----start log " + openDate + "-----\n");
-                    tlsw.flush();
-                    tlStreamWriter = tlsw;
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
+            return new OutputStreamWriter(stream);
+        } catch (RuntimeException | Error e) {
+            try {
+                stream.close();
+            } catch (IOException closeError) {
+                e.addSuppressed(closeError);
+            }
+            throw e;
         }
-        initied = true;
     }
 
     public static void ensureInitied() {
@@ -433,7 +477,6 @@ public class FileLog {
         }
         ensureInitied();
         Log.e(tag, message, exception);
-        if (getInstance().streamWriter != null) {
             getInstance().postLog(() -> {
                 try {
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " E/tmessages: " + message + "\n");
@@ -448,7 +491,6 @@ public class FileLog {
                 }
             });
         }
-    }
 
     public static void e(final String message) {
         if (!BuildVars.LOGS_ENABLED) {
@@ -456,7 +498,6 @@ public class FileLog {
         }
         ensureInitied();
         Log.e(tag, message);
-        if (getInstance().streamWriter != null) {
             getInstance().postLog(() -> {
                 try {
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " E/tmessages: " + message + "\n");
@@ -465,7 +506,6 @@ public class FileLog {
                     e.printStackTrace();
                 }
             });
-        }
     }
 
     public static void e(final Throwable e) {
@@ -496,7 +536,6 @@ public class FileLog {
         }
         ensureInitied();
         e.printStackTrace();
-        if (getInstance().streamWriter != null) {
             getInstance().postLog(() -> {
                 try {
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " E/tmessages: " + e + "\n");
@@ -517,9 +556,6 @@ public class FileLog {
                     e1.printStackTrace();
                 }
             });
-        } else {
-            e.printStackTrace();
-        }
     }
 
     public static void fatal(final Throwable e) {
@@ -566,9 +602,12 @@ public class FileLog {
         }
         ensureInitied();
         e.printStackTrace();
-        if (getInstance().streamWriter != null) {
-            getInstance().postLog(() -> {
+        FileLog logger = getInstance();
+        if (!logger.postTask(() -> {
                 try {
+                    if (logger.streamWriter == null) {
+                        return;
+                    }
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " FATAL/tmessages: " + e + "\n");
                     StackTraceElement[] stack = e.getStackTrace();
                     for (int a = 0; a < stack.length; a++) {
@@ -585,14 +624,13 @@ public class FileLog {
                     getInstance().streamWriter.flush();
                 } catch (Exception e1) {
                     e1.printStackTrace();
-                }
+                } finally {
 
                 if (BuildVars.DEBUG_PRIVATE_VERSION) {
                     System.exit(2);
                 }
-            });
-        } else {
-            e.printStackTrace();
+                }
+            }, logger.pendingWrites, MAX_PENDING_WRITES, false)) {
             if (BuildVars.DEBUG_PRIVATE_VERSION) {
                 System.exit(2);
             }
@@ -612,7 +650,6 @@ public class FileLog {
         }
         ensureInitied();
         Log.d(tag, message);
-        if (getInstance().streamWriter != null) {
             getInstance().postLog(() -> {
                 try {
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " D/tmessages: " + message + "\n");
@@ -625,7 +662,6 @@ public class FileLog {
                 }
             });
         }
-    }
 
     public static void w(final String message) {
         if (!BuildVars.LOGS_ENABLED) {
@@ -633,7 +669,6 @@ public class FileLog {
         }
         ensureInitied();
         Log.w(tag, message);
-        if (getInstance().streamWriter != null) {
             getInstance().postLog(() -> {
                 try {
                     getInstance().streamWriter.write(getInstance().dateFormat.format(System.currentTimeMillis()) + " W/tmessages: " + message + "\n");
@@ -643,10 +678,17 @@ public class FileLog {
                 }
             });
         }
-    }
 
     public static void cleanupLogs() {
-        ensureInitied();
+        FileLog logger = getInstance();
+        logger.init();
+        DispatchQueue queue = logger.logQueue;
+        if (queue != null) {
+            queue.postRunnable(logger::cleanupLogsInternal);
+        }
+    }
+
+    private void cleanupLogsInternal() {
         File dir = AndroidUtilities.getLogsDir();
         if (dir == null) {
             return;
@@ -655,13 +697,13 @@ public class FileLog {
         if (files != null) {
             for (int a = 0; a < files.length; a++) {
                 File file = files[a];
-                if (getInstance().currentFile != null && file.getAbsolutePath().equals(getInstance().currentFile.getAbsolutePath())) {
+                if (currentFile != null && file.equals(currentFile)) {
                     continue;
                 }
-                if (getInstance().networkFile != null && file.getAbsolutePath().equals(getInstance().networkFile.getAbsolutePath())) {
+                if (tlRequestsFile != null && file.equals(tlRequestsFile)) {
                     continue;
                 }
-                if (getInstance().tonlibFile != null && file.getAbsolutePath().equals(getInstance().tonlibFile.getAbsolutePath())) {
+                if (file.equals(networkFile) || file.equals(tonlibFile)) {
                     continue;
                 }
                 file.delete();

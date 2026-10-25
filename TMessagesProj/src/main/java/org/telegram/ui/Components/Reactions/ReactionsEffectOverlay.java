@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components.Reactions;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.SuppressLint;
@@ -153,6 +153,7 @@ public class ReactionsEffectOverlay {
 
                         AvatarDrawable avatarDrawable = new AvatarDrawable();
                         ImageReceiver imageReceiver = new ImageReceiver();
+                        imageReceiver.setCurrentAccount(currentAccount);
                         long peerId = MessageObject.getPeerId(recentReactions.get(i).peer_id);
                         if (peerId < 0) {
                             chat = MessagesController.getInstance(currentAccount).getChat(-peerId);
@@ -767,8 +768,8 @@ public class ReactionsEffectOverlay {
     }
 
     public static void show(BaseFragment baseFragment, ReactionsContainerLayout reactionsLayout, View cell, View fromAnimationView, float x, float y, ReactionsLayoutInBubble.VisibleReaction visibleReaction, int currentAccount, int animationType) {
-        if (app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim
-                || app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay) {
+        if (app.nimarkogram.messenger.AppConfig.disableReactionAnim
+                || app.nimarkogram.messenger.AppConfig.disableReactionsOverlay) {
             return;
         }
         if (cell == null || visibleReaction == null || baseFragment == null || baseFragment.getParentActivity() == null) {
@@ -808,7 +809,7 @@ public class ReactionsEffectOverlay {
             reactionsEffectOverlay.windowManager = baseFragment.getParentActivity().getWindowManager();
             AndroidUtilities.setPreferredMaxRefreshRate(reactionsEffectOverlay.windowManager, reactionsEffectOverlay.windowView, lp);
             reactionsEffectOverlay.windowManager.addView(reactionsEffectOverlay.windowView, lp);
-            NimarkoAppMotionBlur.attachRoot(reactionsEffectOverlay.windowView);
+            AppMotionBlur.attachRoot(reactionsEffectOverlay.windowView);
         } else {
             reactionsEffectOverlay.decorView = (FrameLayout) baseFragment.getParentActivity().getWindow().getDecorView();
             reactionsEffectOverlay.decorView.addView(reactionsEffectOverlay.windowView);
@@ -821,8 +822,8 @@ public class ReactionsEffectOverlay {
     }
 
     public static void startAnimation() {
-        if (app.nimarkogram.messenger.NimarkoConfig.disableReactionAnim
-                || app.nimarkogram.messenger.NimarkoConfig.disableReactionsOverlay) {
+        if (app.nimarkogram.messenger.AppConfig.disableReactionAnim
+                || app.nimarkogram.messenger.AppConfig.disableReactionsOverlay) {
             return;
         }
         if (currentOverlay != null) {

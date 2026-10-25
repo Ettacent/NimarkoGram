@@ -12,8 +12,8 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.R;
 
 final class AutoDeleteTimerDrawable extends Drawable {
@@ -25,15 +25,15 @@ final class AutoDeleteTimerDrawable extends Drawable {
     private final RectF circle = new RectF(1.25f, 1.25f, 19.75f, 19.75f);
 
     static Drawable create(Context context, int selection, int size) {
-        if (selection != NimarkoConfig.ICON_REPLACE_SOLAR
-                && selection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                && selection != NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        if (selection != AppConfig.ICON_REPLACE_SOLAR
+                && selection != AppConfig.ICON_REPLACE_LIQUID_GLASS
+                && selection != AppConfig.ICON_REPLACE_PLUMPY) {
             return null;
         }
         Drawable artwork = null;
-        if (selection == NimarkoConfig.ICON_REPLACE_SOLAR) {
+        if (selection == AppConfig.ICON_REPLACE_SOLAR) {
             try {
-                artwork = NimarkoIconResources.getStockDrawable(context,
+                artwork = IconResources.getStockDrawable(context,
                         R.drawable.msg_mini_autodelete_empty_solar).mutate();
                 if (artwork.getIntrinsicWidth() <= 0 || artwork.getIntrinsicHeight() <= 0) {
                     return null;
@@ -52,13 +52,13 @@ final class AutoDeleteTimerDrawable extends Drawable {
         paint.setColor(0xffffffff);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(selection == NimarkoConfig.ICON_REPLACE_SOLAR ? 1.35f : 1.8f);
+        paint.setStrokeWidth(selection == AppConfig.ICON_REPLACE_SOLAR ? 1.35f : 1.8f);
         rim.set(paint);
         rim.setStrokeWidth(0.35f);
-        if (selection == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        if (selection == AppConfig.ICON_REPLACE_PLUMPY) {
             circle.set(0.875f, 0.875f, 20.125f, 20.125f);
             paint.setStrokeWidth(1.75f);
-        } else if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+        } else if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
             paint.setShader(new LinearGradient(2, 1, 19, 20,
                     new int[] {0x9effffff, 0x70ffffff, 0x42ffffff, 0x6affffff},
                     null, Shader.TileMode.CLAMP));
@@ -83,7 +83,7 @@ final class AutoDeleteTimerDrawable extends Drawable {
             } else {
                 canvas.scale(getBounds().width() / 21f, getBounds().height() / 21f);
                 drawShell(canvas, paint);
-                if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+                if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
                     drawShell(canvas, rim);
                 }
             }
@@ -93,7 +93,7 @@ final class AutoDeleteTimerDrawable extends Drawable {
     }
 
     private void drawShell(Canvas canvas, Paint material) {
-        if (selection == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        if (selection == AppConfig.ICON_REPLACE_PLUMPY) {
             for (int i = 0; i < 8; i++) {
                 canvas.drawArc(circle, -82 + i * 45, 24, false, material);
             }

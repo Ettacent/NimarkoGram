@@ -1,3 +1,8 @@
+/*
+ * Copyright github.com/arsLan4k1390, 2022-2026.
+ * It is licensed under GNU GPL v. 2 or later.
+ */
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /**
@@ -21,11 +26,11 @@ import org.telegram.ui.Components.UniversalAdapter;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 import app.nimarkogram.messenger.utils.VibrateUtils;
 
-public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+public class MessageMenuPreferencesActivity extends UniversalPreferencesActivity {
 
     static final int SETTING_ITEMS = 1;
     static final int SETTING_ORDER = 2;
@@ -52,17 +57,17 @@ public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesA
             items.add(SettingsHelper.asSwitchCG(SETTING_HAPTIC,
                             getString(R.string.NM_Menu_Haptic),
                             getString(R.string.NM_Menu_Haptic_Desc))
-                    .setChecked(NimarkoConfig.messageMenuHaptic));
+                    .setChecked(AppConfig.messageMenuHaptic));
         }
         items.add(SettingsHelper.asSwitchCG(SETTING_MODERN_MENU,
                         getString(R.string.NM_Menu_TelegramPlus),
                         getString(R.string.NM_Menu_TelegramPlus_Desc))
-                .setChecked(NimarkoConfig.telegramPlusMessageMenu));
+                .setChecked(AppConfig.telegramPlusMessageMenu));
         items.add(SettingsHelper.asSwitchCG(SETTING_COMPACT_LAYOUT,
                         getString(R.string.NM_MessageMenuCompactLayout),
                         getString(R.string.NM_MessageMenuCompactLayout_Desc) + " "
                                 + getString(R.string.NM_MessageMenuCompactLayout_Dot))
-                .setChecked(NimarkoConfig.msgMenuItemsCompactView));
+                .setChecked(AppConfig.msgMenuItemsCompactView));
         items.add(UItem.asShadow(null));
     }
 
@@ -75,16 +80,16 @@ public class MessageMenuPreferencesActivity extends NimarkoUniversalPreferencesA
             case SETTING_ITEMS -> presentFragment(new MessageMenuItemsPreferencesActivity());
             case SETTING_ORDER -> presentFragment(new MessageMenuOrderPreferencesActivity());
             case SETTING_HAPTIC -> {
-                NimarkoConfig.toggleMessageMenuHaptic();
-                updateCheckState(view, NimarkoConfig.messageMenuHaptic);
+                AppConfig.toggleMessageMenuHaptic();
+                updateCheckState(view, AppConfig.messageMenuHaptic);
             }
             case SETTING_MODERN_MENU -> {
-                NimarkoConfig.toggleTelegramPlusMessageMenu();
-                updateCheckState(view, NimarkoConfig.telegramPlusMessageMenu);
+                AppConfig.toggleTelegramPlusMessageMenu();
+                updateCheckState(view, AppConfig.telegramPlusMessageMenu);
             }
             case SETTING_COMPACT_LAYOUT -> {
-                NimarkoConfig.toggleMsgMenuItemsCompactView();
-                updateCheckState(view, NimarkoConfig.msgMenuItemsCompactView);
+                AppConfig.toggleMsgMenuItemsCompactView();
+                updateCheckState(view, AppConfig.msgMenuItemsCompactView);
             }
         }
     }

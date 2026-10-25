@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2018 The WebRTC project authors. All Rights Reserved.
  *
@@ -124,6 +126,7 @@ class PeerConnectionSdpMethods {
   // Tears down the data channel transport state and clears the `sctp_mid()` and
   // `sctp_transport_name()` properties.
   virtual void DestroyDataChannelTransport(RTCError error) = 0;
+  virtual void ResetSctpDataMidAfterRollback() {}
   virtual const FieldTrialsView& trials() const = 0;
 
   virtual void ClearStatsCache() = 0;

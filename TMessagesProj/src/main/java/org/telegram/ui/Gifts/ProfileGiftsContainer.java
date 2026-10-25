@@ -1607,6 +1607,13 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         }
     }
 
+    public int getButtonBulletinOffset(View root) {
+        if (root == null || buttonContainer == null || buttonContainer.getVisibility() != View.VISIBLE || buttonContainer.getAlpha() <= 0) return 0;
+        final int[] rootLocation = new int[2], buttonLocation = new int[2];
+        root.getLocationInWindow(rootLocation);
+        buttonContainer.getLocationInWindow(buttonLocation);
+        return Math.max(0, (int) ((rootLocation[1] + root.getHeight() - buttonLocation[1]) * buttonContainer.getAlpha()));
+    }
     public int getBottomOffset() {
         float ty = buttonContainer.getTranslationY();
         ty -= -buttonContainer.getTop() + Math.max(dp(240), visibleHeight) - dp(buttonContainerHeightDp) - 1;
@@ -1783,7 +1790,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             final TL_stars.SavedStarGift gift = list.gifts.get(i);
             final TLRPC.Document doc = gift.gift.getDocument();
             if (doc == null) continue;
-            giftsIds.add(doc.id);
+            if (!giftsIds.add(doc.id)) continue;
             hash = Objects.hash(hash, doc.id);
             giftsCount++;
         }

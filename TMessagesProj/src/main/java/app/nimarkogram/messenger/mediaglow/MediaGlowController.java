@@ -30,18 +30,18 @@ import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public final class MediaGlowController {
 
-    private static final int MAX_SIDE = 256;             
-    private static final int VIDEO_REFRESH_MS = 450;     
+    private static final int MAX_SIDE = 256;
+    private static final int VIDEO_REFRESH_MS = 450;
     private static final float VIDEO_BLEND_ALPHA = 0.32f;
-    private static final float VIDEO_FADE_MS = 280f;     
+    private static final float VIDEO_FADE_MS = 280f;
     private static final long PHOTO_RETRY_INTERVAL_MS = 120L;
     private static final long NEW_MEDIA_CAPTURE_TIMEOUT_MS = 1800L;
-    private static final long CLOSE_FADE_MS = 280L;      
-    private static final int[] RETRY_DELAYS = {0, 120, 350}; 
+    private static final long CLOSE_FADE_MS = 280L;
+    private static final int[] RETRY_DELAYS = {0, 120, 350};
     private static final DispatchQueue queue = new DispatchQueue("nimarko-media-glow");
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -68,11 +68,11 @@ public final class MediaGlowController {
     private boolean pendingIsVideo;
     private boolean pendingFirstOfItem;
     private long fadeStartedAt;
-    private long closeFadeStartedAt;                                 
-    private final Runnable closeReleaseRunnable = this::nmReleaseNow; 
-    private float liveDismiss = 1f;  
-    private float closeDismiss = 1f; 
-    
+    private long closeFadeStartedAt;
+    private final Runnable closeReleaseRunnable = this::nmReleaseNow;
+    private float liveDismiss = 1f;
+    private float closeDismiss = 1f;
+
     private float closeDstLeft, closeDstTop, closeDstRight, closeDstBottom;
     private float closePrevDstLeft, closePrevDstTop, closePrevDstRight, closePrevDstBottom;
     private float closeTransitionProgress = 1f;
@@ -86,15 +86,15 @@ public final class MediaGlowController {
     private long mediaChangedAt;
     private boolean active;
     private ImageReceiver pendingPhotoRecapture;
-    
+
     private volatile int capturingGeneration = -1;
     private volatile int captureGeneration;
     private boolean capturedThisOpen;
     private boolean captureTimedOut;
-    
+
     private WeakReference<View> containerRef;
     private WeakReference<TextureView> videoTextureRef;
-    
+
     private volatile boolean forceNextCapture;
     private WeakReference<Object> ownerRef;
 
@@ -112,9 +112,9 @@ public final class MediaGlowController {
             boolean dark = ColorUtils.calculateLuminance(bg) < 0.5;
             darkTheme = dark;
             if (dark) {
-                int tint = ColorUtils.blendARGB(bg, Color.BLACK, 0.85f);  
+                int tint = ColorUtils.blendARGB(bg, Color.BLACK, 0.85f);
                 scrimColorPhoto = ColorUtils.setAlphaComponent(tint, 110);
-                scrimColorVideo = ColorUtils.setAlphaComponent(tint, 135); 
+                scrimColorVideo = ColorUtils.setAlphaComponent(tint, 135);
             } else {
                 scrimColorPhoto = Color.argb(70, 0, 0, 0);
                 scrimColorVideo = Color.argb(90, 0, 0, 0);
@@ -128,7 +128,7 @@ public final class MediaGlowController {
 
     public void onMediaChanged(Object owner, final ImageReceiver centerImage, final TextureView videoTexture) {
         if (owner == null) return;
-        if (!NimarkoConfig.mediaGlow) {
+        if (!AppConfig.mediaGlow) {
             release(owner);
             return;
         }
@@ -141,18 +141,18 @@ public final class MediaGlowController {
         active = true;
         videoTextureRef = videoTexture == null ? null : new WeakReference<>(videoTexture);
         refreshTheme();
-        
+
         if (pending != null) { recycle(pending); pending = null; }
         pendingIsVideo = false;
         pendingFirstOfItem = false;
         if (closeFadeStartedAt != 0) {
-            
+
             recycle(previous);
             previous = null;
             previousIsVideo = false;
             closeTransitionProgress = 1f;
         }
-        closeFadeStartedAt = 0;                              
+        closeFadeStartedAt = 0;
         closeGeomValid = false;
         closePrevGeomValid = false;
         AndroidUtilities.cancelRunOnUIThread(closeReleaseRunnable);
@@ -161,7 +161,7 @@ public final class MediaGlowController {
         capturedThisOpen = false;
         captureTimedOut = false;
         lastSignature = null;
-        forceNextCapture = true;   
+        forceNextCapture = true;
         lastVideoCaptureAt = 0;
         lastVideoFrameRequestAt = 0;
         lastPhotoCaptureAttemptAt = 0;
@@ -174,7 +174,7 @@ public final class MediaGlowController {
     private void scheduleRetry(final ImageReceiver centerImage, final TextureView videoTexture, int attempt, int gen) {
         if (attempt >= RETRY_DELAYS.length) return;
         AndroidUtilities.runOnUIThread(() -> {
-            if (gen != captureGeneration || capturedThisOpen || !NimarkoConfig.mediaGlow) return;
+            if (gen != captureGeneration || capturedThisOpen || !AppConfig.mediaGlow) return;
             boolean isVideo = supportsAsyncVideoCapture() && isViewReady(videoTexture);
             maybeCapture(centerImage, videoTexture, isVideo, gen);
             scheduleRetry(centerImage, videoTexture, attempt + 1, gen);
@@ -182,8 +182,8 @@ public final class MediaGlowController {
     }
 
     private void clearStaleGlowAfterTimeout(int gen) {
-        if (!active || gen != captureGeneration || capturedThisOpen || !NimarkoConfig.mediaGlow) return;
-        captureGeneration++; 
+        if (!active || gen != captureGeneration || capturedThisOpen || !AppConfig.mediaGlow) return;
+        captureGeneration++;
         capturingGeneration = -1;
         pendingPhotoRecapture = null;
         captureTimedOut = true;
@@ -209,18 +209,18 @@ public final class MediaGlowController {
     public void onClose(Object owner) {
         if (!isOwner(owner)) return;
         active = false;
-        if (current != null && NimarkoConfig.mediaGlow && closeFadeStartedAt == 0) {
-            captureGeneration++;       
+        if (current != null && AppConfig.mediaGlow && closeFadeStartedAt == 0) {
+            captureGeneration++;
             capturingGeneration = -1;
             if (pending != null) { recycle(pending); pending = null; }
             pendingIsVideo = false;
             pendingFirstOfItem = false;
-            
+
             closeTransitionProgress = fadeStartedAt != 0
                     ? transitionProgress(SystemClock.elapsedRealtime()) : 1f;
             fadeStartedAt = 0;
-            closeDismiss = liveDismiss;   
-            closeGeomValid = false;       
+            closeDismiss = liveDismiss;
+            closeGeomValid = false;
             closePrevGeomValid = false;
             if (lastDrawWidth > 0 && lastDrawHeight > 0) {
                 prepareCloseGeometry(current, lastDrawWidth, lastDrawHeight, false);
@@ -228,7 +228,7 @@ public final class MediaGlowController {
             }
             closeFadeStartedAt = SystemClock.elapsedRealtime();
             AndroidUtilities.cancelRunOnUIThread(closeReleaseRunnable);
-            AndroidUtilities.runOnUIThread(closeReleaseRunnable, CLOSE_FADE_MS);   
+            AndroidUtilities.runOnUIThread(closeReleaseRunnable, CLOSE_FADE_MS);
             return;
         }
         nmReleaseNow();
@@ -247,7 +247,7 @@ public final class MediaGlowController {
     }
 
     public void onPhotoUpdated(Object owner, ImageReceiver centerImage) {
-        if (!isOwner(owner) || !active || !NimarkoConfig.mediaGlow || closeFadeStartedAt != 0 || centerImage == null) return;
+        if (!isOwner(owner) || !active || !AppConfig.mediaGlow || closeFadeStartedAt != 0 || centerImage == null) return;
         if (captureTimedOut) {
             captureTimedOut = false;
             forceNextCapture = true;
@@ -265,14 +265,14 @@ public final class MediaGlowController {
     }
 
     public void onVideoFrameAvailable(Object owner) {
-        if (!isOwner(owner) || !active || !NimarkoConfig.mediaGlow || closeFadeStartedAt != 0) return;
+        if (!isOwner(owner) || !active || !AppConfig.mediaGlow || closeFadeStartedAt != 0) return;
         long now = SystemClock.elapsedRealtime();
         if (now - lastVideoFrameRequestAt < VIDEO_REFRESH_MS) return;
         lastVideoFrameRequestAt = now;
         final int gen = captureGeneration;
         final TextureView texture = videoTextureRef != null ? videoTextureRef.get() : null;
         if (!isViewReady(texture)) return;
-        
+
         AndroidUtilities.runOnUIThread(() -> {
             if (active && gen == captureGeneration && closeFadeStartedAt == 0
                     && isViewReady(texture)) {
@@ -283,7 +283,7 @@ public final class MediaGlowController {
 
     private void nmReleaseNow() {
         AndroidUtilities.cancelRunOnUIThread(closeReleaseRunnable);
-        captureGeneration++;          
+        captureGeneration++;
         capturingGeneration = -1;
         pendingPhotoRecapture = null;
         capturedThisOpen = false;
@@ -319,20 +319,20 @@ public final class MediaGlowController {
 
     public void draw(Object owner, Canvas canvas, View container, ImageReceiver centerImage, TextureView videoTexture, float dismiss) {
         if (!isOwner(owner)) return;
-        if (!NimarkoConfig.mediaGlow) {
+        if (!AppConfig.mediaGlow) {
             if (current != null || previous != null || pending != null || capturingGeneration >= 0) {
-                release(owner);   
+                release(owner);
             }
             return;
         }
         if (container != null && (containerRef == null || containerRef.get() != container)) {
-            containerRef = new WeakReference<>(container);   
+            containerRef = new WeakReference<>(container);
         }
         if (videoTexture != null && (videoTextureRef == null || videoTextureRef.get() != videoTexture)) {
             videoTextureRef = new WeakReference<>(videoTexture);
         }
-        liveDismiss = dismiss;   
-        
+        liveDismiss = dismiss;
+
         if (closeFadeStartedAt != 0) {
             if (current == null || current.isRecycled()) {
                 nmReleaseNow();
@@ -348,14 +348,14 @@ public final class MediaGlowController {
                         previousLayerAlpha(a * mediaAlpha(previousIsVideo) * (1f - closeTransitionProgress), currentAlpha), true);
             }
             drawCloseCover(canvas, current, cw, ch, currentAlpha, false);
-            return;   
+            return;
         }
         if (!active) return;
         long now = SystemClock.elapsedRealtime();
         if (!(supportsAsyncVideoCapture() && isViewReady(videoTexture)) && !capturedThisOpen
                 && now - mediaChangedAt < NEW_MEDIA_CAPTURE_TIMEOUT_MS
                 && now - lastPhotoCaptureAttemptAt >= PHOTO_RETRY_INTERVAL_MS) {
-            
+
             lastPhotoCaptureAttemptAt = now;
             maybeCapture(centerImage, null, false, captureGeneration);
         }
@@ -402,10 +402,10 @@ public final class MediaGlowController {
         float left = (w - dw) / 2f, top = (h - dh) / 2f;
         srcRect.set(0, 0, bw, bh);
         dstRect.set(left, top, left + dw, top + dh);
-        
+
         coverPaint.setFilterBitmap(true);
         coverPaint.setAlpha(Math.max(0, Math.min(255, (int) (255 * alpha))));
-        
+
         canvas.drawBitmap(bmp, srcRect, dstRect, coverPaint);
     }
 
@@ -455,7 +455,7 @@ public final class MediaGlowController {
         if (!active || capturingGeneration == gen || gen != captureGeneration) return;
 
         if (isVideo) {
-            refreshTheme();   
+            refreshTheme();
             lastVideoCaptureAt = SystemClock.elapsedRealtime();
             capturingGeneration = gen;
             final int radius = blurRadius();
@@ -466,7 +466,7 @@ public final class MediaGlowController {
                     AndroidUtilities.runOnUIThread(() -> captureFinished(gen));
                     return;
                 }
-                if (gen != captureGeneration || !NimarkoConfig.mediaGlow) {
+                if (gen != captureGeneration || !AppConfig.mediaGlow) {
                     recycle(frame);
                     AndroidUtilities.runOnUIThread(() -> captureFinished(gen));
                     return;
@@ -481,8 +481,8 @@ public final class MediaGlowController {
                 AndroidUtilities.runOnUIThread(() -> apply(glow, true, force, sig, gen));
             }));
         } else {
-            
-            refreshTheme();   
+
+            refreshTheme();
             final ImageReceiver.BitmapHolder holder = grabImageHolder(centerImage);
             if (holder == null) return;
             capturingGeneration = gen;
@@ -490,7 +490,7 @@ public final class MediaGlowController {
             final int scrim = scrimColorPhoto;
             final boolean force = forceNextCapture;
             queue.postRunnable(() -> {
-                if (gen != captureGeneration || !NimarkoConfig.mediaGlow) {
+                if (gen != captureGeneration || !AppConfig.mediaGlow) {
                     holder.release();
                     AndroidUtilities.runOnUIThread(() -> captureFinished(gen));
                     return;
@@ -524,7 +524,7 @@ public final class MediaGlowController {
             ImageReceiver retry = pendingPhotoRecapture;
             pendingPhotoRecapture = null;
             if (active && retry != null && gen == captureGeneration) {
-                
+
                 AndroidUtilities.runOnUIThread(() -> {
                     if (active && gen == captureGeneration && capturingGeneration != gen) {
                         maybeCapture(retry, null, false, gen);
@@ -537,20 +537,20 @@ public final class MediaGlowController {
     private void apply(Bitmap glow, boolean isVideo, boolean firstOfItem, String signature, int gen) {
         captureFinished(gen);
         if (glow == null) return;
-        if (!active || gen != captureGeneration || !NimarkoConfig.mediaGlow) {
-            recycle(glow);   
+        if (!active || gen != captureGeneration || !AppConfig.mediaGlow) {
+            recycle(glow);
             return;
         }
         lastSignature = signature;
         capturedThisOpen = true;
         captureTimedOut = false;
-        
+
         if (firstOfItem) {
             forceNextCapture = false;
         }
         long now = SystemClock.elapsedRealtime();
         if (fadeStartedAt != 0 && transitionProgress(now) < 1f) {
-            
+
             recycle(pending);
             pending = glow;
             pendingIsVideo = isVideo;
@@ -562,7 +562,7 @@ public final class MediaGlowController {
             }
             startTransition(glow, isVideo, firstOfItem);
         }
-        
+
         View c = containerRef != null ? containerRef.get() : null;
         requestFrame(c);
     }
@@ -584,7 +584,7 @@ public final class MediaGlowController {
         if (glow == null || glow.isRecycled()) return;
         Bitmap target = glow;
         if (isVideo && !firstOfItem && current != null && !current.isRecycled()) {
-            
+
             target = blendOnto(current, glow, VIDEO_BLEND_ALPHA);
         }
         if (current != null && !current.isRecycled()) {
@@ -646,7 +646,7 @@ public final class MediaGlowController {
             return copy;
         } catch (Throwable t) {
             recycle(copy);
-            return incoming;   
+            return incoming;
         }
     }
 
@@ -725,12 +725,12 @@ public final class MediaGlowController {
     private static Bitmap makeGlow(Bitmap bmp, int radius, int scrim) {
         if (bmp == null || bmp.isRecycled()) return null;
         try {
-            
+
             Utilities.stackBlurBitmap(bmp, Math.max(1, Math.min(radius, 60)));
             int bw = bmp.getWidth(), bh = bmp.getHeight();
             Canvas c = new Canvas(bmp);
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-            
+
             int alpha = Color.alpha(scrim);
             int cEdge = ColorUtils.setAlphaComponent(scrim, Math.min(255, Math.round(alpha * 1.15f)));
             int cMid = ColorUtils.setAlphaComponent(scrim, Math.max(0, Math.round(alpha * 0.85f)));
@@ -765,7 +765,7 @@ public final class MediaGlowController {
                     int py = Math.min(h - 1, Math.max(0, (int) ((gy + 0.5f) / 3f * h)));
                     int cc = bmp.getPixel(px, py);
                     int luma = (((cc >> 16) & 0xFF) * 77 + ((cc >> 8) & 0xFF) * 151 + (cc & 0xFF) * 28) >> 8;
-                    sb.append(':').append(luma >> 3);   
+                    sb.append(':').append(luma >> 3);
                 }
             }
             return sb.toString();
@@ -785,7 +785,7 @@ public final class MediaGlowController {
         return v * v * (3f - 2f * v);
     }
 
-    private static float easeOut(float v) {   
+    private static float easeOut(float v) {
         v = Math.max(0f, Math.min(1f, v));
         return 1f - (1f - v) * (1f - v);
     }
@@ -797,6 +797,6 @@ public final class MediaGlowController {
         return 36;
     }
     private static float fadeDurationMs() {
-        return 480f;   
+        return 480f;
     }
 }

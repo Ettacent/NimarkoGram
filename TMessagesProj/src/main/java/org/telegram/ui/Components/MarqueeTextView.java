@@ -19,7 +19,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.core.math.MathUtils;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 
 @SuppressLint("AppCompatCustomView")
 public class MarqueeTextView extends TextView {
@@ -109,7 +109,7 @@ public class MarqueeTextView extends TextView {
     private long lastFrameTime;
 
     private boolean canAnimate() {
-        if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || !isShown()
+        if (UiAnimationClock.isPaused() || !isAttachedToWindow() || !isShown()
                 || getWindowVisibility() != VISIBLE) return false;
         View view = this;
         while (view != null) {
@@ -131,7 +131,7 @@ public class MarqueeTextView extends TextView {
         wakeupGeneration++;
         if (marqueeWakeup != null) {
             if (preserveDelay) remainingDelay = Math.max(0L,
-                    remainingDelay - Math.max(0L, NimarkoUiAnimationClock.now() - delayStartedAt));
+                    remainingDelay - Math.max(0L, UiAnimationClock.now() - delayStartedAt));
             removeCallbacks(marqueeWakeup);
             marqueeWakeup = null;
         }
@@ -140,7 +140,7 @@ public class MarqueeTextView extends TextView {
     private void scheduleMarqueeWakeup() {
         if (marqueeWakeup != null) return;
         final int generation = ++wakeupGeneration;
-        delayStartedAt = NimarkoUiAnimationClock.now();
+        delayStartedAt = UiAnimationClock.now();
         marqueeWakeup = () -> {
             if (generation != wakeupGeneration) return;
             cancelMarqueeWakeup(true);
@@ -194,8 +194,8 @@ public class MarqueeTextView extends TextView {
             suspendMarquee();
             return;
         }
-        final long time = NimarkoUiAnimationClock.now();
-        final int epoch = NimarkoUiAnimationClock.epoch();
+        final long time = UiAnimationClock.now();
+        final int epoch = UiAnimationClock.epoch();
         if (clockEpoch != epoch) {
             suspendMarquee();
         }

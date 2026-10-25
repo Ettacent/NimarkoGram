@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.preferences.components;
 
 import android.annotation.SuppressLint;
@@ -24,7 +24,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.SeekBarView;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 @SuppressLint("ViewConstructor")
 public class StickerSizeCell extends FrameLayout {
@@ -35,15 +35,15 @@ public class StickerSizeCell extends FrameLayout {
     private final SeekBarView seekBar;
     private StickerSizePreviewCell preview;
 
-    private final int min = (int) NimarkoConfig.STICKER_SIZE_MIN;
-    private final int max = (int) NimarkoConfig.STICKER_SIZE_MAX;
+    private final int min = (int) AppConfig.STICKER_SIZE_MIN;
+    private final int max = (int) AppConfig.STICKER_SIZE_MAX;
     private int lastHaptic = Integer.MIN_VALUE;
 
     public StickerSizeCell(Context context, BaseFragment fragment) {
         super(context);
         setWillNotDraw(false);
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-        
+
         setClipChildren(false);
         setClipToPadding(false);
 
@@ -79,21 +79,21 @@ public class StickerSizeCell extends FrameLayout {
 
         seekBar = new SeekBarView(context, true, null);
         seekBar.setReportChanges(true);
-        seekBar.setLineWidth(6); 
+        seekBar.setLineWidth(6);
         seekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
             @Override
             public void onSeekBarDrag(boolean stop, float progress) {
                 if (LocaleController.isRTL) progress = 1f - progress;
                 float value = min + (max - min) * progress;
-                NimarkoConfig.setStickerSize(value);
+                AppConfig.setStickerSize(value);
                 onValueChanged(Math.round(value));
-                
+
                 if (preview != null) preview.update();
             }
             @Override
             public void onSeekBarPressed(boolean pressed) {}
             @Override public CharSequence getContentDescription() {
-                return getString(R.string.NM_StickerSize) + ": " + Math.round(NimarkoConfig.stickerSize);
+                return getString(R.string.NM_StickerSize) + ": " + Math.round(AppConfig.stickerSize);
             }
             @Override public int getStepsCount() { return max - min; }
             @Override public boolean isAccessibilityProgressInverted() { return LocaleController.isRTL; }
@@ -118,13 +118,13 @@ public class StickerSizeCell extends FrameLayout {
             addView(preview, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                     Gravity.TOP | Gravity.FILL_HORIZONTAL, 0, 112, 0, 0));
         } catch (Throwable ignore) {
-            
+
             preview = null;
         }
 
-        float progress = (NimarkoConfig.stickerSize - min) / (float) (max - min);
+        float progress = (AppConfig.stickerSize - min) / (float) (max - min);
         seekBar.setProgress(LocaleController.isRTL ? 1f - progress : progress);
-        onValueChanged(Math.round(NimarkoConfig.stickerSize), false);
+        onValueChanged(Math.round(AppConfig.stickerSize), false);
     }
 
     public void refreshPreview() {
@@ -134,14 +134,14 @@ public class StickerSizeCell extends FrameLayout {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        
+
         if (preview != null && preview.getVisibility() != GONE) {
             int w = MeasureSpec.getSize(widthMeasureSpec);
             preview.measure(
                     MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
                     MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
             int needed = AndroidUtilities.dp(112) + preview.getMeasuredHeight();
-            
+
             setMeasuredDimension(getMeasuredWidth(), needed);
         }
     }
@@ -161,7 +161,7 @@ public class StickerSizeCell extends FrameLayout {
         }
         valueChip.cancelAnimation();
         valueChip.setText(text.toString().toUpperCase(), animated);
-        
+
         if (value != lastHaptic) {
             try {
                 performHapticFeedback(

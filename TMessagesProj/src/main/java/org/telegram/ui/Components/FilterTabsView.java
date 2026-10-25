@@ -137,7 +137,7 @@ public class FilterTabsView extends FrameLayout {
 
         public Tab(int i, CharSequence title, boolean noanimate, String emoticon) {
             this.id = i;
-            this.title = (app.nimarkogram.messenger.NimarkoConfig.tabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_ICON) ? "" : title;
+            this.title = (app.nimarkogram.messenger.AppConfig.tabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON) ? "" : title;
             this.realTitle = title;
             this.noanimate = noanimate;
             this.emoticon = (emoticon != null ? emoticon : "");
@@ -181,7 +181,7 @@ public class FilterTabsView extends FrameLayout {
             if (TextUtils.equals(title, newTitle)) {
                 return false;
             }
-            title = app.nimarkogram.messenger.NimarkoConfig.tabMode != app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_ICON ? new SpannableStringBuilder(newTitle) : (CharSequence) "";
+            title = app.nimarkogram.messenger.AppConfig.tabMode != app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON ? new SpannableStringBuilder(newTitle) : (CharSequence) "";
             realTitle = newTitle;
             title = Emoji.replaceEmoji(title, textPaint.getFontMetricsInt(), false);
             title = MessageObject.replaceAnimatedEmoji(title, newEntities, textPaint.getFontMetricsInt());
@@ -271,8 +271,8 @@ public class FilterTabsView extends FrameLayout {
 
         private void ensureFolderIconDrawable() {
             if (currentTab == null
-                    || app.nimarkogram.messenger.NimarkoConfig.tabMode
-                    == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_TEXT) {
+                    || app.nimarkogram.messenger.AppConfig.tabMode
+                    == app.nimarkogram.messenger.AppConfig.TAB_TYPE_TEXT) {
                 currentEmoticon = null;
                 icon = null;
                 return;
@@ -302,7 +302,7 @@ public class FilterTabsView extends FrameLayout {
             currentPosition = position;
             setContentDescription(tab.title);
             ensureFolderIconDrawable();
-            final int tabMode = app.nimarkogram.messenger.NimarkoConfig.tabMode;
+            final int tabMode = app.nimarkogram.messenger.AppConfig.tabMode;
             final int tabWidth = tab.getWidth(false);
             if (boundTabWidth != tabWidth || boundTabMode != tabMode) {
                 boundTabWidth = tabWidth;
@@ -458,15 +458,15 @@ public class FilterTabsView extends FrameLayout {
             }
 
             tabCounterVisible = (countWidth != 0 && !animateCounterRemove) ? (counterText != null ? 1.0f : editingStartAnimationProgress) : 0;
-            int nmTabMode = app.nimarkogram.messenger.NimarkoConfig.tabMode;
-            if (nmTabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_ICON) {
+            int nmTabMode = app.nimarkogram.messenger.AppConfig.tabMode;
+            if (nmTabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON) {
                 tabWidth = currentTab.iconWidth + ((countWidth != 0 && !animateCounterRemove) ? countWidth + dp(-2 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
-            } else if (nmTabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_TEXT) {
+            } else if (nmTabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_TEXT) {
                 tabWidth = currentTab.titleWidth + ((countWidth != 0 && !animateCounterRemove) ? countWidth + dp(-2 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
             } else {
                 tabWidth = currentTab.iconWidth + currentTab.titleWidth + ((countWidth != 0 && !animateCounterRemove) ? countWidth + dp(-2 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
             }
-            float textX = ((getMeasuredWidth() - tabWidth) / 2f) + currentTab.iconWidth - (countWidth != 0 && nmTabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_MIX ? dp(4) : 0);
+            float textX = ((getMeasuredWidth() - tabWidth) / 2f) + currentTab.iconWidth - (countWidth != 0 && nmTabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_MIX ? dp(4) : 0);
             if (animateTextX) {
                 textX = textX * changeProgress + animateFromTextX * (1f - changeProgress);
             }
@@ -520,14 +520,14 @@ public class FilterTabsView extends FrameLayout {
             }
 
             int iconX = 0;
-            if (nmTabMode != app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_TEXT) {
+            if (nmTabMode != app.nimarkogram.messenger.AppConfig.TAB_TYPE_TEXT) {
                 int emoticonSize = app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getIconWidth();
-                final boolean nmShrink = app.nimarkogram.messenger.NimarkoConfig.iconReplacement == app.nimarkogram.messenger.NimarkoConfig.ICON_REPLACE_PLUMPY
-                        || app.nimarkogram.messenger.NimarkoConfig.iconReplacement == app.nimarkogram.messenger.NimarkoConfig.ICON_REPLACE_LIQUID_GLASS;
+                final boolean nmShrink = app.nimarkogram.messenger.AppConfig.iconReplacement == app.nimarkogram.messenger.AppConfig.ICON_REPLACE_PLUMPY
+                        || app.nimarkogram.messenger.AppConfig.iconReplacement == app.nimarkogram.messenger.AppConfig.ICON_REPLACE_LIQUID_GLASS;
                 ensureFolderIconDrawable();
                 if (icon != null) {
                     icon.setTint(textPaint.getColor());
-                    iconX = (int) (((getMeasuredWidth() - tabWidth) / 2f) - (countWidth != 0 && nmTabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_MIX ? dp(4) : 0));
+                    iconX = (int) (((getMeasuredWidth() - tabWidth) / 2f) - (countWidth != 0 && nmTabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_MIX ? dp(4) : 0));
                     if (animateIconX) {
                         iconX = (int) (iconX * changeProgress + animateFromIconX * (1f - changeProgress));
                     }
@@ -588,7 +588,7 @@ public class FilterTabsView extends FrameLayout {
                 if (animateTextChange) {
                     titleWidth = animateFromTitleWidth * (1f - changeProgress) + currentTab.titleWidth * changeProgress;
                 }
-                int textSpace = dp(nmTabMode == app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_ICON ? 3 : 6);
+                int textSpace = dp(nmTabMode == app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON ? 3 : 6);
                 if (animateTextChange && titleAnimateOutLayout == null) {
                     x = textX - titleXOffset + titleOffsetX + titleWidth + textSpace;
                 } else {
@@ -779,9 +779,9 @@ public class FilterTabsView extends FrameLayout {
             } else {
                 countWidth = 0;
             }
-            int nmTabModeAC = app.nimarkogram.messenger.NimarkoConfig.tabMode;
+            int nmTabModeAC = app.nimarkogram.messenger.AppConfig.tabMode;
             int tabWidth;
-            if (nmTabModeAC != app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_ICON) {
+            if (nmTabModeAC != app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON) {
                 tabWidth = currentTab.iconWidth + currentTab.titleWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
             } else {
                 tabWidth = currentTab.iconWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
@@ -845,7 +845,7 @@ public class FilterTabsView extends FrameLayout {
                 }
             }
 
-            if (nmTabModeAC != app.nimarkogram.messenger.NimarkoConfig.TAB_TYPE_TEXT) {
+            if (nmTabModeAC != app.nimarkogram.messenger.AppConfig.TAB_TYPE_TEXT) {
                 int iconXNow = (int) ((getMeasuredWidth() - tabWidth) / 2f);
 
                 if (iconXNow != lastIconX) {
@@ -1294,7 +1294,7 @@ public class FilterTabsView extends FrameLayout {
             }
             TabView tabView = (TabView) view;
             if (isEditing) {
-                if (position != 0 || app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+                if (position != 0 || app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
                     int side = dp(6);
                     if (tabView.rect.left - side < x && tabView.rect.right + side > x) {
                         delegate.onDeletePressed(tabView.currentTab.id);
@@ -1739,7 +1739,7 @@ public class FilterTabsView extends FrameLayout {
                 counterVisible = tabView.tabCounterVisible;
             }
         }
-        if (app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) {
+        if (app.nimarkogram.messenger.AppConfig.tabStyleStroke) {
             selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
             selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey, resourcesProvider), 50));
         }
@@ -1762,7 +1762,7 @@ public class FilterTabsView extends FrameLayout {
             canvas.translate(translation, offsetY);
             canvas.scale(scale, 1f, pivot, listView.getPivotY());
             selectorDrawable.setBounds(left, y, right, y + dp(28));
-            if (!app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) selectorDrawable.setAlpha(31);
+            if (!app.nimarkogram.messenger.AppConfig.tabStyleStroke) selectorDrawable.setAlpha(31);
             selectorDrawable.draw(canvas);
             canvas.restore();
         }
@@ -1821,12 +1821,12 @@ public class FilterTabsView extends FrameLayout {
         }
 
         final Tab firstTab = findDefaultTab();
-        if (firstTab == null && !app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+        if (firstTab == null && !app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
             return false;
         }
 
         final int trueTabsWidth;
-        if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+        if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
             firstTab.setTitle(LocaleController.getString(R.string.FilterAllChats), null, false);
             final int fullTitleWidth = firstTab.getWidth(false);
             firstTab.setTitle(
@@ -2178,7 +2178,7 @@ public class FilterTabsView extends FrameLayout {
                 invalidated = true;
                 requestLayout();
                 allTabsWidth = 0;
-                if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+                if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
                     final Tab defaultTab = findDefaultTab();
                     if (defaultTab != null) {
                         defaultTab.setTitle(LocaleController.getString(R.string.FilterAllChats), null, false);
@@ -2223,7 +2223,7 @@ public class FilterTabsView extends FrameLayout {
                 adapter.notifyDataSetChanged();
             }
             allTabsWidth = 0;
-            if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
                 final Tab defaultTab = findDefaultTab();
                 if (defaultTab != null) {
                     defaultTab.setTitle(LocaleController.getString(R.string.FilterAllChats), null, false);
@@ -2287,7 +2287,7 @@ public class FilterTabsView extends FrameLayout {
                 return;
             }
             ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(UserConfig.selectedAccount).getDialogFilters();
-            if (app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+            if (app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
                 int defaultPosition = 0;
                 for (int i = 0; i < filters.size(); i++) {
                     if (filters.get(i).isDefault()) {
@@ -2399,7 +2399,7 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
-            if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && (!isEditing || (viewHolder.getAdapterPosition() == 0 && tabs.get(0).isDefault && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium()))) {
+            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && (!isEditing || (viewHolder.getAdapterPosition() == 0 && tabs.get(0).isDefault && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium()))) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
@@ -2407,7 +2407,7 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source, @NonNull RecyclerView.ViewHolder target) {
-            if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium())) {
+            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium())) {
                 return false;
             }
             adapter.swapElements(source.getAdapterPosition(), target.getAdapterPosition());

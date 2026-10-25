@@ -61,10 +61,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import me.vkryl.core.reference.ReferenceList;
 
-import app.nimarkogram.messenger.icons.NimarkoAnimatedCallIcons;
-import app.nimarkogram.messenger.icons.NimarkoAnimatedIconCatalog;
-import app.nimarkogram.messenger.icons.NimarkoAnimatedIconRenderer;
-import app.nimarkogram.messenger.icons.NimarkoAnimatedIconSpec;
+import app.nimarkogram.messenger.icons.AnimatedCallIcons;
+import app.nimarkogram.messenger.icons.AnimatedIconCatalog;
+import app.nimarkogram.messenger.icons.AnimatedIconRenderer;
+import app.nimarkogram.messenger.icons.AnimatedIconSpec;
 public class RLottieDrawable extends BitmapDrawable implements Animatable, BitmapsCache.Cacheable {
 
     public boolean skipFrameUpdate;
@@ -149,8 +149,8 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     private NativePtrArgs args;
 
-    private NimarkoAnimatedIconSpec packIconSpec;
-    private NimarkoAnimatedIconRenderer[] packIconRenderers;
+    private AnimatedIconSpec packIconSpec;
+    private AnimatedIconRenderer[] packIconRenderers;
     private volatile long packLayerColor;
     private volatile long packLaterLayerColor;
     private ColorFilter packDefaultColorFilter;
@@ -676,11 +676,11 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     public RLottieDrawable(@RawRes int rawRes, int w, int h, boolean startDecode, int[] colorReplacement) {
         width = w;
         height = h;
-        packIconSpec = NimarkoAnimatedIconCatalog.get(rawRes);
-        if (packIconSpec == null) packIconSpec = NimarkoAnimatedCallIcons.get(rawRes);
+        packIconSpec = AnimatedIconCatalog.get(rawRes);
+        if (packIconSpec == null) packIconSpec = AnimatedCallIcons.get(rawRes);
         if (packIconSpec != null) {
-            packIconRenderers = new NimarkoAnimatedIconRenderer[DrawingInBackgroundThreadDrawable.THREAD_COUNT + 1];
-            for (int i = 0; i < packIconRenderers.length; i++) packIconRenderers[i] = new NimarkoAnimatedIconRenderer();
+            packIconRenderers = new AnimatedIconRenderer[DrawingInBackgroundThreadDrawable.THREAD_COUNT + 1];
+            for (int i = 0; i < packIconRenderers.length; i++) packIconRenderers[i] = new AnimatedIconRenderer();
         }
         autoRepeat = 0;
         getPaint().setFlags(Paint.FILTER_BITMAP_FLAG);
@@ -1266,7 +1266,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
     private void performVibration() {
         if (vibrationPattern != null && allowVibration) {
             Integer force = vibrationPattern.get(currentFrame - 1);
-            if (force != null && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (force != null && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     Activity activity = LaunchActivity.instance;
                     if (activity == null) activity = BubbleActivity.instance;

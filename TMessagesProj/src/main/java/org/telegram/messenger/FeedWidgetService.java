@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.app.Activity;
@@ -81,7 +83,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
         if (messageObject.type == MessageObject.TYPE_TEXT) {
             CharSequence feedText = messageObject.messageText;
             if (feedText != null && feedText.toString().contains("$")) {
-                feedText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(feedText.toString());
+                feedText = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(feedText.toString());
             }
             rv.setTextViewText(R.id.feed_widget_item_text, feedText);
             rv.setViewVisibility(R.id.feed_widget_item_text, View.VISIBLE);
@@ -91,7 +93,7 @@ class FeedRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory, N
             } else {
                 CharSequence feedCaption = messageObject.caption;
                 if (feedCaption != null && feedCaption.toString().contains("$")) {
-                    feedCaption = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(feedCaption.toString());
+                    feedCaption = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(feedCaption.toString());
                 }
                 rv.setTextViewText(R.id.feed_widget_item_text, feedCaption);
                 rv.setViewVisibility(R.id.feed_widget_item_text, View.VISIBLE);

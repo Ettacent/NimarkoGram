@@ -15,7 +15,7 @@ import android.view.animation.AnimationUtils;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
@@ -82,9 +82,9 @@ public class PlayPauseDrawable extends Drawable {
             canvas.saveLayerAlpha(bounds.left, bounds.top, bounds.right, bounds.bottom, alpha, Canvas.ALL_SAVE_FLAG);
         }
         canvas.translate(bounds.centerX() + AndroidUtilities.dp(1) * (1.0f - progress), bounds.centerY());
-        NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon packPlay = MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_play);
-        NimarkoIconResources.PreparedIcon packPause = MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_pause);
+        IconResources.NavigationIcons pack = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon packPlay = MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_play);
+        IconResources.PreparedIcon packPause = MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_pause);
         if (packPlay != null && packPause != null) {
             packIconRenderer.drawPlayPause(canvas, packPlay, packPause, paint, 0, 0, size, progress, paint.getAlpha() / 255f);
             canvas.restore();
@@ -115,7 +115,7 @@ public class PlayPauseDrawable extends Drawable {
 
     public void setPause(boolean pause, boolean animated) {
         if (!animated && this.pause == pause && progress != (pause ? 1f : 0f)) {
-            NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
+            IconResources.NavigationIcons pack = IconResources.activeNavigationIcons();
             if (MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_play) != null &&
                     MediaActionDrawable.PackIconRenderer.get(pack, R.drawable.ic_action_pause) != null) {
                 progress = pause ? 1f : 0f;

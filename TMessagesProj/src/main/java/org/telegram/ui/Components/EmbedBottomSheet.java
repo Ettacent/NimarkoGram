@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -308,7 +310,7 @@ public class EmbedBottomSheet extends BottomSheet {
         containerLayout.setOnTouchListener((v, event) -> true);
         setCustomView(containerLayout);
 
-        webView = new WebView(context) {
+        webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context)) {
             @Override
             protected void onAttachedToWindow() {
                 AndroidUtilities.checkAndroidTheme(context, true);

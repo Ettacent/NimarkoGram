@@ -79,7 +79,7 @@ public final class WalletSendTransition {
         overlay.setClipChildren(false);
         overlay.setClipToPadding(false);
         overlay.setClickable(true);
-        diamond = new WalletDiamondView(root.getContext(), 60);
+        diamond = new WalletDiamondView(root.getContext(), 60, true);
         diamond.setContinuousRotation(540f);
         diamond.copyRotationFrom(source);
         diamond.setAlpha(0f);

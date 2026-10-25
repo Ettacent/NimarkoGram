@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,10 +23,14 @@ BuffersStorage::BuffersStorage(bool threadSafe) {
         pthread_mutex_init(&mutex, NULL);
     }
     for (uint32_t a = 0; a < 4; a++) {
-        freeBuffers8.push_back(new NativeByteBuffer((uint32_t) 8));
+        NativeByteBuffer *buffer = new NativeByteBuffer((uint32_t) 8);
+        buffer->tryMarkFreePool();
+        freeBuffers8.push_back(buffer);
     }
     for (uint32_t a = 0; a < 5; a++) {
-        freeBuffers128.push_back(new NativeByteBuffer((uint32_t) 128));
+        NativeByteBuffer *buffer = new NativeByteBuffer((uint32_t) 128);
+        buffer->tryMarkFreePool();
+        freeBuffers128.push_back(buffer);
     }
 }
 
@@ -64,6 +70,9 @@ NativeByteBuffer *BuffersStorage::getFreeBuffer(uint32_t size) {
         if (arrayToGetFrom->size() > 0) {
             buffer = (*arrayToGetFrom)[0];
             arrayToGetFrom->erase(arrayToGetFrom->begin());
+            if (buffer != nullptr) {
+                buffer->markInUse();
+            }
         }
         if (isThreadSafe) {
             pthread_mutex_unlock(&mutex);
@@ -82,6 +91,10 @@ NativeByteBuffer *BuffersStorage::getFreeBuffer(uint32_t size) {
 
 void BuffersStorage::reuseFreeBuffer(NativeByteBuffer *buffer) {
     if (buffer == nullptr) {
+        return;
+    }
+    if (!buffer->tryMarkFreePool()) {
+        if (LOGS_ENABLED) DEBUG_D("ignored duplicate NativeByteBuffer reuse %p", buffer);
         return;
     }
     std::vector<NativeByteBuffer *> *arrayToReuse = nullptr;

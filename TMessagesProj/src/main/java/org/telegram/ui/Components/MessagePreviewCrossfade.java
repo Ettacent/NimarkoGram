@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -103,7 +103,7 @@ public final class MessagePreviewCrossfade {
             }
         });
         next.start();
-        NimarkoUiAnimationClock.track(next);
+        UiAnimationClock.track(next);
     }
 
     public boolean isRunning() { return animator != null; }

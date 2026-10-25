@@ -7,7 +7,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.R;
 
 public final class PhotoProgressPackRenderer {
@@ -21,7 +21,7 @@ public final class PhotoProgressPackRenderer {
     }
 
     public void prepare() {
-        NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         ready = cancel.prepare(batch, R.drawable.ng_media_cancel)
                 && download.prepare(batch, R.drawable.ng_file_download);
     }

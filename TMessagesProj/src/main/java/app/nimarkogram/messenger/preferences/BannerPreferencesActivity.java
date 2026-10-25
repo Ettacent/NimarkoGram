@@ -26,8 +26,8 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.banners.NimarkoBannerConfig;
-import app.nimarkogram.messenger.banners.NimarkoBannerController;
+import app.nimarkogram.messenger.banners.BannerConfig;
+import app.nimarkogram.messenger.banners.BannerController;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
 public class BannerPreferencesActivity extends BasePreferencesActivity {
@@ -45,7 +45,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_USE_AVATAR    = 108;
     private static final int ID_LITE          = 109;
 
-    private final NimarkoBannerController ctrl = NimarkoBannerController.getInstance();
+    private final BannerController ctrl = BannerController.getInstance();
     private boolean pickingGlobal;
     private boolean picking;
     private boolean processingFile;
@@ -56,7 +56,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
     private final Runnable statusPoll = new Runnable() {
         @Override public void run() {
             if (!visible || isFinished) return;
-            if (NimarkoBannerConfig.enabled && !picking && !processingFile) ctrl.refreshStatus(false);
+            if (BannerConfig.enabled && !picking && !processingFile) ctrl.refreshStatus(false);
             AndroidUtilities.runOnUIThread(this, 30_000);
         }
     };
@@ -119,11 +119,11 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_SettingsSectionStatus)));
         items.add(SettingsHelper.asSwitchCG(ID_ENABLED,
                 LocaleController.getString(R.string.NM_BAN_Enable))
-                .setChecked(NimarkoBannerConfig.enabled));
-        if (NimarkoBannerConfig.enabled) {
+                .setChecked(BannerConfig.enabled));
+        if (BannerConfig.enabled) {
             fillBannerItems(items);
         }
-        items.add(SettingsFooterItem.of(-3, NimarkoBannerConfig.enabled
+        items.add(SettingsFooterItem.of(-3, BannerConfig.enabled
                 ? null : LocaleController.getString(R.string.NM_BAN_EnableHint)));
     }
 
@@ -177,8 +177,8 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         } else {
             items.add(SettingsHelper.asSwitchCG(ID_USE_AVATAR,
                     LocaleController.getString(R.string.NM_BAN_AvatarBanner))
-                    .setChecked(NimarkoBannerConfig.useAvatar));
-            String lp = NimarkoBannerConfig.getLocalBannerPath();
+                    .setChecked(BannerConfig.useAvatar));
+            String lp = BannerConfig.getLocalBannerPath();
             File f = lp == null ? null : new File(lp);
             String info;
             if (lp != null && !lp.isEmpty() && f.exists()) {
@@ -208,7 +208,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         }
         items.add(SettingsHelper.asSwitchCG(ID_LITE,
                 LocaleController.getString(R.string.NM_BAN_LiteMode))
-                .setChecked(NimarkoBannerConfig.liteMode));
+                .setChecked(BannerConfig.liteMode));
         items.add(UItem.asShadow(-9, LocaleController.getString(R.string.NM_BAN_LiteModeHint)));
     }
 
@@ -228,11 +228,11 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         if (item == null) return;
         switch (item.id) {
             case ID_ENABLED:
-                NimarkoBannerConfig.toggleEnabled();
-                item.checked = NimarkoBannerConfig.enabled;
-                ctrl.setPollingEnabled(NimarkoBannerConfig.enabled);
-                if (NimarkoBannerConfig.enabled) ctrl.refreshStatus(false);
-                updateCheckState(view, NimarkoBannerConfig.enabled);
+                BannerConfig.toggleEnabled();
+                item.checked = BannerConfig.enabled;
+                ctrl.setPollingEnabled(BannerConfig.enabled);
+                if (BannerConfig.enabled) ctrl.refreshStatus(false);
+                updateCheckState(view, BannerConfig.enabled);
                 updateItemsAfterToggle();
                 break;
             case ID_HIDE_AVATAR: {
@@ -241,15 +241,15 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
                 break;
             }
             case ID_USE_AVATAR:
-                NimarkoBannerConfig.setUseAvatar(!NimarkoBannerConfig.useAvatar);
-                item.checked = NimarkoBannerConfig.useAvatar;
-                updateCheckState(view, NimarkoBannerConfig.useAvatar);
+                BannerConfig.setUseAvatar(!BannerConfig.useAvatar);
+                item.checked = BannerConfig.useAvatar;
+                updateCheckState(view, BannerConfig.useAvatar);
                 updateItemsAfterToggle();
                 break;
             case ID_LITE:
-                NimarkoBannerConfig.setLiteMode(!NimarkoBannerConfig.liteMode);
-                item.checked = NimarkoBannerConfig.liteMode;
-                updateCheckState(view, NimarkoBannerConfig.liteMode);
+                BannerConfig.setLiteMode(!BannerConfig.liteMode);
+                item.checked = BannerConfig.liteMode;
+                updateCheckState(view, BannerConfig.liteMode);
                 updateItemsAfterToggle();
                 break;
             case ID_CHANGE_GLOBAL:
@@ -348,7 +348,7 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
             }
             out.flush(); out.close(); out = null;
 
-            String ext = NimarkoBannerController.detectBannerExtension(tmp);
+            String ext = BannerController.detectBannerExtension(tmp);
             if (ext == null) {
 
                 tmp.delete();

@@ -37,7 +37,7 @@ import org.telegram.ui.PremiumPreviewFragment;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class StarParticlesView extends View {
 
 
@@ -180,7 +180,7 @@ public class StarParticlesView extends View {
         a2.setDuration(2000);
         animatorSet.playTogether(a1, a2);
         animatorSet.start();
-        NimarkoUiAnimationClock.track(animatorSet);
+        UiAnimationClock.track(animatorSet);
     }
 
     public static class Drawable {
@@ -227,6 +227,7 @@ public class StarParticlesView extends View {
         public boolean useBlur = false;
         public boolean forceMaxAlpha = false;
         public boolean roundEffect = true;
+        public boolean goldGlitter;
         public int type = -1;
         public Theme.ResourcesProvider resourcesProvider;
         public int colorKey = Theme.key_premiumStartSmallStarsColor;
@@ -483,7 +484,7 @@ public class StarParticlesView extends View {
         }
 
         public void resetPositions() {
-            if (paused || NimarkoUiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
+            if (paused || UiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
                 resetPending = true;
                 return;
             }
@@ -495,9 +496,9 @@ public class StarParticlesView extends View {
         }
 
         private long sampleTime() {
-            long now = NimarkoUiAnimationClock.now();
-            int epoch = NimarkoUiAnimationClock.epoch();
-            boolean stopped = paused || NimarkoUiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES);
+            long now = UiAnimationClock.now();
+            int epoch = UiAnimationClock.epoch();
+            boolean stopped = paused || UiAnimationClock.isPaused() || !LiteMode.isEnabled(LiteMode.FLAG_PARTICLES);
             long pauseAdjustment = 0;
             for (int i = 0; i < particles.size(); i++) {
                 Particle particle = particles.get(i);
@@ -528,7 +529,7 @@ public class StarParticlesView extends View {
                 if (!wasPaused && ((checkTime && time > particle.expiryTime) || (checkBounds && !rect2.contains(particle.drawingX, particle.drawingY)))) {
                     particle.genPosition(time);
                 }
-                particle.advance();
+                particle.advance(time);
             }
             float diff = dt;
             if (useRotate) {
@@ -572,6 +573,8 @@ public class StarParticlesView extends View {
             private int starIndex;
             private int alpha;
             private float randomRotate;
+            private long born;
+            private float twinkle;
             float inProgress;
             float flipProgress;
 
@@ -582,10 +585,15 @@ public class StarParticlesView extends View {
                 pointsCount[starIndex]++;
             }
 
-            private void advance() {
+            private void advance(long time) {
                 if (dt > 0) {
                     float speed = dp(4) * (dt / 660f);
                     speed *= flip[starIndex] ? 4 * Math.min(speedScale, 3.5f) : speedScale;
+                    if (goldGlitter) {
+                        final float lf = Utilities.clamp((time - born) / (float) Math.max(1, lifeTime - born), 1f, 0f);
+                        speed *= 2.2f * (1f - lf) * (1f - lf) + 0.15f;
+                        y -= dp(5) * (dt / 1000f);
+                    }
                     x += vecX * speed;
                     y += vecY * speed;
                     inProgress = Math.min(1f, inProgress + dt / 200);
@@ -633,10 +641,17 @@ public class StarParticlesView extends View {
                     } else {
                         paint = Drawable.this.paint;
                     }
-                    paint.setAlpha((int) (this.alpha * (1f - outProgress) * alpha));
+                    float gold = 1f;
+                    if (goldGlitter) {
+                        final float life = Utilities.clamp((time - born) / (float) Math.max(1, lifeTime - born), 1f, 0f);
+                        final float fade = (1f - life) * (1f - life) * (3f - 2f * (1f - life));
+                        gold = fade * (0.72f + 0.28f * (float) Math.sin(time * 0.011f + twinkle));
+                        outProgress = 0f;
+                    }
+                    paint.setAlpha((int) (this.alpha * (1f - outProgress) * alpha * gold));
                     final Bitmap bitmap = stars[starIndex];
                     if (useScale) {
-                        final float s = scale * (1f - outProgress) * alpha * inProgress;
+                        final float s = scale * (1f - outProgress) * alpha * inProgress * (goldGlitter ? (0.75f + 0.25f * gold) : 1f);
                         canvas.scale(s, s);
                     }
                     canvas.drawBitmap(bitmap, -(bitmap.getWidth() >> 1), -(bitmap.getHeight() >> 1), paint);
@@ -655,6 +670,8 @@ public class StarParticlesView extends View {
                 }
                 lifeTime = time + minLifeTime + Utilities.fastRandom.nextInt(randLifeTime * (flip[starIndex] ? 3 : 1));
                 expiryTime = lifeTime;
+                born = time;
+                twinkle = Utilities.fastRandom.nextFloat() * 6.28f;
                 randomRotate = 0;
                 if (useScale) {
                     scale = .4f + .6f * Utilities.fastRandom.nextFloat();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
@@ -362,7 +364,7 @@ public class MessageSeenView extends FrameLayout {
         public UserCell(Context context) {
             super(context);
             avatarImageView = new BackupImageView(context);
-            avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(36));
+            avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(36));
 
             nameView = new SimpleTextView(context);
             nameView.setTextSize(16);

@@ -10,8 +10,9 @@
 
 package org.telegram.ui;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
-import app.nimarkogram.messenger.banners.NimarkoBannerRenderer;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
+
+import app.nimarkogram.messenger.banners.BannerRenderer;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -339,7 +340,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             if (bannerOverlayRegistered) {
                 return;
             }
-            NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
+            BannerRenderer renderer = BannerRenderer.peek();
             if (renderer != null) {
                 renderer.onOverlayOpen(this);
                 bannerOverlayRegistered = true;
@@ -349,7 +350,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 return;
             }
             bannerOverlayRegistered = false;
-            NimarkoBannerRenderer renderer = NimarkoBannerRenderer.peek();
+            BannerRenderer renderer = BannerRenderer.peek();
             if (renderer != null) {
                 renderer.onOverlayClose(this);
             }
@@ -1530,7 +1531,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 checkingForLongPress = false;
                 if (pressedLink != null) {
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
@@ -1547,7 +1548,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     } else {
                         textSelectionHelper.trySelect(pressedLinkOwnerView);
                     }
-                    if (textSelectionHelper.isInSelectionMode() && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (textSelectionHelper.isInSelectionMode() && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                         // NimarkoGram: gate haptic on disableVibration.
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -1555,7 +1556,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     }
                 } else if (pressedLinkOwnerLayout != null && pressedLinkOwnerView != null) {
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             windowView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         } catch (Exception ignored) {}
@@ -3571,6 +3572,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 channelNamePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 channelNamePaint.setTypeface(AndroidUtilities.bold());
 
+            }
+            if (channelNamePhotoPaint == null) {
                 channelNamePhotoPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
                 channelNamePhotoPaint.setTypeface(AndroidUtilities.bold());
             }
@@ -5898,7 +5901,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 windowView.setFocusable(false);
                 containerView.setFocusable(false);
                 wm.addView(windowView, windowLayoutParams);
-                NimarkoAppMotionBlur.attachRoot(windowView);
+                AppMotionBlur.attachRoot(windowView);
             } catch (Exception e) {
                 FileLog.e(e);
                 return false;
@@ -8931,7 +8934,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             this.adapter = adapter;
 
             avatarImageView = new ImageReceiver(this);
-            avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+            avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
             avatarImageView.setImageCoords(dp(18 + 14), dp(8), dp(40), dp(40));
 
             avatarDrawable = new AvatarDrawable();
@@ -9289,7 +9292,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         public class TouchyWebView extends WebView {
 
             public TouchyWebView(Context context) {
-                super(context);
+                super(org.telegram.ui.web.WebViewContext.wrap(context));
                 setFocusable(false);
             }
 

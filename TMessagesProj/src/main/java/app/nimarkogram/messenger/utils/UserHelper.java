@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -36,7 +37,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
-import app.nimarkogram.messenger.utils.NimarkoExtra;
+import app.nimarkogram.messenger.utils.AppExtra;
 import app.nimarkogram.messenger.utils.network.NetworkHelper;
 
 public class UserHelper extends BaseController {
@@ -78,11 +79,11 @@ public class UserHelper extends BaseController {
         final long ownerUserId = getUserConfig().getClientUserId();
         regDateQueue.postRunnable(() -> {
             try {
-                URL url = new URL(NimarkoExtra.ENDPOINT_FOR_DATE);
+                URL url = new URL(AppExtra.ENDPOINT_FOR_DATE);
                 HttpURLConnection con = (HttpURLConnection) url.openConnection();
                 con.setRequestMethod("POST");
                 con.setRequestProperty("User-Agent", NetworkHelper.formatUserAgent());
-                con.setRequestProperty("X-Api-Key", NimarkoExtra.ENDPOINT_FOR_DATE_SECRET);
+                con.setRequestProperty("X-Api-Key", AppExtra.ENDPOINT_FOR_DATE_SECRET);
 
                 con.setDoOutput(true);
 

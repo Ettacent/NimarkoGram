@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -333,18 +335,29 @@ public class Weather {
         });
     }
     public static Runnable fetchCancellable(boolean requestLocation, Utilities.Callback<State> whenFetched) {
+        return fetchCancellable(requestLocation, whenFetched, null);
+    }
+
+    public static Runnable fetchCancellable(boolean requestLocation, Utilities.Callback<State> whenFetched,
+                                             Utilities.Callback<Location> whenLocated) {
         if (whenFetched == null) return null;
         final int account = UserConfig.selectedAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
         final boolean[] cancelled = new boolean[1];
         final Runnable[] cancelWeather = new Runnable[1];
         final LocationRequest locationRequest = new LocationRequest(location -> {
-            if (cancelled[0] || account != UserConfig.selectedAccount) return;
+            if (cancelled[0] || account != UserConfig.selectedAccount
+                    || owner == 0 || UserConfig.getInstance(account).getClientUserId() != owner) return;
+            if (whenLocated != null) whenLocated.run(location);
+            if (cancelled[0] || account != UserConfig.selectedAccount
+                    || UserConfig.getInstance(account).getClientUserId() != owner) return;
             if (location == null) {
                 whenFetched.run(null);
                 return;
             }
             cancelWeather[0] = fetch(location.getLatitude(), location.getLongitude(), weather -> {
-                if (!cancelled[0] && account == UserConfig.selectedAccount) {
+                if (!cancelled[0] && account == UserConfig.selectedAccount
+                        && UserConfig.getInstance(account).getClientUserId() == owner) {
                     whenFetched.run(weather);
                 }
             });

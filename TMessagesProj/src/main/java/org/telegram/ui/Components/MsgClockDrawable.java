@@ -19,9 +19,9 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class MsgClockDrawable extends Drawable {
 
     private ConstantState constantState;
@@ -55,9 +55,9 @@ public class MsgClockDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
 
-        long currentTime = NimarkoUiAnimationClock.now();
-        int epoch = NimarkoUiAnimationClock.epoch();
-        if (prevTime >= 0 && epoch == clockEpoch && !NimarkoUiAnimationClock.isPaused()) {
+        long currentTime = UiAnimationClock.now();
+        int epoch = UiAnimationClock.epoch();
+        if (prevTime >= 0 && epoch == clockEpoch && !UiAnimationClock.isPaused()) {
             animationTime += Math.max(0, currentTime - prevTime);
         }
         prevTime = currentTime;
@@ -66,11 +66,11 @@ public class MsgClockDrawable extends Drawable {
         if (bounds.isEmpty()) {
             return;
         }
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        int selection = icons == null ? NimarkoConfig.ICON_REPLACE_NONE : icons.selection;
-        if (selection == NimarkoConfig.ICON_REPLACE_SOLAR
-                || selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                || selection == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        int selection = icons == null ? AppConfig.ICON_REPLACE_NONE : icons.selection;
+        if (selection == AppConfig.ICON_REPLACE_SOLAR
+                || selection == AppConfig.ICON_REPLACE_LIQUID_GLASS
+                || selection == AppConfig.ICON_REPLACE_PLUMPY) {
             drawPackClock(canvas, bounds, selection);
             return;
         }
@@ -109,7 +109,7 @@ public class MsgClockDrawable extends Drawable {
             canvas.saveLayerAlpha(0, 0, 12, 12, opacity);
         }
         canvas.drawCircle(6, 6, 5.5f, facePaint);
-        if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+        if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
             canvas.drawCircle(6, 6, 5.5f, rimPaint);
         }
         drawHands(canvas, 6, 6, 3, 2.3f, handsPaint);
@@ -118,11 +118,11 @@ public class MsgClockDrawable extends Drawable {
 
     public boolean drawFrame(Canvas canvas, Paint foreground, float cx, float cy, float radius,
                              float minuteAngle, float hourAngle, float minuteLength, float hourLength) {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        int selection = icons == null ? NimarkoConfig.ICON_REPLACE_NONE : icons.selection;
-        if (selection != NimarkoConfig.ICON_REPLACE_SOLAR
-                && selection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                && selection != NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        int selection = icons == null ? AppConfig.ICON_REPLACE_NONE : icons.selection;
+        if (selection != AppConfig.ICON_REPLACE_SOLAR
+                && selection != AppConfig.ICON_REPLACE_LIQUID_GLASS
+                && selection != AppConfig.ICON_REPLACE_PLUMPY) {
             return false;
         }
         int sourceAlpha = foreground.getAlpha();
@@ -150,9 +150,9 @@ public class MsgClockDrawable extends Drawable {
             canvas.translate(-6, -6);
             framePaint.set(facePaint);
             framePaint.setStrokeWidth(strokeWidth / scale);
-            canvas.drawCircle(6, 6, selection == NimarkoConfig.ICON_REPLACE_PLUMPY
+            canvas.drawCircle(6, 6, selection == AppConfig.ICON_REPLACE_PLUMPY
                     ? 5.5f + strokeWidth / (2f * scale) : 5.5f, framePaint);
-            if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+            if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
                 framePaint.set(rimPaint);
                 framePaint.setStrokeWidth(strokeWidth / scale);
                 canvas.drawCircle(6, 6, 5.5f, framePaint);
@@ -187,11 +187,11 @@ public class MsgClockDrawable extends Drawable {
         rimPaint.setShader(null);
         handsPaint.setColor(rgb);
         handsPaint.setStrokeWidth(1.05f);
-        if (selection == NimarkoConfig.ICON_REPLACE_SOLAR) {
+        if (selection == AppConfig.ICON_REPLACE_SOLAR) {
             facePaint.setStyle(Paint.Style.STROKE);
             facePaint.setStrokeWidth(0.85f);
             handsPaint.setStrokeWidth(0.85f);
-        } else if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+        } else if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
             LinearGradient[] material = liquidMaterials.get(rgb);
             if (material == null) {
                 material = new LinearGradient[] {

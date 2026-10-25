@@ -115,7 +115,7 @@ public class Camera2Session {
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical) {
 
-        return create(front, viewWidth, viewHeight, preferLogical, app.nimarkogram.messenger.NimarkoConfig.cameraResolution);
+        return create(front, viewWidth, viewHeight, preferLogical, app.nimarkogram.messenger.AppConfig.cameraResolution);
     }
 
     public static Camera2Session create(boolean front, int viewWidth, int viewHeight, boolean preferLogical, int requestedHeight) {
@@ -1072,7 +1072,7 @@ public class Camera2Session {
     private void applyNoiseReduction(CaptureRequest.Builder builder, boolean stillCapture) {
         int[] modes = cameraCharacteristics.get(
                 CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES);
-        Integer mode = app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction
+        Integer mode = app.nimarkogram.messenger.AppConfig.cameraNoiseReduction
                 ? chooseSupportedMode(modes, stillCapture
                         ? CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
                         : CaptureRequest.NOISE_REDUCTION_MODE_FAST,
@@ -1148,11 +1148,11 @@ public class Camera2Session {
         List<CaptureRequest.Key<?>> requestKeys = characteristics.getAvailableCaptureRequestKeys();
         if (requestKeys == null) return;
         applyStabilizationModesTo(builder, characteristics,
-                app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
-                app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
+                app.nimarkogram.messenger.AppConfig.cameraOpticalStabilization,
+                app.nimarkogram.messenger.AppConfig.cameraStabilisation);
         if (requestKeys.contains(CaptureRequest.CONTROL_AF_MODE)) {
             int[] afModes = characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
-            Integer af = app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
+            Integer af = app.nimarkogram.messenger.AppConfig.cameraContinuousFocus
                     ? chooseSupportedMode(afModes, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO,
                             CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
                             CaptureRequest.CONTROL_AF_MODE_AUTO, CaptureRequest.CONTROL_AF_MODE_OFF)
@@ -1162,14 +1162,14 @@ public class Camera2Session {
         if (requestKeys.contains(CaptureRequest.NOISE_REDUCTION_MODE)) {
         Integer nr = chooseSupportedMode(characteristics.get(
                 CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES),
-                app.nimarkogram.messenger.NimarkoConfig.cameraNoiseReduction
+                    app.nimarkogram.messenger.AppConfig.cameraNoiseReduction
                         ? CaptureRequest.NOISE_REDUCTION_MODE_FAST : CaptureRequest.NOISE_REDUCTION_MODE_OFF,
                 CaptureRequest.NOISE_REDUCTION_MODE_OFF);
         if (nr != null) builder.set(CaptureRequest.NOISE_REDUCTION_MODE, nr);
         }
         if (requestKeys.contains(CaptureRequest.STATISTICS_FACE_DETECT_MODE)) {
         int[] faceModes = characteristics.get(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
-        Integer face = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
+            Integer face = app.nimarkogram.messenger.AppConfig.cameraFaceDetection
                 ? chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,
                         CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)
                 : chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF);
@@ -1201,13 +1201,13 @@ public class Camera2Session {
             if (recordingVideo) {
 
                 Range<Integer> aeFps;
-                switch (app.nimarkogram.messenger.NimarkoConfig.cameraXFpsRange) {
-                    case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange25to30: aeFps = new Range<>(25, 30); break;
-                    case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to30: aeFps = new Range<>(30, 30); break;
-                    case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange30to60: aeFps = new Range<>(30, 60); break;
+                switch (app.nimarkogram.messenger.AppConfig.cameraXFpsRange) {
+                    case app.nimarkogram.messenger.AppConfig.CameraXFpsRange25to30: aeFps = new Range<>(25, 30); break;
+                    case app.nimarkogram.messenger.AppConfig.CameraXFpsRange30to30: aeFps = new Range<>(30, 30); break;
+                    case app.nimarkogram.messenger.AppConfig.CameraXFpsRange30to60: aeFps = new Range<>(30, 60); break;
 
-                    case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRange60to60: aeFps = new Range<>(30, 60); break;
-                    case app.nimarkogram.messenger.NimarkoConfig.CameraXFpsRangeDefault:
+                    case app.nimarkogram.messenger.AppConfig.CameraXFpsRange60to60: aeFps = new Range<>(30, 60); break;
+                    case app.nimarkogram.messenger.AppConfig.CameraXFpsRangeDefault:
                     default:                                                            aeFps = null; break;
                 }
 
@@ -1219,12 +1219,12 @@ public class Camera2Session {
             }
 
             try {
-                applyStabilizationModes(app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization,
-                        app.nimarkogram.messenger.NimarkoConfig.cameraStabilisation);
+                applyStabilizationModes(app.nimarkogram.messenger.AppConfig.cameraOpticalStabilization,
+                        app.nimarkogram.messenger.AppConfig.cameraStabilisation);
             } catch (Throwable ignored) {}
 
             try {
-                int preferredAf = app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus
+                int preferredAf = app.nimarkogram.messenger.AppConfig.cameraContinuousFocus
                         ? (recordingVideo ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
                         : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                         : CaptureRequest.CONTROL_AF_MODE_AUTO;
@@ -1252,7 +1252,7 @@ public class Camera2Session {
             try {
                 int[] faceModes = cameraCharacteristics.get(
                         CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES);
-                Integer fd = app.nimarkogram.messenger.NimarkoConfig.cameraFaceDetection
+                Integer fd = app.nimarkogram.messenger.AppConfig.cameraFaceDetection
                         ? chooseSupportedMode(faceModes, CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE,
                                 CaptureRequest.STATISTICS_FACE_DETECT_MODE_FULL,
                                 CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF)

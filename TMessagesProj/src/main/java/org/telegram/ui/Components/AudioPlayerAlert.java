@@ -132,8 +132,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import app.nimarkogram.messenger.utils.SleepHelper;
 
 public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.NotificationCenterDelegate, DownloadController.FileDownloadProgressListener {
@@ -2614,7 +2614,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (awaitingProfileSongs && songListOwner == savedMusicList && playlist != null && playlist.size() > 1) {
                 awaitingProfileSongs = false;
                 if (!searching && !searchWas && !songDragActive && !isDismissed() && listView.isAttachedToWindow()
-                        && songRevealAnimationsEnabled() && !NimarkoUiAnimationClock.isPaused()) {
+                        && songRevealAnimationsEnabled() && !UiAnimationClock.isPaused()) {
                     rememberSongIds(revealingSongIds);
                     revealingSongIds.removeAll(knownSongIds);
                     if (!revealingSongIds.isEmpty()) {
@@ -2624,7 +2624,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                                     || !songRevealAnimationsEnabled()) {
                                 cancelSongReveal();
                             } else {
-                                songRevealStartedAt = NimarkoUiAnimationClock.now();
+                                songRevealStartedAt = UiAnimationClock.now();
                                 listView.invalidate();
                             }
                         });
@@ -2642,13 +2642,13 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             if (revealingSongIds.isEmpty() || songRevealStartedAt < 0) {
                 return 1f;
             }
-            long elapsed = Math.max(0, NimarkoUiAnimationClock.now() - songRevealStartedAt);
+            long elapsed = Math.max(0, UiAnimationClock.now() - songRevealStartedAt);
             if (elapsed >= 200 || searching || searchWas || songDragActive
                     || songListOwner != savedMusicList || !songRevealAnimationsEnabled()) {
                 cancelSongReveal();
                 return 1f;
             }
-            if (!NimarkoUiAnimationClock.isPaused()) {
+            if (!UiAnimationClock.isPaused()) {
                 listView.postInvalidateOnAnimation();
             }
             return revealingSongIds.contains(songId(message))
@@ -4001,7 +4001,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                 );
             }
 
-            NimarkoConfig.setSleepTimer(true);
+            AppConfig.setSleepTimer(true);
 
             String formattedTime;
             if (seconds < 3600) {
@@ -4016,12 +4016,12 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                     .createSimpleBulletin(R.raw.done, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_Sleep_Timer, formattedTime)))
                     .show();
         } else {
-            if (NimarkoConfig.sleepTimer) {
+            if (AppConfig.sleepTimer) {
                 BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
                         .createSimpleBulletin(R.raw.done, getString(R.string.CG_Sleep_Disabled))
                         .show();
             }
-            NimarkoConfig.setSleepTimer(false);
+            AppConfig.setSleepTimer(false);
         }
     }
     /** NG sleep timer finish */

@@ -1,9 +1,9 @@
-/* Modifications Copyright (C) 2026 Ettacent */
-
 /*
  * Original Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.
  * Licensed under GNU GPL v2 or later. See LICENSE.
  */
+/* Modifications Copyright (C) 2026 Ettacent */
+
 
 package app.nimarkogram.messenger.preferences.helpers
 
@@ -35,12 +35,12 @@ import org.telegram.ui.LoginActivity
 import org.telegram.ui.LogoutActivity
 import org.telegram.ui.PhotoViewer
 import org.telegram.ui.SettingsActivity
-import app.nimarkogram.messenger.NimarkoConfig
+import app.nimarkogram.messenger.AppConfig
 import app.nimarkogram.messenger.preferences.MainPreferencesActivity
 import app.nimarkogram.messenger.utils.AppRestartHelper
-import app.nimarkogram.messenger.utils.NimarkoDeeplinkHelper
-import app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2
-import app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector
+import app.nimarkogram.messenger.utils.DeeplinkHelper
+import app.nimarkogram.messenger.utils.chats.ChatHelper2
+import app.nimarkogram.messenger.utils.chats.ChatMenuInjector
 import app.nimarkogram.messenger.utils.ui.MainTabsManager
 
 class TelegramSettingsHelper(
@@ -71,7 +71,7 @@ class TelegramSettingsHelper(
     }
 
     fun showMyProfile(): Boolean {
-        return !NimarkoConfig.showMainTabs || !MainTabsManager.hasTab(MainTabsManager.TabType.PROFILE)
+        return !AppConfig.showMainTabs || !MainTabsManager.hasTab(MainTabsManager.TabType.PROFILE)
     }
 
     fun showItemOptions(button: View) {
@@ -90,6 +90,7 @@ class TelegramSettingsHelper(
         ) {
             AppRestartHelper.restartApp(fragment.context)
         }
+
 
         o.setBlur(false)
         o.setDrawScrim(false)
@@ -179,9 +180,9 @@ class TelegramSettingsHelper(
             )
         }
     }
-     
+
+
     fun injectChannelAdvice(items: ArrayList<UItem>) {
-        
     }
 
     fun injectAccounts(items: MutableList<UItem>, accountNumbers: ArrayList<Int>, user: TLRPC.User?) {
@@ -197,14 +198,14 @@ class TelegramSettingsHelper(
 
         if (accountNumbers.size >= 1) {
             addAccountItem.`object` = Runnable {
-                NimarkoConfig.toggleShowAccounts()
+                AppConfig.toggleShowAccounts()
             }
         }
 
         items.add(addAccountItem)
 
         for (i in accountNumbers.indices) {
-            if (NimarkoConfig.showAccounts) {
+            if (AppConfig.showAccounts) {
                 items.add(SettingsActivity.AccountCell.Factory.of(i, accountNumbers[i]))
             }
         }
@@ -220,7 +221,7 @@ class TelegramSettingsHelper(
 
                 val color1 = colors[0]!! or -0x1000000
                 val color2 = if (colors.size >= 2) colors[1]!! or -0x1000000 else color1
-                
+
                 colorTop = color1
                 colorBottom = color2
             } else {
@@ -261,7 +262,7 @@ class TelegramSettingsHelper(
     }
 
     fun injectCherryItems(items: MutableList<UItem>) {
-        if (!NimarkoConfig.hideArchiveFromChatsList && fragment.messagesController.getDialogs(1).isNotEmpty()) {
+        if (!AppConfig.hideArchiveFromChatsList && fragment.messagesController.getDialogs(1).isNotEmpty()) {
             val archiveItem = SettingsActivity.SettingCell.Factory.of(
                 1395,
                 0xFFF45255.toInt(),
@@ -290,11 +291,11 @@ class TelegramSettingsHelper(
                 1390,
                 0xFFE54C7F.toInt(),
                 0xFFA33156.toInt(),
-                
                 R.drawable.msg_settings_solar,
                 getString(R.string.NimarkoGramSettings)
             )
         )
+
 
         items.add(UItem.asShadow(null))
     }
@@ -331,20 +332,19 @@ class TelegramSettingsHelper(
                     )
                 }
             }
-            1393 -> fragment.presentFragment(ChatActivity.of(NimarkoChatHelper2.getCustomChatID(fragment.currentAccount)))
-            
-            1395 -> NimarkoChatMenuInjector.openArchivedChats(fragment)
+            1393 -> fragment.presentFragment(ChatActivity.of(ChatHelper2.getCustomChatID(fragment.currentAccount)))
+            1395 -> ChatMenuInjector.openArchivedChats(fragment)
         }
     }
 
     fun handleOnLongClick(item: UItem): Boolean {
         when (item.id) {
-            1390 -> AndroidUtilities.addToClipboard("tg://${NimarkoDeeplinkHelper.DeepLinksRepo.NG_Settings}")
-            12 -> AndroidUtilities.addToClipboard("tg://${NimarkoDeeplinkHelper.DeepLinksRepo.NG_Stars}")
+            1390 -> AndroidUtilities.addToClipboard("tg://${DeeplinkHelper.DeepLinksRepo.NG_Settings}")
+            12 -> AndroidUtilities.addToClipboard("tg://${DeeplinkHelper.DeepLinksRepo.NG_Stars}")
         }
         return true
     }
-     
+
     private fun isWhiteOrNearWhite(color: Int): Boolean {
         val r = (color shr 16) and 0xFF
         val g = (color shr 8) and 0xFF

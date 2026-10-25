@@ -1599,7 +1599,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int size = itemInternals.size();
             boolean hasArchive = folderId == 0 && dialogsType == 0
-                    && !app.nimarkogram.messenger.NimarkoConfig.hideArchiveFromChatsList
+                    && !app.nimarkogram.messenger.AppConfig.hideArchiveFromChatsList
                     && MessagesController.getInstance(currentAccount).dialogs_dict.get(DialogObject.makeFolderDialogId(1)) != null;
             View parent = (View) getParent();
             int height;
@@ -1746,7 +1746,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 || folderId != 0
                 || dialogsType != DialogsActivity.DIALOGS_TYPE_DEFAULT
                 || isOnlySelect
-                || !app.nimarkogram.messenger.NimarkoConfig.hideArchiveFromChatsList) {
+                || !app.nimarkogram.messenger.AppConfig.hideArchiveFromChatsList) {
             return source;
         }
         for (int i = 0; i < source.size(); i++) {

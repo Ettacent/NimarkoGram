@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -16,8 +17,8 @@ import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.NimarkoFeatureHooks;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.FeatureHooks;
 
 public class ExperimentalPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_EDGE_TO_EDGE       = 1;
@@ -33,11 +34,11 @@ public class ExperimentalPreferencesActivity extends BasePreferencesActivity {
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_EXP_Header_Beta)));
         items.add(UItem.asCheck(ID_EDGE_TO_EDGE, LocaleController.getString(R.string.NM_EXP_EdgeToEdge))
-                .setChecked(NimarkoConfig.edgeToEdgeMode));
+                .setChecked(AppConfig.edgeToEdgeMode));
         items.add(UItem.asCheck(ID_NO_ROUNDING, LocaleController.getString(R.string.NM_EXP_NoRounding))
-                .setChecked(NimarkoConfig.noRounding));
+                .setChecked(AppConfig.noRounding));
         items.add(UItem.asCheck(ID_DISCUSS_INSTEAD_OF_MUTE, LocaleController.getString(R.string.NM_EXP_DiscussInsteadOfMute))
-                .setChecked(NimarkoConfig.discussInsteadOfMute));
+                .setChecked(AppConfig.discussInsteadOfMute));
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_EXP_Footer)));
     }
 
@@ -45,18 +46,17 @@ public class ExperimentalPreferencesActivity extends BasePreferencesActivity {
     public void onClick(UItem item, View view, int position, float x, float y) {
         int id = item.id;
         if (id == ID_EDGE_TO_EDGE) {
-            NimarkoConfig.toggleEdgeToEdgeMode();
-            applyCheck(item, view, NimarkoConfig.edgeToEdgeMode);
+            AppConfig.toggleEdgeToEdgeMode();
+            applyCheck(item, view, AppConfig.edgeToEdgeMode);
             showRestartBulletin();
         } else if (id == ID_NO_ROUNDING) {
-            NimarkoConfig.toggleNoRounding();
-            applyCheck(item, view, NimarkoConfig.noRounding);
+            AppConfig.toggleNoRounding();
+            applyCheck(item, view, AppConfig.noRounding);
             showRestartBulletin();
         } else if (id == ID_DISCUSS_INSTEAD_OF_MUTE) {
-            NimarkoConfig.toggleDiscussInsteadOfMute();
-            applyCheck(item, view, NimarkoConfig.discussInsteadOfMute);
-            
-            NimarkoFeatureHooks.setDiscussInsteadOfMute(NimarkoConfig.discussInsteadOfMute);
+            AppConfig.toggleDiscussInsteadOfMute();
+            applyCheck(item, view, AppConfig.discussInsteadOfMute);
+            FeatureHooks.setDiscussInsteadOfMute(AppConfig.discussInsteadOfMute);
         }
     }
 

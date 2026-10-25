@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.annotation.SuppressLint;
@@ -94,6 +96,7 @@ public class SearchDownloadsContainer extends FrameLayout implements Notificatio
             }
         };
         ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
+        recyclerListView.setRoundedPressFeedback(true);
         itemTouchHelper.attachToRecyclerView(recyclerListView);
         addView(recyclerListView);
         recyclerListView.setLayoutManager(new LinearLayoutManager(fragment.getParentActivity()) {

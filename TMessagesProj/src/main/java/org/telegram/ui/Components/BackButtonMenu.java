@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -95,7 +97,7 @@ public class BackButtonMenu {
             if (chat == null && user == null) {
                 imageView.setRoundRadius(0);
             } else {
-                imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(32, chat != null && chat.forum));
+                imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(32, chat != null && chat.forum));
             }
             cell.addView(imageView, LayoutHelper.createFrameRelatively(32, 32, Gravity.START | Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
 
@@ -196,7 +198,7 @@ public class BackButtonMenu {
                                 fragments.get(j).removeSelfFromStack();
                             }
                             if (pDialog.stackIndex < parentLayout.getFragmentStack().size()) {
-                               
+
                                 parentLayout.closeLastFragment(true);
                                 return;
                             }

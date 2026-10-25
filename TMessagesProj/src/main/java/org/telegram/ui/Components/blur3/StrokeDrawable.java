@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -51,7 +53,7 @@ public class StrokeDrawable extends Drawable {
     public void updateColors() {
         if (colorProvider == null) return;
 
-        if (app.nimarkogram.messenger.NimarkoConfig.glareOnElements) {
+        if (app.nimarkogram.messenger.AppConfig.glareOnElements) {
             strokeColorTop = Theme.multAlpha(colorProvider.getStrokeColorTop(), alpha);
             strokeColorBottom = Theme.multAlpha(colorProvider.getStrokeColorBottom(), alpha);
         } else {

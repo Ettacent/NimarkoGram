@@ -96,6 +96,7 @@ import org.telegram.ui.PremiumPreviewFragment;
 import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.ui.Stories.StoriesStorage;
 
+import org.telegram.ui.Wallet.WalletEngine2;
 import org.telegram.utils.code.highlight.CodeHighlighting;
 import java.io.File;
 import java.util.ArrayList;
@@ -935,7 +936,7 @@ public class MediaDataController extends BaseController {
         if (type == TYPE_PREMIUM_STICKERS) {
             return new ArrayList<>(recentStickers[type]);
         }
-        ArrayList<TLRPC.Document> result = new ArrayList<>(arrayList.subList(0, Math.min(arrayList.size(), app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1)));
+        ArrayList<TLRPC.Document> result = new ArrayList<>(arrayList.subList(0, Math.min(arrayList.size(), app.nimarkogram.messenger.AppConfig.recentStickersAmplifier + 1)));
         if (firstEmpty && !result.isEmpty() && !StickersAlert.DISABLE_STICKER_EDITOR) {
             result.add(0, new TLRPC.TL_documentEmpty());
         }
@@ -1039,7 +1040,7 @@ public class MediaDataController extends BaseController {
                     }
                 });
             }
-            maxCount = app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1;
+            maxCount = app.nimarkogram.messenger.AppConfig.recentStickersAmplifier + 1;
         }
         if (recentStickers[type].size() > maxCount || remove) {
             TLRPC.Document old = remove ? document : recentStickers[type].remove(recentStickers[type].size() - 1);
@@ -2206,7 +2207,7 @@ public class MediaDataController extends BaseController {
                         } else if (type == TYPE_FAVE) {
                             maxCount = getMessagesController().maxFaveStickersCount;
                         } else {
-                            maxCount = app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1;
+                            maxCount = app.nimarkogram.messenger.AppConfig.recentStickersAmplifier + 1;
                         }
                     }
                     database.beginTransaction();
@@ -2308,7 +2309,7 @@ public class MediaDataController extends BaseController {
                         // freshest-first list goes first; any locally-tracked
                         // entries that aren't in the server response get
                         // appended at the tail, total bounded by amplifier+1.
-                        int cap = app.nimarkogram.messenger.NimarkoConfig.recentStickersAmplifier + 1;
+                        int cap = app.nimarkogram.messenger.AppConfig.recentStickersAmplifier + 1;
                         ArrayList<TLRPC.Document> merged = new ArrayList<>(documents);
                         if (merged.size() < cap && recentStickers[type] != null) {
                             java.util.HashSet<Long> seen = new java.util.HashSet<>();
@@ -4083,7 +4084,7 @@ public class MediaDataController extends BaseController {
                 // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos /
                 // Files / etc.) instead of always Empty. Mirrors CG MediaDataController line ~3918
                 // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
-                req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
+                req.filter = app.nimarkogram.messenger.utils.chats.ChatHelper2.getSearchFilterType();
                 mergeReqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     if (lastMergeDialogId == mergeDialogId) {
                         mergeReqId = 0;
@@ -4171,7 +4172,7 @@ public class MediaDataController extends BaseController {
         // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos / Files /
         // etc.) instead of always Empty. Mirrors CG MediaDataController line ~4003
         // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
-        req.filter = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2.getSearchFilterType();
+        req.filter = app.nimarkogram.messenger.utils.chats.ChatHelper2.getSearchFilterType();
         lastSearchQuery = query;
         long queryWithDialogFinal = queryWithDialog;
         String finalQuery = query;
@@ -4603,7 +4604,7 @@ public class MediaDataController extends BaseController {
                 final TLRPC.MessageEntity entity = message.entities.get(a);
                 if ((entity instanceof TLRPC.TL_messageEntityUrl || entity instanceof TLRPC.TL_messageEntityTextUrl || entity instanceof TLRPC.TL_messageEntityEmail)
                         && (media instanceof TLRPC.TL_messageMediaWebPage
-                        || !app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(message.message, entity))) {
+                        || !app.nimarkogram.messenger.utils.LocalEmoji.isLocalEmojiLink(message.message, entity))) {
                     return MEDIA_URL;
                 }
             }
@@ -4616,7 +4617,7 @@ public class MediaDataController extends BaseController {
         if (media != null && !(media instanceof TLRPC.TL_messageMediaEmpty)) return false;
         boolean local = false;
         for (TLRPC.MessageEntity entity : message.entities) {
-            if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.isLocalEmojiLink(message.message, entity)
+            if (app.nimarkogram.messenger.utils.LocalEmoji.isLocalEmojiLink(message.message, entity)
                     || entity instanceof TLRPC.TL_messageEntityCustomEmoji
                     && ((TLRPC.TL_messageEntityCustomEmoji) entity).local) {
                 local = true;
@@ -7160,7 +7161,7 @@ public class MediaDataController extends BaseController {
         // NM_MF: wrap msg.entities with CG-style spoiler entities derived from MessageFilters.
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
         // NM_PWD: overlay full-body spoiler for locked / encrypted dialogs.
-        ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
+        ents = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, -1);
     }
 
@@ -7172,7 +7173,7 @@ public class MediaDataController extends BaseController {
         // NM_MF: wrap msg.entities with CG-style spoiler entities derived from MessageFilters.
         ArrayList<TLRPC.MessageEntity> ents = MessagesFilterHelper.INSTANCE.addSpoilerEntities(msg);
         // NM_PWD: overlay full-body spoiler for locked / encrypted dialogs.
-        ents = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
+        ents = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.checkLockedChatsEntities(msg, ents);
         addTextStyleRuns(ents, msg.messageText, text, allowedFlags);
     }
 
@@ -7804,6 +7805,7 @@ public class MediaDataController extends BaseController {
 
         CharSequence cs = message[0];
         if (entities == null) entities = new ArrayList<>();
+        addTonAddressEntities(cs, entities);
         if (parseMarkdown) {
             cs = parsePattern(cs, BOLD_PATTERN, entities, obj -> new TLRPC.TL_messageEntityBold());
             cs = parsePattern(cs, ITALIC_PATTERN, entities, obj -> new TLRPC.TL_messageEntityItalic());
@@ -7896,9 +7898,11 @@ public class MediaDataController extends BaseController {
     private CharSequence parsePattern(CharSequence cs, Pattern pattern, ArrayList<TLRPC.MessageEntity> entities, GenericProvider<Void, TLRPC.MessageEntity> entityProvider) {
         Matcher m = pattern.matcher(cs);
         int offset = 0;
-        while (m.find()) {
+        int from = 0;
+        while (from <= m.regionEnd() && m.find(from)) {
             String gr = m.group(1);
             boolean allowEntity = true;
+            TLRPC.MessageEntity trimUrl = null;
             if (cs instanceof Spannable) {
                 // check if it is inside a link: do not convert __ ** to styles inside links
                 URLSpan[] spansUrl = ((Spannable) cs).getSpans(m.start() - offset, m.end() - offset, URLSpan.class);
@@ -7915,6 +7919,20 @@ public class MediaDataController extends BaseController {
                             allowEntity = false;
                             break;
                         }
+                    } else if (entity instanceof TLRPC.TL_messageEntityUrl || entity instanceof TLRPC.TL_messageEntityTonAddress) {
+                        final int end = entity.offset + entity.length;
+                        if (AndroidUtilities.intersect1d(m.start() - offset, m.start(1) - offset, entity.offset, end)) {
+                            allowEntity = false;
+                            break;
+                        }
+                        if (AndroidUtilities.intersect1d(m.end(1) - offset, m.end() - offset, entity.offset, end)) {
+                            if (entity instanceof TLRPC.TL_messageEntityUrl && end == m.end() - offset && m.end(1) - offset > entity.offset) {
+                                trimUrl = entity;
+                            } else {
+                                allowEntity = false;
+                                break;
+                            }
+                        }
                     }
                 }
             }
@@ -7927,12 +7945,62 @@ public class MediaDataController extends BaseController {
                 entity.length = gr.length();
 
                 removeOffset4After(entity.offset, entity.offset + entity.length, entities);
+                if (trimUrl != null) {
+                    trimUrl.length -= m.end() - m.end(1);
+                    final String marker = m.group().substring(m.end(1) - m.start());
+                    if (trimUrl.url != null && trimUrl.url.endsWith(marker)) {
+                        trimUrl.url = trimUrl.url.substring(0, trimUrl.url.length() - marker.length());
+                    }
+                }
                 entities.add(entity);
-            }
 
             offset += m.end() - m.start() - gr.length();
+                from = m.end();
+            } else {
+                from = m.start() + 1;
+            }
         }
         return cs;
+    }
+
+    private static boolean isMarkdownProtectedEntity(TLRPC.MessageEntity entity) {
+        return (
+            entity instanceof TLRPC.TL_messageEntityPre ||
+            entity instanceof TLRPC.TL_messageEntityCode ||
+            entity instanceof TLRPC.TL_messageEntityUrl ||
+            entity instanceof TLRPC.TL_messageEntityTonAddress
+        );
+    }
+
+    private static final Pattern TON_ADDRESS_PATTERN = Pattern.compile("(?<![A-Za-z0-9_+/=:-])(?:-?[0-9]{1,10}:[0-9a-fA-F]{64}|[A-Za-z0-9_+/-]{48})(?![A-Za-z0-9_+/=:-])");
+
+    private static void addTonAddressEntities(CharSequence cs, ArrayList<TLRPC.MessageEntity> entities) {
+        if (cs == null || cs.length() < 48) return;
+        final Matcher m = TON_ADDRESS_PATTERN.matcher(cs);
+        while (m.find()) {
+            final int start = m.start(), end = m.end();
+            boolean intersects = false;
+            for (int i = 0; i < entities.size(); ++i) {
+                final TLRPC.MessageEntity e = entities.get(i);
+                if (AndroidUtilities.intersect1d(start, end, e.offset, e.offset + e.length) && (isMarkdownProtectedEntity(e) || e instanceof TLRPC.TL_messageEntityTextUrl)) {
+                    intersects = true;
+                    break;
+                }
+            }
+            if (intersects) continue;
+            boolean valid;
+            try {
+                valid = WalletEngine2.isValidAddress(m.group());
+            } catch (Throwable t) {
+                FileLog.e(t);
+                valid = false;
+            }
+            if (!valid) continue;
+            final TLRPC.TL_messageEntityTonAddress entity = new TLRPC.TL_messageEntityTonAddress();
+            entity.offset = start;
+            entity.length = end - start;
+            entities.add(entity);
+        }
     }
 
     private static void removeOffset4After(int start, int end, ArrayList<TLRPC.MessageEntity> entities) {
@@ -8048,6 +8116,13 @@ public class MediaDataController extends BaseController {
             draftMessage.flags |= 16;
             draftMessage.reply_to.reply_to_msg_id = replyToMessage.id;
             if (quote != null) {
+                if (quote.isRich) {
+                    if (quote.rich != null && !quote.rich.isEmpty()) {
+                        draftMessage.reply_to.quote_rich = new ArrayList<>(quote.rich);
+                        draftMessage.reply_to.flags |= 16;
+                        draftMessage.reply_to.quote_offset = quote.getQuoteOffset();
+                    }
+                } else {
                 draftMessage.reply_to.quote_text = quote.getText();
                 if (draftMessage.reply_to.quote_text != null) {
                     draftMessage.reply_to.flags |= 4;
@@ -8058,6 +8133,7 @@ public class MediaDataController extends BaseController {
                 if (draftMessage.reply_to.quote_entities != null && !draftMessage.reply_to.quote_entities.isEmpty()) {
                     draftMessage.reply_to.quote_entities = new ArrayList<>(draftMessage.reply_to.quote_entities);
                     draftMessage.reply_to.flags |= 8;
+                    }
                 }
                 if (quote.message != null && quote.message.messageOwner != null) {
                     TLRPC.Peer peer2 = getMessagesController().getPeer(dialogId);
@@ -8274,6 +8350,9 @@ public class MediaDataController extends BaseController {
             if (!TextUtils.equals(a.quote_text, b.quote_text)) {
                 return false;
             }
+            if ((a.quote_rich != null || b.quote_rich != null) && !RichQuote.equals(a.quote_rich, b.quote_rich)) {
+                return false;
+            }
             return a.reply_to_msg_id == b.reply_to_msg_id;
         }
         if (a instanceof TLRPC.TL_inputReplyToStory) {
@@ -8301,6 +8380,13 @@ public class MediaDataController extends BaseController {
                 inputReplyTo.flags |= 1;
                 inputReplyTo.top_msg_id = reply_to.reply_to_top_id;
             }
+            if (reply_to.quote_rich != null) {
+                inputReplyTo.quote_rich = reply_to.quote_rich;
+                if ((reply_to.flags & 1024) != 0) {
+                    inputReplyTo.flags |= 16;
+                    inputReplyTo.quote_offset = reply_to.quote_offset;
+                }
+            } else {
             if ((reply_to.flags & 64) != 0) {
                 inputReplyTo.flags |= 4;
                 inputReplyTo.quote_text = reply_to.quote_text;
@@ -8308,6 +8394,7 @@ public class MediaDataController extends BaseController {
             if ((reply_to.flags & 128) != 0) {
                 inputReplyTo.flags |= 8;
                 inputReplyTo.quote_entities = reply_to.quote_entities;
+                }
             }
             return inputReplyTo;
         }
@@ -10213,27 +10300,43 @@ public class MediaDataController extends BaseController {
     }
 
     private boolean draftVoicesLoaded = false;
-    public LongSparseArray<DraftVoice> draftVoices = new LongSparseArray<>();
+    private long draftVoicesUserId;
+    public HashMap<String, DraftVoice> draftVoices = new HashMap<>();
+    private String draftVoiceKey(long dialogId, long topicId) {
+        return dialogId + ":" + topicId;
+    }
+    private SharedPreferences draftVoicePreferences() {
+        return ApplicationLoader.applicationContext.getSharedPreferences("3voicedrafts_" + currentAccount + "_" + draftVoicesUserId, Context.MODE_PRIVATE);
+    }
     private void loadDraftVoiceMessages() {
-        if (draftVoicesLoaded) return;
-        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("2voicedrafts_" + currentAccount, Context.MODE_PRIVATE);
-        Set<? extends Map.Entry<String, ?>> entries = prefs.getAll().entrySet();
+        final long userId = UserConfig.getInstance(currentAccount).getClientUserId();
+        if (draftVoicesLoaded && draftVoicesUserId == userId) return;
+        for (DraftVoice draft : draftVoices.values()) draft.discarded = true;
         draftVoices.clear();
+        draftVoicesUserId = userId;
+        draftVoicesLoaded = true;
+        if (userId == 0) return;
+        SharedPreferences prefs = draftVoicePreferences();
+        Set<? extends Map.Entry<String, ?>> entries = prefs.getAll().entrySet();
         for (Map.Entry<String, ?> entry : entries) {
             String key = entry.getKey();
-            String value = (String) entry.getValue();
-            DraftVoice draft = DraftVoice.fromString(value);
+            String[] parts = key.split(":", -1);
+            if (parts.length != 2 || !(entry.getValue() instanceof String)) continue;
+            try {
+                if (!key.equals(draftVoiceKey(Long.parseLong(parts[0]), Long.parseLong(parts[1])))) continue;
+            } catch (NumberFormatException ignored) {
+                continue;
+            }
+            DraftVoice draft = DraftVoice.fromString((String) entry.getValue());
             if (draft == null) continue;
-            draftVoices.put(Long.parseLong(key), draft);
+            draftVoices.put(key, draft);
         }
-        draftVoicesLoaded = true;
     }
     public void toggleDraftVoiceOnce(long dialog_id, long topic_id, boolean once) {
         DraftVoice draft = getDraftVoice(dialog_id, topic_id);
         if (draft != null && draft.once != once) {
             draft.once = once;
-            SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("2voicedrafts_" + currentAccount, Context.MODE_PRIVATE);
-            prefs.edit().putString(Objects.hash(dialog_id, topic_id) + "", draft.toString()).apply();
+            draftVoicePreferences().edit().putString(draftVoiceKey(dialog_id, topic_id), draft.toString()).apply();
         }
     }
     public void setDraftVoiceRegion(long dialog_id, long topic_id, float left, float right) {
@@ -10241,28 +10344,34 @@ public class MediaDataController extends BaseController {
         if (draft != null && (Math.abs(draft.left - left) >= 0.001f || Math.abs(draft.right - right) >= 0.001f)) {
             draft.left = left;
             draft.right = right;
-            SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("2voicedrafts_" + currentAccount, Context.MODE_PRIVATE);
-            prefs.edit().putString(Objects.hash(dialog_id, topic_id) + "", draft.toString()).apply();
+            draftVoicePreferences().edit().putString(draftVoiceKey(dialog_id, topic_id), draft.toString()).apply();
         }
     }
     public void pushDraftVoiceMessage(long dialog_id, long topic_id, DraftVoice draft) {
-        SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("2voicedrafts_" + currentAccount, Context.MODE_PRIVATE);
-        final long hash = Objects.hash(dialog_id, topic_id);
-        final String key = hash + "";
+        loadDraftVoiceMessages();
+        if (draftVoicesUserId == 0 || draft != null && draft.isDiscarded()) return;
+        SharedPreferences prefs = draftVoicePreferences();
+        final String key = draftVoiceKey(dialog_id, topic_id);
+        final DraftVoice previous = draftVoices.get(key);
+        if (previous != null && previous != draft) previous.discarded = true;
         if (draft == null) {
             prefs.edit().remove(key).apply();
-            draftVoices.remove(hash);
+            draftVoices.remove(key);
         } else {
             prefs.edit().putString(key, draft.toString()).apply();
-            draftVoices.put(hash, draft);
+            draftVoices.put(key, draft);
         }
     }
     public DraftVoice getDraftVoice(long dialog_id, long topic_id) {
         loadDraftVoiceMessages();
-        return draftVoices.get(Objects.hash(dialog_id, topic_id));
+        return draftVoices.get(draftVoiceKey(dialog_id, topic_id));
     }
 
     public static class DraftVoice {
+        private volatile boolean discarded;
+        public boolean isDiscarded() {
+            return discarded;
+        }
         public String path;
         public long samplesCount;
         public int writedFrame;

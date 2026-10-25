@@ -54,7 +54,7 @@ import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.RecyclerView;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
@@ -487,7 +487,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 }
             }
 
-            boolean nimarkoSnow = app.nimarkogram.messenger.NimarkoConfig.drawSnowInActionBar;
+            boolean nimarkoSnow = app.nimarkogram.messenger.AppConfig.drawSnowInActionBar;
             boolean wantSnow = Theme.canStartHolidayAnimation() || nimarkoSnow;
             if (wantSnow) {
                 if (snowflakesEffect == null) {
@@ -664,7 +664,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (forceDisableCenterTitle) {
             return false;
         }
-        return isCenterTitle || app.nimarkogram.messenger.NimarkoConfig.centerTitle;
+        return isCenterTitle || app.nimarkogram.messenger.AppConfig.centerTitle;
     }
 
     protected boolean shouldUseAdaptiveCenterTitle() {
@@ -697,6 +697,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return width - dp(16);
         }
         int menuW = shouldCenterTitle() ? menu.getVisibleItemsMeasuredWidthForCenterTitle() : menu.getMeasuredWidth();
+        if (!shouldCenterTitle() && !isSearchFieldVisible) {
+            menuW = Math.max(0, menuW - menu.getClosingSearchFieldWidth());
+        }
         return width - menuW;
     }
 
@@ -723,7 +726,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private int getLeftAlignedTitleAvailableWidth(int width, int textLeft) {
-        return width - (menu != null ? menu.getMeasuredWidth() : 0) - dp(16) - textLeft - titleRightMargin;
+        int menuWidth = menu != null ? Math.max(0, menu.getMeasuredWidth()
+                - (isSearchFieldVisible ? 0 : menu.getClosingSearchFieldWidth())) : 0;
+        return width - menuWidth - dp(16) - textLeft - titleRightMargin;
     }
 
     private int getAnimatedCenterTitleX(int target) {
@@ -2205,7 +2210,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private boolean isTitlePresentationVisible() {
-        if (!resumed || NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow()
+        if (!resumed || UiAnimationClock.isPaused() || !isAttachedToWindow()
                 || !isShown() || getWindowVisibility() != VISIBLE
                 || titleTextView[0] == null || titleTextView[0].getVisibility() != VISIBLE
                 || titlesContainer != null && (titlesContainer.getVisibility() != VISIBLE
@@ -3498,7 +3503,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         public void checkUnreadView(int count) {
 
-            if (!app.nimarkogram.messenger.NimarkoConfig.unreadBadgeOnBackButton) {
+            if (!app.nimarkogram.messenger.AppConfig.unreadBadgeOnBackButton) {
                 if (countLayout != null) {
                     countLayout.setVisibility(GONE);
                     countLayout.setCount(0, false);

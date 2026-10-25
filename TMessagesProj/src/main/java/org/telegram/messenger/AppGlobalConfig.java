@@ -118,6 +118,7 @@ public class AppGlobalConfig {
     public final ConfigBoolean walletPaidMessageRecipientMessageAmountCheck = ofBoolean("wallet_paid_message_recipient_message_amount_check", true);
     public final ConfigLong walletTransferMinNanos = ofLong("wallet_transfer_min_nanos", 100_000_000);
     public final ConfigLong walletGaslessMinNanos = ofLong("wallet_gasless_min_nanos", 100_000_000);
+    public final ConfigStringSet walletCardBgGifts = ofStringSet("wallet_card_bg_gifts", Collections.emptySet());
     public boolean apply(SharedPreferences.Editor editor, TLRPC.TL_jsonObject object) {
         boolean changed = false;
 

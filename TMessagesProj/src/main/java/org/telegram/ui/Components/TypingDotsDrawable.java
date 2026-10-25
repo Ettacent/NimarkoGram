@@ -10,7 +10,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -59,8 +59,8 @@ public class TypingDotsDrawable extends StatusDrawable {
     }
 
     private void update() {
-        long newTime = NimarkoUiAnimationClock.now();
-        int epoch = NimarkoUiAnimationClock.epoch();
+        long newTime = UiAnimationClock.now();
+        int epoch = UiAnimationClock.epoch();
         long dt = epoch == visualEpoch ? Math.max(0L, newTime - lastUpdateTime) : 0L;
         visualEpoch = epoch;
         lastUpdateTime = newTime;
@@ -94,8 +94,8 @@ public class TypingDotsDrawable extends StatusDrawable {
     }
 
     public void start() {
-        lastUpdateTime = NimarkoUiAnimationClock.now();
-        visualEpoch = NimarkoUiAnimationClock.epoch();
+        lastUpdateTime = UiAnimationClock.now();
+        visualEpoch = UiAnimationClock.epoch();
         started = true;
         invalidateSelf();
     }

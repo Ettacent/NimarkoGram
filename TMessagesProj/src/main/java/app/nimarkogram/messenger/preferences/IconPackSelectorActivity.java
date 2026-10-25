@@ -46,15 +46,15 @@ import org.telegram.ui.LaunchActivity;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 
 public class IconPackSelectorActivity extends BaseFragment {
 
 
     private static final int[] VALUES = {
-            NimarkoConfig.ICON_REPLACE_NONE, NimarkoConfig.ICON_REPLACE_SOLAR,
-            NimarkoConfig.ICON_REPLACE_LIQUID_GLASS, NimarkoConfig.ICON_REPLACE_PLUMPY
+            AppConfig.ICON_REPLACE_NONE, AppConfig.ICON_REPLACE_SOLAR,
+            AppConfig.ICON_REPLACE_LIQUID_GLASS, AppConfig.ICON_REPLACE_PLUMPY
     };
     private static final int[] TITLES = {
             R.string.NM_IconPack_DefaultTitle, R.string.NM_IconPack_SolarTitle,
@@ -86,7 +86,7 @@ public class IconPackSelectorActivity extends BaseFragment {
     public View createView(Context context) {
         releasePager();
         rtl = LocaleController.isRTL;
-        if (!isKnownValue(previewValue)) previewValue = normalizedValue(NimarkoConfig.iconReplacement);
+        if (!isKnownValue(previewValue)) previewValue = normalizedValue(AppConfig.iconReplacement);
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
         actionBar.setTitle(getString(R.string.AP_IconReplacements));
@@ -260,7 +260,7 @@ public class IconPackSelectorActivity extends BaseFragment {
         return false;
     }
     private static int normalizedValue(int value) {
-        return isKnownValue(value) ? value : NimarkoConfig.ICON_REPLACE_NONE;
+        return isKnownValue(value) ? value : AppConfig.ICON_REPLACE_NONE;
     }
     private static int indexOfValue(int value) {
         for (int i = 0; i < VALUES.length; i++) if (VALUES[i] == value) return i;
@@ -272,8 +272,8 @@ public class IconPackSelectorActivity extends BaseFragment {
     private static int visualIndex(int index, boolean rtl) { return logicalIndex(index, rtl); }
 
     private static int installedPack(Resources resources) {
-        return resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getAppliedSelection() : NimarkoConfig.iconReplacement;
+        return resources instanceof IconResources
+                ? ((IconResources) resources).getAppliedSelection() : AppConfig.iconReplacement;
     }
 
     @Override public boolean onIconPackResourcesChanged() {
@@ -312,7 +312,7 @@ public class IconPackSelectorActivity extends BaseFragment {
 
     private void finishPresentationAnimations() {
         if (applyButton instanceof IconPackApplyButton) ((IconPackApplyButton) applyButton).finishTransition();
-        int selected = normalizedValue(NimarkoConfig.iconReplacement);
+        int selected = normalizedValue(AppConfig.iconReplacement);
         for (int i = 0; i < cards.size(); i++) cards.get(i).setApplied(VALUES[i] == selected, false);
         for (ImageView arrow : new ImageView[]{previousButton, nextButton}) {
             if (arrow != null && arrow.getDrawable() instanceof TransitionDrawable) {
@@ -332,13 +332,13 @@ public class IconPackSelectorActivity extends BaseFragment {
     private void refreshSelection(boolean animated) {
         if (applyButton == null || positionLabel == null) return;
         int index = indexOfValue(previewValue);
-        int selected = normalizedValue(NimarkoConfig.iconReplacement);
+        int selected = normalizedValue(AppConfig.iconReplacement);
         for (int i = 0; i < cards.size(); i++) {
             cards.get(i).setApplied(VALUES[i] == selected, animated && allowMotion());
             cards.get(i).setImportantForAccessibility(i == index
                     ? View.IMPORTANT_FOR_ACCESSIBILITY_YES : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         }
-        boolean applied = previewValue == NimarkoConfig.iconReplacement;
+        boolean applied = previewValue == AppConfig.iconReplacement;
         applyButton.setText(getString(applied ? R.string.NM_IconPicker_Applied : R.string.NM_IconPicker_Apply));
         applyButton.setEnabled(!applied && pagerScrollState == ViewPager.SCROLL_STATE_IDLE);
         applyButton.setContentDescription(applied
@@ -443,13 +443,13 @@ public class IconPackSelectorActivity extends BaseFragment {
     private boolean nmApplyPending;
     private int nmApplyGeneration;
     private int nmPendingApplyGeneration;
-    private int nmPendingSelection = NimarkoConfig.ICON_REPLACE_NONE;
+    private int nmPendingSelection = AppConfig.ICON_REPLACE_NONE;
 
     private final Runnable nmApplyPackRunnable = () -> {
         final int generation = nmPendingApplyGeneration;
         final int selection = nmPendingSelection;
         nmApplyPending = false;
-        if (generation == nmApplyGeneration && selection == NimarkoConfig.iconReplacement
+        if (generation == nmApplyGeneration && selection == AppConfig.iconReplacement
                 && getParentActivity() instanceof LaunchActivity) {
             ((LaunchActivity) getParentActivity()).reloadResources();   // off-thread pack load + re-skin
         }
@@ -463,8 +463,8 @@ public class IconPackSelectorActivity extends BaseFragment {
 
     private void select(int value) {
         if (!isKnownValue(value)) return;
-        if (NimarkoConfig.iconReplacement != value) {
-            NimarkoConfig.setIconReplacement(value);
+        if (AppConfig.iconReplacement != value) {
+            AppConfig.setIconReplacement(value);
             refreshSelection();
             AndroidUtilities.cancelRunOnUIThread(nmApplyPackRunnable);
             nmPendingApplyGeneration = ++nmApplyGeneration;

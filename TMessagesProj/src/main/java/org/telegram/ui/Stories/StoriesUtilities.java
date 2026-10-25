@@ -134,7 +134,7 @@ public class StoriesUtilities {
         int unreadState = 0;
         boolean showProgress = storiesController.isLoading(dialogId);
         boolean isForum = ChatObject.isForum(UserConfig.selectedAccount, dialogId) && !params.isDialogStoriesCell;
-        
+
         params.updateRingCorners(params.originalAvatarRect, isForum);
         if (params.drawHiddenStoriesAsSegments) {
             hasStories = storiesController.hasHiddenStories();
@@ -195,8 +195,8 @@ public class StoriesUtilities {
             params.inc = false;
         }
         params.showProgress = showProgress;
-        
-        if (app.nimarkogram.messenger.NimarkoConfig.hideStories || params.currentState == STATE_EMPTY && params.progressToSate == 1f) {
+
+        if (app.nimarkogram.messenger.AppConfig.hideStories || params.currentState == STATE_EMPTY && params.progressToSate == 1f) {
             avatarImage.setImageCoords(params.originalAvatarRect);
             canvas.save();
             canvas.scale(scale, scale, params.originalAvatarRect.centerX(), params.originalAvatarRect.centerY());
@@ -478,7 +478,7 @@ public class StoriesUtilities {
         } else {
             globalPaint = params.isStoryCell ? storyCellGreyPaint[params.isArchive ? 1 : 0] : grayPaint;
         }
-        
+
         if (storiesCount <= 1) {
             Paint localPaint = paint;
             int u = storiesController.hasUnreadStoriesLive(params.dialogId);
@@ -508,7 +508,7 @@ public class StoriesUtilities {
                 drawSegment(canvas, rectTmp, globalPaint, startAngle, endAngle, params, isForum);
                 globalPaint.setAlpha(255);
             }
-            
+
         } else {
             float step = 360 / (float) storiesCount;
             int gap = storiesCount > 20 ? 3 : 5;
@@ -550,10 +550,10 @@ public class StoriesUtilities {
                 drawSegment(canvas, rectTmp, segmentPaint, startAngle, endAngle, params, isForum);
                 if (params.progressToSegments != 1 && segmentPaint != globalPaint) {
                     float strokeWidth = globalPaint.getStrokeWidth();
-                    
+
                     globalPaint.setAlpha((int) (255 * (1f - params.progressToSegments)));
                     drawSegment(canvas, rectTmp, globalPaint, startAngle, endAngle, params, isForum);
-                    
+
                     globalPaint.setAlpha(255);
                 }
             }
@@ -676,18 +676,18 @@ public class StoriesUtilities {
         if (isForum) {
             forumRect.set(rectTmp);
             forumRect.inset(dp(0.5f), dp(0.5f));
-            
+
             float r = params.ringRounded ? params.ringCornerRadius : dp(18);
             canvas.drawRoundRect(forumRect, r, r, paint);
             return;
         }
-        
+
         if (params.ringRounded) {
             float r = params.ringCornerRadius;
             if (params.progressToArc == 0) {
                 canvas.drawRoundRect(rectTmp, r, r, paint);
             } else {
-                
+
                 drawRoundRectArc(canvas, rectTmp, r, paint, 360 + params.progressToArc / 2f, 360 - params.progressToArc);
             }
             return;
@@ -728,9 +728,9 @@ public class StoriesUtilities {
     private static final Path forumSegmentPath = new Path();
 
     private static void drawSegment(Canvas canvas, RectF rectTmp, Paint paint, float startAngle, float endAngle, AvatarStoryParams params, boolean isForum) {
-        
+
         if (isForum || params.ringRounded) {
-            
+
             float r = params.ringRounded ? params.ringCornerRadius : rectTmp.height() * 0.32f;
             float rotateAngle = (((int)(startAngle)) / 90) * 90 + 90;
             float pathAngleStart = -199 + rotateAngle;
@@ -1297,17 +1297,17 @@ public class StoriesUtilities {
         public float avatarSizeDp;
 
         public void updateRingCorners(RectF ringRect, boolean isForum) {
-            if (app.nimarkogram.messenger.NimarkoConfig.avatarCorners >= app.nimarkogram.messenger.NimarkoConfig.AVATAR_CORNERS_MAX) {
+            if (app.nimarkogram.messenger.AppConfig.avatarCorners >= app.nimarkogram.messenger.AppConfig.AVATAR_CORNERS_MAX) {
                 ringRounded = false;
                 ringCornerRadius = 0;
                 return;
             }
             float ringDp = ringRect.width() / org.telegram.messenger.AndroidUtilities.density;
             int r = isForum
-                    ? app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(ringDp, true)
-                    : app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(ringDp, false);
+                    ? app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(ringDp, true)
+                    : app.nimarkogram.messenger.AppConfig.getAvatarCorners(ringDp, false);
             ringCornerRadius = r;
-            
+
             ringRounded = r < ringRect.width() / 2f;
         }
 
@@ -1361,8 +1361,8 @@ public class StoriesUtilities {
         }
 
         public boolean checkOnTouchEvent(MotionEvent event, View view) {
-            
-            if (app.nimarkogram.messenger.NimarkoConfig.hideStories) return false;
+
+            if (app.nimarkogram.messenger.AppConfig.hideStories) return false;
             child = view;
             StoriesController storiesController = MessagesController.getInstance(UserConfig.selectedAccount).getStoriesController();
             if (event.getAction() == MotionEvent.ACTION_DOWN && originalAvatarRect.contains(event.getX(), event.getY())) {
@@ -1650,8 +1650,8 @@ public class StoriesUtilities {
         }
 
         public void setColor(MessagesController.PeerColor peerColor, boolean animated) {
-            
-            if (peerColor != null && app.nimarkogram.messenger.NimarkoConfig.profileBackgroundColor) {
+
+            if (peerColor != null && app.nimarkogram.messenger.AppConfig.profileBackgroundColor) {
                 setColors(
                     peerColor.getStoryColor1(Theme.isCurrentThemeDark()),
                     peerColor.getStoryColor2(Theme.isCurrentThemeDark()),

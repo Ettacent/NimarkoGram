@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -115,7 +117,7 @@ public class PhonebookShareAlert extends BottomSheet {
             avatarDrawable.setInfo(currentAccount, currentUser);
 
             BackupImageView avatarImageView = new BackupImageView(context);
-            avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(80));
+            avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(80));
             avatarImageView.setForUserOrChat(currentUser, avatarDrawable);
             addView(avatarImageView, LayoutHelper.createLinear(80, 80, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 32, 0, 0));
 

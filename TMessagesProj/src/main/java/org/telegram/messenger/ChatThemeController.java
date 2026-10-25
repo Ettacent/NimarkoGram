@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.Context;
@@ -148,7 +150,7 @@ public class ChatThemeController extends BaseController {
                     }
                     editor.apply();
                 } else if (response instanceof TL_account.TL_themesNotModified) {
-                   
+
                         chatThemes = getAllChatThemesFromPrefs();
 
                 } else {
@@ -365,8 +367,8 @@ public class ChatThemeController extends BaseController {
     }
 
     public TLRPC.WallPaper getDialogWallpaper(long dialogId) {
-        
-        boolean custom = app.nimarkogram.messenger.NimarkoConfig.customWallpapers;
+
+        boolean custom = app.nimarkogram.messenger.AppConfig.customWallpapers;
         if (dialogId >= 0) {
             TLRPC.UserFull userFull = getMessagesController().getUserFull(dialogId);
             if (userFull != null && userFull.wallpaper != null) {
@@ -925,7 +927,7 @@ public class ChatThemeController extends BaseController {
 
     private void requestNextChatThemes(ResultCallback<Void> callback) {
         if (giftsThemeList.hash == 0 || giftsThemeList.lastReloadTimeMs == 0) {
-            
+
         }
 
         final boolean needReload = System.currentTimeMillis() - giftsThemeList.lastReloadTimeMs > reloadTimeoutMs;

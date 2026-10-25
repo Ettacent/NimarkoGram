@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -19,18 +21,41 @@ import java.nio.ByteBuffer;
 
 public class SQLitePreparedStatement {
 
-    private boolean isFinalized = false;
-    private long sqliteStatementHandle;
+    private final SQLiteDatabase database;
+    private final SQLiteDatabase.StatementHandle statementHandle;
 
     private long startTime;
     private String query;
 
     public long getStatementHandle() {
-        return sqliteStatementHandle;
+        synchronized (database) {
+            try {
+                return getStatementHandleChecked();
+            } catch (SQLiteException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+    }
+
+    SQLiteDatabase getDatabase() {
+        return database;
+    }
+
+    long getStatementHandleChecked() throws SQLiteException {
+        checkFinalized();
+        return statementHandle.handle;
     }
 
     public SQLitePreparedStatement(SQLiteDatabase db, String sql) throws SQLiteException {
-        sqliteStatementHandle = prepare(db.getSQLiteHandle(), sql);
+        database = db;
+        synchronized (database) {
+            statementHandle = database.registerStatement();
+            boolean initialized = false;
+            try {
+                statementHandle.handle = prepare(database.getSQLiteHandle(), sql);
+                if (statementHandle.handle == 0) {
+                    throw new SQLiteException("Prepared query is empty");
+                }
         if (BuildVars.LOGS_ENABLED) {
             query = sql;
             startTime = SystemClock.elapsedRealtime();
@@ -41,31 +66,39 @@ public class SQLitePreparedStatement {
                 hashMap.put(this, sql);
             }*/
         }
+                initialized = true;
+            } finally {
+                if (!initialized) {
+                    database.releaseStatement(statementHandle);
+                }
+            }
+        }
     }
 
 
     public SQLiteCursor query(Object[] args) throws SQLiteException {
+        synchronized (database) {
         if (args == null) {
             throw new IllegalArgumentException();
         }
 
         checkFinalized();
 
-        reset(sqliteStatementHandle);
+            reset(statementHandle.handle);
 
         int i = 1;
         for (int a = 0; a < args.length; a++) {
             Object obj = args[a];
             if (obj == null) {
-                bindNull(sqliteStatementHandle, i);
+                    bindNull(statementHandle.handle, i);
             } else if (obj instanceof Integer) {
-                bindInt(sqliteStatementHandle, i, (Integer) obj);
+                    bindInt(statementHandle.handle, i, (Integer) obj);
             } else if (obj instanceof Double) {
-                bindDouble(sqliteStatementHandle, i, (Double) obj);
+                    bindDouble(statementHandle.handle, i, (Double) obj);
             } else if (obj instanceof String) {
-                bindString(sqliteStatementHandle, i, (String) obj);
+                    bindString(statementHandle.handle, i, (String) obj);
             } else if (obj instanceof Long) {
-                bindLong(sqliteStatementHandle, i, (Long) obj);
+                    bindLong(statementHandle.handle, i, (Long) obj);
             } else {
                 throw new IllegalArgumentException();
             }
@@ -75,18 +108,22 @@ public class SQLitePreparedStatement {
         return new SQLiteCursor(this);
     }
 
+    }
     public int step() throws SQLiteException {
-        return step(sqliteStatementHandle);
+        synchronized (database) {
+            return step(getStatementHandleChecked());
+        }
     }
 
     public SQLitePreparedStatement stepThis() throws SQLiteException {
-        step(sqliteStatementHandle);
+        step();
         return this;
     }
 
     public void requery() throws SQLiteException {
-        checkFinalized();
-        reset(sqliteStatementHandle);
+        synchronized (database) {
+            reset(getStatementHandleChecked());
+        }
     }
 
     public void dispose() {
@@ -94,13 +131,15 @@ public class SQLitePreparedStatement {
     }
 
     void checkFinalized() throws SQLiteException {
-        if (isFinalized) {
+        database.checkOpened();
+        if (statementHandle.handle == 0) {
             throw new SQLiteException("Prepared query finalized");
         }
     }
 
     public void finalizeQuery() {
-        if (isFinalized) {
+        synchronized (database) {
+            if (statementHandle.handle == 0) {
             return;
         }
         if (BuildVars.LOGS_ENABLED) {
@@ -109,30 +148,32 @@ public class SQLitePreparedStatement {
                 FileLog.d("sqlite query " + query + " took " + diff + "ms");
             }
         }
-        try {
-            isFinalized = true;
-            finalize(sqliteStatementHandle);
-        } catch (SQLiteException e) {
-            if (BuildVars.LOGS_ENABLED) {
-                FileLog.e(e.getMessage(), e);
-            }
+            database.releaseStatement(statementHandle);
         }
     }
 
     public void bindInteger(int index, int value) throws SQLiteException {
-        bindInt(sqliteStatementHandle, index, value);
+        synchronized (database) {
+            bindInt(getStatementHandleChecked(), index, value);
+        }
     }
 
     public void bindDouble(int index, double value) throws SQLiteException {
-        bindDouble(sqliteStatementHandle, index, value);
+        synchronized (database) {
+            bindDouble(getStatementHandleChecked(), index, value);
+        }
     }
 
     public void bindByteBuffer(int index, ByteBuffer value) throws SQLiteException {
-        bindByteBuffer(sqliteStatementHandle, index, value, value.limit());
+        synchronized (database) {
+            bindByteBuffer(getStatementHandleChecked(), index, value, value.limit());
+        }
     }
 
     public void bindByteBuffer(int index, NativeByteBuffer value) throws SQLiteException {
-        bindByteBuffer(sqliteStatementHandle, index, value.buffer, value.limit());
+        synchronized (database) {
+            bindByteBuffer(getStatementHandleChecked(), index, value.buffer, value.limit());
+        }
     }
 
     public void bindTlObject(int index, TLObject object) throws Exception {
@@ -146,15 +187,21 @@ public class SQLitePreparedStatement {
     }
 
     public void bindString(int index, String value) throws SQLiteException {
-        bindString(sqliteStatementHandle, index, value);
+        synchronized (database) {
+            bindString(getStatementHandleChecked(), index, value);
+        }
     }
 
     public void bindLong(int index, long value) throws SQLiteException {
-        bindLong(sqliteStatementHandle, index, value);
+        synchronized (database) {
+            bindLong(getStatementHandleChecked(), index, value);
+        }
     }
 
     public void bindNull(int index) throws SQLiteException {
-        bindNull(sqliteStatementHandle, index);
+        synchronized (database) {
+            bindNull(getStatementHandleChecked(), index);
+        }
     }
 
     native void bindByteBuffer(long statementHandle, int index, ByteBuffer value, int length) throws SQLiteException;

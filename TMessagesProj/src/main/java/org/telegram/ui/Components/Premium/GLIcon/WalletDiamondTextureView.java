@@ -27,7 +27,8 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class WalletDiamondTextureView extends TextureView implements TextureView.SurfaceTextureListener, Choreographer.FrameCallback {
-    private static Engine engine;
+    private static final Engine[] engines = new Engine[3];
+    private final Engine engine;
     private final Rect visibleRect = new Rect();
     private final Runnable updatePose;
     private final int bufferSize;
@@ -37,9 +38,14 @@ public class WalletDiamondTextureView extends TextureView implements TextureView
     private boolean custom, enlarged;
 
     public WalletDiamondTextureView(Context context, Runnable updatePose) {
+        this(context, updatePose, GLIconRenderer.DIAMOND_COOL);
+    }
+
+    public WalletDiamondTextureView(Context context, Runnable updatePose, int appearance) {
         super(context);
         this.updatePose = updatePose;
-        if (engine == null) engine = new Engine(context.getApplicationContext());
+        if (engines[appearance] == null) engines[appearance] = new Engine(context.getApplicationContext(), appearance);
+        engine = engines[appearance];
         bufferSize = engine.expandedSize;
         setOpaque(false);
         setSurfaceTextureListener(this);
@@ -147,7 +153,7 @@ public class WalletDiamondTextureView extends TextureView implements TextureView
     private static final class Engine {
         final Context context;
         final Handler worker;
-        final int size, expandedSize;
+        final int size, expandedSize, appearance;
         final ArrayList<Target> views = new ArrayList<>();
         volatile Target[] targets = new Target[0];
         final AtomicBoolean scheduled = new AtomicBoolean();
@@ -160,8 +166,9 @@ public class WalletDiamondTextureView extends TextureView implements TextureView
         long lastFrame, lastIdle;
         int idleVersion;
 
-        Engine(Context context) {
+        Engine(Context context, int appearance) {
             this.context = context;
+            this.appearance = appearance;
             size = Math.max(1, Math.min(192, Math.round(42 * context.getResources().getDisplayMetrics().density)));
             expandedSize = 378;
             HandlerThread thread = new HandlerThread("WalletDiamondTextures");
@@ -199,7 +206,7 @@ public class WalletDiamondTextureView extends TextureView implements TextureView
 
         DiamondRenderer renderer() {
             DiamondRenderer result = new DiamondRenderer(context, 2);
-            result.appearance = GLIconRenderer.DIAMOND_COOL;
+            result.appearance = appearance;
             return result;
         }
 

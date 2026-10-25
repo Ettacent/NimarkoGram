@@ -3,15 +3,15 @@
 package org.telegram.ui.Components;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.utils.NimarkoTextMotionBlur;
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.TextMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Bitmap;
@@ -63,7 +63,7 @@ public class AnimatedTextView extends View {
     public static class AnimatedTextDrawable extends Drawable {
 
         private final TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
-        private final NimarkoTextMotionBlur.Budget motionBlurBudget = new NimarkoTextMotionBlur.Budget();
+        private final TextMotionBlur.Budget motionBlurBudget = new TextMotionBlur.Budget();
         private int gravity = 0;
 
         private boolean isRTL = false;
@@ -105,7 +105,7 @@ public class AnimatedTextView extends View {
             int toOppositeIndex;
             float left, width, baseline, belowBaseline;
 
-            NimarkoTextMotionBlur motionBlur;
+            TextMotionBlur motionBlur;
             public Part(StaticLayout layout, float offset, int toOppositeIndex) {
                 this.layout = layout;
                 this.toOppositeIndex = toOppositeIndex;
@@ -141,19 +141,19 @@ public class AnimatedTextView extends View {
             }
 
             public void draw(Canvas canvas, float alpha) {
-                if (motionBlur != null && NimarkoTextMotionBlur.isMainThread() && (canvas.isHardwareAccelerated()
-                        || !NimarkoTextMotionBlur.featureEnabled())) motionBlur.reset();
+                if (motionBlur != null && TextMotionBlur.isMainThread() && (canvas.isHardwareAccelerated()
+                        || !TextMotionBlur.featureEnabled())) motionBlur.reset();
                 drawContent(canvas, alpha);
             }
 
             public void drawMoving(Canvas canvas, float alpha, float x, float y, float sx, float sy) {
-                if (!NimarkoTextMotionBlur.isMainThread()
-                        || NimarkoTextMotionBlur.featureEnabled() && !canvas.isHardwareAccelerated()) {
+                if (!TextMotionBlur.isMainThread()
+                        || TextMotionBlur.featureEnabled() && !canvas.isHardwareAccelerated()) {
                     drawContent(canvas, alpha);
                     return;
                 }
                 Canvas recording = null;
-                boolean enabled = NimarkoTextMotionBlur.enabled(canvas);
+                boolean enabled = TextMotionBlur.enabled(canvas);
                 Drawable.Callback callback = getCallback();
                 if (enabled) {
                     for (int depth = 0; callback instanceof Drawable && depth < 8; depth++) {
@@ -161,9 +161,9 @@ public class AnimatedTextView extends View {
                     }
                 }
                 boolean covered = enabled && callback instanceof View
-                        && NimarkoAppMotionBlur.isViewMotionBlurred((View) callback);
+                        && AppMotionBlur.isViewMotionBlurred((View) callback);
                 if (enabled && !covered) {
-                    if (motionBlur == null) motionBlur = new NimarkoTextMotionBlur();
+                    if (motionBlur == null) motionBlur = new TextMotionBlur();
                     int pad = (int) Math.ceil(10f + (shadowed ? shadowRadius * 3f
                             + Math.max(Math.abs(shadowDx), Math.abs(shadowDy)) : 0f));
                     float baselineShift = stableBaseline ? -textPaint.ascent() - layout.getLineBaseline(0) : 0f;
@@ -239,7 +239,7 @@ public class AnimatedTextView extends View {
         private final PorterDuffXfermode warmBlendMode = new PorterDuffXfermode(PorterDuff.Mode.ADD);
         private WeakReference<View> animationOwner;
         private boolean animationPaused;
-        private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+        private final UiAnimationClock.ResumeGate animationResumeGate = value ->
                 canAnimate() && (value != animator || deferredWarmText == null);
         private final ArrayList<Animator> visibilityPausedAnimators = new ArrayList<>(3);
         private boolean animationOwnerDetached;
@@ -272,7 +272,7 @@ public class AnimatedTextView extends View {
         };
 
         private boolean canAnimate() {
-            if (animationPaused || NimarkoUiAnimationClock.isPaused() || !isVisible()) return false;
+            if (animationPaused || UiAnimationClock.isPaused() || !isVisible()) return false;
             if (!(getCallback() instanceof View)) return true;
             View view = (View) getCallback();
             if (animationOwnerDetached && animationOwner != null && animationOwner.get() == view) return false;
@@ -344,9 +344,9 @@ public class AnimatedTextView extends View {
                 if (!visibilityPausedAnimators.contains(animation)) visibilityPausedAnimators.add(animation);
                 animation.pause();
             } else if (visible && visibilityPausedAnimators.remove(animation) && animation.isPaused()) {
-                if (!NimarkoUiAnimationClock.resumeAnimation(animation)) visibilityPausedAnimators.add(animation);
+                if (!UiAnimationClock.resumeAnimation(animation)) visibilityPausedAnimators.add(animation);
             } else if (visible) {
-                NimarkoUiAnimationClock.resumeOwned(animation);
+                UiAnimationClock.resumeOwned(animation);
             }
         }
 
@@ -357,7 +357,7 @@ public class AnimatedTextView extends View {
 
         private void trackAnimation(Animator animation) {
             if (animation == null) return;
-            NimarkoUiAnimationClock.track(animation, animationResumeGate);
+            UiAnimationClock.track(animation, animationResumeGate);
             observeAnimations();
             updateAnimationVisibility();
         }

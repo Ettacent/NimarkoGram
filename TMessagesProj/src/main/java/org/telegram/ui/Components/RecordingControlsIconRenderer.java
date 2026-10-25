@@ -4,7 +4,7 @@ package org.telegram.ui.Components;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 
@@ -13,10 +13,10 @@ final class RecordingControlsIconRenderer {
             new MediaActionDrawable.PackIconRenderer(true);
 
     boolean drawLockPause(Canvas canvas, Paint foreground, float cx, float cy, float progress) {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon lock =
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon lock =
                 MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_secret);
-        NimarkoIconResources.PreparedIcon pause =
+        IconResources.PreparedIcon pause =
                 MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_pause);
         if (lock == null || pause == null) {
             return false;

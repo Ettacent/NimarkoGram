@@ -112,7 +112,10 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
     private Filter currentMessagesFilter = Filter.All;
     private boolean forceLoadingMessages;
     public void resetFilter() {
+        if (currentMessagesFilter != Filter.All) {
         currentMessagesFilter = Filter.All;
+            notifyDataSetChanged();
+        }
     }
 
     private final Context mContext;
@@ -1289,6 +1292,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                         return;
                     }
                     if (needMessagesSearch != 2 && dialogsType != DialogsActivity.DIALOGS_TYPE_GROUPS_ONLY && dialogsType != DialogsActivity.DIALOGS_TYPE_CHANNELS_ONLY && delegate.getSearchForumDialogId() == 0) {
+                        final ArrayList<Object> previousPhoneRows = new ArrayList<>(searchAdapterHelper.getPhoneSearch());
                         searchAdapterHelper.queryServerSearch(
                             query,
                             true,
@@ -1302,6 +1306,9 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                             searchId,
                             delegate != null ? delegate.getSearchForumDialogId() : 0
                         );
+                        if (!previousPhoneRows.equals(searchAdapterHelper.getPhoneSearch())) {
+                            notifyDataSetChanged();
+                        }
                     } else {
                         waitingResponseCount -= 2;
                     }
@@ -1679,6 +1686,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                     }
                 };
                 horizontalListView.setSelectorDrawableColor(Theme.getColor(Theme.key_listSelector));
+                horizontalListView.setRoundedPressFeedback(true);
                 horizontalListView.setTag(9);
                 horizontalListView.setItemAnimator(null);
                 horizontalListView.setLayoutAnimation(null);
@@ -2064,9 +2072,13 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
                                         final int sponsoredCountAtClick = sponsoredPeers.size();
                                         final int globalSearchCountAtClick = globalSearch.size();
+                                        final int globalHeaderPosition = globalSearchPosition();
+                                        if (globalSearchCountAtClick <= 3 || globalHeaderPosition >= getItemCount()) {
+                                            return;
+                                        }
                                         int totalGlobalCount = globalSearch.isEmpty() && sponsoredPeers.isEmpty() ? 0 : globalSearchCountAtClick + sponsoredCountAtClick;
                                         int collapsedVisibleCount = sponsoredCountAtClick + Math.min(3, globalSearchCountAtClick);
-                                        boolean disableRemoveAnimation = getItemCount() > rawPosition + (globalSearchCollapsed ? collapsedVisibleCount : totalGlobalCount) + 1;
+                                        boolean disableRemoveAnimation = getItemCount() > globalHeaderPosition + (globalSearchCollapsed ? collapsedVisibleCount : totalGlobalCount) + 1;
                                         if (itemAnimator != null) {
                                             itemAnimator.setAddDuration(disableRemoveAnimation ? 45 : 200);
                                             itemAnimator.setRemoveDuration(disableRemoveAnimation ? 80 : 200);
@@ -2079,7 +2091,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                                         View parent = (View) cell.getParent();
                                         if (parent instanceof RecyclerView) {
                                             RecyclerView listView = (RecyclerView) parent;
-                                            final int nextGraySectionPosition = !globalSearchCollapsed ? rawPosition + collapsedVisibleCount + 1 : rawPosition + totalGlobalCount + 1;
+                                            final int nextGraySectionPosition = !globalSearchCollapsed ? globalHeaderPosition + collapsedVisibleCount + 1 : globalHeaderPosition + totalGlobalCount + 1;
                                             for (int i = 0; i < listView.getChildCount(); ++i) {
                                                 View child = listView.getChildAt(i);
                                                 if (listView.getChildAdapterPosition(child) == nextGraySectionPosition) {
@@ -2088,8 +2100,8 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                                                 }
                                             }
                                         }
-                                        final int lastCollapsedItemPosition = rawPosition + collapsedVisibleCount;
-                                        final int hiddenStartPosition = rawPosition + collapsedVisibleCount + 1;
+                                        final int lastCollapsedItemPosition = globalHeaderPosition + collapsedVisibleCount;
+                                        final int hiddenStartPosition = globalHeaderPosition + collapsedVisibleCount + 1;
                                         final int hiddenCount = Math.max(0, globalSearchCountAtClick - 3);
                                         if (!globalSearchCollapsed) {
                                             notifyItemChanged(lastCollapsedItemPosition);
@@ -2097,7 +2109,15 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                                         } else {
                                             notifyItemRangeRemoved(hiddenStartPosition, hiddenCount);
                                             if (disableRemoveAnimation) {
-                                                AndroidUtilities.runOnUIThread(() -> notifyItemChanged(lastCollapsedItemPosition), 350);
+                                                final int searchIdAtClick = lastSearchId;
+                                                final TLObject lastCollapsedItem = globalSearch.get(2);
+                                                AndroidUtilities.runOnUIThread(() -> {
+                                                    if (lastSearchId == searchIdAtClick && globalSearchCollapsed
+                                                            && lastCollapsedItemPosition < getItemCount()
+                                                            && getItem(lastCollapsedItemPosition) == lastCollapsedItem) {
+                                                        notifyItemChanged(lastCollapsedItemPosition);
+                                                    }
+                                                }, 350);
                                             } else {
                                                 notifyItemChanged(lastCollapsedItemPosition);
                                             }
@@ -2305,7 +2325,7 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         }
         i -= localServerCount;
         if (i >= 0 && i < phoneCount) {
-            Object object = getItem(i);
+            Object object = searchAdapterHelper.getPhoneSearch().get(i);
             if (object instanceof String) {
                 String str = (String) object;
                 if ("section".equals(str)) {
@@ -2519,6 +2539,8 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
         if (resultsCount + localServerCount > 0 && (getRecentItemsCount() > 0 || !searchTopics.isEmpty() || !publicPosts.isEmpty())) {
             count++;
         }
+        int phoneCount = searchAdapterHelper.getPhoneSearch().size();
+        count += phoneCollapsed ? Math.min(3, phoneCount) : phoneCount;
         return count;
     }
 

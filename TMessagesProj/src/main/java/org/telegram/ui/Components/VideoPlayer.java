@@ -49,6 +49,7 @@ import androidx.media3.datasource.TransferListener;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.RetiringPlayerRelease;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -319,6 +320,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
                     @Override
                     public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+                        if (released) {
+                            return;
+                        }
                         if (!audioPlayerReady && playbackState == Player.STATE_READY) {
                             audioPlayerReady = true;
                             checkPlayersReady();
@@ -327,10 +331,16 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                     }
                     @Override
                     public void onTracksChanged(Tracks tracks) {
+                        if (released) {
+                            return;
+                        }
                         maybeNotifyPlayingWithAudio();
                     }
                     @Override
                     public void onVolumeChanged(float volume) {
+                        if (released) {
+                            return;
+                        }
                         maybeNotifyPlayingWithAudio();
                     }
                 });
@@ -1368,6 +1378,27 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void releasePlayer(boolean async) {
+        releasePlayerInternal(null, false);
+    }
+
+    public void releasePlayerForRetiringBanner(TextureView retiringTexture) {
+        if (released) {
+            return;
+        }
+        if (retiringTexture != textureView
+                || surface != null || surfaceView != null) {
+            releasePlayer(true);
+            return;
+        }
+        if (Looper.myLooper() != Looper.getMainLooper()
+                || player != null && player.getApplicationLooper() != Looper.myLooper()
+                || audioPlayer != null && audioPlayer.getApplicationLooper() != Looper.myLooper()) {
+            throw new IllegalStateException("Retiring banner release requires the main application looper");
+        }
+        releasePlayerInternal(retiringTexture, true);
+    }
+
+    private void releasePlayerInternal(TextureView retiringTexture, boolean retireAsync) {
         if (released) {
             return;
         }
@@ -1379,7 +1410,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         seekFinishedListeners.clear();
         if (player != null) {
             try {
+                if (!retireAsync || !RetiringPlayerRelease.release(player, retiringTexture)) {
                 player.release();
+                }
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -1387,7 +1420,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         }
         if (audioPlayer != null) {
             try {
+                if (!retireAsync || !RetiringPlayerRelease.release(audioPlayer, null)) {
                 audioPlayer.release();
+                }
             } catch (Exception e) {
                 FileLog.e(e);
             }

@@ -50,6 +50,7 @@ public final class NativeCrashDiagnostics {
             Context app = context.getApplicationContext();
             Thread thread = new Thread(() -> {
                 Object reporter = null;
+                boolean journalReady = false;
                 try {
                     Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
                     if (!mainProcess(app)) return;
@@ -93,6 +94,7 @@ public final class NativeCrashDiagnostics {
                     setKey(reporter, "ng_diag_mapping_id", mapping);
                     setKey(reporter, "ng_diag_journal_evicted", String.valueOf(evicted));
                     ready.accept(journal);
+                    journalReady = true;
                     setKey(reporter, "ng_diag_journal_state", "ready_unsampled_managed_boundaries");
                     recover(app, reporter, previous, directory, wall);
                 } catch (Throwable failure) {
@@ -102,6 +104,9 @@ public final class NativeCrashDiagnostics {
                     }
                 } finally {
                     worker = null;
+                    if (!journalReady) {
+                        started.set(false);
+                    }
                 }
             }, "native-evidence-init");
             worker = thread;

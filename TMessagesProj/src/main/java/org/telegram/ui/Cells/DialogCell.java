@@ -160,7 +160,7 @@ import me.vkryl.android.animator.BoolAnimator;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class DialogCell extends BaseCell implements StoriesListPlaceProvider.AvatarOverlaysView, Theme.Colorable, AnimatedEmojiSpan.AccountProvider {
 
     @Override
@@ -788,7 +788,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         drawMonoforumAvatar = false;
         drawCommunityAvatar = false;
         avatarImage.setCurrentAccount(account);
-        avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(56));
+        avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(56));
         for (int i = 0; i < thumbImage.length; ++i) {
             thumbImage[i] = new ImageReceiver(this);
             thumbImage[i].setCurrentAccount(account);
@@ -1299,7 +1299,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 continue;
             }
             // NM_PWD: braille-mask archived-folder preview titles when the archive lock is on.
-            title = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.replaceStringToSpoilers(title);
+            title = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.replaceStringToSpoilers(title);
             if (builder.length() > 0) {
                 builder.append(", ");
             }
@@ -1398,8 +1398,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     private boolean isPreviewProtected() {
         return parentFragment != null && currentDialogId != 0
-                && (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(currentAccount, currentDialogId)
-                || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(currentDialogId, currentAccount));
+                && (app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isChatLocked(currentAccount, currentDialogId)
+                || app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isEncryptedChat(currentDialogId, currentAccount));
     }
 
     private void refreshPreviewProtection() {
@@ -1523,14 +1523,14 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 sp.removeSpan(span);
             for (Object span : sp.getSpans(0, sp.length(), URLSpanNoUnderline.class))
                 sp.removeSpan(span);
-            for (Object span : sp.getSpans(0, sp.length(), app.nimarkogram.messenger.utils.NimarkoLatexHelper.LatexSpan.class))
+            for (Object span : sp.getSpans(0, sp.length(), app.nimarkogram.messenger.utils.LatexHelper.LatexSpan.class))
                 sp.removeSpan(span);
             msgText = sp;
         }
         if (msgText != null && msgText.toString().contains("$")) {
             float dlgTextSize = Theme.dialogs_messagePaint[0].getTextSize();
             int dlgMaxWidth = AndroidUtilities.displaySize.x - AndroidUtilities.dp(100);
-            msgText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.processLatex(msgText, dlgTextSize, dlgMaxWidth, true);
+            msgText = app.nimarkogram.messenger.utils.LatexHelper.processLatex(msgText, dlgTextSize, dlgMaxWidth, true);
         }
         lastMessageString = msgText;
 
@@ -2061,9 +2061,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                                             // instead of the regular keyword spoilers. Mirrors CG DialogCell line ~1791
                                             // (parentFragment.getChatsPasswordHelper().isChatLocked/.isEncryptedChat).
                                             if (parentFragment != null
-                                                    && (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(message)
-                                                        || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(message))) {
-                                                MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(message), message.caption, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
+                                                    && (app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isChatLocked(message)
+                                                        || app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isEncryptedChat(message))) {
+                                                MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.checkLockedChatsEntities(message), message.caption, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                                             } else {
                                                 // NM_MF: layer ported CG keyword spoilers over the caption preview.
                                                 MediaDataController.addTextStyleRuns(MessagesFilterHelper.INSTANCE.addSpoilerEntities(message, message.caption, message.messageOwner.entities), message.caption, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
@@ -3525,7 +3525,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             if (chat.scam || chat.fake) {
                 drawScam = chat.scam ? 1 : 2;
             } else if (DialogObject.getEmojiStatusDocumentId(chat.emoji_status) != 0
-                    && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
+                    && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) {
                 drawPremium = true;
                 documentId = DialogObject.getEmojiStatusDocumentId(chat.emoji_status);
                 particles = DialogObject.isEmojiStatusCollectible(chat.emoji_status);
@@ -3542,7 +3542,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
             drawPremium = MessagesController.getInstance(currentAccount).isPremiumUser(user)
                     && UserConfig.getInstance(currentAccount).clientUserId != user.id && user.id != 0
-                    && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
+                    && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses;
             if (drawPremium) {
                 Long statusId = UserObject.getEmojiStatusDocumentId(user);
                 if (statusId != null) {
@@ -3672,7 +3672,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             }
             drawMonoforumAvatar = false;
             drawCommunityAvatar = false;
-            avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(56));
+            avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(56));
             drawUnmute = false;
         } else {
             int oldUnreadCount = unreadCount;
@@ -4072,7 +4072,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 countAnimationLetterSpacing = Theme.dialogs_countTextPaint2.getLetterSpacing();
                 countAnimationLocale = Locale.getDefault();
                 countAnimator.start();
-                NimarkoUiAnimationClock.track(countAnimator);
+                UiAnimationClock.track(countAnimator);
             }
 
             animatorPollVotesMentionVisible.setValue(pollVotesMentionCount != 0, animated);
@@ -4106,7 +4106,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     reactionsMentionsAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
                 }
                 reactionsMentionsAnimator.start();
-                NimarkoUiAnimationClock.track(reactionsMentionsAnimator);
+                UiAnimationClock.track(reactionsMentionsAnimator);
             }
             drawMonoforumAvatar = !isFolderCell() && chat != null && chat.monoforum;
 
@@ -4119,7 +4119,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             } else {
                 // NG: honour the user's avatarCorners preference for both forum-style and regular chat avatars.
                 final boolean forumLike = chat != null && chat.forum && currentDialogFolderId == 0 && !useFromUserAsAvatar || !isSavedDialog && user != null && user.self && MessagesController.getInstance(currentAccount).savedViewAsChats;
-                avatarRadius = app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(56, forumLike);
+                avatarRadius = app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(56, forumLike);
             }
 
             avatarImage.setRoundRadius(avatarRadius);
@@ -4195,7 +4195,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             boolean prevValue = drawRevealBackground;
             drawRevealBackground = Math.abs(translationX) >= getMeasuredWidth() * 0.45f;
             // NG: disableVibration gate on the reveal-background haptic (CG parity, DialogCell:3576).
-            if (prevValue != drawRevealBackground && archiveHidden == SharedConfig.archiveHidden && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (prevValue != drawRevealBackground && archiveHidden == SharedConfig.archiveHidden && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignore) {}
@@ -5230,7 +5230,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             } else {
                 // Suppress archive previews while that surface is protected.
                 storyParams.drawHiddenStoriesAsSegments = (isShareToStoryCell || currentDialogFolderId != 0)
-                        && !app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenArchive;
+                        && !app.nimarkogram.messenger.AppConfig.askBiometricsToOpenArchive;
                 int s = storyParams.forceState;
                 if (isShareToStoryCell) {
                     storyParams.forceState = StoriesUtilities.STATE_HAS_UNREAD;
@@ -6162,7 +6162,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             StringBuilder messageString = new StringBuilder();
             CharSequence accText = message.messageText;
             if (accText != null && accText.toString().contains("$")) {
-                accText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(accText.toString());
+                accText = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(accText.toString());
             }
             messageString.append(accText);
             if (!message.isMediaEmpty()) {
@@ -6450,7 +6450,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         MessageObject captionMessage = getCaptionMessage();
         CharSequence msgText = message != null ? message.messageText : null;
         if (msgText != null && msgText.toString().contains("$")) {
-            msgText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(msgText.toString());
+            msgText = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(msgText.toString());
         }
         applyName = true;
         if (!TextUtils.isEmpty(restrictionReason)) {
@@ -6520,9 +6520,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 // instead of the regular keyword spoilers. Mirrors CG DialogCell line ~5708
                 // (parentFragment.getChatsPasswordHelper().isChatLocked/.isEncryptedChat).
                 if (parentFragment != null
-                        && (app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(message)
-                            || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(message))) {
-                    MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.checkLockedChatsEntities(message), mess, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
+                        && (app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isChatLocked(message)
+                            || app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isEncryptedChat(message))) {
+                    MediaDataController.addTextStyleRuns(app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.checkLockedChatsEntities(message), mess, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
                 } else {
                     // NM_MF: layer ported CG keyword spoilers over the dialog-list preview.
                     MediaDataController.addTextStyleRuns(MessagesFilterHelper.INSTANCE.addSpoilerEntities(message, mess, message.messageOwner != null ? message.messageOwner.entities : null), mess, msgBuilder, TextStyleSpan.FLAG_STYLE_SPOILER | TextStyleSpan.FLAG_STYLE_STRIKE);
@@ -6622,7 +6622,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             if (mess.toString().contains("$")) {
                 float dlgSize2 = Theme.dialogs_messagePaint[0].getTextSize();
                 int dlgWidth2 = AndroidUtilities.displaySize.x - AndroidUtilities.dp(100);
-                mess = app.nimarkogram.messenger.utils.NimarkoLatexHelper.processLatex(mess, dlgSize2, dlgWidth2, true);
+                mess = app.nimarkogram.messenger.utils.LatexHelper.processLatex(mess, dlgSize2, dlgWidth2, true);
             }
             if (message.hasHighlightedWords()) {
                 if (message.messageTrimmedToHighlight != null) {

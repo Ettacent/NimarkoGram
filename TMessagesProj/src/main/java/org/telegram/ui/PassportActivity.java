@@ -222,8 +222,8 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
     private TLRPC.TL_auth_sentCode currentPhoneVerification;
 
     private ActionBarMenuItem doneItem;
-    private final app.nimarkogram.messenger.icons.NimarkoIconViewBindings iconBindings =
-            new app.nimarkogram.messenger.icons.NimarkoIconViewBindings();
+    private final app.nimarkogram.messenger.icons.IconViewBindings iconBindings =
+            new app.nimarkogram.messenger.icons.IconViewBindings();
     private AnimatorSet doneItemAnimation;
     private ContextProgressView progressView;
 
@@ -1547,7 +1547,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
         linearLayout2.addView(passwordAvatarContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 100));
 
         BackupImageView avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(64));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(64));
         passwordAvatarContainer.addView(avatarImageView, LayoutHelper.createFrame(64, 64, Gravity.CENTER, 0, 8, 0, 0));
 
         AvatarDrawable avatarDrawable = new AvatarDrawable(botUser);
@@ -2022,7 +2022,7 @@ public class PassportActivity extends BaseFragment implements NotificationCenter
             linearLayout2.addView(avatarContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 100));
 
             BackupImageView avatarImageView = new BackupImageView(context);
-            avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(64));
+            avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(64));
             avatarContainer.addView(avatarImageView, LayoutHelper.createFrame(64, 64, Gravity.CENTER, 0, 8, 0, 0));
 
             AvatarDrawable avatarDrawable = new AvatarDrawable(botUser);

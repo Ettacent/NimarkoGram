@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This file is part of NimarkoGram for Android.
  * Licensed under GNU GPL v2 or later. See LICENSE.
@@ -8,8 +10,8 @@ package app.nimarkogram.messenger.utils;
 
 import android.app.Activity;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.security.AppBiometricPrompt;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.UserConfig;
 
@@ -18,19 +20,19 @@ public final class CGCompat {
     private CGCompat() {}
 
     public static void runOrAskBiometricsBeforeDelete(Activity activity, Runnable action) {
-        runOrAsk(activity, UserConfig.selectedAccount, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, UserConfig.selectedAccount, AppConfig.askPasscodeBeforeDelete, action);
     }
 
     public static void runOrAskBiometricsBeforeDelete(Activity activity, int account, Runnable action) {
-        runOrAsk(activity, account, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, account, AppConfig.askPasscodeBeforeDelete, action);
     }
 
     public static void runOrAskBeforeDestructive(Activity activity, Runnable action) {
-        runOrAsk(activity, UserConfig.selectedAccount, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, UserConfig.selectedAccount, AppConfig.askPasscodeBeforeDelete, action);
     }
 
     public static void runOrAskBeforeDestructive(Activity activity, int account, Runnable action) {
-        runOrAsk(activity, account, NimarkoConfig.askPasscodeBeforeDelete, action);
+        runOrAsk(activity, account, AppConfig.askPasscodeBeforeDelete, action);
     }
 
     private static void runOrAsk(Activity activity, int account, boolean wantPrompt, Runnable action) {
@@ -40,9 +42,9 @@ public final class CGCompat {
             return;
         }
         if (activity == null) return;
-        if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
+        if (!AppBiometricPrompt.canAuthenticateConfigured()) return;
         try {
-            NimarkoBiometricPrompt.prompt(activity, account, action, null);
+            AppBiometricPrompt.prompt(activity, account, action, null);
         } catch (Throwable t) {
             FileLog.e("Nimarko destructive authentication prompt failed closed", t);
         }
@@ -53,21 +55,21 @@ public final class CGCompat {
     }
 
     public static boolean isChatLocked(int account, long dialogId) {
-        if (!NimarkoConfig.askBiometricsToOpenChat) return false;
+        if (!AppConfig.askBiometricsToOpenChat) return false;
         if (dialogId == 0L) return false;
         return LockedChats.isLocked(account, dialogId);
     }
 
     public static boolean shouldRequireBiometricsToOpenChats() {
-        return NimarkoConfig.askBiometricsToOpenChat;
+        return AppConfig.askBiometricsToOpenChat;
     }
 
     public static boolean shouldRequireBiometricsToOpenEncryptedChats() {
-        return NimarkoConfig.askBiometricsToOpenEncrypted;
+        return AppConfig.askBiometricsToOpenEncrypted;
     }
 
     public static boolean shouldRequireBiometricsToOpenArchive() {
-        return NimarkoConfig.askBiometricsToOpenArchive;
+        return AppConfig.askBiometricsToOpenArchive;
     }
 
     public static void unlockChatThen(Activity activity, long dialogId, Runnable onUnlocked) {
@@ -77,15 +79,15 @@ public final class CGCompat {
     public static void unlockChatThen(Activity activity, int account, long dialogId, Runnable onUnlocked) {
         if (onUnlocked == null) return;
         if (!isChatLocked(account, dialogId)
-                || NimarkoBiometricPrompt.isRecentlyVerified(account, 0L, dialogId, 0)) {
+                || AppBiometricPrompt.isRecentlyVerified(account, 0L, dialogId, 0)) {
             onUnlocked.run();
             return;
         }
         if (activity == null) return;
-        if (!NimarkoBiometricPrompt.canAuthenticateConfigured()) return;
+        if (!AppBiometricPrompt.canAuthenticateConfigured()) return;
         try {
-            NimarkoBiometricPrompt.prompt(activity, account, () -> {
-                NimarkoBiometricPrompt.markVerified(account, 0L, dialogId, 0);
+            AppBiometricPrompt.prompt(activity, account, () -> {
+                AppBiometricPrompt.markVerified(account, 0L, dialogId, 0);
                 onUnlocked.run();
             }, null);
         } catch (Throwable t) {

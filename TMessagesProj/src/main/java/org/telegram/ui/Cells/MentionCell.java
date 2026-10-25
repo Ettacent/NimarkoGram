@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -55,7 +57,7 @@ public class MentionCell extends LinearLayout {
         avatarDrawable.setTextSize(dp(18));
 
         imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(28));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(28));
         addView(imageView, LayoutHelper.createLinear(28, 28, 8, 4, 0, 0));
 
         nameTextView = new TextView(context) {

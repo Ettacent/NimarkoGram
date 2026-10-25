@@ -5,7 +5,6 @@ package org.telegram.ui.Wallet;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
@@ -13,7 +12,6 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Build;
-import android.os.PowerManager;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -30,7 +28,6 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Locale;
@@ -43,6 +40,8 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
+import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_wallet;
 import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
@@ -50,9 +49,11 @@ import org.telegram.ui.Components.ColoredImageSpan;
 
 public class WalletCardComponent extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
-    private static final int CARD_NUMBER_FONT_WEIGHT = 700;
-    private static final float CARD_NUMBER_LENGTH_SCALE = 1.18f;
-    private static final int QR_BUTTON_RIGHT_PADDING = 45;
+    private static final int CARD_NUMBER_FONT_WEIGHT = 400;
+    private static final int QR_BUTTON_RIGHT_PADDING = 46;
+    private static final float QR_BUTTON_WIDTH = 48f;
+    private static final float BALANCE_TOP = 71f;
+    private static final float USD_BALANCE_TOP = 101f;
     private static Typeface cardNumberTypeface;
     private static Typeface cardHolderTypeface;
 
@@ -62,9 +63,9 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     private final Matrix inverseDiamondFaceTransform = new Matrix();
     private final Matrix nextDiamondTransform = new Matrix();
     private final RectF diamondDrawBounds = new RectF();
+    private final RectF diamondCardBounds = new RectF();
+    private float diamondStickerFallback;
     private boolean hasBalanceDiamondTransform;
-    private boolean use2D;
-    private final boolean powerSaveMode;
     private float additionalTilt;
     private float gyroscopeTiltScale = 1.0f;
     private final Matrix faceProjectionMatrix = new Matrix();
@@ -72,9 +73,13 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     private final Matrix inverseTargetTransformMatrix = new Matrix();
     private View cardView;
     private FrameLayout frontFace;
-    private Bitmap engravingBitmap;
     private OnClickListener cardClickListener;
     private final TextView cardHolderView;
+    private final View cardNumberView;
+    private final Paint cardNumberPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG | Paint.LINEAR_TEXT_FLAG);
+    private float numberStickerShadow;
+    private final org.telegram.ui.Components.AnimatedFloat numberShadowAnimated = new org.telegram.ui.Components.AnimatedFloat(
+            this::onNumberShadowFrame, 0, 240, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final View balanceAnchor;
     private final LinearLayout balanceLayout;
     private final AnimatedTextView balanceView;
@@ -108,9 +113,6 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
             int qrButtonRightPadding
     ) {
         super(context);
-        PowerManager powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-        powerSaveMode = powerManager != null && powerManager.isPowerSaveMode();
-        this.use2D = use2D || powerSaveMode;
         this.cardIconResId = cardIconResId;
         this.qrButtonRightPadding = qrButtonRightPadding;
         setClipChildren(false);
@@ -118,11 +120,15 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         setPadding(dp(12), dp(12), dp(12), dp(12));
         createCardImplementation();
 
-        cardHolderView = new TextView(context);
+        cardHolderView = new TextView(context) {
+            @Override
+            protected void onDraw(Canvas canvas) {
+                drawStickerShadowed(holderShadowAnimated.set(holderStickerShadow), getPaint()::setShadowLayer, () -> super.onDraw(canvas));
+            }
+        };
         cardHolderView.setTypeface(getCardHolderTypeface(context));
         cardHolderView.setTextColor(Color.WHITE);
-        cardHolderView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12.6f);
-        cardHolderView.setShadowLayer(dp(1), dp(1), dp(1), 0xFF0285D4);
+        cardHolderView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13f);
         cardHolderView.setEllipsize(TextUtils.TruncateAt.END);
         cardHolderView.setMaxLines(1);
         cardHolderView.setSingleLine();
@@ -130,9 +136,18 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
                 LayoutHelper.MATCH_PARENT,
                 LayoutHelper.WRAP_CONTENT,
                 Gravity.LEFT | Gravity.BOTTOM,
-                24, 16.6f, 64, 16.6f
+                24, 0, 64, 17.2f
         ));
 
+        cardNumberView = new View(context) {
+            @Override
+            protected void onDraw(Canvas canvas) {
+                final float t = numberShadowAnimated.set(numberStickerShadow);
+                if (cardNumber == null || getWidth() <= 0) return;
+                drawCardNumber(canvas, t);
+            }
+        };
+        frontFace.addView(cardNumberView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         balanceAnchor = new View(context);
         frontFace.addView(balanceAnchor, LayoutHelper.createFrame(
                 1, 1, Gravity.LEFT | Gravity.CENTER_VERTICAL, 24, 0, 0, 0
@@ -145,8 +160,8 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         balanceCardLayoutParams = LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT,
                 LayoutHelper.WRAP_CONTENT,
-                Gravity.LEFT | Gravity.CENTER_VERTICAL,
-                24, 0, 24, 0
+                Gravity.LEFT | Gravity.TOP,
+                24, BALANCE_TOP, 24, 0
         );
         frontFace.addView(balanceLayout, balanceCardLayoutParams);
 
@@ -154,15 +169,14 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
             @Override
             protected void onDraw(Canvas canvas) {
                 final float textWidth = getDrawable().getCurrentWidth();
-                final float qrLeft = frontFace.getWidth() * (336f - qrButtonRightPadding - 50f) / 336f;
-                final float cardWidth = Math.max(0f, qrLeft - balanceCardLayoutParams.leftMargin - dp(8));
-                final float cardScale = textWidth > 0 ? Math.min(1f, cardWidth / textWidth) : 1f;
+                final float cardScale = balanceCardScale();
                 final float actionBarScale = textWidth > 0 ? Math.min(1f, balanceActionBarWidth / textWidth) : 1f;
                 final float scale = cardScale + (actionBarScale - cardScale) * balanceTransitionProgress;
                 balanceDrawScale = scale;
                 final int save = canvas.save();
                 canvas.scale(scale, scale, 0f, getHeight() / 2f);
-                super.onDraw(canvas);
+                drawStickerShadowed(balanceShadowAnimated.set(balanceStickerShadow) * (1f - balanceTransitionProgress),
+                        getDrawable()::setShadowLayer, () -> super.onDraw(canvas));
                 canvas.restoreToCount(save);
             }
         };
@@ -170,12 +184,18 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         balanceView.setAnimationProperties(.35f, 0, 320, 3.5f, CubicBezierInterpolator.EASE_OUT_QUINT);
         balanceView.setScaleProperty(0.6f);
         balanceView.setTypeface(AndroidUtilities.getTypeface("fonts/gram.ttf"));
-        balanceView.setTextSize(dp(24));
+        balanceView.setTextSize(dp(23));
         balanceView.setTextColor(Color.WHITE);
         balanceView.setIgnoreRTL(true);
         balanceLayout.addView(balanceView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 28));
 
-        usdBalanceView = new AnimatedTextView(context, false, true, true, true, true);
+        usdBalanceView = new AnimatedTextView(context, false, true, true, true, true) {
+            @Override
+            protected void onDraw(Canvas canvas) {
+                drawStickerShadowed(balanceShadowAnimated.set(balanceStickerShadow) * (1f - balanceTransitionProgress),
+                        getDrawable()::setShadowLayer, () -> super.onDraw(canvas));
+            }
+        };
         usdBalanceView.setAnimationProperties(.35f, 0, 320, 3.5f, CubicBezierInterpolator.EASE_OUT_QUINT);
         usdBalanceView.setScaleProperty(0.6f);
         usdBalanceView.setTypeface(AndroidUtilities.getTypeface("fonts/gram.ttf"));
@@ -185,15 +205,205 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         usdBalanceView.setTextDirection(View.TEXT_DIRECTION_LTR);
         usdBalanceView.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
         usdBalanceView.setIgnoreRTL(true);
-        balanceLayout.addView(usdBalanceView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 16, 0, 0, 0, 0));
+        balanceLayout.addView(usdBalanceView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 16, 0, USD_BALANCE_TOP - BALANCE_TOP - 28, 0, 0));
     }
 
     public void setDiamondOnCard(boolean enabled) {
         diamondOnCard = enabled;
-        if (!enabled && cardView instanceof WalletCardView) {
-            ((WalletCardView) cardView).setDiamondBounds(0, 0, 0, 0);
-        }
         balanceView.invalidate();
+    }
+
+    private float[] stickerStyle;
+
+    float[] getStickerStyle() {
+        return stickerStyle;
+    }
+
+    int stickerColor(int color) {
+        return stickerStyle == null ? color : WalletGiftPalette.tint(color, stickerStyle);
+    }
+
+    private float balanceCardScale() {
+        final float textWidth = balanceView.getDrawable().getCurrentWidth();
+        final float qrLeft = frontFace.getWidth() * (336f - qrButtonRightPadding - QR_BUTTON_WIDTH) / 336f;
+        final float cardWidth = Math.max(0f, qrLeft - balanceCardLayoutParams.leftMargin - dp(8));
+        return textWidth > 0 ? Math.min(1f, cardWidth / textWidth) : 1f;
+    }
+
+    java.util.ArrayList<RectF> getStickerObstacles() {
+        java.util.ArrayList<RectF> bounds = new java.util.ArrayList<>();
+        float k = frontFace.getWidth()/336f;
+        float cardScale = balanceCardScale();
+        float balanceWidth = balanceView.getDrawable().getCurrentWidth()*cardScale;
+        float usdWidth = usdBalanceView.getDrawable().getCurrentWidth();
+        float left = balanceCardLayoutParams.leftMargin, top = balanceCardLayoutParams.topMargin;
+        float balanceCenter = top+(balanceView.getTop()+balanceView.getBottom())/2f, balanceHalf = balanceView.getHeight()*cardScale/2f;
+        bounds.add(new RectF(left, balanceCenter-balanceHalf, left+balanceWidth, balanceCenter+balanceHalf));
+        float ownerWidth = Math.min(cardHolderView.getWidth(), cardHolderView.getPaint().measureText(cardHolderView.getText().toString()));
+        bounds.add(new RectF(cardHolderView.getLeft(), cardHolderView.getTop(),
+                cardHolderView.getLeft()+ownerWidth, cardHolderView.getBottom()));
+        bounds.add(new RectF(frontFace.getWidth()-34*k,18*k,frontFace.getWidth()-12*k,187*k));
+        android.graphics.Path qr = new android.graphics.Path();
+        getQrButtonPath(qr,frontFace.getWidth(),frontFace.getHeight());
+        RectF qrBounds = new RectF();qr.computeBounds(qrBounds,true);bounds.add(qrBounds);
+        bounds.add(new RectF(left, top+usdBalanceView.getTop(), left+usdWidth, top+usdBalanceView.getBottom()));
+        bounds.add(diamondOnCard ? new RectF(diamondCardBounds) : new RectF());
+        return bounds;
+    }
+
+    void getQrButtonPath(android.graphics.Path path, float width, float height) {
+        path.rewind();
+        float top = 74 / 205f, bottom = 110 / 205f, ry = 8 / 205f;
+        if (!isUse2D()) {
+            float span = WalletCardGeometry.TOP - WalletCardGeometry.BOTTOM;
+            top = (WalletCardGeometry.TOP - (.5f-top)*1.219512f)/span;
+            bottom = (WalletCardGeometry.TOP - (.5f-bottom)*1.219512f)/span;
+            ry *= 1.219512f/span;
+        }
+        path.addRoundRect((336 - qrButtonRightPadding - QR_BUTTON_WIDTH) * width / 336f, top * height,
+                (336 - qrButtonRightPadding) * width / 336f, bottom * height,
+                8 * width / 336f, ry * height, android.graphics.Path.Direction.CW);
+    }
+
+    void setStickerImpact(float scale) {
+        cardView.setScaleX(scale);
+        cardView.setScaleY(scale);
+    }
+
+    private int kickSignX, kickSignY;
+
+    void setStickerKick(float h, float v) {
+        if (kickSignX == 0) {
+            WalletCardProjection projection = new WalletCardProjection();
+            float[] c = new float[8];
+            projection.project(1000, 600, 0, 5, false, c);
+            kickSignY = Math.hypot(c[2]-c[4], c[3]-c[5]) < Math.hypot(c[0]-c[6], c[1]-c[7]) ? 1 : -1;
+            projection.project(1000, 600, 5, 0, false, c);
+            kickSignX = Math.hypot(c[4]-c[6], c[5]-c[7]) < Math.hypot(c[0]-c[2], c[1]-c[3]) ? 1 : -1;
+        }
+        final float x = kickSignX * v * 10f, y = kickSignY * h * 10f;
+        ((WalletCard2DView) cardView).setStickerKick(x, y);
+    }
+
+    int getStickerLayerIndex() {
+        int holder = frontFace.indexOfChild(cardHolderView), balance = frontFace.indexOfChild(balanceLayout);
+        if (holder < 0) return balance < 0 ? frontFace.getChildCount() : balance;
+        return balance < 0 ? holder : Math.min(holder, balance);
+    }
+
+    private float balanceStickerShadow, holderStickerShadow;
+    private final org.telegram.ui.Components.AnimatedFloat balanceShadowAnimated = new org.telegram.ui.Components.AnimatedFloat(
+            this::onBalanceShadowFrame, 0, 240, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final org.telegram.ui.Components.AnimatedFloat holderShadowAnimated = new org.telegram.ui.Components.AnimatedFloat(
+            this::onHolderShadowFrame, 0, 240, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private final org.telegram.ui.Components.AnimatedFloat diamondFallbackAnimated = new org.telegram.ui.Components.AnimatedFloat(
+            this::onDiamondFallbackFrame, 0, 240, CubicBezierInterpolator.EASE_OUT_QUINT);
+    private float diamondFallback;
+
+    private WalletDiamondSprite diamondSprite;
+
+    private void updateDiamondSpriteTint() {
+        if (diamondSprite == null) return;
+        final float[] material = WalletGiftPalette.material(stickerStyle == null ? new float[]{0, 1, 1, 0, 1, 1, .5f, .5f, 1, 1} : stickerStyle);
+        final float mix = stickerStyle != null && stickerStyle.length > 8 ? Math.max(0f, Math.min(1f, stickerStyle[8])) : 1f;
+        diamondSprite.setTint(AndroidUtilities.lerp(material[30], material[33], mix),
+                AndroidUtilities.lerp(material[31], material[34], mix),
+                AndroidUtilities.lerp(material[32], material[35], mix));
+    }
+
+    private void onBalanceShadowFrame() {
+        balanceView.invalidate();
+        usdBalanceView.invalidate();
+    }
+
+    private void onHolderShadowFrame() {
+        cardHolderView.invalidate();
+    }
+
+    private void onDiamondFallbackFrame() {
+        balanceView.invalidate();
+    }
+
+    private void onNumberShadowFrame() {
+        cardNumberView.invalidate();
+    }
+
+    private void drawCardNumber(Canvas canvas, float t) {
+        final float w = getFrontFace().getWidth(), h = getFrontFace().getHeight();
+        final float scale = 1640 / 336f, px = w / 1640f;
+        float cy = 102.5f * scale / 1000f;
+        if (!isUse2D()) {
+            final float span = WalletCardGeometry.TOP - WalletCardGeometry.BOTTOM;
+            cy = (WalletCardGeometry.TOP - (.5f - cy) * 1.219512f) / span;
+        }
+        cardNumberPaint.setTypeface(getCardNumberTypeface(getContext()));
+        cardNumberPaint.setTextSize(9.7f * scale * px);
+        cardNumberPaint.setTextAlign(Paint.Align.CENTER);
+        cardNumberPaint.setColor(isUse2D() ? WalletGiftPalette.cardNumber2DColor(stickerStyle)
+                : WalletGiftPalette.cardNumberColor(stickerStyle));
+        final Paint.FontMetrics metrics = cardNumberPaint.getFontMetrics();
+        final float baseline = -(metrics.ascent + metrics.descent) * .5f, gap = 5.6f * scale * px;
+        final String[] lines = formatCardAddress(cardNumber).split("\\n");
+        canvas.save();
+        canvas.translate(313f * scale * px, cy * h);
+        canvas.rotate(90f);
+        drawStickerShadowed(t, (r, dx, dy, color) -> cardNumberPaint.setShadowLayer(
+                r * 2f, dy, -dx,
+                androidx.core.graphics.ColorUtils.setAlphaComponent(color, Math.round(Color.alpha(color) * .5f))), () -> {
+            canvas.drawText(lines[0], 0, -gap + baseline, cardNumberPaint);
+            if (lines.length > 1) canvas.drawText(lines[1], 0, gap + baseline, cardNumberPaint);
+        });
+        canvas.restore();
+    }
+
+    void setStickerTextShadow(float balance, float holder, float diamond, float number) {
+        number = Math.round(number * 20) / 20f;
+        if (number != numberStickerShadow) {
+            numberStickerShadow = number;
+            cardNumberView.invalidate();
+        }
+        diamond = Math.max(diamond, balance) > 0f ? 1f : 0f;
+        if (diamond != diamondStickerFallback) {
+            diamondStickerFallback = diamond;
+            balanceView.invalidate();
+        }
+        balance = Math.round(balance * 20) / 20f;
+        holder = Math.round(holder * 20) / 20f;
+        if (balance != balanceStickerShadow) {
+            balanceStickerShadow = balance;
+            balanceView.invalidate();
+            usdBalanceView.invalidate();
+        }
+        if (holder != holderStickerShadow) {
+            holderStickerShadow = holder;
+            cardHolderView.invalidate();
+        }
+    }
+
+    private boolean outlineShadowPass;
+
+    private interface ShadowLayer {
+        void set(float radius, float dx, float dy, int color);
+    }
+
+    private void drawStickerShadowed(float t, ShadowLayer shadow, Runnable draw) {
+        shadow.set(t > 0 ? dp(5) : 0, 0, dp(1), Color.argb((int) (89 * t), 0, 0, 0));
+        draw.run();
+        if (t <= 0) return;
+        shadow.set(AndroidUtilities.dpf2(1.5f), 0, 0, Color.argb((int) (140 * t), 0, 0, 0));
+        outlineShadowPass = true;
+        draw.run();
+        outlineShadowPass = false;
+    }
+
+    void setStickerStyle(float[] style) {
+        stickerStyle = style;
+        updateDiamondSpriteTint();
+        balanceView.invalidate();
+        cardNumberView.invalidate();
+        ((WalletCard2DView) cardView).setStickerStyle(style);
+        usdBalanceView.setTextColor(WalletGiftPalette.tint(0xFF87EFFF, style));
+        cardHolderView.invalidate();
     }
 
     public FrameLayout getFrontFace() {
@@ -217,10 +427,8 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         balanceTransitionProgress = progress;
         if (progress == 0f) hasBalanceDiamondTransform = false;
         balanceActionBarWidth = actionBarWidth;
-        if (cardView instanceof WalletCardView) {
-            ((WalletCardView) cardView).setDiamondAlpha(1f - progress);
-        }
         balanceView.invalidate();
+        usdBalanceView.invalidate();
     }
 
     public void setBalanceDiamondTransform(Matrix faceToOverlay, Matrix balanceToOverlay) {
@@ -241,6 +449,14 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         return cardHolderView;
     }
 
+    boolean isBackFacing() {
+        return cardView instanceof WalletCard2DView && ((WalletCard2DView) cardView).isBackFacing();
+    }
+
+    void whenMaterialReady(Runnable action) {
+        if (cardView instanceof WalletCard2DView) ((WalletCard2DView) cardView).whenMaterialReady(action);
+        else action.run();
+    }
     public void setCardHolder(CharSequence holder) {
         cardHolderView.setText(holder);
     }
@@ -250,7 +466,8 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
             return;
         }
         cardNumber = formattedNumber;
-        setEngravingBitmap(createCardNumberEngraving(getContext(), formattedNumber));
+        ((WalletCard2DView) cardView).setHasCardNumber(true);
+        cardNumberView.invalidate();
     }
 
     public boolean getFrontFaceTransform(View target, Matrix result) {
@@ -258,16 +475,13 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
                 || getRootView() != target.getRootView()) {
             return false;
         }
-        final View projectedParent = (View) frontFace.getParent();
-        if (cardView instanceof WalletCard2DView) {
+        final View faceParent = (View) frontFace.getParent();
+        final View projectedParent = (View) faceParent.getParent();
             ((WalletCard2DView) cardView).getFrontFaceProjection(faceProjectionMatrix);
-        } else {
-            ((WalletCardView) cardView).getFrontFaceProjection(faceProjectionMatrix);
-        }
         transformToRoot(projectedParent, result);
         result.preConcat(faceProjectionMatrix);
-        result.preTranslate(frontFace.getLeft() - projectedParent.getScrollX(),
-                frontFace.getTop() - projectedParent.getScrollY());
+        result.preTranslate(frontFace.getLeft() - faceParent.getScrollX(),
+                frontFace.getTop() - faceParent.getScrollY());
         result.preConcat(frontFace.getMatrix());
         transformToRoot(target, targetTransformMatrix);
         if (!targetTransformMatrix.invert(inverseTargetTransformMatrix)) return false;
@@ -275,7 +489,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
         return true;
     }
 
-    private static void transformToRoot(View view, Matrix result) {
+    static void transformToRoot(View view, Matrix result) {
         if (view.getParent() instanceof View) {
             final View parent = (View) view.getParent();
             transformToRoot(parent, result);
@@ -287,9 +501,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     }
 
     public void setOnFrontContentPresented(Runnable callback) {
-        if (cardView instanceof WalletCardView) {
-            ((WalletCardView) cardView).setOnFrontContentPresented(callback);
-        } else if (callback != null) {
+        if (callback != null) {
             callback.run();
         }
     }
@@ -309,30 +521,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     }
 
     public boolean isUse2D() {
-        return use2D;
-    }
-
-    public void setUse2D(boolean use2D) {
-        use2D |= powerSaveMode;
-        if (this.use2D == use2D) {
-            return;
-        }
-
-        final int childCount = frontFace.getChildCount();
-        final View[] children = new View[childCount];
-        final ViewGroup.LayoutParams[] layoutParams = new ViewGroup.LayoutParams[childCount];
-        for (int i = 0; i < childCount; i++) {
-            children[i] = frontFace.getChildAt(i);
-            layoutParams[i] = children[i].getLayoutParams();
-        }
-        frontFace.removeAllViews();
-        removeView(cardView);
-
-        this.use2D = use2D;
-        createCardImplementation();
-        for (int i = 0; i < childCount; i++) {
-            frontFace.addView(children[i], layoutParams[i]);
-        }
+        return true;
     }
 
     public void setCardOnClickListener(OnClickListener listener) {
@@ -342,52 +531,25 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
 
     public void setCardIcon(int drawableResId) {
         cardIconResId = drawableResId;
-        if (cardView instanceof WalletCard2DView) {
             ((WalletCard2DView) cardView).setCardIcon(drawableResId);
-        } else {
-            ((WalletCardView) cardView).setCardIcon(drawableResId);
-        }
-    }
-
-    public void setEngravingBitmap(Bitmap bitmap) {
-        engravingBitmap = bitmap;
-        if (cardView instanceof WalletCard2DView) {
-            ((WalletCard2DView) cardView).setEngravingBitmap(bitmap);
-        } else {
-            ((WalletCardView) cardView).setEngravingBitmap(bitmap);
-        }
     }
 
     public void setAdditionalTilt(float tilt) {
         additionalTilt = tilt;
-        if (cardView instanceof WalletCard2DView) {
             ((WalletCard2DView) cardView).setAdditionalTilt(tilt);
-        } else {
-            ((WalletCardView) cardView).setAdditionalTilt(tilt);
-        }
     }
 
     public void setUseGyroscope(float t) {
         gyroscopeTiltScale = t;
-        if (cardView instanceof WalletCard2DView) {
             ((WalletCard2DView) cardView).setUseGyroscope(t);
-        } else {
-            ((WalletCardView) cardView).setUseGyroscope(t);
-        }
     }
 
     public float getCardRotationX() {
-        if (cardView instanceof WalletCard2DView) {
             return ((WalletCard2DView) cardView).getCardRotationX();
         }
-        return ((WalletCardView) cardView).getCardRotationX();
-    }
 
     public float getCardRotationY() {
-        if (cardView instanceof WalletCard2DView) {
             return ((WalletCard2DView) cardView).getCardRotationY();
-        }
-        return ((WalletCardView) cardView).getCardRotationY();
     }
 
     @Override
@@ -419,7 +581,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     }
 
     public void update(GramWallet currentWallet) {
-        if (currentWallet == null) return;
+        if (currentWallet == null || !currentWallet.isCurrentSession()) return;
         setCardHolder(UserObject.getUserName(
                 UserConfig.getInstance(currentWallet.currentAccount).getCurrentUser()
         ).toUpperCase());
@@ -442,7 +604,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.walletUpdate) {
+        if (id == NotificationCenter.walletUpdate && account == currentAccount && args.length > 0) {
             if (args[0] == wallet) {
                 update(wallet);
             }
@@ -450,9 +612,8 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     }
 
     static SpannableStringBuilder formatBalance(long nanotons) {
-        final DecimalFormat format = new DecimalFormat("#,##0.##", new DecimalFormatSymbols(Locale.US));
-        format.setRoundingMode(RoundingMode.DOWN);
-        final String gramsBalance = format.format(BigDecimal.valueOf(nanotons, 9));
+        final DecimalFormat format = new DecimalFormat("#,##0.#########", new DecimalFormatSymbols(Locale.US));
+        final String gramsBalance = format.format(new BigDecimal(GramWallet.formatGramsBalance(nanotons, false)));
         return GramWallet.formatGramsScaled(gramsBalance, 0.8f);
     }
 
@@ -461,55 +622,76 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
             @Override
             public void draw(Canvas canvas, CharSequence text, int start, int end,
                              float x, int top, int y, int bottom, Paint paint) {
+                if (outlineShadowPass) return;
                 setAlpha(1f);
-                if (diamondOnCard && cardView instanceof WalletCardView
-                        && frontFace.getWidth() > 0) {
-                    WalletCardView view = (WalletCardView) cardView;
+                if (diamondOnCard && isUse2D()) {
+                    float t = Math.max(0f, Math.min(1f, balanceTransitionProgress));
+                    if (t == 0f) {
                     float width = drawable.getIntrinsicWidth() * balanceDrawScale;
                     float height = drawable.getIntrinsicHeight() * balanceDrawScale;
-                    float left = x * balanceDrawScale;
-                    float topOnBalance = balanceView.getHeight() / 2f - height / 2f;
-                    diamondDrawBounds.set(left, topOnBalance, left + width, topOnBalance + height);
-                    if (hasBalanceDiamondTransform && balanceTransitionProgress > 0f) {
-                        balanceDiamondTransform.mapRect(diamondDrawBounds);
-                    } else {
-                        diamondDrawBounds.offset(balanceCardLayoutParams.leftMargin,
-                                frontFace.getHeight() / 2f - dp(22));
+                        float left = x * balanceDrawScale + balanceCardLayoutParams.leftMargin;
+                        float topOnCard = balanceView.getHeight() / 2f - height / 2f + balanceCardLayoutParams.topMargin;
+                        diamondCardBounds.set(left, topOnCard, left + width, topOnCard + height);
                     }
-                    view.setDiamondBounds(diamondDrawBounds.left / frontFace.getWidth(),
-                            diamondDrawBounds.top / frontFace.getHeight(),
-                            diamondDrawBounds.width() / frontFace.getWidth(),
-                            diamondDrawBounds.height() / frontFace.getHeight());
-                    if (view.isCardMaterialReady()) {
-                        float t = Math.max(0f, Math.min(1f, balanceTransitionProgress));
+                    if (t < 1f) {
+                        if (diamondSprite == null) {
+                            diamondSprite = new WalletDiamondSprite(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+                            updateDiamondSpriteTint();
+                        }
+                        final android.graphics.drawable.Drawable icon = drawable;
+                        diamondSprite.setBounds(icon.getBounds());
+                        diamondSprite.setShadowAlpha(balanceShadowAnimated.get());
+                        drawable = diamondSprite;
+                        recolorDrawable = false;
+                        setAlpha(1f - t);
+                        super.draw(canvas, text, start, end, x, top, y, bottom, paint);
+                        drawable = icon;
+                        recolorDrawable = true;
+                    }
                         setAlpha(t);
                         if (t == 0f) return;
-                    } else {
-                        balanceView.postInvalidateOnAnimation();
-                    }
                 }
                 super.draw(canvas, text, start, end, x, top, y, bottom, paint);
             }
         };
     }
 
+    public void setProfileCard(int account, TLRPC.User user, TL_wallet.card profileCard) {
+        setCardHolder(UserObject.getUserName(user).toUpperCase(Locale.ROOT));
+        if (!TextUtils.isEmpty(profileCard.address)) {
+            setCardNumber(formatAddress(profileCard.address.toUpperCase(Locale.ROOT)));
+        }
+        setCardBalance(account, profileCard.balance);
+        final CharSequence currency = GramWallet.getInstance(account).formatCurrency(profileCard.balance);
+        if (!TextUtils.isEmpty(currency)) {
+            usdBalanceView.setText(currency, false);
+        }
+    }
     private void setWalletBalance(GramWallet wallet, long nanotons) {
+        setCardBalance(wallet.currentAccount, nanotons);
+    }
+
+    private void setCardBalance(int account, long nanotons) {
         final SpannableStringBuilder text = new SpannableStringBuilder();
         final SpannableString icon = new SpannableString("GRAM");
-        icon.setSpan(new ColoredImageSpan(R.drawable.wallet_gram_large), 0, icon.length(),
+        icon.setSpan(createBalanceDiamondSpan(), 0, icon.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         text.append(icon).append(" ");
         text.append(formatBalance(nanotons));
         text.append(" ");
         final int labelStart = text.length();
         text.append(LocaleController.getString(R.string.GramCurrency));
-        text.setSpan(new ForegroundColorSpan(0xFF6DDCFF), labelStart, text.length(),
+        text.setSpan(new android.text.style.CharacterStyle() {
+            @Override public void updateDrawState(android.text.TextPaint paint) {
+                paint.setColor(stickerStyle == null ? 0xFF6DDCFF : WalletGiftPalette.tint(0xFF6DDCFF, stickerStyle));
+            }
+        }, labelStart, text.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         balanceView.setText(text);
 
         final double grams = (double) nanotons / 1_000_000_000.0;
         final long usdCents = Math.round(grams
-                * MessagesController.getInstance(wallet.currentAccount).config.tonUsdRate.get()
+                * MessagesController.getInstance(account).config.tonUsdRate.get()
                 * 100.0);
         usdBalanceView.setText(BillingController.getInstance().formatCurrency(
                 usdCents, "USD", 2, usdCents % 100 == 0
@@ -526,7 +708,6 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
     }
 
     private void createCardImplementation() {
-        if (use2D) {
             final WalletCard2DView view = new WalletCard2DView(
                     getContext(),
                     cardIconResId,
@@ -534,55 +715,14 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
             );
             cardView = view;
             frontFace = view.getFrontFace();
-        } else {
-            final WalletCardView view = new WalletCardView(
-                    getContext(),
-                    cardIconResId,
-                    qrButtonRightPadding
-            );
-            cardView = view;
-            frontFace = view.getFrontFace();
-        }
+        if (stickerStyle != null) setStickerStyle(stickerStyle);
         setAdditionalTilt(additionalTilt);
         setUseGyroscope(gyroscopeTiltScale);
-        if (cardView instanceof WalletCardView) {
-            ((WalletCardView) cardView).setDiamondAlpha(1f - balanceTransitionProgress);
-        }
         cardView.setOnClickListener(cardClickListener);
         addView(cardView, 0, LayoutHelper.createFrame(
                 LayoutHelper.MATCH_PARENT,
                 LayoutHelper.WRAP_CONTENT
         ));
-        if (engravingBitmap != null) {
-            setEngravingBitmap(engravingBitmap);
-        }
-    }
-
-    private static Bitmap createCardNumberEngraving(Context context, String formattedAddress) {
-        final int width = 1640;
-        final int height = 1000;
-        final float scale = width / 336.0f;
-        final Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        final Canvas canvas = new Canvas(bitmap);
-        canvas.scale(scale, scale);
-        canvas.translate(313.0f, 102.5f);
-        canvas.rotate(90.0f);
-        canvas.scale(CARD_NUMBER_LENGTH_SCALE, 1.0f);
-
-        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-        paint.setColor(Color.WHITE);
-        paint.setTypeface(getCardNumberTypeface(context));
-        paint.setTextSize(9.7f);
-        paint.setTextAlign(Paint.Align.CENTER);
-        final Paint.FontMetrics metrics = paint.getFontMetrics();
-        final float middleBaselineOffset = -(metrics.ascent + metrics.descent) * 0.5f;
-
-        final String[] lines = formatCardAddress(formattedAddress).split("\\n");
-        canvas.drawText(lines[0], 0, -5.6f + middleBaselineOffset, paint);
-        if (lines.length > 1) {
-            canvas.drawText(lines[1], 0, 5.6f + middleBaselineOffset, paint);
-        }
-        return bitmap;
     }
 
     static String formatCardAddress(String formattedAddress) {
@@ -625,10 +765,7 @@ public class WalletCardComponent extends FrameLayout implements NotificationCent
                         .setWeight(CARD_NUMBER_FONT_WEIGHT)
                         .build();
             } else {
-                cardNumberTypeface = Typeface.create(
-                        AndroidUtilities.getTypeface("fonts/rmono_var.ttf"),
-                        Typeface.BOLD
-                );
+                cardNumberTypeface = AndroidUtilities.getTypeface("fonts/rmono.ttf");
             }
         }
         return cardNumberTypeface;

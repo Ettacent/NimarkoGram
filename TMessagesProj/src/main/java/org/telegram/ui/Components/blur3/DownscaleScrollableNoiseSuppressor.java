@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -33,7 +35,7 @@ public class DownscaleScrollableNoiseSuppressor {
     private int k;
     private boolean modeGraphChanged;
     private boolean drawableGraphChanged;
-    private boolean enhanced = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
+    private boolean enhanced = app.nimarkogram.messenger.AppConfig.enhancedGlassBlur;
     public boolean didDrawableGraphChange() {
         return drawableGraphChanged;
     }
@@ -59,7 +61,7 @@ public class DownscaleScrollableNoiseSuppressor {
     public static final int DRAW_FROSTED_GLASS_NO_SATURATION = -4;
     private void updateGlassMode() {
         final boolean enabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
-        final boolean nextEnhanced = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
+        final boolean nextEnhanced = app.nimarkogram.messenger.AppConfig.enhancedGlassBlur;
         if ((isLiquidGlassEnabled == enabled && enhanced == nextEnhanced) || recordingPos != null) {
             return;
         }
@@ -99,6 +101,14 @@ public class DownscaleScrollableNoiseSuppressor {
         }
     }
 
+    public void draw(Canvas canvas, RenderNode node) {
+        if (!canvas.isHardwareAccelerated()) {
+            throw new IllegalStateException();
+        }
+        if (node != null) {
+            canvas.drawRenderNode(node);
+        }
+    }
     private int resolveInlineIndex(int index) {
         updateGlassMode();
         if (!isLiquidGlassEnabled && simpleMode) {
@@ -114,6 +124,11 @@ public class DownscaleScrollableNoiseSuppressor {
     }
     public boolean isDisplayListReady(int index) {
         return isDisplayListReadyAt(resolveInlineIndex(index));
+    }
+
+    public @Nullable RenderNode getReadyRenderNode(int index) {
+        final int a = resolveInlineIndex(index);
+        return isDisplayListReadyAt(a) ? resultRenderNodes[a] : null;
     }
     private boolean isDisplayListReadyAt(int a) {
         if (a < 0 || recordingPos != null || capturedPositionsGeneration != capturePositionsGeneration

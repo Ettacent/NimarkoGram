@@ -198,7 +198,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     // cameraIcon FrameLayout overlay declared above is still constructed but
     // immediately hidden via setVisibility(GONE) below so nothing floats.
     private static final boolean HIDE_CAMERA_TILE = false;
-    private final boolean disableAttachCamera = app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera;
+    private final boolean disableAttachCamera = app.nimarkogram.messenger.AppConfig.disableAttachCamera;
     // Outer-class camera glyph (shared with the cameraIcon overlay below).
     private Drawable nimarkoCameraGlyph;
     private Drawable getNimarkoCameraGlyph() {
@@ -290,7 +290,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     };
 
     private boolean isCameraXBackend() {
-        return cameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView;
+        return cameraView instanceof app.nimarkogram.messenger.camera.CameraXView;
     }
 
     private void requestCameraAdapterUpdate() {
@@ -319,7 +319,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         postOnAnimation(galleryAdaptersUpdateRunnable);
     }
 
-    private void fallbackToStockCamera(app.nimarkogram.messenger.camera.NimarkoCameraXView failedView) {
+    private void fallbackToStockCamera(app.nimarkogram.messenger.camera.CameraXView failedView) {
         if (failedView == null || cameraView != failedView || parentAlert.destroyed) return;
         cameraXFallbackToStock = true;
         isCameraFrontfaceBeforeEnteringEditMode = failedView.isFrontface();
@@ -537,6 +537,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (closing && parentAlert.avatarWithBulletin != null) {
                 final PhotoViewer.PlaceProviderObject object = parentAlert.avatarWithBulletin.run();
                 if (object != null) {
+                    if (!needPreview && object.thumb != null) {
+                        object.thumb.release();
+                        object.thumb = null;
+                    }
                     return object;
                 }
             }
@@ -552,7 +556,9 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 object.viewY = coords[1];
                 object.parentView = gridView;
                 object.imageReceiver = cell.getImageView().getImageReceiver();
+                if (needPreview) {
                 object.thumb = object.imageReceiver.getBitmapSafe();
+                }
                 object.scale = cell.getScale();
                 object.clipBottomAddition = (int) parentAlert.getClipLayoutBottom();
                 cell.showCheck(false);
@@ -1382,7 +1388,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
                 // NimarkoGram: optionally center switch & flash buttons under the shutter
                 // for a tidier landscape-style camera HUD.
-                if (app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons) {
+                if (app.nimarkogram.messenger.AppConfig.centerCameraControlButtons) {
                     if (getMeasuredWidth() == dp(126)) {
                         cx2 = cx3 = cx;
                         cy2 = cy - dp(48);
@@ -1615,8 +1621,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 final boolean isCameraX = isCameraXBackend();
                 if (takingPhoto || cameraView == null) return;
                 if (!isCameraX && cameraView.getCameraSession() == null) return;
-                if (isCameraX && cameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView
-                        && ((app.nimarkogram.messenger.camera.NimarkoCameraXView) cameraView).isFlooding()) {
+                if (isCameraX && cameraView instanceof app.nimarkogram.messenger.camera.CameraXView
+                        && ((app.nimarkogram.messenger.camera.CameraXView) cameraView).isFlooding()) {
                     return;
                 }
                 if (shutterButton.getState() == ShutterButton.State.RECORDING) {
@@ -2800,7 +2806,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (fragment == null || fragment.getParentActivity() == null) {
             return;
         }
-        if (!SharedConfig.inappCamera || app.nimarkogram.messenger.NimarkoConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_SYSTEM) {
+        if (!SharedConfig.inappCamera || app.nimarkogram.messenger.AppConfig.cameraType == app.nimarkogram.messenger.camera.CameraXUtils.CAMERA_SYSTEM) {
             deviceHasGoodCamera = false;
         } else {
             if (Build.VERSION.SDK_INT >= 23) {
@@ -2815,14 +2821,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     deviceHasGoodCamera = false;
                 } else if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                         && !cameraXFallbackToStock
-                        && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext())) {
+                        && app.nimarkogram.messenger.camera.CameraXView.hasGoodCamera(getContext())) {
                     // NG CG-port: when the user picked CAMERA_X in the camera
                     // type selector, defer the "good camera" check to
-                    // {@link NimarkoCameraXView#hasGoodCamera(Context)} — the
                     // stock {@link CameraController#initCamera} probe targets
                     // the legacy Camera1/Camera2 path and would mis-report on
                     // CameraX-only configurations.
-                    deviceHasGoodCamera = app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
+                    deviceHasGoodCamera = app.nimarkogram.messenger.camera.CameraXView.hasGoodCamera(getContext());
                 } else {
                     if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) cameraXFallbackToStock = true;
                     if (request || SharedConfig.hasCameraCache) {
@@ -2832,10 +2837,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 }
             } else if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                     && !cameraXFallbackToStock
-                    && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext())) {
+                    && app.nimarkogram.messenger.camera.CameraXView.hasGoodCamera(getContext())) {
                 // NG CG-port: pre-23 fast-path for CameraX backend (no
                 // runtime-permission gate to traverse).
-                deviceHasGoodCamera = app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
+                deviceHasGoodCamera = app.nimarkogram.messenger.camera.CameraXView.hasGoodCamera(getContext());
             } else {
                 if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) cameraXFallbackToStock = true;
                 if (request || SharedConfig.hasCameraCache) {
@@ -3015,13 +3020,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             // before we get here.
             final boolean useCameraX = app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()
                     && !cameraXFallbackToStock
-                    && app.nimarkogram.messenger.camera.NimarkoCameraXView.hasGoodCamera(getContext());
+                    && app.nimarkogram.messenger.camera.CameraXView.hasGoodCamera(getContext());
             if (app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX() && !useCameraX) {
                 cameraXFallbackToStock = true;
             }
             if (useCameraX) {
-                app.nimarkogram.messenger.camera.NimarkoCameraXView cameraXView =
-                        new app.nimarkogram.messenger.camera.NimarkoCameraXView(getContext(), frontface);
+                app.nimarkogram.messenger.camera.CameraXView cameraXView =
+                        new app.nimarkogram.messenger.camera.CameraXView(getContext(), frontface);
                 cameraView = cameraXView;
                 cameraXView.setCameraFailureCallback(() -> fallbackToStockCamera(cameraXView));
                 // NG CG-port: feed device-orientation deltas into NimarkoCameraXView
@@ -3042,8 +3047,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                             } else {
                                 rotation = Surface.ROTATION_0;
                             }
-                            if (cameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                                ((app.nimarkogram.messenger.camera.NimarkoCameraXView) cameraView).setOrientation(rotation);
+                            if (cameraView instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                                ((app.nimarkogram.messenger.camera.CameraXView) cameraView).setOrientation(rotation);
                             }
                         }
                     };
@@ -3192,15 +3197,15 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                     }
                 }
             });
-            if (createdCameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                ((app.nimarkogram.messenger.camera.NimarkoCameraXView) createdCameraView).initCamera();
+            if (createdCameraView instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                ((app.nimarkogram.messenger.camera.CameraXView) createdCameraView).initCamera();
             }
 
             createdCameraView.setEnabled(mediaEnabled);
             if (isHidden) {
                 createdCameraView.setVisibility(GONE);
-                if (createdCameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                    ((app.nimarkogram.messenger.camera.NimarkoCameraXView) createdCameraView).setStreamingEnabled(false);
+                if (createdCameraView instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                    ((app.nimarkogram.messenger.camera.CameraXView) createdCameraView).setStreamingEnabled(false);
                 }
             }
             if (cameraOpened) {
@@ -4302,8 +4307,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         }
         if (cameraView != null) {
             cameraView.setDelegate(null);
-            if (cameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                ((app.nimarkogram.messenger.camera.NimarkoCameraXView) cameraView).setCameraFailureCallback(null);
+            if (cameraView instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                ((app.nimarkogram.messenger.camera.CameraXView) cameraView).setCameraFailureCallback(null);
             }
         }
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.cameraInitied);
@@ -4558,8 +4563,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         isHidden = false;
         app.nimarkogram.messenger.camera.BaseCameraView shownCamera = cameraView;
         if (shownCamera != null) {
-            if (shownCamera instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                ((app.nimarkogram.messenger.camera.NimarkoCameraXView) shownCamera).setStreamingEnabled(true);
+            if (shownCamera instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                ((app.nimarkogram.messenger.camera.CameraXView) shownCamera).setStreamingEnabled(true);
             }
             shownCamera.setVisibility(VISIBLE);
         }
@@ -4674,8 +4679,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     public void onHidden() {
         cancelPendingPhotoViewerOpen();
         if (cameraView != null) {
-            if (cameraView instanceof app.nimarkogram.messenger.camera.NimarkoCameraXView) {
-                ((app.nimarkogram.messenger.camera.NimarkoCameraXView) cameraView).setStreamingEnabled(false);
+            if (cameraView instanceof app.nimarkogram.messenger.camera.CameraXView) {
+                ((app.nimarkogram.messenger.camera.CameraXView) cameraView).setStreamingEnabled(false);
             }
             cameraView.setVisibility(GONE);
         }

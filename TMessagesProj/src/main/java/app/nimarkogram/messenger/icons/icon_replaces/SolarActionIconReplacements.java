@@ -17,6 +17,9 @@ final class SolarActionIconReplacements {
         replace(pack, R.drawable.outline_profile_photo, R.drawable.ng_action_profile_photo_solar);
         replace(pack, R.drawable.filled_profile_photo_20, R.drawable.ng_action_profile_photo_20_solar);
         replace(pack, R.drawable.profile_qr_scan_24, R.drawable.ng_action_qr_scan_solar);
+        replace(pack, R.drawable.scan_qr, R.drawable.ng_action_qr_scan_solar);
+        replace(pack, R.drawable.outline_header_qr_24, R.drawable.msg_qrcode_solar);
+        replace(pack, R.drawable.wallet_card_qr, R.drawable.msg_qrcode_solar);
         replace(pack, R.drawable.filled_profile_story, R.drawable.ng_action_story_add_solar);
         replace(pack, R.drawable.menu_add_stories, R.drawable.ng_action_story_add_solar);
         replace(pack, R.drawable.outline_profile_story, R.drawable.ng_action_story_add_72_solar);

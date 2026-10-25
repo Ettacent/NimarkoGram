@@ -1,8 +1,10 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 from typing import Any, Optional
 import traceback
 from java import jclass, jarray
 from android_utils import log
-from plugin_compat import _remap_proxy_class
+from plugin_compat import _remap_proxy_class, _remap_legacy_class
 
 JavaClass = type(jclass('java.lang.Object'))
 JavaObject = jclass('java.lang.Object')
@@ -78,7 +80,8 @@ def find_class(class_name: str) -> Optional[JavaClass]:
     # signatures match. On any failure, fall through to the normal resolution
     # of the original name so behavior never regresses. Never raises.
     # Also works if this module captured java.jclass before compat installation.
-    remapped = _HOOK_TARGET_REMAP.get(class_name) or _remap_proxy_class(class_name)
+    remapped = (_HOOK_TARGET_REMAP.get(class_name) or _remap_proxy_class(class_name)
+                or _remap_legacy_class(class_name))
     if remapped is not None:
         try:
             clazz = jclass(remapped)
@@ -151,7 +154,7 @@ def get_private_field(obj: JavaObject, field_name: str) -> Optional[Any]:
 def set_private_field(obj: JavaObject, field_name: str, new_value: Any) -> bool:
     if not isinstance(obj, JavaObject) or not isinstance(field_name, str):
         return False
-        
+
     field = _find_private_field(obj.getClass(), field_name)
     if field is None:
         return False
@@ -166,7 +169,7 @@ def set_private_field(obj: JavaObject, field_name: str, new_value: Any) -> bool:
 def get_static_private_field(clazz: JavaClass, field_name: str) -> Optional[Any]:
     if type(clazz) is not JavaClass or not isinstance(field_name, str):
         return None
-        
+
     field = _find_private_field(clazz, field_name)
     if field is None:
         return None
@@ -181,7 +184,7 @@ def get_static_private_field(clazz: JavaClass, field_name: str) -> Optional[Any]
 def set_static_private_field(clazz: JavaClass, field_name: str, new_value: Any) -> bool:
     if type(clazz) is not JavaClass or not isinstance(field_name, str):
         return False
-        
+
     field = _find_private_field(clazz, field_name)
     if field is None:
         log(f'Field \'{field_name}\' not found in class hierarchy of {clazz.getName()}')

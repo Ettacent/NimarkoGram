@@ -37,14 +37,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.chats.ChatHelper2;
 import app.nimarkogram.messenger.utils.VibrateUtils;
-import app.nimarkogram.messenger.preferences.helpers.NimarkoAlertDialogSwitchers;
+import app.nimarkogram.messenger.preferences.helpers.AlertDialogSwitchers;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
-public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+public class ChatsPreferencesActivity extends UniversalPreferencesActivity {
 
     private static final int PAGE_OVERVIEW = 0;
     private static final int PAGE_CHAT_LIST = 1;
@@ -206,34 +206,34 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(SettingsHelper.asSwitchCG(sendAsChannelButtonRow,
                         getString(R.string.NM_HideSendAsChannel),
                         getString(R.string.NM_HideSendAsChannelDesc))
-                .setChecked(NimarkoConfig.hideSendAsChannel));
+                .setChecked(AppConfig.hideSendAsChannel));
         items.add(SettingsHelper.asSwitchCG(disableSendHintsRow,
                         getString(R.string.NM_DisableSendHints),
                         getString(R.string.NM_DisableSendHints_Desc))
-                .setChecked(NimarkoConfig.disableSendHints));
+                .setChecked(AppConfig.disableSendHints));
         items.add(UItem.asHeader(getString(R.string.NM_HideKbdOnScroll)));
-        items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.hideKeyboardOnScrollIntensity, 10,
+        items.add(UItem.asIntSlideView(1, 0, AppConfig.hideKeyboardOnScrollIntensity, 10,
                 val -> val == 0 ? getString(R.string.VibrationDisabled) : String.valueOf(val),
-                NimarkoConfig::setHideKeyboardOnScrollIntensity).setId(hideKbdSliderRow));
+                AppConfig::setHideKeyboardOnScrollIntensity).setId(hideKbdSliderRow));
         items.add(UItem.asShadow(getString(R.string.NM_SettingsDesc_HideKeyboardOnScroll)));
 
         items.add(UItem.asHeader(getString(R.string.MessagesSettings)));
         items.add(SettingsHelper.asSwitchCG(pencilIconRow, getString(R.string.AP_ShowPencilIcon))
-                .setChecked(NimarkoConfig.showPencilIcon));
+                .setChecked(AppConfig.showPencilIcon));
         items.add(SettingsHelper.asSwitchCG(forwardDateRow, getString(R.string.NM_ForwardMsgDate))
-                .setChecked(NimarkoConfig.msgForwardDate));
+                .setChecked(AppConfig.msgForwardDate));
         items.add(SettingsHelper.asSwitchCG(autoQuoteRow,
                         getString(R.string.NM_AutoQuoteReplies),
                         getString(R.string.NM_AutoQuoteReplies_Desc))
-                .setChecked(NimarkoConfig.autoQuoteReplies));
+                .setChecked(AppConfig.autoQuoteReplies));
         items.add(SettingsHelper.asSwitchCG(preReformRussianRow,
                         getString(R.string.NM_PreReformRussian),
                         getString(R.string.NM_PreReformRussian_Desc))
-                .setChecked(NimarkoConfig.preReformRussian));
+                .setChecked(AppConfig.preReformRussian));
         items.add(SettingsHelper.asSwitchCG(latexRenderingRow,
                         getString(R.string.NM_LatexRendering),
                         getString(R.string.NM_LatexRendering_Desc))
-                .setChecked(NimarkoConfig.latexRenderingEnabled));
+                .setChecked(AppConfig.latexRenderingEnabled));
         items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryInputText)));
     }
 
@@ -248,33 +248,33 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(SettingsHelper.asSwitchCG(disableSwipeToNextRow,
                         getString(R.string.NM_DisableSwipeToNext),
                         getString(R.string.NM_DisableSwipeToNext_Desc))
-                .setChecked(NimarkoConfig.disableSwipeToNext));
+                .setChecked(AppConfig.disableSwipeToNext));
         if (VibrateUtils.hasVibrator()) {
             items.add(SettingsHelper.asSwitchCG(disableVibrationRow, getString(R.string.NM_DisableVibration))
-                    .setChecked(NimarkoConfig.disableVibration));
+                    .setChecked(AppConfig.disableVibration));
         }
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.NM_SettingsSectionActions)));
         items.add(SettingsHelper.asSwitchCG(forwardWithoutAuthorRow, getString(R.string.ForwardWithoutAuthor))
-                .setChecked(NimarkoConfig.forwardWithoutAuthor));
+                .setChecked(AppConfig.forwardWithoutAuthor));
         items.add(SettingsHelper.asSwitchCG(deleteForAllRow,
                         getString(R.string.NM_DeleteForAll),
                         getString(R.string.NM_DeleteForAll_Desc))
-                .setChecked(NimarkoConfig.deleteForAll));
+                .setChecked(AppConfig.deleteForAll));
         items.add(UItem.asShadow(getString(R.string.NM_SettingsSummaryGesturesActions)));
     }
 
     private void fillChatList(ArrayList<UItem> items) {
         items.add(SettingsHelper.asSwitchCG(sortByUnreadRow, getString(R.string.NM_SortByUnread))
-                .setChecked(NimarkoConfig.sortByUnread));
+                .setChecked(AppConfig.sortByUnread));
         items.add(SettingsHelper.asSwitchCG(unarchiveOnSwipeRow, getString(R.string.NM_UnarchiveOnSwipe))
-                .setChecked(NimarkoConfig.unarchiveOnSwipe));
+                .setChecked(AppConfig.unarchiveOnSwipe));
         items.add(SettingsHelper.asSwitchCG(customChatRow,
                         getString(R.string.EP_CustomChat),
                         getString(R.string.EP_CustomChat_Desc))
-                .setChecked(NimarkoConfig.customChatForSavedMessages));
-        if (NimarkoConfig.customChatForSavedMessages) {
+                .setChecked(AppConfig.customChatForSavedMessages));
+        if (AppConfig.customChatForSavedMessages) {
             items.add(SettingsHelper.asCustomWithBackground(createUserCell()));
         }
     }
@@ -283,26 +283,26 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(SettingsHelper.asSwitchCG(disableVoiceAutoNextRow,
                         getString(R.string.NimarkoDisableVMAutoplay),
                         getString(R.string.NM_DisableVoiceAutoNext_Desc))
-                .setChecked(NimarkoConfig.disableVoiceMessagesAutoNext));
+                .setChecked(AppConfig.disableVoiceMessagesAutoNext));
         items.add(SettingsHelper.asSwitchCG(multiMicrophoneRow,
                         getString(R.string.NM_CAM_MultiMicrophone), getString(R.string.NM_CAM_MultiMicrophoneDesc))
-                .setChecked(NimarkoConfig.cameraXMultiMicrophone));
+                .setChecked(AppConfig.cameraXMultiMicrophone));
         items.add(SettingsHelper.asSwitchCG(largePhotosRow, getString(R.string.EP_PhotosSize))
-                .setChecked(NimarkoConfig.largePhotos));
+                .setChecked(AppConfig.largePhotos));
         items.add(SettingsHelper.asSwitchCG(playVideoOnVolumeBtnRow,
                         getString(R.string.NM_PlayVideo),
                         getString(R.string.NM_PlayVideo_Desc))
-                .setChecked(NimarkoConfig.playVideoOnVolume));
+                .setChecked(AppConfig.playVideoOnVolume));
         items.add(SettingsHelper.asSwitchCG(autoPauseVideoRow,
                         getString(R.string.NM_AutoPauseVideo),
                         getString(R.string.NM_AutoPauseVideo_Desc))
-                .setChecked(NimarkoConfig.autoPauseVideo));
+                .setChecked(AppConfig.autoPauseVideo));
         items.add(SettingsHelper.asSwitchCG(gifSpoilersRow, getString(R.string.NM_MSG_GifSpoilers))
-                .setChecked(NimarkoConfig.gifSpoilers));
+                .setChecked(AppConfig.gifSpoilers));
         items.add(UItem.asHeader(getString(R.string.NM_VideoSeekDuration)));
-        items.add(UItem.asIntSlideView(1, 0, NimarkoConfig.videoSeekDuration, 25,
+        items.add(UItem.asIntSlideView(1, 0, AppConfig.videoSeekDuration, 25,
                 val -> val == 0 ? getString(R.string.NM_WSB_Status_Off) : String.valueOf(val),
-                NimarkoConfig::setVideoSeekDuration).setId(videoSeekSliderRow));
+                AppConfig::setVideoSeekDuration).setId(videoSeekSliderRow));
         items.add(UItem.asShadow(getString(R.string.NM_SettingsDesc_VideoSeek)));
     }
 
@@ -310,19 +310,19 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow,
                         getString(R.string.NM_DisableReactionsOverlay),
                         getString(R.string.NM_DisableReactionsOverlay_Desc))
-                .setChecked(NimarkoConfig.disableReactionsOverlay));
+                .setChecked(AppConfig.disableReactionsOverlay));
         items.add(SettingsHelper.asSwitchCG(reactionAnimationRow,
                         getString(R.string.NM_DisableReactionAnim),
                         getString(R.string.NM_DisableReactionAnim_Desc))
-                .setChecked(NimarkoConfig.disableReactionAnim));
+                .setChecked(AppConfig.disableReactionAnim));
         items.add(SettingsHelper.asSwitchCG(premStickAnimRow,
                         getString(R.string.NM_DisablePremStickAnim),
                         getString(R.string.NM_DisablePremStickAnim_Desc))
-                .setChecked(NimarkoConfig.disablePremStickAnim));
+                .setChecked(AppConfig.disablePremStickAnim));
         items.add(SettingsHelper.asSwitchCG(premStickAutoplayRow,
                         getString(R.string.NM_DisablePremStickAutoPlay),
                         getString(R.string.NM_DisablePremStickAutoPlay_Desc))
-                .setChecked(NimarkoConfig.disablePremStickAutoPlay));
+                .setChecked(AppConfig.disablePremStickAutoPlay));
     }
 
     private void fillNotifications(ArrayList<UItem> items) {
@@ -375,36 +375,36 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         }
 
         if (id == sortByUnreadRow) {
-            NimarkoConfig.toggleSortByUnread();
-            updateCheckState(view, NimarkoConfig.sortByUnread);
+            AppConfig.toggleSortByUnread();
+            updateCheckState(view, AppConfig.sortByUnread);
             MessagesController.getInstance(currentAccount).sortDialogs(null);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogsNeedReload);
         } else if (id == unarchiveOnSwipeRow) {
-            NimarkoConfig.toggleUnarchiveOnSwipe();
-            updateCheckState(view, NimarkoConfig.unarchiveOnSwipe);
+            AppConfig.toggleUnarchiveOnSwipe();
+            updateCheckState(view, AppConfig.unarchiveOnSwipe);
         } else if (id == forwardWithoutAuthorRow) {
-            NimarkoConfig.toggleForwardWithoutAuthor();
-            updateCheckState(view, NimarkoConfig.forwardWithoutAuthor);
+            AppConfig.toggleForwardWithoutAuthor();
+            updateCheckState(view, AppConfig.forwardWithoutAuthor);
         } else if (id == customChatRow) {
-            NimarkoConfig.toggleCustomChatForSavedMessages();
-            item.checked = NimarkoConfig.customChatForSavedMessages;
-            updateCheckState(view, NimarkoConfig.customChatForSavedMessages);
+            AppConfig.toggleCustomChatForSavedMessages();
+            item.checked = AppConfig.customChatForSavedMessages;
+            updateCheckState(view, AppConfig.customChatForSavedMessages);
             updateItemsAfterToggle();
         } else if (id == recentEmojisStickersRow) {
-            NimarkoAlertDialogSwitchers.showRecentEmojisAndStickers(this);
+            AlertDialogSwitchers.showRecentEmojisAndStickers(this);
         } else if (id == disableSendHintsRow) {
-            NimarkoConfig.toggleDisableSendHints();
-            updateCheckState(view, NimarkoConfig.disableSendHints);
+            AppConfig.toggleDisableSendHints();
+            updateCheckState(view, AppConfig.disableSendHints);
 
         } else if (id == pencilIconRow) {
-            NimarkoConfig.toggleShowPencilIcon();
-            updateCheckState(view, NimarkoConfig.showPencilIcon);
+            AppConfig.toggleShowPencilIcon();
+            updateCheckState(view, AppConfig.showPencilIcon);
         } else if (id == forwardDateRow) {
-            NimarkoConfig.toggleMsgForwardDate();
-            updateCheckState(view, NimarkoConfig.msgForwardDate);
+            AppConfig.toggleMsgForwardDate();
+            updateCheckState(view, AppConfig.msgForwardDate);
         } else if (id == sendAsChannelButtonRow) {
-            NimarkoConfig.toggleHideSendAsChannel();
-            updateCheckState(view, NimarkoConfig.hideSendAsChannel);
+            AppConfig.toggleHideSendAsChannel();
+            updateCheckState(view, AppConfig.hideSendAsChannel);
         } else if (id == chatMenuShortcutsRow) {
             showChatMenuItemsConfigurator(this);
 
@@ -415,75 +415,75 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         } else if (id == leftBottomBtnRow) {
             showLeftBottomButtonSelector(() -> SettingsHelper.updateButtonValue(view, getLeftBottomButtonValue()));
         } else if (id == autoQuoteRow) {
-            NimarkoConfig.toggleAutoQuoteReplies();
-            updateCheckState(view, NimarkoConfig.autoQuoteReplies);
+            AppConfig.toggleAutoQuoteReplies();
+            updateCheckState(view, AppConfig.autoQuoteReplies);
         } else if (id == preReformRussianRow) {
-            NimarkoConfig.togglePreReformRussian();
-            updateCheckState(view, NimarkoConfig.preReformRussian);
+            AppConfig.togglePreReformRussian();
+            updateCheckState(view, AppConfig.preReformRussian);
         } else if (id == latexRenderingRow) {
-            NimarkoConfig.toggleLatexRendering();
-            updateCheckState(view, NimarkoConfig.latexRenderingEnabled);
+            AppConfig.toggleLatexRendering();
+            updateCheckState(view, AppConfig.latexRenderingEnabled);
             if (getParentLayout() != null) {
                 getParentLayout().rebuildAllFragmentViews(false, false);
             }
         } else if (id == disableSwipeToNextRow) {
-            NimarkoConfig.toggleDisableSwipeToNext();
-            updateCheckState(view, NimarkoConfig.disableSwipeToNext);
+            AppConfig.toggleDisableSwipeToNext();
+            updateCheckState(view, AppConfig.disableSwipeToNext);
         } else if (id == deleteForAllRow) {
-            NimarkoConfig.toggleDeleteForAll();
-            updateCheckState(view, NimarkoConfig.deleteForAll);
+            AppConfig.toggleDeleteForAll();
+            updateCheckState(view, AppConfig.deleteForAll);
         } else if (id == directShareRow) {
             showDirectShareConfigurator(this);
         } else if (id == disableVibrationRow) {
-            NimarkoConfig.toggleDisableVibration();
-            updateCheckState(view, NimarkoConfig.disableVibration);
+            AppConfig.toggleDisableVibration();
+            updateCheckState(view, AppConfig.disableVibration);
             showRestartBulletin();
 
         } else if (id == disableVoiceAutoNextRow) {
-            NimarkoConfig.toggleDisableVoiceMessagesAutoNext();
-            item.checked = NimarkoConfig.disableVoiceMessagesAutoNext;
+            AppConfig.toggleDisableVoiceMessagesAutoNext();
+            item.checked = AppConfig.disableVoiceMessagesAutoNext;
             updateCheckState(view, item.checked);
         } else if (id == multiMicrophoneRow) {
-            NimarkoConfig.toggleCameraXMultiMicrophone();
-            item.checked = NimarkoConfig.cameraXMultiMicrophone;
+            AppConfig.toggleCameraXMultiMicrophone();
+            item.checked = AppConfig.cameraXMultiMicrophone;
             updateCheckState(view, item.checked);
         } else if (id == largePhotosRow) {
-            NimarkoConfig.toggleLargePhotos();
-            updateCheckState(view, NimarkoConfig.largePhotos);
+            AppConfig.toggleLargePhotos();
+            updateCheckState(view, AppConfig.largePhotos);
             showRestartBulletin();
         } else if (id == playVideoOnVolumeBtnRow) {
-            NimarkoConfig.togglePlayVideoOnVolume();
-            updateCheckState(view, NimarkoConfig.playVideoOnVolume);
+            AppConfig.togglePlayVideoOnVolume();
+            updateCheckState(view, AppConfig.playVideoOnVolume);
         } else if (id == autoPauseVideoRow) {
-            NimarkoConfig.toggleAutoPauseVideo();
-            updateCheckState(view, NimarkoConfig.autoPauseVideo);
+            AppConfig.toggleAutoPauseVideo();
+            updateCheckState(view, AppConfig.autoPauseVideo);
         } else if (id == gifSpoilersRow) {
-            NimarkoConfig.toggleGifSpoilers();
-            updateCheckState(view, NimarkoConfig.gifSpoilers);
+            AppConfig.toggleGifSpoilers();
+            updateCheckState(view, AppConfig.gifSpoilers);
 
         } else if (id == reactionsOverlayRow) {
-            NimarkoConfig.toggleDisableReactionsOverlay();
-            updateCheckState(view, NimarkoConfig.disableReactionsOverlay);
+            AppConfig.toggleDisableReactionsOverlay();
+            updateCheckState(view, AppConfig.disableReactionsOverlay);
             showRestartBulletin();
         } else if (id == reactionAnimationRow) {
-            NimarkoConfig.toggleDisableReactionAnim();
-            updateCheckState(view, NimarkoConfig.disableReactionAnim);
+            AppConfig.toggleDisableReactionAnim();
+            updateCheckState(view, AppConfig.disableReactionAnim);
             showRestartBulletin();
         } else if (id == premStickAnimRow) {
-            NimarkoConfig.toggleDisablePremStickAnim();
-            updateCheckState(view, NimarkoConfig.disablePremStickAnim);
+            AppConfig.toggleDisablePremStickAnim();
+            updateCheckState(view, AppConfig.disablePremStickAnim);
             showRestartBulletin();
         } else if (id == premStickAutoplayRow) {
-            NimarkoConfig.toggleDisablePremStickAutoPlay();
-            updateCheckState(view, NimarkoConfig.disablePremStickAutoPlay);
+            AppConfig.toggleDisablePremStickAutoPlay();
+            updateCheckState(view, AppConfig.disablePremStickAutoPlay);
             showRestartBulletin();
 
         } else if (id == notificationSoundRow) {
             showNotificationSoundSelector(() -> {
                 SettingsHelper.updateButtonValue(view, getNotificationSoundValue());
-                int sel = NimarkoConfig.notificationSound;
-                if (sel != NimarkoConfig.NOTIF_SOUND_DISABLE) {
-                    int tone = (sel == NimarkoConfig.NOTIF_SOUND_IOS) ? R.raw.sound_in_ios : R.raw.sound_in;
+                int sel = AppConfig.notificationSound;
+                if (sel != AppConfig.NOTIF_SOUND_DISABLE) {
+                    int tone = (sel == AppConfig.NOTIF_SOUND_IOS) ? R.raw.sound_in_ios : R.raw.sound_in;
                     try {
                         MediaPlayer mp = MediaPlayer.create(getContext(), tone);
                         if (mp != null) {
@@ -497,7 +497,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
         } else if (id == vibrateInChatsRow) {
             showVibrationSelector(() -> {
                 try {
-                    VibrateUtils.vibrateForChatMode(NimarkoConfig.vibrateInChats);
+                    VibrateUtils.vibrateForChatMode(AppConfig.vibrateInChats);
                 } catch (Exception ignored) {}
                 SettingsHelper.updateButtonValue(view, getVibrationValue());
             });
@@ -532,7 +532,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             DialogsActivity fragment = new DialogsActivity(args);
             fragment.setDelegate((fragment1, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
                 long did = dids.get(0).dialogId;
-                NimarkoConfig.setCustomSavedMessagesDialogId(currentAccount, did);
+                AppConfig.setCustomSavedMessagesDialogId(currentAccount, did);
                 fragment.finishFragment(true);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     View avatar = userCell.avatarImageView;
@@ -548,7 +548,7 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
             presentFragment(fragment);
         });
 
-        long chatId = NimarkoConfig.getCustomSavedMessagesDialogId(currentAccount);
+        long chatId = AppConfig.getCustomSavedMessagesDialogId(currentAccount);
         TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-chatId);
         TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(chatId);
 
@@ -567,13 +567,13 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     }
 
     private String getDoubleTapActionValue() {
-        return switch (NimarkoConfig.doubletapaction) {
-            case NimarkoConfig.DOUBLE_TAP_ACTION_REACTION -> getString(R.string.Reactions);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_REPLY -> getString(R.string.Reply);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_SAVE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_EDIT -> getString(R.string.Edit);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION -> getString(R.string.NM_DoubleTap_EditOrReact);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
+        return switch (AppConfig.doubletapaction) {
+            case AppConfig.DOUBLE_TAP_ACTION_REACTION -> getString(R.string.Reactions);
+            case AppConfig.DOUBLE_TAP_ACTION_REPLY -> getString(R.string.Reply);
+            case AppConfig.DOUBLE_TAP_ACTION_SAVE -> getString(R.string.NM_ToSaved);
+            case AppConfig.DOUBLE_TAP_ACTION_EDIT -> getString(R.string.Edit);
+            case AppConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION -> getString(R.string.NM_DoubleTap_EditOrReact);
+            case AppConfig.DOUBLE_TAP_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
             default -> getString(R.string.Disable);
         };
     }
@@ -581,24 +581,24 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showDoubleTapSelector(Runnable runnable) {
         ArrayList<String> keys = new ArrayList<>();
         ArrayList<Integer> values = new ArrayList<>();
-        keys.add(getString(R.string.Disable)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_NONE);
-        keys.add(getString(R.string.Reactions)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_REACTION);
-        keys.add(getString(R.string.Reply)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_REPLY);
-        keys.add(getString(R.string.NM_ToSaved)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_SAVE);
-        keys.add(getString(R.string.Edit)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_EDIT);
-        keys.add(getString(R.string.TranslateMessage)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_TRANSLATE);
-        keys.add(getString(R.string.NM_DoubleTap_EditOrReact)); values.add(NimarkoConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION);
-        PopupHelper.show(keys, getString(R.string.NM_DoubleTapAction), values.indexOf(NimarkoConfig.doubletapaction), getContext(), i -> {
-            NimarkoConfig.setDoubleTapAction(values.get(i));
+        keys.add(getString(R.string.Disable)); values.add(AppConfig.DOUBLE_TAP_ACTION_NONE);
+        keys.add(getString(R.string.Reactions)); values.add(AppConfig.DOUBLE_TAP_ACTION_REACTION);
+        keys.add(getString(R.string.Reply)); values.add(AppConfig.DOUBLE_TAP_ACTION_REPLY);
+        keys.add(getString(R.string.NM_ToSaved)); values.add(AppConfig.DOUBLE_TAP_ACTION_SAVE);
+        keys.add(getString(R.string.Edit)); values.add(AppConfig.DOUBLE_TAP_ACTION_EDIT);
+        keys.add(getString(R.string.TranslateMessage)); values.add(AppConfig.DOUBLE_TAP_ACTION_TRANSLATE);
+        keys.add(getString(R.string.NM_DoubleTap_EditOrReact)); values.add(AppConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION);
+        PopupHelper.show(keys, getString(R.string.NM_DoubleTapAction), values.indexOf(AppConfig.doubletapaction), getContext(), i -> {
+            AppConfig.setDoubleTapAction(values.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getSlideActionValue() {
-        return switch (NimarkoConfig.messageslideaction) {
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_SAVE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE -> getString(R.string.DirectShare);
+        return switch (AppConfig.messageslideaction) {
+            case AppConfig.MESSAGE_SLIDE_ACTION_SAVE -> getString(R.string.NM_ToSaved);
+            case AppConfig.MESSAGE_SLIDE_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
+            case AppConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE -> getString(R.string.DirectShare);
             default -> getString(R.string.Reply);
         };
     }
@@ -606,22 +606,22 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showSlideActionSelector(Runnable runnable) {
         ArrayList<String> keys = new ArrayList<>();
         ArrayList<Integer> values = new ArrayList<>();
-        keys.add(getString(R.string.Reply)); values.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_REPLY);
-        keys.add(getString(R.string.NM_ToSaved)); values.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_SAVE);
-        keys.add(getString(R.string.TranslateMessage)); values.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_TRANSLATE);
-        keys.add(getString(R.string.DirectShare)); values.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE);
-        PopupHelper.show(keys, getString(R.string.NM_MsgSlideAction), values.indexOf(NimarkoConfig.messageslideaction), getContext(), i -> {
-            NimarkoConfig.setMessageSlideAction(values.get(i));
+        keys.add(getString(R.string.Reply)); values.add(AppConfig.MESSAGE_SLIDE_ACTION_REPLY);
+        keys.add(getString(R.string.NM_ToSaved)); values.add(AppConfig.MESSAGE_SLIDE_ACTION_SAVE);
+        keys.add(getString(R.string.TranslateMessage)); values.add(AppConfig.MESSAGE_SLIDE_ACTION_TRANSLATE);
+        keys.add(getString(R.string.DirectShare)); values.add(AppConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE);
+        PopupHelper.show(keys, getString(R.string.NM_MsgSlideAction), values.indexOf(AppConfig.messageslideaction), getContext(), i -> {
+            AppConfig.setMessageSlideAction(values.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getLeftBottomButtonValue() {
-        return switch (NimarkoConfig.actionsBarLeftButton) {
-            case NimarkoConfig.ACTIONS_LEFT_SAVE_MESSAGE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE -> getString(R.string.DirectShare);
-            case NimarkoConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP -> getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship);
-            case NimarkoConfig.ACTIONS_LEFT_REPLY -> getString(R.string.Reply);
+        return switch (AppConfig.actionsBarLeftButton) {
+            case AppConfig.ACTIONS_LEFT_SAVE_MESSAGE -> getString(R.string.NM_ToSaved);
+            case AppConfig.ACTIONS_LEFT_DIRECT_SHARE -> getString(R.string.DirectShare);
+            case AppConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP -> getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship);
+            case AppConfig.ACTIONS_LEFT_REPLY -> getString(R.string.Reply);
             default -> getString(R.string.Reply);
         };
     }
@@ -629,12 +629,12 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showLeftBottomButtonSelector(Runnable runnable) {
         ArrayList<String> keys = new ArrayList<>();
         ArrayList<Integer> values = new ArrayList<>();
-        keys.add(getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship)); values.add(NimarkoConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP);
-        keys.add(getString(R.string.Reply)); values.add(NimarkoConfig.ACTIONS_LEFT_REPLY);
-        keys.add(getString(R.string.NM_ToSaved)); values.add(NimarkoConfig.ACTIONS_LEFT_SAVE_MESSAGE);
-        keys.add(getString(R.string.DirectShare)); values.add(NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE);
-        PopupHelper.show(keys, getString(R.string.NM_LeftBottomButtonAction), values.indexOf(NimarkoConfig.actionsBarLeftButton), getContext(), i -> {
-            NimarkoConfig.setActionsBarLeftButton(values.get(i));
+        keys.add(getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship)); values.add(AppConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP);
+        keys.add(getString(R.string.Reply)); values.add(AppConfig.ACTIONS_LEFT_REPLY);
+        keys.add(getString(R.string.NM_ToSaved)); values.add(AppConfig.ACTIONS_LEFT_SAVE_MESSAGE);
+        keys.add(getString(R.string.DirectShare)); values.add(AppConfig.ACTIONS_LEFT_DIRECT_SHARE);
+        PopupHelper.show(keys, getString(R.string.NM_LeftBottomButtonAction), values.indexOf(AppConfig.actionsBarLeftButton), getContext(), i -> {
+            AppConfig.setActionsBarLeftButton(values.get(i));
             if (runnable != null) runnable.run();
         });
     }
@@ -642,17 +642,17 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showDirectShareConfigurator(BaseFragment fragment) {
         List<MenuItemConfig> menuItems = Arrays.asList(
                 new MenuItemConfig(getString(R.string.RepostToStory), R.drawable.large_repost_story,
-                        () -> NimarkoConfig.shareDrawStoryButton, () -> NimarkoConfig.toggleShareDrawStoryButton(), true, false),
+                        () -> AppConfig.shareDrawStoryButton, () -> AppConfig.toggleShareDrawStoryButton(), true, false),
                 new MenuItemConfig(getString(R.string.FilterChats), 0,
-                        () -> NimarkoConfig.usersDrawShareButton, () -> NimarkoConfig.toggleUsersDrawShareButton(), false, false),
+                        () -> AppConfig.usersDrawShareButton, () -> AppConfig.toggleUsersDrawShareButton(), false, false),
                 new MenuItemConfig(getString(R.string.FilterGroups), 0,
-                        () -> NimarkoConfig.supergroupsDrawShareButton, () -> NimarkoConfig.toggleSupergroupsDrawShareButton(), false, false),
+                        () -> AppConfig.supergroupsDrawShareButton, () -> AppConfig.toggleSupergroupsDrawShareButton(), false, false),
                 new MenuItemConfig(getString(R.string.FilterChannels), 0,
-                        () -> NimarkoConfig.channelsDrawShareButton, () -> NimarkoConfig.toggleChannelsDrawShareButton(), false, false),
+                        () -> AppConfig.channelsDrawShareButton, () -> AppConfig.toggleChannelsDrawShareButton(), false, false),
                 new MenuItemConfig(getString(R.string.FilterBots), 0,
-                        () -> NimarkoConfig.botsDrawShareButton, () -> NimarkoConfig.toggleBotsDrawShareButton(), false, false),
+                        () -> AppConfig.botsDrawShareButton, () -> AppConfig.toggleBotsDrawShareButton(), false, false),
                 new MenuItemConfig(getString(R.string.StickersName), 0,
-                        () -> NimarkoConfig.stickersDrawShareButton, () -> NimarkoConfig.toggleStickersDrawShareButton(), false, false)
+                        () -> AppConfig.stickersDrawShareButton, () -> AppConfig.toggleStickersDrawShareButton(), false, false)
         );
         handleMenuAlert(getString(R.string.DirectShare), menuItems, fragment);
     }
@@ -660,13 +660,13 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     public static void showChatMenuItemsConfigurator(BaseFragment fragment) {
         List<MenuItemConfig> menuItems = Arrays.asList(
                 new MenuItemConfig(getString(R.string.NM_JumpToBeginning), R.drawable.msg_go_up,
-                        () -> NimarkoConfig.chatShortcutJumpToBegin, () -> NimarkoConfig.toggleChatShortcutJumpToBegin(), false, false),
+                        () -> AppConfig.chatShortcutJumpToBegin, () -> AppConfig.toggleChatShortcutJumpToBegin(), false, false),
                 new MenuItemConfig(getString(R.string.NM_DeleteAllFromSelf), R.drawable.msg_delete,
-                        () -> NimarkoConfig.shortcutDeleteAll, () -> NimarkoConfig.toggleShortcutDeleteAll(), false, false),
+                        () -> AppConfig.shortcutDeleteAll, () -> AppConfig.toggleShortcutDeleteAll(), false, false),
                 new MenuItemConfig(getString(R.string.SavedMessages), R.drawable.msg_saved,
-                        () -> NimarkoConfig.chatShortcutSavedMessages, () -> NimarkoConfig.toggleChatShortcutSavedMessages(), false, false),
+                        () -> AppConfig.chatShortcutSavedMessages, () -> AppConfig.toggleChatShortcutSavedMessages(), false, false),
                 new MenuItemConfig(getString(R.string.NM_CMS_TelegramBrowser), R.drawable.msg_language,
-                        () -> NimarkoConfig.shortcutBrowser, () -> NimarkoConfig.toggleShortcutBrowser(), true, false),
+                        () -> AppConfig.shortcutBrowser, () -> AppConfig.toggleShortcutBrowser(), true, false),
                 new MenuItemConfig(getString(R.string.NM_AdminActions), R.drawable.msg_admins,
                         () -> false, () -> showChatAdminItemsConfigurator(fragment), false, true)
         );
@@ -676,25 +676,25 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private static void showChatAdminItemsConfigurator(BaseFragment fragment) {
         List<MenuItemConfig> menuItems = Arrays.asList(
                 new MenuItemConfig(getString(R.string.Reactions), R.drawable.msg_reactions2,
-                        () -> NimarkoConfig.adminsReactions, () -> NimarkoConfig.toggleAdminsReactions(), false, false),
+                        () -> AppConfig.adminsReactions, () -> AppConfig.toggleAdminsReactions(), false, false),
                 new MenuItemConfig(getString(R.string.ChannelPermissions), R.drawable.msg_permissions,
-                        () -> NimarkoConfig.adminsPermissions, () -> NimarkoConfig.toggleAdminsPermissions(), false, false),
+                        () -> AppConfig.adminsPermissions, () -> AppConfig.toggleAdminsPermissions(), false, false),
                 new MenuItemConfig(getString(R.string.ChannelAdministrators), R.drawable.msg_admins,
-                        () -> NimarkoConfig.adminsAdministrators, () -> NimarkoConfig.toggleAdminsAdministrators(), false, false),
+                        () -> AppConfig.adminsAdministrators, () -> AppConfig.toggleAdminsAdministrators(), false, false),
                 new MenuItemConfig(getString(R.string.ChannelMembers), R.drawable.msg_groups,
-                        () -> NimarkoConfig.adminsMembers, () -> NimarkoConfig.toggleAdminsMembers(), false, false),
+                        () -> AppConfig.adminsMembers, () -> AppConfig.toggleAdminsMembers(), false, false),
                 new MenuItemConfig(getString(R.string.StatisticsAndBoosts), R.drawable.msg_stats,
-                        () -> NimarkoConfig.adminsStatistics, () -> NimarkoConfig.toggleAdminsStatistics(), false, false),
+                        () -> AppConfig.adminsStatistics, () -> AppConfig.toggleAdminsStatistics(), false, false),
                 new MenuItemConfig(getString(R.string.EventLog), R.drawable.msg_log,
-                        () -> NimarkoConfig.adminsRecentActions, () -> NimarkoConfig.toggleAdminsRecentActions(), false, false)
+                        () -> AppConfig.adminsRecentActions, () -> AppConfig.toggleAdminsRecentActions(), false, false)
         );
         handleMenuAlert(getString(R.string.NM_AdminActions), menuItems, fragment);
     }
 
     private String getNotificationSoundValue() {
-        return switch (NimarkoConfig.notificationSound) {
-            case NimarkoConfig.NOTIF_SOUND_DEFAULT -> getString(R.string.Default);
-            case NimarkoConfig.NOTIF_SOUND_IOS -> "iOS";
+        return switch (AppConfig.notificationSound) {
+            case AppConfig.NOTIF_SOUND_DEFAULT -> getString(R.string.Default);
+            case AppConfig.NOTIF_SOUND_IOS -> "iOS";
             default -> getString(R.string.PopupDisabled);
         };
     }
@@ -702,21 +702,21 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showNotificationSoundSelector(Runnable runnable) {
         ArrayList<String> keys = new ArrayList<>();
         ArrayList<Integer> values = new ArrayList<>();
-        keys.add(getString(R.string.PopupDisabled)); values.add(NimarkoConfig.NOTIF_SOUND_DISABLE);
-        keys.add(getString(R.string.Default)); values.add(NimarkoConfig.NOTIF_SOUND_DEFAULT);
-        keys.add("iOS"); values.add(NimarkoConfig.NOTIF_SOUND_IOS);
-        PopupHelper.show(keys, getString(R.string.NotificationsSound), values.indexOf(NimarkoConfig.notificationSound), getContext(), i -> {
-            NimarkoConfig.setNotificationSound(values.get(i));
+        keys.add(getString(R.string.PopupDisabled)); values.add(AppConfig.NOTIF_SOUND_DISABLE);
+        keys.add(getString(R.string.Default)); values.add(AppConfig.NOTIF_SOUND_DEFAULT);
+        keys.add("iOS"); values.add(AppConfig.NOTIF_SOUND_IOS);
+        PopupHelper.show(keys, getString(R.string.NotificationsSound), values.indexOf(AppConfig.notificationSound), getContext(), i -> {
+            AppConfig.setNotificationSound(values.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getVibrationValue() {
-        return switch (NimarkoConfig.vibrateInChats) {
-            case NimarkoConfig.VIBRATE_CLICK -> getString(R.string.NM_Vibrate_Click);
-            case NimarkoConfig.VIBRATE_WAVE -> getString(R.string.NM_Vibrate_Wave);
-            case NimarkoConfig.VIBRATE_KEYBOARD -> getString(R.string.NM_Vibrate_Keyboard);
-            case NimarkoConfig.VIBRATE_LONG -> getString(R.string.NM_Vibrate_Long);
+        return switch (AppConfig.vibrateInChats) {
+            case AppConfig.VIBRATE_CLICK -> getString(R.string.NM_Vibrate_Click);
+            case AppConfig.VIBRATE_WAVE -> getString(R.string.NM_Vibrate_Wave);
+            case AppConfig.VIBRATE_KEYBOARD -> getString(R.string.NM_Vibrate_Keyboard);
+            case AppConfig.VIBRATE_LONG -> getString(R.string.NM_Vibrate_Long);
             default -> getString(R.string.NM_Vibrate_Off);
         };
     }
@@ -724,13 +724,13 @@ public class ChatsPreferencesActivity extends NimarkoUniversalPreferencesActivit
     private void showVibrationSelector(Runnable runnable) {
         ArrayList<String> keys = new ArrayList<>();
         ArrayList<Integer> values = new ArrayList<>();
-        keys.add(getString(R.string.NM_Vibrate_Off)); values.add(NimarkoConfig.VIBRATE_DISABLE);
-        keys.add(getString(R.string.NM_Vibrate_Click)); values.add(NimarkoConfig.VIBRATE_CLICK);
-        keys.add(getString(R.string.NM_Vibrate_Wave)); values.add(NimarkoConfig.VIBRATE_WAVE);
-        keys.add(getString(R.string.NM_Vibrate_Keyboard)); values.add(NimarkoConfig.VIBRATE_KEYBOARD);
-        keys.add(getString(R.string.NM_Vibrate_Long)); values.add(NimarkoConfig.VIBRATE_LONG);
-        PopupHelper.show(keys, getString(R.string.NM_VibrateInChats), values.indexOf(NimarkoConfig.vibrateInChats), getContext(), i -> {
-            NimarkoConfig.setVibrateInChats(values.get(i));
+        keys.add(getString(R.string.NM_Vibrate_Off)); values.add(AppConfig.VIBRATE_DISABLE);
+        keys.add(getString(R.string.NM_Vibrate_Click)); values.add(AppConfig.VIBRATE_CLICK);
+        keys.add(getString(R.string.NM_Vibrate_Wave)); values.add(AppConfig.VIBRATE_WAVE);
+        keys.add(getString(R.string.NM_Vibrate_Keyboard)); values.add(AppConfig.VIBRATE_KEYBOARD);
+        keys.add(getString(R.string.NM_Vibrate_Long)); values.add(AppConfig.VIBRATE_LONG);
+        PopupHelper.show(keys, getString(R.string.NM_VibrateInChats), values.indexOf(AppConfig.vibrateInChats), getContext(), i -> {
+            AppConfig.setVibrateInChats(values.get(i));
             if (runnable != null) runnable.run();
         });
     }

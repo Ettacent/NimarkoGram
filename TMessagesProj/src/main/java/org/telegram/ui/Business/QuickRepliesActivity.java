@@ -636,7 +636,7 @@ public class QuickRepliesActivity extends BaseFragment implements NotificationCe
                     messageText = quickReply.topMessage.messageText;
                 }
                 if (messageText != null && messageText.toString().contains("$")) {
-                    messageText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(messageText.toString());
+                    messageText = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(messageText.toString());
                 }
                 CharSequence text = new SpannableStringBuilder(messageText);
                 text = Emoji.replaceEmoji(text, textView.getPaint().getFontMetricsInt(), false);
@@ -778,7 +778,7 @@ public class QuickRepliesActivity extends BaseFragment implements NotificationCe
             if (quickReply.topMessage != null) {
                 CharSequence qrText = quickReply.topMessage.messageText;
                 if (qrText != null && qrText.toString().contains("$")) {
-                    qrText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(qrText.toString());
+                    qrText = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(qrText.toString());
                 }
                 ssb.append(Emoji.replaceEmoji(qrText, textView.getPaint().getFontMetricsInt(), false));
             }

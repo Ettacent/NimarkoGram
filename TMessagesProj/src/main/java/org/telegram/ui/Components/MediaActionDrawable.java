@@ -17,8 +17,8 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import android.view.animation.DecelerateInterpolator;
 
@@ -103,7 +103,7 @@ public class MediaActionDrawable extends Drawable {
         private final Paint colorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF bitmapBounds = new RectF();
         private final Paint morphPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        private NimarkoIconResources.PreparedIcon morphPlay, morphPause;
+        private IconResources.PreparedIcon morphPlay, morphPause;
         private float[][] morphFrom, morphTo;
         private float[] morphVertices;
         private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -120,8 +120,8 @@ public class MediaActionDrawable extends Drawable {
             morphPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
         }
 
-        static NimarkoIconResources.PreparedIcon get(NimarkoIconResources.NavigationIcons icons, int id) {
-            NimarkoIconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(id);
+        static IconResources.PreparedIcon get(IconResources.NavigationIcons icons, int id) {
+            IconResources.PreparedIcon icon = icons == null ? null : icons.getIcon(id);
             return icon == null || icon.bitmap == null || icon.bitmap.isRecycled() ? null : icon;
         }
 
@@ -134,7 +134,7 @@ public class MediaActionDrawable extends Drawable {
             if (opacity == 0) {
                 return;
             }
-            if (selection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+            if (selection != AppConfig.ICON_REPLACE_LIQUID_GLASS) {
                 if (opacity == source.getAlpha()) {
                     canvas.drawArc(bounds, start, sweep, false, source);
                 } else {
@@ -172,12 +172,12 @@ public class MediaActionDrawable extends Drawable {
             }
         }
 
-        void draw(Canvas canvas, NimarkoIconResources.PreparedIcon icon, Paint source, float cx, float cy,
+        void draw(Canvas canvas, IconResources.PreparedIcon icon, Paint source, float cx, float cy,
                   float size, float alpha, float rotation) {
             draw(canvas, icon, source, cx, cy, size, alpha, rotation, 1, 1);
         }
 
-        void draw(Canvas canvas, NimarkoIconResources.PreparedIcon icon, Paint source, float cx, float cy,
+        void draw(Canvas canvas, IconResources.PreparedIcon icon, Paint source, float cx, float cy,
                   float size, float alpha, float rotation, float scaleX, float scaleY) {
             if (icon == null || alpha <= 0 || size <= 0) {
                 return;
@@ -206,7 +206,7 @@ public class MediaActionDrawable extends Drawable {
             canvas.restoreToCount(saveCount);
         }
 
-        void drawPlayPause(Canvas canvas, NimarkoIconResources.PreparedIcon play, NimarkoIconResources.PreparedIcon pause,
+        void drawPlayPause(Canvas canvas, IconResources.PreparedIcon play, IconResources.PreparedIcon pause,
                            Paint source, float cx, float cy, float size, float progress, float alpha) {
             if (alpha <= 0 || size <= 0) {
                 return;
@@ -240,7 +240,7 @@ public class MediaActionDrawable extends Drawable {
             int save = canvas.saveLayerAlpha(cx - size, cy - size, cx + size, cy + size,
                     Math.max(0, Math.min(255, (int) (alpha * 255))), Canvas.ALL_SAVE_FLAG);
             for (int endpoint = 0; endpoint < 2; endpoint++) {
-                NimarkoIconResources.PreparedIcon icon = endpoint == 0 ? play : pause;
+                IconResources.PreparedIcon icon = endpoint == 0 ? play : pause;
                 boolean preserveColor = !useSourceForeground && icon.noTint;
                 int material = canvas.saveLayer(cx - size, cy - size, cx + size, cy + size, morphPaint);
                 bitmapPaint.setAlpha(Math.round(255 * (endpoint == 0 ? 1 - p : p)));
@@ -266,7 +266,7 @@ public class MediaActionDrawable extends Drawable {
             canvas.restoreToCount(save);
         }
 
-        private void prepareMorph(NimarkoIconResources.PreparedIcon play, NimarkoIconResources.PreparedIcon pause) {
+        private void prepareMorph(IconResources.PreparedIcon play, IconResources.PreparedIcon pause) {
             if (morphVertices == null) {
                 morphVertices = new float[2 * 33 * 33];
             }
@@ -377,10 +377,10 @@ public class MediaActionDrawable extends Drawable {
         }
     }
 
-    private static NimarkoIconResources.PreparedIcon packIcon(int icon, NimarkoIconResources.PreparedIcon play,
-            NimarkoIconResources.PreparedIcon pause, NimarkoIconResources.PreparedIcon download, NimarkoIconResources.PreparedIcon cancel,
-            NimarkoIconResources.PreparedIcon file, NimarkoIconResources.PreparedIcon update, NimarkoIconResources.PreparedIcon check,
-            NimarkoIconResources.PreparedIcon stop) {
+    private static IconResources.PreparedIcon packIcon(int icon, IconResources.PreparedIcon play,
+            IconResources.PreparedIcon pause, IconResources.PreparedIcon download, IconResources.PreparedIcon cancel,
+            IconResources.PreparedIcon file, IconResources.PreparedIcon update, IconResources.PreparedIcon check,
+            IconResources.PreparedIcon stop) {
         switch (icon) {
             case ICON_PLAY:
                 return play;
@@ -474,7 +474,7 @@ public class MediaActionDrawable extends Drawable {
         if (animated && animatingTransition && icon == currentIcon && currentIcon != nextIcon &&
                 (currentIcon == ICON_PLAY || currentIcon == ICON_PAUSE) &&
                 (nextIcon == ICON_PLAY || nextIcon == ICON_PAUSE)) {
-            NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
+            IconResources.NavigationIcons pack = IconResources.activeNavigationIcons();
             if (PackIconRenderer.get(pack, R.drawable.ic_action_play) != null &&
                     PackIconRenderer.get(pack, R.drawable.ic_action_pause) != null) {
                 currentIcon = nextIcon;
@@ -629,22 +629,22 @@ public class MediaActionDrawable extends Drawable {
     public void draw(Canvas canvas) {
         android.graphics.Rect bounds = getBounds();
 
-        NimarkoIconResources.NavigationIcons pack = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon packPlay = PackIconRenderer.get(pack, R.drawable.ic_action_play);
-        NimarkoIconResources.PreparedIcon packPause = PackIconRenderer.get(pack, R.drawable.ic_action_pause);
-        NimarkoIconResources.PreparedIcon packDownload = PackIconRenderer.get(pack, R.drawable.ng_file_download);
-        NimarkoIconResources.PreparedIcon packCancel = PackIconRenderer.get(pack, R.drawable.ng_media_cancel);
-        NimarkoIconResources.PreparedIcon packStop = PackIconRenderer.get(pack, R.drawable.ng_media_stop);
+        IconResources.NavigationIcons pack = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon packPlay = PackIconRenderer.get(pack, R.drawable.ic_action_play);
+        IconResources.PreparedIcon packPause = PackIconRenderer.get(pack, R.drawable.ic_action_pause);
+        IconResources.PreparedIcon packDownload = PackIconRenderer.get(pack, R.drawable.ng_file_download);
+        IconResources.PreparedIcon packCancel = PackIconRenderer.get(pack, R.drawable.ng_media_cancel);
+        IconResources.PreparedIcon packStop = PackIconRenderer.get(pack, R.drawable.ng_media_stop);
         if (packDownload == null || packCancel == null || packStop == null) {
             packDownload = packCancel = packStop = null;
         }
-        NimarkoIconResources.PreparedIcon packCancelShape = currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL
+        IconResources.PreparedIcon packCancelShape = currentIcon == ICON_CANCEL_FILL || nextIcon == ICON_CANCEL_FILL
                 ? packStop : packCancel;
         int progressSelection = pack != null && packDownload != null && packCancel != null && packStop != null
-                ? pack.selection : NimarkoConfig.ICON_REPLACE_NONE;
-        NimarkoIconResources.PreparedIcon packFile = PackIconRenderer.get(pack, R.drawable.msg_sendfile);
-        NimarkoIconResources.PreparedIcon packUpdate = PackIconRenderer.get(pack, R.drawable.msg_retry);
-        NimarkoIconResources.PreparedIcon packCheck = PackIconRenderer.get(pack, R.drawable.ic_ab_done);
+                ? pack.selection : AppConfig.ICON_REPLACE_NONE;
+        IconResources.PreparedIcon packFile = PackIconRenderer.get(pack, R.drawable.msg_sendfile);
+        IconResources.PreparedIcon packUpdate = PackIconRenderer.get(pack, R.drawable.msg_retry);
+        IconResources.PreparedIcon packCheck = PackIconRenderer.get(pack, R.drawable.ic_ab_done);
         if (packPlay == null || packPause == null) {
             packPlay = packPause = null;
         }
@@ -750,7 +750,7 @@ public class MediaActionDrawable extends Drawable {
                     rect.set(cx - d, yEnd2 - d / 2, cx, yEnd2 + d / 2);
                     float start = 100 * currentProgress2;
                     packIconRenderer.drawProgressArc(canvas, rect, start, 104 * currentProgress3 - start, paint, progressSelection,
-                            progressSelection == NimarkoConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
+                            progressSelection == AppConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
 
                     y1 = yStart2 + (yEnd2 - yStart2) * currentProgress;
                     y2 = y3 = yEnd2;
@@ -792,7 +792,7 @@ public class MediaActionDrawable extends Drawable {
                                 int diff = AndroidUtilities.dp(isMini ? 2 : 4);
                                 rect.set(bounds.left + diff, bounds.top + diff, bounds.right - diff, bounds.bottom - diff);
                                 packIconRenderer.drawProgressArc(canvas, rect, 0, 360, paint, progressSelection,
-                                        progressSelection == NimarkoConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
+                                        progressSelection == AppConfig.ICON_REPLACE_NONE ? 1f : overrideAlpha);
                                 paint.setAlpha(alpha);
                             } else if (packCancelShape == null) {
                                 canvas.drawLine(cx - d, cy - d, cx + d, cy + d, paint);
@@ -1240,8 +1240,8 @@ public class MediaActionDrawable extends Drawable {
             canvas.restore();
         }
 
-        NimarkoIconResources.PreparedIcon previousPack = packIcon(currentIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
-        NimarkoIconResources.PreparedIcon nextPack = packIcon(nextIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
+        IconResources.PreparedIcon previousPack = packIcon(currentIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
+        IconResources.PreparedIcon nextPack = packIcon(nextIcon, packPlay, packPause, packDownload, packCancel, packFile, packUpdate, packCheck, packStop);
         if (currentIcon == ICON_DOWNLOAD && packDownloadMotion ||
                 (currentIcon == ICON_CANCEL || currentIcon == ICON_CANCEL_FILL) && packCancelMotion) {
             previousPack = null;

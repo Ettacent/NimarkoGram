@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_MediaSendChoiceTitle">发送方式</string>
+    <string name="NM_MediaSendChoiceMedia">媒体</string>
+    <string name="NM_MediaSendChoiceLink">链接</string>
+    <string name="NM_MediaSendChoiceVideo">视频</string>
+    <string name="NM_MediaSendChoiceAudio">音频</string>
+    <string name="NM_MediaSendChoiceSetting">发送前选择</string>
+    <string name="NM_MediaSendChoiceDescription">选择媒体发送方式。</string>
+</resources>

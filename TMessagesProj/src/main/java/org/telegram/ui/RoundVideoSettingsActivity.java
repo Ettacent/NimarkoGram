@@ -11,7 +11,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.CameraPreferencesActivity;
 
 import org.telegram.messenger.BuildConfig;
@@ -99,7 +99,7 @@ public class RoundVideoSettingsActivity extends BaseFragment {
     }
 
     private boolean isCameraXSelected() {
-        return NimarkoConfig.cameraType == NimarkoConfig.CAMERA_X;
+        return AppConfig.cameraType == AppConfig.CAMERA_X;
     }
 
     private void onRowClicked(int position) {

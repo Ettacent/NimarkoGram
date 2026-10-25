@@ -61,7 +61,7 @@ import org.telegram.ui.Components.Text;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class ChannelRecommendationsCell {
 
     private ChatMessageCell cell;
@@ -112,7 +112,7 @@ public class ChannelRecommendationsCell {
 
     private boolean drawPackClose(Canvas canvas, float cx, float cy) {
         if (closePaint.getXfermode() != null) return false;
-        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
         final float size = 2f * dp(4) + closePaint.getStrokeWidth();
         packClose.draw(canvas, closePaint, cx, cy, size, size, 1f, false);

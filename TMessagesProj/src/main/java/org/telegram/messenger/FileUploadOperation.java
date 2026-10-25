@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -119,8 +121,8 @@ public class FileUploadOperation {
         Utilities.stageQueue.postRunnable(() -> {
             preferences = ApplicationLoader.applicationContext.getSharedPreferences("uploadinfo", Activity.MODE_PRIVATE);
             slowNetwork = ApplicationLoader.isConnectionSlow()
-                    && !app.nimarkogram.messenger.NimarkoConfig.uploadSpeedBoost
-                    || app.nimarkogram.messenger.NimarkoConfig.slowNetworkMode;
+                    && !app.nimarkogram.messenger.AppConfig.uploadSpeedBoost
+                    || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("start upload on slow network = " + slowNetwork);
             }
@@ -309,7 +311,7 @@ public class FileUploadOperation {
                 if (AccountInstance.getInstance(currentAccount).getUserConfig().isPremium() && totalFileSize > FileLoader.DEFAULT_MAX_FILE_SIZE) {
                     maxUploadParts = MessagesController.getInstance(currentAccount).uploadMaxFilePartsPremium;
                 }
-                uploadChunkSize = (int) Math.max(slowNetwork ? minUploadChunkSlowNetworkSize : (app.nimarkogram.messenger.NimarkoConfig.uploadSpeedBoost ? minUploadChunkSizeBoost : minUploadChunkSize), (totalFileSize + 1024L * maxUploadParts - 1) / (1024L * maxUploadParts));
+                uploadChunkSize = (int) Math.max(slowNetwork ? minUploadChunkSlowNetworkSize : (app.nimarkogram.messenger.AppConfig.uploadSpeedBoost ? minUploadChunkSizeBoost : minUploadChunkSize), (totalFileSize + 1024L * maxUploadParts - 1) / (1024L * maxUploadParts));
                 if (1024 % uploadChunkSize != 0) {
                     int chunkSize = 64;
                     while (uploadChunkSize > chunkSize) {

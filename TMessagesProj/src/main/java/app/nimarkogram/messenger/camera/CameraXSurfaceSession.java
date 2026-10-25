@@ -1,0 +1,672 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+package app.nimarkogram.messenger.camera;
+
+import android.annotation.SuppressLint;
+import android.util.Pair;
+import androidx.camera.core.ImageCapture;
+import org.telegram.messenger.Utilities;
+import android.content.Context;
+import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
+import android.util.Size;
+import android.view.OrientationEventListener;
+import android.view.Surface;
+import android.view.WindowManager;
+
+import androidx.annotation.Nullable;
+import androidx.camera.core.Preview;
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory;
+import androidx.camera.core.SurfaceRequest;
+import androidx.core.content.ContextCompat;
+
+import org.telegram.messenger.FileLog;
+import org.telegram.messenger.AndroidUtilities;
+
+import java.io.File;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public final class CameraXSurfaceSession {
+
+    private static final AtomicInteger NEXT_RENDER_ID = new AtomicInteger();
+
+    public interface Callback {
+        void onReady(int width, int height);
+        void onFailure(Throwable error);
+    }
+
+    private final Context context;
+    private final SurfaceTexture surfaceTexture;
+    private final Callback callback;
+    private final CameraXController controller;
+    private final int renderId = NEXT_RENDER_ID.updateAndGet(value ->
+            value >= Integer.MAX_VALUE - 1 ? 1 : value + 1);
+    private volatile boolean closed;
+    private volatile int previewWidth;
+    private volatile int previewHeight;
+    private volatile int rotationDegrees;
+    private volatile boolean mirrored;
+    private volatile boolean torchEnabled;
+    private volatile boolean hasCameraTransform;
+    private volatile boolean hasTransformationInfo;
+    private volatile int surfaceRequestGeneration;
+    private volatile int captureTargetRotation;
+    @Nullable private final OrientationEventListener orientationListener;
+    private final Object surfaceReleaseLock = new Object();
+    private int providedSurfaceCount;
+    @Nullable private Runnable closeCompletion;
+    @Nullable private Runnable rebindCompletion;
+
+    public CameraXSurfaceSession(Context context, SurfaceTexture surfaceTexture,
+                                        boolean frontFacing, int targetWidth, int targetHeight,
+                                        Callback callback) {
+        this(context, surfaceTexture, frontFacing, targetWidth, targetHeight,
+                false, false, false, callback);
+    }
+
+    public CameraXSurfaceSession(Context context, SurfaceTexture surfaceTexture,
+                                        boolean frontFacing, int targetWidth, int targetHeight,
+                                        boolean enableImageCapture, Callback callback) {
+        this(context, surfaceTexture, frontFacing, targetWidth, targetHeight,
+                enableImageCapture, false, false, callback);
+    }
+
+    public CameraXSurfaceSession(Context context, SurfaceTexture surfaceTexture,
+                                        boolean frontFacing, int targetWidth, int targetHeight,
+                                        boolean enableImageCapture, boolean deferInitialBind,
+                                        Callback callback) {
+        this(context, surfaceTexture, frontFacing, targetWidth, targetHeight,
+                enableImageCapture, deferInitialBind, false, callback);
+    }
+
+    public CameraXSurfaceSession(Context context, SurfaceTexture surfaceTexture,
+                                        boolean frontFacing, int targetWidth, int targetHeight,
+                                        boolean enableImageCapture, boolean deferInitialBind,
+                                        boolean normalizePortraitPhoto, Callback callback) {
+        this(context, surfaceTexture, frontFacing, targetWidth, targetHeight,
+                enableImageCapture, deferInitialBind, normalizePortraitPhoto,
+                true, callback);
+    }
+
+    public CameraXSurfaceSession(Context context, SurfaceTexture surfaceTexture,
+                                        boolean frontFacing, int targetWidth, int targetHeight,
+                                        boolean enableImageCapture, boolean deferInitialBind,
+                                        boolean normalizePortraitPhoto,
+                                        boolean useConfiguredUltraWide,
+                                        Callback callback) {
+        this.context = context.getApplicationContext();
+        this.surfaceTexture = surfaceTexture;
+        this.callback = callback;
+        previewWidth = Math.max(1, targetWidth);
+        previewHeight = Math.max(1, targetHeight);
+        final int captureWidth = normalizePortraitPhoto
+                ? Math.min(previewWidth, previewHeight) : previewWidth;
+        final int captureHeight = normalizePortraitPhoto
+                ? Math.max(previewWidth, previewHeight) : previewHeight;
+        CameraXController.CameraLifecycle lifecycle =
+                new CameraXController.CameraLifecycle();
+        Preview.SurfaceProvider provider = this::provideSurface;
+        controller = new CameraXController(
+                lifecycle,
+                new SurfaceOrientedMeteringPointFactory(1f, 1f),
+                provider,
+                new Size(captureWidth, captureHeight),
+                enableImageCapture,
+                deferInitialBind);
+        controller.setUseConfiguredUltraWide(useConfiguredUltraWide);
+        captureTargetRotation = getDisplayRotation();
+        controller.setTargetOrientation(captureTargetRotation);
+
+        if (enableImageCapture) {
+            orientationListener = new OrientationEventListener(this.context) {
+                @Override
+                public void onOrientationChanged(int orientation) {
+                    if (closed || orientation == ORIENTATION_UNKNOWN) return;
+                    final int rotation;
+                    if (orientation >= 45 && orientation < 135) {
+                        rotation = Surface.ROTATION_270;
+                    } else if (orientation >= 135 && orientation < 225) {
+                        rotation = Surface.ROTATION_180;
+                    } else if (orientation >= 225 && orientation < 315) {
+                        rotation = Surface.ROTATION_90;
+                    } else {
+                        rotation = Surface.ROTATION_0;
+                    }
+                    if (captureTargetRotation != rotation) {
+                        captureTargetRotation = rotation;
+                        controller.setImageCaptureTargetOrientation(rotation);
+                    }
+                }
+            };
+            if (orientationListener.canDetectOrientation()) {
+                orientationListener.enable();
+            }
+        } else {
+
+            orientationListener = null;
+        }
+        controller.initCamera(this.context, frontFacing,
+                () -> notifyReady(),
+                this::notifyFailure);
+    }
+
+    @SuppressLint({"RestrictedApi", "UnsafeOptInUsageError"})
+    private void provideSurface(SurfaceRequest request) {
+        if (closed) {
+            request.willNotProvideSurface();
+            return;
+        }
+        Size resolution = request.getResolution();
+        final int requestGeneration = ++surfaceRequestGeneration;
+        resetTransformationInfo();
+        previewWidth = resolution.getWidth();
+        previewHeight = resolution.getHeight();
+        boolean registeredSurface = false;
+        Surface surface = null;
+        try {
+            request.setTransformationInfoListener(ContextCompat.getMainExecutor(context), info -> {
+                if (closed || requestGeneration != surfaceRequestGeneration) return;
+                rotationDegrees = ((info.getRotationDegrees() % 360) + 360) % 360;
+                mirrored = info.isMirroring();
+                hasCameraTransform = info.hasCameraTransform();
+                hasTransformationInfo = true;
+                notifyReady();
+            });
+            surfaceTexture.setDefaultBufferSize(previewWidth, previewHeight);
+            surface = new Surface(surfaceTexture);
+            boolean rejectClosedSurface;
+            synchronized (surfaceReleaseLock) {
+                rejectClosedSurface = closed;
+                if (!rejectClosedSurface) {
+                    providedSurfaceCount++;
+                }
+            }
+            if (rejectClosedSurface) {
+                surface.release();
+                request.willNotProvideSurface();
+                return;
+            }
+            registeredSurface = true;
+            final Surface suppliedSurface = surface;
+            request.provideSurface(suppliedSurface, ContextCompat.getMainExecutor(context), result -> {
+                try { suppliedSurface.release(); } catch (Throwable ignored) {}
+                onProvidedSurfaceReleased();
+                int resultCode = result.getResultCode();
+                if (!closed && requestGeneration == surfaceRequestGeneration
+                        && resultCode != SurfaceRequest.Result.RESULT_SURFACE_USED_SUCCESSFULLY
+                        && resultCode != SurfaceRequest.Result.RESULT_REQUEST_CANCELLED) {
+                    notifyFailure(new IllegalStateException(
+                            "CameraX rejected preview surface, result=" + resultCode));
+                }
+            });
+        } catch (Throwable t) {
+            if (surface != null) {
+                try { surface.release(); } catch (Throwable ignored) {}
+            }
+            if (registeredSurface) {
+                onProvidedSurfaceReleased();
+            }
+            FileLog.e(t);
+            request.willNotProvideSurface();
+            notifyFailure(t);
+        }
+    }
+
+    private void notifyReady() {
+        if (closed || callback == null) return;
+        try {
+            callback.onReady(previewWidth, previewHeight);
+        } catch (Throwable callbackError) {
+            FileLog.e("CameraX surface ready callback failed", callbackError);
+        }
+    }
+
+    private void notifyFailure(Throwable error) {
+        if (closed || callback == null) return;
+        try {
+            callback.onFailure(error);
+        } catch (Throwable callbackError) {
+            FileLog.e("CameraX surface failure callback failed", callbackError);
+        }
+    }
+
+    private void onProvidedSurfaceReleased() {
+        Runnable completion = null;
+        synchronized (surfaceReleaseLock) {
+            providedSurfaceCount = Math.max(0, providedSurfaceCount - 1);
+            if (closed && providedSurfaceCount == 0 && closeCompletion != null) {
+                completion = closeCompletion;
+                closeCompletion = null;
+            } else if (!closed && providedSurfaceCount == 0 && rebindCompletion != null) {
+                completion = rebindCompletion;
+                rebindCompletion = null;
+            }
+        }
+        if (completion != null) {
+            try {
+                completion.run();
+            } catch (Throwable completionError) {
+                FileLog.e("CameraX surface completion failed", completionError);
+            }
+        }
+    }
+
+    public void releaseSurfaceForRebind(Runnable onReleased) {
+        if (onReleased == null) return;
+        boolean runImmediately = false;
+        synchronized (surfaceReleaseLock) {
+            if (closed) {
+                runImmediately = true;
+            } else {
+                surfaceRequestGeneration++;
+                resetTransformationInfo();
+                Runnable previous = rebindCompletion;
+                rebindCompletion = previous == null ? onReleased : () -> {
+                    previous.run();
+                    onReleased.run();
+                };
+            }
+        }
+        if (runImmediately) {
+            onReleased.run();
+            return;
+        }
+        controller.unbindForSurfaceRebind();
+        Runnable completion = null;
+        synchronized (surfaceReleaseLock) {
+            if (!closed && providedSurfaceCount == 0 && rebindCompletion != null) {
+                completion = rebindCompletion;
+                rebindCompletion = null;
+            }
+        }
+        if (completion != null) completion.run();
+    }
+
+    public boolean isInitiated() {
+        return !closed && controller.isInitiated();
+    }
+
+    public CameraXController getController() {
+        return controller;
+    }
+
+    public boolean isFrontFacing() {
+        return controller.isFrontface();
+    }
+
+    public int getCameraId() {
+
+        return renderId;
+    }
+
+    public int getWorldAngle() {
+
+        int clockwise = hasCameraTransform ? getDisplayRotationDegrees() : rotationDegrees;
+        return (360 - clockwise) % 360;
+    }
+
+    public int getDisplayOrientation() {
+        return getWorldAngle();
+    }
+
+    public int getCurrentOrientation() {
+        return rotationDegrees;
+    }
+
+    public boolean isMirrored() {
+
+        return hasTransformationInfo && mirrored;
+    }
+
+    public boolean hasCameraTransform() {
+        return hasCameraTransform;
+    }
+
+    public boolean hasTransformationInfo() {
+        return hasTransformationInfo;
+    }
+
+    public int getSurfaceRequestGeneration() {
+        return surfaceRequestGeneration;
+    }
+
+    public boolean isSurfaceRequestCurrent(int generation) {
+        return !closed && generation == surfaceRequestGeneration && hasTransformationInfo;
+    }
+
+    private void resetTransformationInfo() {
+        hasTransformationInfo = false;
+        hasCameraTransform = false;
+        mirrored = false;
+        rotationDegrees = 0;
+    }
+
+    public int getPreviewWidth() {
+        return previewWidth;
+    }
+
+    public int getPreviewHeight() {
+        return previewHeight;
+    }
+
+    public void switchCamera(boolean frontFacing) {
+        if (!closed) {
+            if (controller.isFrontface() == frontFacing && controller.isInitiated()) return;
+
+            surfaceRequestGeneration++;
+            resetTransformationInfo();
+            controller.setFrontFace(frontFacing);
+        }
+    }
+
+    public void setZoom(float zoom) {
+        if (!closed) controller.setZoom(zoom);
+    }
+
+    public void setZoomRatio(float ratio) {
+        if (!closed) controller.setAnimatedZoomRatio(ratio);
+    }
+
+    public float getZoomRatio() {
+        return closed ? 1f : controller.getZoomRatio();
+    }
+
+    public float getObservedZoomRatio() {
+        return closed ? 1f : controller.getObservedZoomRatio();
+    }
+
+    @Nullable
+    public CameraXLensFrame getLensFrame(long surfaceTimestampNanos) {
+        return closed ? null : controller.getLensFrame(surfaceTimestampNanos);
+    }
+
+    public boolean isInitialLensReady() {
+        return !closed && controller.isInitialLensReady();
+    }
+
+    public boolean isInitialLensReady(long surfaceTimestampNanos) {
+        return !closed && controller.isInitialLensReady(surfaceTimestampNanos);
+    }
+
+    @Nullable
+    public String getActivePhysicalCameraId() {
+        return closed ? null : controller.getActivePhysicalCameraId();
+    }
+
+    @Nullable
+    public String getExpectedInitialPhysicalCameraId() {
+        return closed ? null : controller.getExpectedInitialPhysicalCameraId();
+    }
+
+    public float getMinZoomRatio() {
+        return closed ? 1f : controller.getMinZoomRatio();
+    }
+
+    public float getMaxZoomRatio() {
+        return closed ? 1f : controller.getMaxZoomRatio();
+    }
+
+    public float[] getZoomShortcuts() {
+        return closed ? new float[0] : controller.getZoomShortcuts();
+    }
+
+    public boolean isZoomShortcutsReady() {
+        return !closed && controller.isZoomShortcutsReady();
+    }
+
+    public boolean isExposureCompensationSupported() {
+        return !closed && controller.isExposureCompensationSupported();
+    }
+
+    public void setExposureCompensation(float value) {
+        if (!closed) controller.setExposureCompensation(value);
+    }
+
+    public void focusToRect(@Nullable Rect focusRect) {
+        if (closed || focusRect == null) return;
+
+        float x = Math.max(0f, Math.min(1f, (focusRect.centerX() + 1000f) / 2000f));
+        float y = Math.max(0f, Math.min(1f, (focusRect.centerY() + 1000f) / 2000f));
+        controller.focusToPoint(x, y);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY,
+                                       int viewWidth, int viewHeight) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, viewWidth, viewHeight, false);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY,
+                                       int viewWidth, int viewHeight, boolean forceLock) {
+        if (closed || previewWidth <= 0 || previewHeight <= 0) {
+            return false;
+        }
+        float x = clamp01(normalizedX);
+        float y = clamp01(normalizedY);
+        if (!hasCameraTransform && viewWidth > 0 && viewHeight > 0) {
+            float viewAspect = viewWidth / (float) viewHeight;
+            float surfaceAspect = previewWidth / (float) previewHeight;
+            if (surfaceAspect > viewAspect) {
+                float visibleWidth = viewAspect / surfaceAspect;
+                x = (1f - visibleWidth) * 0.5f + x * visibleWidth;
+            } else if (surfaceAspect < viewAspect) {
+                float visibleHeight = surfaceAspect / viewAspect;
+                y = (1f - visibleHeight) * 0.5f + y * visibleHeight;
+            }
+        }
+        float surfaceX;
+        float surfaceY;
+        if (hasCameraTransform) {
+            surfaceX = x;
+            surfaceY = y;
+        } else {
+            if (mirrored) {
+                x = 1f - x;
+            }
+            switch (rotationDegrees) {
+                case 90:
+                    surfaceX = 1f - y;
+                    surfaceY = x;
+                    break;
+                case 180:
+                    surfaceX = 1f - x;
+                    surfaceY = 1f - y;
+                    break;
+                case 270:
+                    surfaceX = y;
+                    surfaceY = 1f - x;
+                    break;
+                default:
+                    surfaceX = x;
+                    surfaceY = y;
+                    break;
+            }
+        }
+        return controller.focusToPoint(clamp01(surfaceX), clamp01(surfaceY), forceLock);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, 0, 0);
+    }
+    public boolean focusAtPreviewPoint(float normalizedX, float normalizedY, boolean forceLock) {
+        return focusAtPreviewPoint(normalizedX, normalizedY, 0, 0, forceLock);
+    }
+    private static float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
+    }
+
+    public void setTargetOrientation(int rotation) {
+        if (!closed) controller.setTargetOrientation(rotation);
+    }
+
+    public void updateRotation() {
+        if (!closed) controller.setImageCaptureTargetOrientation(captureTargetRotation);
+    }
+
+    private int getDisplayRotation() {
+        try {
+            WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            return manager == null ? Surface.ROTATION_0 : manager.getDefaultDisplay().getRotation();
+        } catch (Throwable t) {
+            return Surface.ROTATION_0;
+        }
+    }
+
+    private int getDisplayRotationDegrees() {
+        switch (getDisplayRotation()) {
+            case Surface.ROTATION_90:
+                return 90;
+            case Surface.ROTATION_180:
+                return 180;
+            case Surface.ROTATION_270:
+                return 270;
+            default:
+                return 0;
+        }
+    }
+
+    public boolean bindConcurrentWith(@Nullable CameraXSurfaceSession other) {
+        return bindConcurrentWith(other, false);
+    }
+
+    public boolean bindConcurrentWith(@Nullable CameraXSurfaceSession other,
+                                      boolean compatibilityProfile) {
+        boolean result = !closed && other != null && !other.closed
+                && controller.bindConcurrentWith(
+                        other.controller, compatibilityProfile);
+        return result;
+    }
+
+    public boolean isConcurrentWith(@Nullable CameraXSurfaceSession other) {
+        return other != null && controller.isConcurrentWith(other.controller);
+    }
+
+    public boolean wasLastConcurrentBindBusy() {
+        return controller.wasLastConcurrentBindBusy();
+    }
+
+    public boolean rebindSingle() {
+        return !closed && controller.rebindSingle();
+    }
+
+    public boolean isPrepared() {
+        return !closed && controller.isPrepared();
+    }
+
+    public String getCurrentFlashMode() {
+        if (torchEnabled) {
+            return android.hardware.Camera.Parameters.FLASH_MODE_TORCH;
+        }
+        switch (controller.getCurrentFlashMode()) {
+            case ImageCapture.FLASH_MODE_ON:
+                return android.hardware.Camera.Parameters.FLASH_MODE_ON;
+            case ImageCapture.FLASH_MODE_OFF:
+                return android.hardware.Camera.Parameters.FLASH_MODE_OFF;
+            default:
+                return android.hardware.Camera.Parameters.FLASH_MODE_AUTO;
+        }
+    }
+
+    public void setCurrentFlashMode(String mode) {
+        if (android.hardware.Camera.Parameters.FLASH_MODE_TORCH.equals(mode)) {
+            torchEnabled = true;
+            controller.enableTorch(true);
+            return;
+        }
+        if (torchEnabled) {
+            torchEnabled = false;
+            controller.enableTorch(false);
+        }
+        int value;
+        if (android.hardware.Camera.Parameters.FLASH_MODE_ON.equals(mode)) {
+            value = ImageCapture.FLASH_MODE_ON;
+        } else if (android.hardware.Camera.Parameters.FLASH_MODE_OFF.equals(mode)) {
+            value = ImageCapture.FLASH_MODE_OFF;
+        } else {
+            value = ImageCapture.FLASH_MODE_AUTO;
+        }
+        controller.setFlashMode(value);
+    }
+
+    public String getNextFlashMode() {
+        int mode = controller.getCurrentFlashMode();
+        if (mode == ImageCapture.FLASH_MODE_AUTO) {
+            return android.hardware.Camera.Parameters.FLASH_MODE_ON;
+        } else if (mode == ImageCapture.FLASH_MODE_ON) {
+            return android.hardware.Camera.Parameters.FLASH_MODE_OFF;
+        } else {
+            return android.hardware.Camera.Parameters.FLASH_MODE_AUTO;
+        }
+    }
+
+    public boolean hasFlash() {
+        return controller.isFlashAvailable();
+    }
+
+    public void enableTorch(boolean enabled) {
+        if (!closed) {
+            torchEnabled = enabled;
+            controller.enableTorch(enabled);
+        }
+    }
+
+    public boolean takePicture(File file,
+                               @Nullable Utilities.Callback<Integer> callback) {
+        if (closed) return false;
+
+        updateRotation();
+        return controller.takePicture(file,
+                () -> {
+                    if (callback != null) {
+                        Pair<Integer, Integer> orientation =
+                                AndroidUtilities.getImageOrientationOrNull(file);
+                        callback.run(orientation == null ? -1 : orientation.first);
+                    }
+                },
+                error -> { if (callback != null) callback.run(-1); });
+    }
+
+    public boolean canTakePicture() {
+        return !closed && controller.canTakePicture();
+    }
+
+    public void close() {
+        close(null);
+    }
+
+    public void close(@Nullable Runnable onClosed) {
+        boolean closeController = false;
+        Runnable completion = null;
+        synchronized (surfaceReleaseLock) {
+            if (!closed) {
+                closed = true;
+                surfaceRequestGeneration++;
+                closeController = true;
+                rebindCompletion = null;
+            }
+            if (onClosed != null) {
+                if (providedSurfaceCount == 0) {
+                    completion = onClosed;
+                } else {
+                    Runnable previous = closeCompletion;
+                    closeCompletion = previous == null ? onClosed : () -> {
+                        previous.run();
+                        onClosed.run();
+                    };
+                }
+            }
+        }
+        if (closeController) {
+            try {
+                if (orientationListener != null) {
+                    orientationListener.disable();
+                }
+            } catch (Throwable error) {
+                FileLog.e(error);
+            }
+            try {
+                controller.closeCamera();
+            } catch (Throwable error) {
+
+                FileLog.e(error);
+            }
+        }
+        if (completion != null) completion.run();
+    }
+}

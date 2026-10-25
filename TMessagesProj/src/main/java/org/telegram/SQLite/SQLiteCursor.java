@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -30,8 +32,10 @@ public class SQLiteCursor {
 	}
 
 	public boolean isNull(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnIsNull(preparedStatement.getStatementHandle(), columnIndex) == 1;
+			return columnIsNull(preparedStatement.getStatementHandleChecked(), columnIndex) == 1;
+		}
 	}
 
 	public SQLitePreparedStatement getPreparedStatement() {
@@ -39,37 +43,49 @@ public class SQLiteCursor {
 	}
 
 	public int intValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnIntValue(preparedStatement.getStatementHandle(), columnIndex);
+			return columnIntValue(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public double doubleValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnDoubleValue(preparedStatement.getStatementHandle(), columnIndex);
+			return columnDoubleValue(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public long longValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnLongValue(preparedStatement.getStatementHandle(), columnIndex);
+			return columnLongValue(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public String stringValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnStringValue(preparedStatement.getStatementHandle(), columnIndex);
+			return columnStringValue(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public byte[] byteArrayValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnByteArrayValue(preparedStatement.getStatementHandle(), columnIndex);
+			return columnByteArrayValue(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public NativeByteBuffer byteBufferValue(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		long ptr = columnByteBufferValue(preparedStatement.getStatementHandle(), columnIndex);
+			long ptr = columnByteBufferValue(preparedStatement.getStatementHandleChecked(), columnIndex);
 		if (ptr != 0) {
 			return NativeByteBuffer.wrap(ptr);
 		}
 		return null;
+		}
 	}
 
 	public <T extends TLObject> T tlObjectValue(int columnIndex, Vector.TLDeserializer<T> deserializer, boolean exception) throws SQLiteException {
@@ -87,12 +103,14 @@ public class SQLiteCursor {
 	}
 
 	public int getTypeOf(int columnIndex) throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
 		checkRow();
-		return columnType(preparedStatement.getStatementHandle(), columnIndex);
+			return columnType(preparedStatement.getStatementHandleChecked(), columnIndex);
+		}
 	}
 
 	public boolean next() throws SQLiteException {
-		int res = preparedStatement.step(preparedStatement.getStatementHandle());
+		int res = stepCursor();
 		if (res == -1) {
 			int repeatCount = 6;
 			while (repeatCount-- != 0) {
@@ -101,20 +119,28 @@ public class SQLiteCursor {
 						FileLog.d("sqlite busy, waiting...");
 					}
 					Thread.sleep(500);
-					res = preparedStatement.step();
-					if (res == 0) {
-						break;
-					}
-				} catch (Exception e) {
+				} catch (InterruptedException e) {
 					FileLog.e(e);
+				}
+				res = stepCursor();
+				if (res != -1) {
+						break;
 				}
 			}
 			if (res == -1) {
 				throw new SQLiteException("sqlite busy");
 			}
 		}
-		inRow = (res == 0);
-		return inRow;
+		return res == 0;
+	}
+
+	private int stepCursor() throws SQLiteException {
+		synchronized (preparedStatement.getDatabase()) {
+			inRow = false;
+			int result = preparedStatement.step();
+			inRow = result == 0;
+			return result;
+		}
 	}
 
 	public long getStatementHandle() {
@@ -122,14 +148,20 @@ public class SQLiteCursor {
 	}
 
 	public int getColumnCount() {
+		synchronized (preparedStatement.getDatabase()) {
 		return columnCount(preparedStatement.getStatementHandle());
 	}
 
+	}
 	public void dispose() {
+		synchronized (preparedStatement.getDatabase()) {
+			inRow = false;
 		preparedStatement.dispose();
 	}
 
+	}
 	void checkRow() throws SQLiteException {
+		preparedStatement.checkFinalized();
 		if (!inRow) {
 			throw new SQLiteException("You must call next before");
 		}

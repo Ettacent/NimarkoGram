@@ -1,0 +1,34 @@
+diff --git a/product/runtime/src/main/python/java/class.pxi b/product/runtime/src/main/python/java/class.pxi
+--- a/product/runtime/src/main/python/java/class.pxi
++++ b/product/runtime/src/main/python/java/class.pxi
+@@ -98,7 +98,8 @@
+
+         cls = type.__new__(metacls, cls_name, bases, cls_dict)
+         cls.__qualname__ = cls.__name__  # Otherwise repr(Object) would contain "JavaObject".
+-        jclass_cache[java_name] = cls
++        if not issubclass(metacls, ProxyClass):
++            jclass_cache[java_name] = cls
+         return cls
+
+     # We do this in JavaClass.__call__ rather than JavaObject.__new__ because there's no way
+diff --git a/product/runtime/src/main/python/java/proxy.pxi b/product/runtime/src/main/python/java/proxy.pxi
+--- a/product/runtime/src/main/python/java/proxy.pxi
++++ b/product/runtime/src/main/python/java/proxy.pxi
+@@ -15,13 +15,16 @@
+                 raise TypeError(f"{metacls.proxy_func} can only be used once in class bases")
+
+             klass = metacls.get_klass(cls_name, bases[0])
++            java_name = str(klass.getName())
+             cls_dict["_chaquopy_j_klass"] = klass._chaquopy_this
+-            cls_dict["_chaquopy_name"] = klass.getName()
++            cls_dict["_chaquopy_name"] = java_name
+             cls = JavaClass.__new__(metacls, cls_name,
+                                     get_bases(klass) + bases[1:],
+                                     cls_dict)
+
+             metacls.add_members(cls)
++            with class_lock:
++                jclass_cache[java_name] = cls
+             return cls
+
+     @classmethod

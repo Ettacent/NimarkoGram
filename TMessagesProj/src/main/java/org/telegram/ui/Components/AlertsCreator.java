@@ -2015,7 +2015,7 @@ public class AlertsCreator {
         avatarDrawable.setTextSize(dp(12));
 
         BackupImageView imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         TextView textView = new TextView(context);
@@ -2101,7 +2101,7 @@ public class AlertsCreator {
         avatarDrawable.setTextSize(dp(18));
 
         BackupImageView imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         SimpleTextView textView = new SimpleTextView(context);
@@ -2222,7 +2222,7 @@ public class AlertsCreator {
         avatarDrawable.setTextSize(dp(18));
 
         BackupImageView imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         SimpleTextView titleView = new SimpleTextView(context);
@@ -3234,7 +3234,7 @@ public class AlertsCreator {
         avatarDrawable.setInfo(fragment.getCurrentAccount(), user);
 
         BackupImageView imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
         imageView.setForUserOrChat(user, avatarDrawable);
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
@@ -7251,7 +7251,7 @@ public class AlertsCreator {
         frameLayout.addView(pin, LayoutHelper.createFrame(60, 82, Gravity.CENTER, 0, 0, 0, 0));
 
         BackupImageView imageView = new BackupImageView(activity);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(52));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(52));
         imageView.setForUserOrChat(selfUser, new AvatarDrawable(selfUser));
         frameLayout.addView(imageView, LayoutHelper.createFrame(52, 52, Gravity.CENTER, 0, 0, 0, 11));
 
@@ -7756,7 +7756,7 @@ public class AlertsCreator {
         // The centralized gate fails closed if no configured authenticator or
         // usable Activity exists, or if constructing/showing the prompt throws.
         if (!nmDeleteAlertBypassBiometric
-                && app.nimarkogram.messenger.NimarkoConfig.askPasscodeBeforeDelete) {
+                && app.nimarkogram.messenger.AppConfig.askPasscodeBeforeDelete) {
             app.nimarkogram.messenger.utils.CGCompat.runOrAskBeforeDestructive(activity, fragment.getCurrentAccount(), () -> {
                 nmDeleteAlertBypassBiometric = true;
                 try {
@@ -7932,7 +7932,7 @@ public class AlertsCreator {
 
         // NimarkoGram (CG parity): default the delete-for-all checkbox to the user's
         // saved preference so they don't have to re-check it each time.
-        final boolean[] deleteForAll = {app.nimarkogram.messenger.NimarkoConfig.deleteForAll};
+        final boolean[] deleteForAll = {app.nimarkogram.messenger.AppConfig.deleteForAll};
         boolean canRevokeInbox = user != null && MessagesController.getInstance(currentAccount).canRevokePmInbox;
         int revokeTimeLimit;
         if (user != null) {
@@ -8076,7 +8076,7 @@ public class AlertsCreator {
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                 // NimarkoGram: optionally pre-check the "delete for all" box.
-                if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
+                if (app.nimarkogram.messenger.AppConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
                 }
@@ -8134,15 +8134,15 @@ public class AlertsCreator {
                 // NimarkoGram (CG parity): show the checkbox pre-checked when the user
                 // has opted into "delete for all" by default.
                 if (canDeleteInbox) {
-                    cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", app.nimarkogram.messenger.NimarkoConfig.deleteForAll, false);
+                    cell.setText(LocaleController.formatString("DeleteMessagesOptionAlso", R.string.DeleteMessagesOptionAlso, UserObject.getFirstName(user)), "", app.nimarkogram.messenger.AppConfig.deleteForAll, false);
                 } else if (chat != null && (hasNotOut || myMessagesCount == count)) {
-                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", app.nimarkogram.messenger.NimarkoConfig.deleteForAll, false);
+                    cell.setText(LocaleController.getString(R.string.DeleteForAll), "", app.nimarkogram.messenger.AppConfig.deleteForAll, false);
                 } else {
                     cell.setText(LocaleController.getString(R.string.DeleteMessagesOption), "", false, false);
                 }
                 cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                 // NimarkoGram: optionally pre-check the "delete for all" box.
-                if (app.nimarkogram.messenger.NimarkoConfig.deleteForAll) {
+                if (app.nimarkogram.messenger.AppConfig.deleteForAll) {
                     deleteForAll[0] = true;
                     cell.setChecked(true, false);
                 }

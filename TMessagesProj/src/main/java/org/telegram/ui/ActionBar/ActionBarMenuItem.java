@@ -2343,14 +2343,14 @@ public class ActionBarMenuItem extends FrameLayout {
                         Theme.setCombinedDrawableColor(combinedDrawable, getThemedColor(Theme.key_featuredStickers_buttonText), true);
                         avatarImageView.setImageDrawable(combinedDrawable);
                     } else {
-                        avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(32));
+                        avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
                         avatarImageView.getImageReceiver().setForUserOrChat(user, thumbDrawable);
                     }
                 } else if (data.chat instanceof TLRPC.Chat) {
                     TLRPC.Chat chat = (TLRPC.Chat) data.chat;
                     isCommunity = ChatObject.isCommunity(chat);
                     mBackgroundRadius = AndroidUtilities.dp(isCommunity ? 10 : 16);
-                    avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(32));
+                    avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
                     avatarImageView.getImageReceiver().setForUserOrChat(chat, thumbDrawable);
                 }
             } else if (data.filterType == FiltersView.FILTER_TYPE_ARCHIVE) {

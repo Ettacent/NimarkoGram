@@ -26,8 +26,8 @@ import android.text.StaticLayout;
 import android.text.TextPaint;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
@@ -89,8 +89,8 @@ public class TimerDrawable extends Drawable {
     private void refreshIcon(boolean timeChanged) {
         Resources resources = context.getResources();
         Resources.Theme theme = context.getTheme();
-        NimarkoIconResources packResources = resources instanceof NimarkoIconResources
-                ? (NimarkoIconResources) resources : null;
+        IconResources packResources = resources instanceof IconResources
+                ? (IconResources) resources : null;
         long generation = packResources == null ? 0 : packResources.getReplacementGeneration();
         int densityDpi = resources.getDisplayMetrics().densityDpi;
         float density = resources.getDisplayMetrics().density;
@@ -101,7 +101,7 @@ public class TimerDrawable extends Drawable {
                 || iconDensity != density || layoutDensity != AndroidUtilities.density
                 || iconConfiguration == null || !iconConfiguration.equals(resources.getConfiguration());
         if (environmentChanged || currentTtlIconId != id || currentTtlIcon == null) {
-            int selection = packResources == null ? NimarkoConfig.ICON_REPLACE_NONE : packResources.getAppliedSelection();
+            int selection = packResources == null ? AppConfig.ICON_REPLACE_NONE : packResources.getAppliedSelection();
             currentTtlIcon = id != R.drawable.msg_mini_autodelete
                     ? AutoDeleteTimerDrawable.create(context, selection, isDialog ? AndroidUtilities.dp(22) : AndroidUtilities.dp(21)) : null;
             if (currentTtlIcon == null) {

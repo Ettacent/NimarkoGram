@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class MonetHelper {
     private static final double SMALL_TEXT_CONTRAST = 7.0;
+    private static final double ICON_CONTRAST = 3.0;
     private static final Pattern PALETTE_TOKEN = Pattern.compile(
             "^([an])([1-3])_(0|10|50|[1-9]00|1000)(?:_([0-9]{1,3}))?$"
     );
@@ -355,6 +356,14 @@ public class MonetHelper {
     }
 
     public static int ensureReadableForeground(int foreground, int background) {
+        return ensureReadableForeground(foreground, background, SMALL_TEXT_CONTRAST);
+    }
+
+    public static int ensureReadableIconForeground(int foreground, int background) {
+        return ensureReadableForeground(foreground, background, ICON_CONTRAST);
+    }
+
+    private static int ensureReadableForeground(int foreground, int background, double minimumContrast) {
         if (!isActiveMonetTheme()) {
             return foreground;
         }
@@ -373,7 +382,7 @@ public class MonetHelper {
                 ? foreground
                 : ColorUtils.compositeColors(foreground, opaqueBackground);
         if (ColorUtils.calculateContrast(visibleForeground, opaqueBackground)
-                >= SMALL_TEXT_CONTRAST) {
+                >= minimumContrast) {
             return foreground;
         }
 

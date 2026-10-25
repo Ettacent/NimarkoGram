@@ -5,7 +5,7 @@ package app.nimarkogram.messenger.utils.ui
 import android.content.Context
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
-import app.nimarkogram.messenger.NimarkoConfig
+import app.nimarkogram.messenger.AppConfig
 import org.telegram.messenger.R
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.glass.GlassTabView
@@ -37,7 +37,7 @@ object MainTabsManager {
     private var tabsSnapshot: TabsSnapshot? = null
 
     private fun getSnapshot(): TabsSnapshot {
-        val order = NimarkoConfig.mainTabsOrder
+        val order = AppConfig.mainTabsOrder
         tabsSnapshot?.let { if (it.order == order) return it }
         return synchronized(this) {
             tabsSnapshot?.let { if (it.order == order) return@synchronized it }
@@ -188,7 +188,7 @@ object MainTabsManager {
             val prefix = if (tab.enabled || tab.type == TabType.CHATS) "" else "!"
             "$prefix${tab.type.name}"
         }
-        NimarkoConfig.setMainTabsOrder(order.joinToString(","))
+        AppConfig.setMainTabsOrder(order.joinToString(","))
         tabsSnapshot = null
     }
 

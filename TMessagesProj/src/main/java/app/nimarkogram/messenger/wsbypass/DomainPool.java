@@ -9,7 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
 
 public final class DomainPool {
@@ -22,7 +22,7 @@ public final class DomainPool {
         synchronized (DomainPool.class) {
             id = installId;
             if (id == null || id.isEmpty()) {
-                id = NimarkoConfig.ensureWsInstallId();
+                id = AppConfig.ensureWsInstallId();
                 installId = id == null ? "" : id;
             }
             return installId;

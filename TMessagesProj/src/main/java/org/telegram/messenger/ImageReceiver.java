@@ -443,7 +443,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private float currentAlpha;
     private float previousAlpha = 1f;
     private long lastUpdateAlphaTime;
-    private int alphaAnimationEpoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
+    private int alphaAnimationEpoch = app.nimarkogram.messenger.utils.UiAnimationClock.epoch();
     private byte crossfadeAlpha = 1;
     private boolean manualAlphaAnimator;
     private boolean crossfadeOnReady;
@@ -1252,7 +1252,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         }
     }
     private boolean prepareCrossfadeOnReady() {
-        if (previewAppearance != null && previewAppearance.complete(app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now(),
+        if (previewAppearance != null && previewAppearance.complete(app.nimarkogram.messenger.utils.UiAnimationClock.now(),
                 currentAlpha >= 1f && crossfadeOnReadyDrawable == null)) {
             previewAppearance = null;
         }
@@ -2468,8 +2468,8 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         if (currentAlpha != 1) {
             if (!skip) {
                 long currentTime = SystemClock.uptimeMillis();
-                int epoch = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.epoch();
-                if (app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.isPaused() || epoch != alphaAnimationEpoch) {
+                int epoch = app.nimarkogram.messenger.utils.UiAnimationClock.epoch();
+                if (app.nimarkogram.messenger.utils.UiAnimationClock.isPaused() || epoch != alphaAnimationEpoch) {
                     alphaAnimationEpoch = epoch;
                     lastUpdateAlphaTime = currentTime;
                     invalidate();
@@ -2710,7 +2710,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                     && isVisible && overrideAlpha > 0 && (drawable != null || staticThumbDrawable != null)) {
                 boolean drawsPreview = drawable == null || drawable == staticThumbDrawable
                         || drawable == currentThumbDrawable || hasMediaRequest && drawable == currentImageDrawable;
-                long now = app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now();
+                long now = app.nimarkogram.messenger.utils.UiAnimationClock.now();
                 if (appearance.begin(drawsPreview, now) == PreviewAppearance.FINAL_ONLY) {
                     crossfadeWithThumb = false;
                     previousAlpha = 1f;
@@ -3275,7 +3275,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 ? currentMediaDrawable : currentImageDrawable;
         return target != null && isDrawableReadyForDraw(target)
                 && currentAlpha == 1f && crossfadeOnReadyDrawable == null
-                && (previewAppearance == null || previewAppearance.complete(app.nimarkogram.messenger.utils.NimarkoUiAnimationClock.now(), true));
+                && (previewAppearance == null || previewAppearance.complete(app.nimarkogram.messenger.utils.UiAnimationClock.now(), true));
     }
 
     public boolean hasNotThumb() {

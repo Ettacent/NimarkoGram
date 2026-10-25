@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Delegates;
 
 import static android.view.View.GONE;
@@ -380,7 +382,7 @@ public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener
         if (isEmptyOffset) {
             adapter.setItems(importers.importers);
         } else {
-            boolean moveMore = importers.importers.size() > 0 && currentImporters.size() + importers.importers.size() < importers.count; 
+            boolean moveMore = importers.importers.size() > 0 && currentImporters.size() + importers.importers.size() < importers.count;
             if (moveMore) {
                 adapter.notifyItemRemoved((isShowLastItemDivider ? 0 : 1) + currentImporters.size());
             }
@@ -500,7 +502,7 @@ public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener
                     onImportersChanged(query, false, true);
                     if (isApproved) {
                         Bulletin.MultiLineLayout layout = new Bulletin.MultiLineLayout(fragment.getParentActivity(), fragment.getResourceProvider());
-                        layout.imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(30));
+                        layout.imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(30));
                         layout.imageView.setForUserOrChat(user, new AvatarDrawable(user));
                         String userName = UserObject.getFirstName(user);
                         String message = isChannel

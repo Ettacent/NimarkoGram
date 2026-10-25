@@ -21,7 +21,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class UnreadCounterTextView extends View {
 
     private int currentCounter;
@@ -55,7 +55,7 @@ public class UnreadCounterTextView extends View {
     private CharSequence pendingText;
     private boolean pendingFromBottom;
     private ValueAnimator windowPausedAnimator;
-    private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+    private final UiAnimationClock.ResumeGate animationResumeGate = value ->
             isAttachedToWindow() && getWindowVisibility() == VISIBLE;
     private CounterView.CounterSnapshot snapshot;
     private float presentedProgress = 1f;
@@ -66,11 +66,11 @@ public class UnreadCounterTextView extends View {
         @Override
         public void run() {
             if ((pendingText == null && windowPausedAnimator == null && (snapshot == null || !snapshot.isWindowPaused())) || !isAttachedToWindow() || getWindowVisibility() != VISIBLE) return;
-            if (NimarkoUiAnimationClock.isPaused()) postOnAnimation(this);
+            if (UiAnimationClock.isPaused()) postOnAnimation(this);
             else {
                 if (snapshot != null) snapshot.resumeWindow();
                 if (windowPausedAnimator == replaceAnimator && replaceAnimator != null && replaceAnimator.isPaused()
-                        && !NimarkoUiAnimationClock.resumeAnimation(replaceAnimator)) return;
+                        && !UiAnimationClock.resumeAnimation(replaceAnimator)) return;
                 windowPausedAnimator = null;
                 invalidate();
             }
@@ -89,7 +89,7 @@ public class UnreadCounterTextView extends View {
 
     public void setText(CharSequence text, boolean animatedFromBottom) {
         if (presented && isAttachedToWindow()
-                && (NimarkoUiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
+                && (UiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
             if (pendingText == null && (textInfo || !android.text.TextUtils.equals(lastText, text))
                     && (replaceAnimator != null || (snapshot != null && snapshot.hasSnapshot()))) {
                 if (snapshot == null) snapshot = new CounterView.CounterSnapshot(this);
@@ -119,7 +119,7 @@ public class UnreadCounterTextView extends View {
         }
         pendingText = null;
         removeCallbacks(resumeText);
-        if (!isAttachedToWindow() || (!presented && NimarkoUiAnimationClock.isPaused())) {
+        if (!isAttachedToWindow() || (!presented && UiAnimationClock.isPaused())) {
             setText(text);
             return;
         }
@@ -160,7 +160,7 @@ public class UnreadCounterTextView extends View {
             });
             replaceAnimator.setDuration(150);
             replaceAnimator.start();
-            NimarkoUiAnimationClock.track(replaceAnimator, animationResumeGate);
+            UiAnimationClock.track(replaceAnimator, animationResumeGate);
         }
     }
 
@@ -314,9 +314,9 @@ public class UnreadCounterTextView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(replaceAnimator);
+        if (canvas.isHardwareAccelerated()) UiAnimationClock.resumeOwned(replaceAnimator);
         if (pendingText != null && canvas.isHardwareAccelerated() && isAttachedToWindow()
-                && !NimarkoUiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
+                && !UiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
             CharSequence latest = pendingText;
             CounterView.CounterSnapshot retained = snapshot;
             snapshot = null;
@@ -334,7 +334,7 @@ public class UnreadCounterTextView extends View {
         }
         else drawContent(canvas);
         if (canvas.isHardwareAccelerated() && isAttachedToWindow() && getWindowVisibility() == VISIBLE
-                && !NimarkoUiAnimationClock.isPaused()) {
+                && !UiAnimationClock.isPaused()) {
             presented = true;
             presentedProgress = replaceProgress;
             presentedCounterString = currentCounterString;

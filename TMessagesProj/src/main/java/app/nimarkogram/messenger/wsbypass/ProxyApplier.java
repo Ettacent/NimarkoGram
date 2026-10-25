@@ -57,15 +57,15 @@ public final class ProxyApplier {
 
     private static synchronized void captureSnapshotIfMissing(String localHost) {
         if (snapshot != null) return;
-        
+
         if (loadPersistedSnapshot()) return;
         try {
             synchronized (PROXY_LIST_LOCK) {
-                
+
                 try {
                     SharedConfig.loadProxyList();
                 } catch (Throwable loadFailure) {
-                    
+
                     FileLog.e("ProxyApplier.loadProxyList before snapshot", loadFailure);
                 }
                 SharedPreferences settings = MessagesController.getGlobalMainSettings();
@@ -78,7 +78,7 @@ public final class ProxyApplier {
                     }
                 }
                 String host = curr == null ? "" : curr.getSettings().getAddress();
-                if (curr != null && localHost != null && localHost.equals(host) && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
+                if (curr != null && localHost != null && localHost.equals(host) && curr.getSettings().getPort() == WsBypassConfig.localPort) {
                     snapshot = new ProxySnapshot(false, ProxySettings.EMPTY, false);
                     persistSnapshot(snapshot);
                     return;
@@ -91,7 +91,7 @@ public final class ProxyApplier {
                             curr.getSettings(),
                             callsEnabled);
                 } else {
-                    
+
                     snapshot = new ProxySnapshot(enabled,
                             ProxySettings.fromSharedPreferences(settings), callsEnabled);
                 }
@@ -164,7 +164,7 @@ public final class ProxyApplier {
 
     private static boolean isSystemVpnActive() {
         try {
-            return NimarkoVpnDetector.isVpnActiveFresh();
+            return VpnDetector.isVpnActiveFresh();
         } catch (Throwable ignored) {
             return false;
         }
@@ -173,13 +173,13 @@ public final class ProxyApplier {
     private static synchronized boolean restoreSnapshot() {
         ProxySnapshot snap = snapshot;
         if (snap == null) {
-            
+
             loadPersistedSnapshot();
             snap = snapshot;
         }
         if (snap == null) return false;
 
-        if (NimarkoWsBypassConfig.suspendOnVpn && isSystemVpnActive()) {
+        if (WsBypassConfig.suspendOnVpn && isSystemVpnActive()) {
             setVpnSuspended(true);
             return false;
         }
@@ -229,25 +229,25 @@ public final class ProxyApplier {
     public static synchronized void suspendForVpn(String localHost) {
         try {
             final String host = localHost == null ? "" : localHost;
-            
+
             synchronized (PROXY_LIST_LOCK) {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 boolean currentIsOurs = curr != null
                         && host.equals(curr.getSettings().getAddress())
-                        && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort;
+                        && curr.getSettings().getPort() == WsBypassConfig.localPort;
                 SharedPreferences settings = MessagesController.getGlobalMainSettings();
                 boolean persistedIsOurs = settings.getBoolean("proxy_enabled", false)
                         && host.equals(settings.getString("proxy_ip", ""))
-                        && settings.getInt("proxy_port", 0) == NimarkoWsBypassConfig.localPort;
-                
+                        && settings.getInt("proxy_port", 0) == WsBypassConfig.localPort;
+
                 boolean ours = currentIsOurs || curr == null && persistedIsOurs;
                 if (!ours) {
-                    return; 
+                    return;
                 }
                 captureSnapshotIfMissing(host);
                 setVpnSuspended(true);
                 SharedConfig.currentProxy = null;
-                
+
                 settings.edit()
                         .putBoolean("proxy_enabled", false)
                         .putBoolean("proxy_enabled_calls", false)
@@ -285,7 +285,7 @@ public final class ProxyApplier {
     }
 
     private static boolean applyToAllAccounts(boolean enable, ProxySettings settings) {
-        
+
         boolean applied = true;
         try {
             ConnectionsManager.setProxySettings(enable, settings);
@@ -310,27 +310,27 @@ public final class ProxyApplier {
     public static synchronized boolean apply(int port, boolean enable, String secret, String localHost) {
         try {
             final String host = localHost == null ? "" : localHost;
-            
-            final int ownPort = port > 0 ? port : NimarkoWsBypassConfig.localPort;
+
+            final int ownPort = port > 0 ? port : WsBypassConfig.localPort;
             final String sec = secret == null ? "" : secret.trim();
-            
+
             final ProxySettings localSettings = localSettings(host, port, sec);
 
-            if (enable && NimarkoWsBypassConfig.suspendOnVpn && isSystemVpnActive()) {
+            if (enable && WsBypassConfig.suspendOnVpn && isSystemVpnActive()) {
                 return false;
             }
 
             if (enable) {
                 captureSnapshotIfMissing(host);
-                
+
                 setVpnSuspended(false);
             } else {
-                
+
                 if (restoreSnapshot()) {
                     AndroidUtilities.runOnUIThread(NOTIFY_RUNNABLE, NOTIFY_DELAY_MS);
                     return true;
                 }
-                if (snapshot != null && !(NimarkoWsBypassConfig.suspendOnVpn && isSystemVpnActive())) return false;
+                if (snapshot != null && !(WsBypassConfig.suspendOnVpn && isSystemVpnActive())) return false;
             }
 
             try {
@@ -545,7 +545,7 @@ public final class ProxyApplier {
                 SharedConfig.ProxyInfo curr = SharedConfig.currentProxy;
                 if (curr == null) return;
                 String addr = curr.getSettings().getAddress();
-                if (host.equals(addr) && curr.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
+                if (host.equals(addr) && curr.getSettings().getPort() == WsBypassConfig.localPort) {
                     SharedConfig.currentProxy = null;
                     SharedConfig.markProxyListChanged();
                 }
@@ -572,7 +572,7 @@ public final class ProxyApplier {
                 for (int i = 0; i < snap.size(); i++) {
                     SharedConfig.ProxyInfo p = snap.get(i);
                     if (p == null) continue;
-                    if (host.equals(p.getSettings().getAddress()) && p.getSettings().getPort() == NimarkoWsBypassConfig.localPort) {
+                    if (host.equals(p.getSettings().getAddress()) && p.getSettings().getPort() == WsBypassConfig.localPort) {
                         toRemove.add(p);
                     }
                 }

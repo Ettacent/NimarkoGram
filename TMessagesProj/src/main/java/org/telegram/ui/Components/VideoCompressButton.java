@@ -21,8 +21,8 @@ import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 public class VideoCompressButton extends View {
 
     public static final int STATE_GIF = 0;
@@ -121,9 +121,9 @@ public class VideoCompressButton extends View {
 
     private void drawQualityBackground(Canvas canvas, float opacity) {
         Resources resources = getResources();
-        int pack = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getAppliedSelection() : NimarkoConfig.ICON_REPLACE_NONE;
-        if (pack == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+        int pack = resources instanceof IconResources
+                ? ((IconResources) resources).getAppliedSelection() : AppConfig.ICON_REPLACE_NONE;
+        if (pack == AppConfig.ICON_REPLACE_LIQUID_GLASS) {
             if (qualityGradient == null || qualityGradientTop != AndroidUtilities.rectTmp.top
                     || qualityGradientBottom != AndroidUtilities.rectTmp.bottom) {
                 qualityGradientTop = AndroidUtilities.rectTmp.top;
@@ -138,7 +138,7 @@ public class VideoCompressButton extends View {
             qualityPaint.setShader(null);
             strokePaint.setAlpha(Math.round(0x66 * opacity));
             strokePaint.setStrokeWidth(dpf2(.6f));
-        } else if (pack == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        } else if (pack == AppConfig.ICON_REPLACE_PLUMPY) {
             qualityPaint.setColor(0x66ffffff);
             qualityPaint.setAlpha(Math.round(0x66 * opacity));
             canvas.drawRoundRect(AndroidUtilities.rectTmp, dpf2(4), dpf2(4), qualityPaint);

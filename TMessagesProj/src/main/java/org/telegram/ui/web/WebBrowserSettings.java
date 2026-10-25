@@ -352,7 +352,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
                     ApplicationLoader.applicationContext.deleteDatabase("webviewCache.db");
                     WebStorage.getInstance().deleteAllData();
                     try {
-                        WebView webView = new WebView(getContext());
+                        WebView webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(getContext()));
                         webView.clearCache(true);
                         webView.clearHistory();
                         webView.destroy();

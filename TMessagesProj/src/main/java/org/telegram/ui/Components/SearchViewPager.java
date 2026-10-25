@@ -471,6 +471,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         searchListView.setInstantClick(true);
         searchListView.setVerticalScrollbarPosition(LocaleController.isRTL ? RecyclerListView.SCROLLBAR_POSITION_LEFT : RecyclerListView.SCROLLBAR_POSITION_RIGHT);
         searchListView.setLayoutManager(searchLayoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
+        searchListView.setRoundedPressFeedback(true);
         searchListView.setAnimateEmptyView(true, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA);
         searchListView.setOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
@@ -550,6 +551,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         channelsItemAnimator.setDurations(350);
 
         channelsSearchListView = new RecyclerListView(context);
+        channelsSearchListView.setRoundedPressFeedback(true);
         channelsSearchListView.setItemAnimator(channelsItemAnimator);
         channelsSearchListView.setPivotY(0);
         channelsSearchListView.setVerticalScrollBarEnabled(true);
@@ -629,6 +631,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         botsItemAnimator.setDurations(350);
 
         botsSearchListView = new RecyclerListView(context);
+        botsSearchListView.setRoundedPressFeedback(true);
         botsSearchListView.setItemAnimator(botsItemAnimator);
         botsSearchListView.setPivotY(0);
         botsSearchListView.setClipToPadding(false);
@@ -702,6 +705,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         hashtagItemAnimator.setDurations(350);
 
         hashtagSearchListView = new RecyclerListView(context);
+        hashtagSearchListView.setRoundedPressFeedback(true);
         hashtagSearchListView.setItemAnimator(hashtagItemAnimator);
         hashtagSearchListView.setPivotY(0);
         hashtagSearchListView.setVerticalScrollBarEnabled(true);
@@ -762,7 +766,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         hashtagSearchListView.addEdgeEffectListener(this::invalidateBlur);
 
 
-        postsAreNew = false; 
+        postsAreNew = false;
         postsSearchContainer = new PostsSearchContainer(context, fragment);
         postsSearchContainer.listView.setClipToPadding(false);
         postsSearchContainer.listView.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -851,7 +855,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                     dialogId = ((TLRPC.User) data.chat).id;
                 } else if (data.chat instanceof TLRPC.Chat) {
                     if (ChatObject.isCommunity((TLRPC.Chat) data.chat)) {
-                        
+
                     } else {
                         dialogId = -((TLRPC.Chat) data.chat).id;
                     }
@@ -1009,7 +1013,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         }
         if (show && !parent.getActionBar().actionModeIsExist(actionModeTag)) {
             actionMode = parent.getActionBar().createActionMode(true, actionModeTag);
-            
+
             if (parent.hasMainTabs) {
                 actionModeCloseView = new ImageView(getContext());
                 actionModeCloseView.setScaleType(ImageView.ScaleType.CENTER);

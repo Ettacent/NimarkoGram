@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -543,7 +545,7 @@ public class ChatLinkActivity extends BaseFragment implements NotificationCenter
         avatarDrawable.setTextSize(dp(12));
 
         BackupImageView imageView = new BackupImageView(getParentActivity());
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(40));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(40));
         frameLayout2.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         TextView textView = new TextView(getParentActivity());

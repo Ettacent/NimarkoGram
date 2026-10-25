@@ -20,6 +20,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -33,6 +34,7 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.TransitionDrawable;
 import android.os.Build;
 import android.os.SystemClock;
@@ -41,8 +43,8 @@ import android.text.SpannableStringBuilder;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoContentMotionBlur;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.ContentMotionBlur;
 import android.util.Pair;
 import android.util.SparseIntArray;
 import android.util.StateSet;
@@ -103,7 +105,7 @@ import java.util.List;
 import java.util.Objects;
 
 @SuppressWarnings("JavaReflectionMemberAccess")
-public class RecyclerListView extends RecyclerView implements IBlur3Capture, NimarkoContentMotionBlur.Target {
+public class RecyclerListView extends RecyclerView implements IBlur3Capture, ContentMotionBlur.Target {
     public final static int SECTIONS_TYPE_SIMPLE = 0,
             SECTIONS_TYPE_STICKY_HEADERS = 1,
             SECTIONS_TYPE_DATE = 2,
@@ -165,6 +167,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
 
     private boolean drawSelectorBehind;
     private int selectorType = 2;
+    private boolean roundedPressFeedback;
     @Nullable
     protected Drawable selectorDrawable;
     protected int selectorPosition;
@@ -1189,7 +1192,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                     if (onItemLongClickListener != null) {
                         if (onItemLongClickListener.onItemClick(currentChildView, currentChildPosition)) {
 
-                            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                 try {
                                     child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                                 } catch (Exception ignored) {}
@@ -1199,7 +1202,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                     } else {
                         if (onItemLongClickListenerExtended.onItemClick(currentChildView, currentChildPosition, event.getX() - currentChildView.getX(), event.getY() - currentChildView.getY())) {
 
-                            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                 try {
                                     child.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                                 } catch (Exception ignored) {}
@@ -1514,8 +1517,12 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                 gotAttributes = true;
             }
             TypedArray a = context.getTheme().obtainStyledAttributes(attributes);
+            try {
             if (initializeScrollbars != null) {
                 initializeScrollbars.invoke(this, a);
+                }
+            } finally {
+                a.recycle();
             }
         } catch (Throwable e) {
             FileLog.e(e);
@@ -1718,13 +1725,30 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
         drawSelectorBehind = value;
     }
 
+    public void setRoundedPressFeedback(boolean enabled) {
+        if (roundedPressFeedback == enabled) return;
+        roundedPressFeedback = enabled;
+        setSelectorDrawableColor(getThemedColor(Theme.key_listSelector));
+        invalidate();
+    }
+
+    private int pressFeedbackColor(int color) {
+        if (!roundedPressFeedback) return color;
+        int background = getThemedColor(Theme.key_windowBackgroundWhite);
+        int maximumAlpha = ColorUtils.calculateLuminance(background) >= 0.5 ? 16 : 20;
+        return ColorUtils.setAlphaComponent(color, Math.min(Color.alpha(color), maximumAlpha));
+    }
     public void setSelectorDrawableColor(int color) {
         if (selectorDrawable != null) {
             selectorDrawable.setState(StateSet.NOTHING);
             selectorDrawable.jumpToCurrentState();
             selectorDrawable.setCallback(null);
         }
-        if (selectorType == 8) {
+        if (roundedPressFeedback && selectorType != 9) {
+            Drawable mask = new InsetDrawable(Theme.createRoundRectDrawable(dp(14), Color.WHITE),
+                    dp(6), dp(2), dp(6), dp(2));
+            selectorDrawable = new SmoothRippleDrawable(ColorStateList.valueOf(pressFeedbackColor(color)), null, mask);
+        } else if (selectorType == 8) {
             selectorDrawable = Theme.createRadSelectorDrawable(color, selectorRadius, 0);
         } else if (selectorType == 9) {
             selectorDrawable = null;
@@ -1960,7 +1984,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
     }
 
     public void setListSelectorColor(Integer color) {
-        Theme.setSelectorDrawableColor(selectorDrawable, color == null ? getThemedColor(hasSections() ? Theme.key_settings_listSelector : Theme.key_listSelector) : color, true);
+        Theme.setSelectorDrawableColor(selectorDrawable, pressFeedbackColor(color == null ? getThemedColor(hasSections() ? Theme.key_settings_listSelector : Theme.key_listSelector) : color), true);
     }
 
     private GenericProvider<Integer, Integer> getSelectorColor;
@@ -2739,7 +2763,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
 
     @Override
     public boolean canBlurMotionContent() {
-        return getClipChildren() && getClipToPadding() && NimarkoContentMotionBlur.canUse(this);
+        return getClipChildren() && getClipToPadding() && ContentMotionBlur.canUse(this);
     }
 
     @Override
@@ -2751,14 +2775,14 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
         if (drawSelection && drawSelectorBehind) {
             drawSelectors2(canvas);
         }
-        Canvas motionContent = NimarkoContentMotionBlur.begin(this, canvas);
+        Canvas motionContent = ContentMotionBlur.begin(this, canvas);
         if (motionContent == null) {
             super.dispatchDraw(canvas);
         } else {
             try {
                 super.dispatchDraw(motionContent);
             } finally {
-                NimarkoContentMotionBlur.end(this, canvas);
+                ContentMotionBlur.end(this, canvas);
             }
         }
         if (drawSelection && !drawSelectorBehind) {
@@ -3266,7 +3290,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                 capture.capture(canvas, position);
             }
         }
-        Canvas motionContent = NimarkoContentMotionBlur.begin(this, canvas, true);
+        Canvas motionContent = ContentMotionBlur.begin(this, canvas, true);
         Canvas contentCanvas = motionContent == null ? canvas : motionContent;
         Rect captureClip = null;
         if (motionContent != null) {
@@ -3297,7 +3321,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Nim
                 }
             }
         } finally {
-            if (motionContent != null) NimarkoContentMotionBlur.end(this, canvas, true);
+            if (motionContent != null) ContentMotionBlur.end(this, canvas, true);
         }
     }
 

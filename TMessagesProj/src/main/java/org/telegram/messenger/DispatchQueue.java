@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 7.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -14,6 +16,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.SystemClock;
 
+import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 
 public class DispatchQueue extends Thread {
@@ -27,6 +30,19 @@ public class DispatchQueue extends Thread {
     public final int index = indexPointer++;
     private int threadPriority = THREAD_PRIORITY_DEFAULT;
 
+    private Runnable initialTask;
+    private volatile boolean asynchronousStartup;
+    private ArrayList<PendingTask> pendingTasks;
+
+    private static final class PendingTask {
+        final Runnable runnable;
+        final long delay;
+
+        PendingTask(Runnable runnable, long delay) {
+            this.runnable = runnable;
+            this.delay = delay;
+        }
+    }
     public DispatchQueue(final String threadName) {
         this(threadName, true);
     }
@@ -44,6 +60,18 @@ public class DispatchQueue extends Thread {
         if (start) {
             start();
         }
+    }
+
+    public synchronized void start(Runnable initialTask) {
+        if (getState() != State.NEW) {
+            throw new IllegalThreadStateException();
+        }
+        this.initialTask = initialTask;
+        asynchronousStartup = true;
+        if (initialTask != null) {
+            lastTaskTime = SystemClock.elapsedRealtime();
+        }
+        super.start();
     }
 
     public void sendMessage(Message msg, int delay) {
@@ -94,16 +122,33 @@ public class DispatchQueue extends Thread {
     }
 
     public boolean postRunnable(Runnable runnable, long delay) {
+        if (asynchronousStartup) {
+            if (handler == null && enqueueBeforeReady(runnable, delay)) {
+                return true;
+            }
+        } else {
         try {
             syncLatch.await();
         } catch (Exception e) {
             FileLog.e(e, false);
+            }
         }
         if (delay <= 0) {
             return handler.post(runnable);
         } else {
             return handler.postDelayed(runnable, delay);
         }
+    }
+
+    private synchronized boolean enqueueBeforeReady(Runnable runnable, long delay) {
+        if (!asynchronousStartup || handler != null) {
+            return false;
+        }
+        if (pendingTasks == null) {
+            pendingTasks = new ArrayList<>();
+        }
+        pendingTasks.add(new PendingTask(runnable, delay));
+        return true;
     }
 
     public void cleanupQueue() {
@@ -130,10 +175,27 @@ public class DispatchQueue extends Thread {
     @Override
     public void run() {
         Looper.prepare();
-        handler = new Handler(Looper.myLooper(), msg -> {
+        Handler preparedHandler = new Handler(Looper.myLooper(), msg -> {
             DispatchQueue.this.handleMessage(msg);
             return true;
         });
+        synchronized (this) {
+            if (initialTask != null) {
+                preparedHandler.post(initialTask);
+                initialTask = null;
+            }
+            if (pendingTasks != null) {
+                for (PendingTask task : pendingTasks) {
+                    if (task.delay <= 0) {
+                        preparedHandler.post(task.runnable);
+                    } else {
+                        preparedHandler.postDelayed(task.runnable, task.delay);
+                    }
+                }
+                pendingTasks = null;
+            }
+            handler = preparedHandler;
+        }
         syncLatch.countDown();
         if (threadPriority != THREAD_PRIORITY_DEFAULT) {
             Process.setThreadPriority(threadPriority);

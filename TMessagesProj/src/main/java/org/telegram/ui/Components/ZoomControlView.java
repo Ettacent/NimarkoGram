@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -129,8 +131,8 @@ public class ZoomControlView extends View {
                 handled = true;
             } else if (x >= minusCx - AndroidUtilities.dp(16) && x <= minusCx + AndroidUtilities.dp(16) && y >= minusCy - AndroidUtilities.dp(16) && y <= minusCy + AndroidUtilities.dp(16)) {
                 if (action == MotionEvent.ACTION_UP && animateToZoom((float) Math.floor(getZoom() / 0.25f) * 0.25f - 0.25f)) {
-                    
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                         } catch (Exception ignored) {}
@@ -141,8 +143,8 @@ public class ZoomControlView extends View {
                 handled = true;
             } else if (x >= plusCx - AndroidUtilities.dp(16) && x <= plusCx + AndroidUtilities.dp(16) && y >= plusCy - AndroidUtilities.dp(16) && y <= plusCy + AndroidUtilities.dp(16)) {
                 if (action == MotionEvent.ACTION_UP && animateToZoom((float) Math.floor(getZoom() / 0.25f) * 0.25f + 0.25f)) {
-                    
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                         } catch (Exception ignored) {}

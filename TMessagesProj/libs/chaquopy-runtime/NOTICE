@@ -1,0 +1,7 @@
+Chaquopy runtime 17.0.0
+Copyright (c) 2017-2025 Chaquo Ltd and contributors
+Modifications Copyright (C) 2026 Ettacent
+
+Source: https://github.com/chaquo/chaquopy
+Revision: e01057c72fdd737f202bd1be1de85af51e06cad0
+Patch: patches/chaquopy-proxy-publication.patch

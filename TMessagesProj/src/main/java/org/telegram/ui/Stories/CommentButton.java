@@ -22,7 +22,7 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
@@ -77,8 +77,8 @@ public class CommentButton extends FrameLayout {
         layout.addView(arrowImage, LayoutHelper.createFrame(20, 20, Gravity.CENTER));
         arrowImage.setPivotX(dp(10.27f));
         arrowImage.setPivotY(dp(9.58f));
-        if (getResources() instanceof NimarkoIconResources
-                && ((NimarkoIconResources) getResources()).hasReplacement(R.drawable.menu_comments_arrow)) {
+        if (getResources() instanceof IconResources
+                && ((IconResources) getResources()).hasReplacement(R.drawable.menu_comments_arrow)) {
             arrowImage.setPadding(dp(5), dp(5), dp(5), dp(5));
             arrowImage.setPivotX(dp(10));
             arrowImage.setPivotY(dp(10));

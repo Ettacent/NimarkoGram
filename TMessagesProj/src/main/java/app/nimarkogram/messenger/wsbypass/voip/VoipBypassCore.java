@@ -3,8 +3,8 @@
 package app.nimarkogram.messenger.wsbypass.voip;
 
 import android.os.SystemClock;
-import app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector;
-import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.VpnDetector;
+import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.WlAccess;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,13 +32,13 @@ public final class VoipBypassCore {
     public static void dlog(String msg) {}
 
     private static final int MAGIC = 0xC1;
-    
+
     private static final int VERSION_EPHEMERAL = 0x02;
     private static final int STATUS_OK = 0;
     private static final int STATUS_AUTH_FAIL = 1;
 
     private static final int ALLOC_TIMEOUT_MS = 3000;
-    
+
     private static final int PRIMARY_ATTEMPT_MAX_MS = 350;
 
     private static final ExecutorService executor = Executors.newFixedThreadPool(4, r -> {
@@ -105,9 +105,9 @@ public final class VoipBypassCore {
         if (!VoipRelayAuth.isAuthAllowed()) return null;
         String protocolTarget = VoipBypassConfig.relayProtocolTarget(reflectorIp);
         if (protocolTarget == null) return null;
-        
-        if (NimarkoWsBypassConfig.suspendOnVpn
-                && NimarkoVpnDetector.isVpnActiveFresh()) {
+
+        if (WsBypassConfig.suspendOnVpn
+                && VpnDetector.isVpnActiveFresh()) {
             return null;
         }
         if (WlAccess.enabled()) {
@@ -124,7 +124,7 @@ public final class VoipBypassCore {
                 if (!pending.isDone()) pending.cancel(true);
             }
         }
-        
+
         VoipRelayAuth.Credential cred = VoipRelayAuth.getCached(account);
         if (cred == null) {
             Log.e(TAG, "allocateRelay: no relay credential (auth unavailable)");
@@ -173,7 +173,7 @@ public final class VoipBypassCore {
                 sock = new DatagramSocket();
                 sockRef.set(sock);
                 if (cancelled.get() || Thread.currentThread().isInterrupted()) return null;
-                sock.connect(addr, controlPort); 
+                sock.connect(addr, controlPort);
                 sock.setSoTimeout(Math.max(1, Math.min(ALLOC_TIMEOUT_MS, remaining)));
                 DatagramPacket pkt = new DatagramPacket(request, request.length);
                 sock.send(pkt);
@@ -227,7 +227,7 @@ public final class VoipBypassCore {
             Log.e(TAG, "allocateRelay error: " + e);
             return null;
         } finally {
-            
+
             cancelled.set(true);
             future.cancel(true);
             DatagramSocket s = sockRef.get();
@@ -247,7 +247,7 @@ public final class VoipBypassCore {
         try {
             InetAddress[] addresses = future.get(remaining, TimeUnit.MILLISECONDS);
             if (addresses == null || addresses.length == 0) return null;
-            
+
             InetAddress selected = addresses[0];
             for (InetAddress address : addresses) {
                 if (address instanceof Inet4Address) { selected = address; break; }
@@ -266,7 +266,7 @@ public final class VoipBypassCore {
             ByteBuffer buf = ByteBuffer.allocate(64);
             buf.put((byte) MAGIC);
             buf.put((byte) VERSION_EPHEMERAL);
-            
+
             buf.putLong(VoipRelayAuth.nowSeconds(account) * 1000L);
 
             String[] parts = reflectorIp.split("\\.");

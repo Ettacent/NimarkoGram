@@ -670,7 +670,7 @@ public class SharedConfig {
             ivFontSize = preferences.getInt("iv_font_size", fontSize);
             allowBigEmoji = preferences.getBoolean("allowBigEmoji", true);
             useSystemEmoji = preferences.getBoolean("useSystemEmoji", false)
-                    || app.nimarkogram.messenger.NimarkoConfig.systemEmoji;
+                    || app.nimarkogram.messenger.AppConfig.systemEmoji;
             useSystemBoldFont = preferences.getBoolean("useSystemBoldFont", false);
             forceForumTabs = preferences.getBoolean("forceForumTabs", false);
             fastWallpaperDisabled = preferences.getBoolean("fastWallpaperDisabled", false);

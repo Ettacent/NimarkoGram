@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 """Process-wide compatibility fixes for third-party plugin runtimes.
 
 The module is installed by :class:`PythonPluginsEngine` before importing any
@@ -25,6 +27,45 @@ _NIMARKO_PREFIX = "app.nimarkogram.messenger."
 _PROXY_CLASS_REMAP = {
     "org.telegram.proxy." + name: "org.telegram.utils.proxy." + name
     for name in ("ProxySettings", "WebProxyConnectionTester", "WebProxyTransport")
+}
+_LEGACY_CLASS_NAMES = {
+    '': ('Config', 'CrashContext', 'CrashHandler', 'FeatureHooks', 'MessageMenuInjector', 'ResourcesHelper'),
+    'banners': ('BannerConfig', 'BannerController', 'BannerHttp', 'BannerRenderer'),
+    'camera': ('CameraXController', 'CameraXSurfaceSession', 'CameraXView', 'VideoMessagesHelper'),
+    'icons': ('ActivityIconResources', 'AnimatedCallIcons', 'AnimatedIconCatalog', 'AnimatedIconRenderer',
+              'AnimatedIconSpec', 'CallIconMotion', 'IconResources', 'IconViewBindings', 'NativeIconMotion', 'RecordDeleteShape'),
+    'media': ('MediaController', 'MediaDownloader'),
+    'notifications': ('InAppNotifications',),
+    'preferences': ('MediaPreferencesActivity', 'SettingsSearchIndex', 'TextAnimPreferencesActivity', 'UniversalPreferencesActivity'),
+    'preferences.helpers': ('AlertDialogSwitchers',),
+    'quotes': ('QuoteCreator',),
+    'security': ('BiometricPrompt',),
+    'textanim': ('TextAnim',),
+    'ui': ('JsonBottomSheet',),
+    'updater': ('UpdateConfig', 'Updater', 'UpdaterReceiver', 'UpdaterSheet'),
+    'utils': ('AppMotionBlur', 'AppResumeFade', 'AudioEnhance', 'ConfigBackup', 'ContentMotionBlur', 'DeeplinkHelper',
+              'Extra', 'InlineAuth', 'LatexHelper', 'LocalEmoji', 'MotionBlurEffect', 'MotionBlurState',
+              'PhotoViewerHelper', 'ProfileActivityHelper', 'RegDate', 'ResumeFrameCapture', 'ResumeListRegions',
+              'TextMotionBlur', 'UiAnimationClock', 'UiAnimationLifecycle'),
+    'utils.chats': ('ChatActivityHelper', 'ChatHelper', 'ChatHelper2', 'ChatMenuInjector', 'ChatsHelper', 'ChatsHelper2',
+                    'ChatsPasscodeHelper', 'ChatsPasswordHelper', 'KeyboardHider', 'MessageHelper', 'MessagesFilterHelper'),
+    'utils.folders': ('FoldersHelper',),
+    'wsbypass': ('VpnDetector', 'WsBypassConfig', 'WsBypassController'),
+}
+_LEGACY_CLASS_EXCEPTIONS = {
+    'Config': 'AppConfig', 'ResourcesHelper': 'AppResourcesHelper', 'MediaController': 'MediaControllerExt',
+    'BiometricPrompt': 'AppBiometricPrompt', 'Updater': 'AppUpdater', 'Extra': 'AppExtra',
+    'MessagesFilterHelper': 'ChatMessagesFilterHelper',
+}
+_LEGACY_CLASS_REMAP = {
+    _NIMARKO_PREFIX + (package + '.' if package else '') + 'Nimarko' + name:
+        _NIMARKO_PREFIX + (package + '.' if package else '') + _LEGACY_CLASS_EXCEPTIONS.get(name, name)
+    for package, names in _LEGACY_CLASS_NAMES.items() for name in names
+}
+_LEGACY_NESTED_REMAP = {
+    _NIMARKO_PREFIX + 'security.NimarkoBiometricPrompt$NimarkoBiometricListener':
+        _NIMARKO_PREFIX + 'security.AppBiometricPrompt$BiometricListener',
+    'org.telegram.ui.ChatActivity$NimarkoForwardOptions': 'org.telegram.ui.ChatActivity$ForwardOptions',
 }
 _HEAD_CACHE_LIMIT = 4 * 1024 * 1024
 _HEAD_CACHE_TTL = 60.0
@@ -136,6 +177,74 @@ def _remap_proxy_class(name):
     return current + separator + nested if current is not None else None
 
 
+def _remap_legacy_class(name):
+    exact = _LEGACY_NESTED_REMAP.get(name)
+    if exact is not None:
+        return exact
+    outer, separator, nested = name.partition('$')
+    current = _LEGACY_CLASS_REMAP.get(outer)
+    return current + separator + nested if current is not None else None
+
+
+def _install_java_import_compat():
+    """Supply renamed classes to Chaquopy's existing mixed-language import hook."""
+    import builtins
+    from java import chaquopy
+    from types import ModuleType
+
+    original = chaquopy.import_original
+    if getattr(original, "__nimarko_class_import_compat__", False):
+        return
+    packages = {name.rpartition(".")[0] for mapping in
+                (_LEGACY_CLASS_REMAP, _LEGACY_NESTED_REMAP, _PROXY_CLASS_REMAP)
+                for name in mapping}
+
+    def import_with_compat(name, globals=None, locals=None, fromlist=(), level=0):
+        if (builtins.__import__ is import_with_compat or level or
+                name not in packages or not fromlist or fromlist[0] == "*"):
+            return original(name, globals, locals, fromlist, level)
+        remapped = {}
+        for member in fromlist:
+            if not isinstance(member, str):
+                return original(name, globals, locals, fromlist, level)
+            qualified = name + "." + member
+            target = _remap_legacy_class(qualified) or _remap_proxy_class(qualified)
+            if target is not None:
+                remapped[member] = target
+        if not remapped:
+            return original(name, globals, locals, fromlist, level)
+
+        python_error = None
+        try:
+            module = original(name, globals, locals, fromlist, level)
+        except ImportError as error:
+            python_error = error
+            module = None
+        resolved = {}
+        for member, target in remapped.items():
+            if module is not None and hasattr(module, member):
+                continue
+            try:
+                resolved[member] = chaquopy.jclass(target)
+            except chaquopy.NoClassDefFoundError:
+                pass
+        if resolved:
+            merged = ModuleType("<java import hook>")
+            merged.__dict__.update(resolved)
+            if module is not None:
+                for member in fromlist:
+                    if hasattr(module, member):
+                        setattr(merged, member, getattr(module, member))
+            return merged
+        if python_error is not None:
+            raise python_error
+        return module
+
+    import_with_compat.__nimarko_class_import_compat__ = True
+    import_with_compat.__nimarko_original_import__ = original
+    chaquopy.import_original = import_with_compat
+
+
 def _install_jclass_compat():
     """Resolve moved proxy types and fallback legacy extera package names."""
     try:
@@ -148,7 +257,7 @@ def _install_jclass_compat():
 
         def jclass_with_compat(class_name):
             name = str(class_name)
-            proxy_name = _remap_proxy_class(name)
+            proxy_name = _remap_proxy_class(name) or _remap_legacy_class(name)
             if proxy_name is not None:
                 return original(proxy_name)
             mapped = aliases.get(name)
@@ -167,6 +276,7 @@ def _install_jclass_compat():
         jclass_with_compat.__nimarko_extera_class_compat__ = True
         jclass_with_compat.__nimarko_original_jclass__ = original
         java.jclass = jclass_with_compat
+        _install_java_import_compat()
     except Exception:
         # The Java bridge is optional during early interpreter bootstrap and in
         # host-side tests. A vendor-specific Chaquopy implementation must not

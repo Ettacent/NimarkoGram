@@ -710,7 +710,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 emojiTabs.recentTab.setOnLongClickListener(e -> {
                     onRecentLongClick();
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                         } catch (Exception ignore) {
@@ -974,7 +974,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 if (view instanceof ImageViewEmoji && (type == TYPE_REACTIONS || type == TYPE_EXPANDABLE_REACTIONS)) {
                     incrementHintUse();
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                         } catch (Exception ignored) {}
@@ -1045,7 +1045,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                     dialog.show();
 
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                         } catch (Exception ignore) {}
@@ -1088,7 +1088,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 } else {
                     onEmojiClick(viewEmoji, viewEmoji.span);
                 }
-                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                     // NimarkoGram: gate haptic on disableVibration.
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -1096,7 +1096,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                 }
             } else if (view instanceof ImageView) {
                 onEmojiClick(view, null);
-                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                     // NimarkoGram: gate haptic on disableVibration.
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -1105,7 +1105,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             } else if (view instanceof EmojiPackExpand) {
                 EmojiPackExpand button = (EmojiPackExpand) view;
                 expand(position, button);
-                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (type != TYPE_REACTIONS && type != TYPE_TAGS && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                     // NimarkoGram: gate haptic on disableVibration.
                     try {
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
@@ -6147,7 +6147,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
             }, () -> {
                 if (date != null) {
                     // NimarkoGram: gate haptic on disableVibration.
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                         } catch (Exception ignore) {}

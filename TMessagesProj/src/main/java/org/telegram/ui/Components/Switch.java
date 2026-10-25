@@ -42,7 +42,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import me.vkryl.android.animator.BoolAnimator;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class Switch extends View {
     private final BoolAnimator animatorIconVisibility = new BoolAnimator(this, CubicBezierInterpolator.EASE_OUT_QUINT, 380L, true);
 
@@ -116,7 +116,7 @@ public class Switch extends View {
         paint4 = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint5 = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-        setHapticFeedbackEnabled(!app.nimarkogram.messenger.NimarkoConfig.disableVibration);
+        setHapticFeedbackEnabled(!app.nimarkogram.messenger.AppConfig.disableVibration);
     }
 
     @Keep
@@ -266,7 +266,7 @@ public class Switch extends View {
             }
         });
         checkAnimator.start();
-        NimarkoUiAnimationClock.track(checkAnimator);
+        UiAnimationClock.track(checkAnimator);
     }
 
     private void animateIcon(boolean newCheckedState) {
@@ -283,7 +283,7 @@ public class Switch extends View {
             }
         });
         iconAnimator.start();
-        NimarkoUiAnimationClock.track(iconAnimator);
+        UiAnimationClock.track(iconAnimator);
     }
 
     @Override
@@ -314,7 +314,7 @@ public class Switch extends View {
         if (checked != isChecked) {
             isChecked = checked;
             if (attachedToWindow && animated) {
-                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                     vibrateChecked();
                 }
                 animateToCheckedState(checked);
@@ -420,9 +420,9 @@ public class Switch extends View {
             return;
         }
 
-        int switchStyle = app.nimarkogram.messenger.NimarkoConfig.switchStyle;
-        boolean oneUi = switchStyle == app.nimarkogram.messenger.NimarkoConfig.SWITCH_STYLE_ONEUI;
-        boolean md3 = switchStyle == app.nimarkogram.messenger.NimarkoConfig.SWITCH_STYLE_MD3;
+        int switchStyle = app.nimarkogram.messenger.AppConfig.switchStyle;
+        boolean oneUi = switchStyle == app.nimarkogram.messenger.AppConfig.SWITCH_STYLE_ONEUI;
+        boolean md3 = switchStyle == app.nimarkogram.messenger.AppConfig.SWITCH_STYLE_MD3;
         int x;
         float y;
         int tx;

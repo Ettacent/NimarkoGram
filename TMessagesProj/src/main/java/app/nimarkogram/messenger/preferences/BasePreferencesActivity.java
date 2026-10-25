@@ -126,7 +126,7 @@ public abstract class BasePreferencesActivity extends BaseFragment {
 
     private void fillItemsWithDescriptions(ArrayList<UItem> items, UniversalAdapter adapter) {
         fillItems(items, adapter);
-        NimarkoSettingsSearchIndex.applyDescriptions(this, items);
+        SettingsSearchIndex.applyDescriptions(this, items);
     }
 
     public abstract String getTitle();

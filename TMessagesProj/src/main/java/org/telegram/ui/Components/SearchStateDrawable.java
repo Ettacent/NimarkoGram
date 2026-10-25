@@ -24,7 +24,7 @@ import org.telegram.messenger.AndroidUtilities;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -155,9 +155,9 @@ public class SearchStateDrawable extends Drawable {
         float backValue   =   toState == State.STATE_BACK     ? fromState == State.STATE_BACK     ? 1 : value : fromState == State.STATE_BACK       ? 1f - value : 0;
         float progressValue = toState == State.STATE_PROGRESS ? fromState == State.STATE_PROGRESS ? 1 : value : fromState == State.STATE_PROGRESS   ? 1f - value : 0;
 
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon search = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_search);
-        NimarkoIconResources.PreparedIcon back = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon search = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_search);
+        IconResources.PreparedIcon back = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
         boolean packGlyphs = search != null && back != null;
 
         if (!packGlyphs && searchValue > 0) {

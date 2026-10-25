@@ -18,7 +18,7 @@ import org.telegram.ui.ActionBar.Theme;
 import java.util.ArrayList;
 
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class MatrixParticlesDrawable {
 
     RectF excludeRect = new RectF();
@@ -35,9 +35,9 @@ public class MatrixParticlesDrawable {
     private int clockEpoch = -1;
 
     private long sampleTime() {
-        long now = NimarkoUiAnimationClock.now();
-        int epoch = NimarkoUiAnimationClock.epoch();
-        if (prevTime >= 0 && epoch == clockEpoch && !NimarkoUiAnimationClock.isPaused()) {
+        long now = UiAnimationClock.now();
+        int epoch = UiAnimationClock.epoch();
+        if (prevTime >= 0 && epoch == clockEpoch && !UiAnimationClock.isPaused()) {
             animationTime += Math.max(0, now - prevTime);
         }
         prevTime = now;
@@ -66,7 +66,7 @@ public class MatrixParticlesDrawable {
             return;
         }
         long currentTime = sampleTime();
-        boolean paused = NimarkoUiAnimationClock.isPaused();
+        boolean paused = UiAnimationClock.isPaused();
         if (paused && (particles == null || particles.length != nx + 1 || matrixTextParticles == null || matrixTextParticles.length != nx + 1 || matrixTextParticles[0].length != ny + 1)) {
             return;
         }
@@ -168,7 +168,7 @@ public class MatrixParticlesDrawable {
                 paint.setAlpha((int) (p * alpha * 255));
                 canvas.drawBitmap(bitmaps[nextIndex], x, y, paint);
                 paint.setAlpha(255);
-                if (p >= 1 && !NimarkoUiAnimationClock.isPaused()) {
+                if (p >= 1 && !UiAnimationClock.isPaused()) {
                     index = nextIndex;
                     lastUpdateTime = currentTime;
                     nextIndex = Math.abs(Utilities.fastRandom.nextInt() % 16);

@@ -455,8 +455,26 @@ public class NotificationCenter {
     private static volatile NotificationCenter[] Instance = new NotificationCenter[UserConfig.MAX_ACCOUNT_COUNT];
     private static volatile NotificationCenter globalInstance;
 
+    private static volatile NotificationCenter invalidAccountInstance;
+    private static volatile boolean invalidAccountLogged;
     @UiThread
     public static NotificationCenter getInstance(int num) {
+        if (num < 0 || num >= Instance.length) {
+            if (!invalidAccountLogged) {
+                invalidAccountLogged = true;
+                FileLog.w("NotificationCenter: ignoring invalid account index " + num);
+            }
+            NotificationCenter sink = invalidAccountInstance;
+            if (sink == null) {
+                synchronized (NotificationCenter.class) {
+                    sink = invalidAccountInstance;
+                    if (sink == null) {
+                        invalidAccountInstance = sink = new DiscardNotificationCenter();
+                    }
+                }
+            }
+            return sink;
+        }
         NotificationCenter localInstance = Instance[num];
         if (localInstance == null) {
             synchronized (NotificationCenter.class) {
@@ -485,6 +503,69 @@ public class NotificationCenter {
 
     public NotificationCenter(int account) {
         currentAccount = account;
+    }
+
+    private static final class DiscardNotificationCenter extends NotificationCenter {
+        private static final Runnable EMPTY_LISTENER = () -> {};
+        private static final ObserversGroup EMPTY_GROUP = new ObserversGroup() {
+            @Override
+            public ObserversGroup add(int id) {
+                return this;
+            }
+
+            @Override
+            public ObserversGroup addGlobal(int id) {
+                return this;
+            }
+
+            @Override
+            public void removeAllObservers() {}
+        };
+
+        private DiscardNotificationCenter() {
+            super(-2);
+        }
+
+        @Override
+        public void addObserver(NotificationCenterDelegate observer, int id) {}
+
+        @Override
+        public void removeObserver(NotificationCenterDelegate observer, int id) {}
+
+        @Override
+        public void postNotificationName(int id, Object... args) {}
+
+        @Override
+        public void postNotificationNameOnUIThread(int id, Object... args) {}
+
+        @Override
+        public void postNotificationNameInternal(int id, boolean allowDuringAnimation, Object... args) {}
+
+        @Override
+        public int setAnimationInProgress(int oldIndex, int[] allowedNotifications, boolean stopHeavyOperations) {
+            return 0;
+        }
+
+        @Override
+        public ObserversGroup createObserversGroup(NotificationCenterDelegate delegate) {
+            return EMPTY_GROUP;
+        }
+
+        @Override
+        public ObserversGroup createWeakObserversGroup(NotificationCenterDelegate delegate) {
+            return EMPTY_GROUP;
+        }
+
+        @Override
+        public Runnable listen(View view, int id, Utilities.Callback<Object[]> callback) {
+            return EMPTY_LISTENER;
+        }
+
+        @Override
+        public void addPostponeNotificationsCallback(PostponeNotificationCallback callback) {}
+
+        @Override
+        public void removePostponeNotificationsCallback(PostponeNotificationCallback callback) {}
     }
 
     public int setAnimationInProgress(int oldIndex, int[] allowedNotifications) {
@@ -740,7 +821,9 @@ public class NotificationCenter {
                 }
             }
         }
+        Throwable deliveryFailure = null;
         broadcasting++;
+        try {
         ArrayList<NotificationCenterDelegate> objects = observers.get(id);
         if (objects != null && !objects.isEmpty()) {
             for (int a = 0; a < objects.size(); a++) {
@@ -748,8 +831,28 @@ public class NotificationCenter {
                 deliverNotification(obj, id, currentAccount, args);
             }
         }
+        } catch (RuntimeException | Error failure) {
+            deliveryFailure = failure;
+            throw failure;
+        } finally {
         broadcasting--;
         if (broadcasting == 0) {
+                if (deliveryFailure == null) {
+                    drainPendingObservers();
+                } else {
+                    try {
+                        drainPendingObservers();
+                    } catch (RuntimeException | Error cleanupFailure) {
+                        if (cleanupFailure != deliveryFailure) {
+                            deliveryFailure.addSuppressed(cleanupFailure);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void drainPendingObservers() {
             if (removeAfterBroadcast.size() != 0) {
                 for (int a = 0; a < removeAfterBroadcast.size(); a++) {
                     int key = removeAfterBroadcast.keyAt(a);
@@ -780,7 +883,6 @@ public class NotificationCenter {
                 addAfterBroadcast.clear();
             }
         }
-    }
 
     private static void deliverNotification(NotificationCenterDelegate observer, int id, int account, Object[] args) {
         long token = RawProxyDiagnostics.begin(observer, RawProxyDiagnostics.Phase.DELIVERY);

@@ -1,7 +1,7 @@
 diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
 --- a/core/src/main/cpp/android.cpp
 +++ b/core/src/main/cpp/android.cpp
-@@ -6,6 +6,10 @@
+@@ -8,6 +8,10 @@
  #include <string>
  #include <dlfcn.h>
  #include <mutex>
@@ -12,10 +12,11 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
  #include "android.h"
  #include "utils/well_known_classes.h"
  #include "art/art_method.h"
-@@ -15,6 +19,36 @@
- 
+@@ -16,6 +20,36 @@
+ #include "utils/memory.h"
+
  using namespace pine;
- 
++
 +static bool TryReadMemoryWord(const void* base, size_t offset, uintptr_t& value) {
 +    value = 0;
 +    uintptr_t address = reinterpret_cast<uintptr_t>(base);
@@ -45,20 +46,19 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
 +    value = reinterpret_cast<void*>(word);
 +    return true;
 +}
-+
+
  int Android::version = -1;
  JavaVM* Android::jvm_ = nullptr;
- 
-@@ -117,6 +151,7 @@
+@@ -119,6 +153,7 @@
  }
- 
+
  void Android::InitDisableMovingGc(const ElfImage* handle) {
 +    heap_ = nullptr;
      if (version < kL) return;
- 
+
      increment_disable_moving_gc_ = reinterpret_cast<void (*)(void*, void*)>(handle->GetSymbolAddress(
-@@ -132,14 +167,16 @@
- 
+@@ -134,14 +169,16 @@
+
      void** instance_ptr = static_cast<void**>(handle->GetSymbolAddress(
              "_ZN3art7Runtime9instance_E", false));
 -    void* runtime = instance_ptr ? *instance_ptr : nullptr;
@@ -76,7 +76,7 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
      if (UNLIKELY(!heap_)) {
          increment_disable_moving_gc_ = nullptr;
          decrement_disable_moving_gc_ = nullptr;
-@@ -255,7 +292,7 @@
+@@ -257,7 +294,7 @@
      }
      void** instance_ptr = static_cast<void**>(handle->GetSymbolAddress("_ZN3art7Runtime9instance_E"));
      void* runtime;
@@ -85,7 +85,7 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
          LOGE("Unable to retrieve Runtime.");
          return;
      }
-@@ -272,9 +309,8 @@
+@@ -274,9 +311,8 @@
      std::vector<size_t> known_offsets = OffsetOfJavaVm(has_smaller_irt);
      size_t jvm_offset = 0;
      for (size_t offset : known_offsets) {
@@ -97,18 +97,18 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
              jvm_offset = offset;
              break;
          }
-@@ -306,7 +342,9 @@
+@@ -308,7 +344,9 @@
              ? sizeof(void*) * 2
              : sizeof(std::unique_ptr<void>) + sizeof(void*) * 2;
- 
+
 -    void* class_linker = *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(runtime) + java_vm_offset - kDifference);
 +    void* class_linker = nullptr;
 +    if (java_vm_offset >= kDifference)
 +        TryReadPointer(runtime, java_vm_offset - kDifference, class_linker);
      SetClassLinker(class_linker);
  }
- 
-@@ -331,18 +369,19 @@
+
+@@ -333,18 +371,19 @@
              LOGW("ProfileSaver::instance_ not found. Fallback to clearing jit info.");
              return;
          }
@@ -130,5 +130,5 @@ diff --git a/core/src/main/cpp/android.cpp b/core/src/main/cpp/android.cpp
 +    if (java_vm_offset > SIZE_MAX - kDifference) return;
 +    TryReadPointer(runtime, java_vm_offset + kDifference, jit_code_cache_);
  }
- 
+
  ALWAYS_INLINE ScopedGCCriticalSection::ScopedGCCriticalSection(void* self, art::GcCause cause,

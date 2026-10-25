@@ -26,12 +26,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.preferences.helpers.NimarkoAlertDialogSwitchers;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.preferences.helpers.AlertDialogSwitchers;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
-public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+public class MessagesPreferencesActivity extends UniversalPreferencesActivity {
 
     private final int messageMenuRow = 1, messageSizeRow = 2, directShareRow = 3,
             showForwardDateRow = 5, pencilIconForEditedRow = 6;
@@ -63,10 +63,10 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         items.add(asPlainSettingsRowWithSubtitle(directShareRow, getString(R.string.DirectShare),
                 getString(R.string.DirectShareInfo)));
         items.add(SettingsHelper.asSwitchCG(showForwardDateRow, getString(R.string.NM_ForwardMsgDate))
-                .setChecked(NimarkoConfig.msgForwardDate)
+                .setChecked(AppConfig.msgForwardDate)
         );
         items.add(SettingsHelper.asSwitchCG(pencilIconForEditedRow, getString(R.string.AP_ShowPencilIcon))
-                .setChecked(NimarkoConfig.showPencilIcon)
+                .setChecked(AppConfig.showPencilIcon)
         );
         items.add(UItem.asShadow(null));
 
@@ -80,28 +80,28 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         items.add(asPlainSettingsRow(slideActionRow,
                 getString(R.string.NM_MsgSlideAction), getSlideActionValue()));
         items.add(SettingsHelper.asSwitchCG(deleteForAllRow, getString(R.string.NM_DeleteForAll))
-                .setChecked(NimarkoConfig.deleteForAll)
+                .setChecked(AppConfig.deleteForAll)
         );
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.TelegramPremium)));
         items.add(SettingsHelper.asSwitchCG(reactionsOverlayRow, getString(R.string.NM_DisableReactionsOverlay))
-                .setChecked(NimarkoConfig.disableReactionsOverlay)
+                .setChecked(AppConfig.disableReactionsOverlay)
         );
         items.add(SettingsHelper.asSwitchCG(reactionAnimationRow, getString(R.string.NM_DisableReactionAnim))
-                .setChecked(NimarkoConfig.disableReactionAnim)
+                .setChecked(AppConfig.disableReactionAnim)
         );
         items.add(SettingsHelper.asSwitchCG(tapsOnPremiumStickersRow, getString(R.string.NM_DisablePremStickAnim))
-                .setChecked(NimarkoConfig.disablePremStickAnim)
+                .setChecked(AppConfig.disablePremStickAnim)
         );
         items.add(SettingsHelper.asSwitchCG(premiumStickersAutoplayRow, getString(R.string.NM_DisablePremStickAutoPlay))
-                .setChecked(NimarkoConfig.disablePremStickAutoPlay)
+                .setChecked(AppConfig.disablePremStickAutoPlay)
         );
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(getString(R.string.NM_MSG_Header_Sending)));
         items.add(SettingsHelper.asSwitchCG(gifSpoilersRow, getString(R.string.NM_MSG_GifSpoilers))
-                .setChecked(NimarkoConfig.gifSpoilers)
+                .setChecked(AppConfig.gifSpoilers)
         );
         items.add(UItem.asShadow(null));
     }
@@ -111,15 +111,15 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         if (item.id == messageMenuRow) {
             presentFragment(new MessageMenuPreferencesActivity());
         } else if (item.id == messageSizeRow) {
-            NimarkoAlertDialogSwitchers.showMessageSize(this);
+            AlertDialogSwitchers.showMessageSize(this);
         } else if (item.id == directShareRow) {
             showDirectShareConfigurator(this);
         } else if (item.id == showForwardDateRow) {
-            NimarkoConfig.toggleMsgForwardDate();
-            updateCheckState(view, NimarkoConfig.msgForwardDate);
+            AppConfig.toggleMsgForwardDate();
+            updateCheckState(view, AppConfig.msgForwardDate);
         } else if (item.id == pencilIconForEditedRow) {
-            NimarkoConfig.toggleShowPencilIcon();
-            updateCheckState(view, NimarkoConfig.showPencilIcon);
+            AppConfig.toggleShowPencilIcon();
+            updateCheckState(view, AppConfig.showPencilIcon);
         } else if (item.id == messageFilterRow) {
             presentFragment(new MessageFiltersPreferencesActivity());
         } else if (item.id == leftBottomBtnRow) {
@@ -129,31 +129,31 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         } else if (item.id == slideActionRow) {
             showSlideActionSelector(() -> SettingsHelper.updateButtonValue(view, getSlideActionValue()));
         } else if (item.id == deleteForAllRow) {
-            NimarkoConfig.toggleDeleteForAll();
-            updateCheckState(view, NimarkoConfig.deleteForAll);
+            AppConfig.toggleDeleteForAll();
+            updateCheckState(view, AppConfig.deleteForAll);
         } else if (item.id == reactionsOverlayRow) {
-            NimarkoConfig.toggleDisableReactionsOverlay();
-            updateCheckState(view, NimarkoConfig.disableReactionsOverlay);
+            AppConfig.toggleDisableReactionsOverlay();
+            updateCheckState(view, AppConfig.disableReactionsOverlay);
 
             showRestartBulletin();
         } else if (item.id == reactionAnimationRow) {
-            NimarkoConfig.toggleDisableReactionAnim();
-            updateCheckState(view, NimarkoConfig.disableReactionAnim);
+            AppConfig.toggleDisableReactionAnim();
+            updateCheckState(view, AppConfig.disableReactionAnim);
 
             showRestartBulletin();
         } else if (item.id == tapsOnPremiumStickersRow) {
-            NimarkoConfig.toggleDisablePremStickAnim();
-            updateCheckState(view, NimarkoConfig.disablePremStickAnim);
+            AppConfig.toggleDisablePremStickAnim();
+            updateCheckState(view, AppConfig.disablePremStickAnim);
 
             showRestartBulletin();
         } else if (item.id == premiumStickersAutoplayRow) {
-            NimarkoConfig.toggleDisablePremStickAutoPlay();
-            updateCheckState(view, NimarkoConfig.disablePremStickAutoPlay);
+            AppConfig.toggleDisablePremStickAutoPlay();
+            updateCheckState(view, AppConfig.disablePremStickAutoPlay);
 
             showRestartBulletin();
         } else if (item.id == gifSpoilersRow) {
-            NimarkoConfig.toggleGifSpoilers();
-            updateCheckState(view, NimarkoConfig.gifSpoilers);
+            AppConfig.toggleGifSpoilers();
+            updateCheckState(view, AppConfig.gifSpoilers);
         }
     }
 
@@ -168,48 +168,48 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.RepostToStory),
                         R.drawable.large_repost_story,
-                        () -> NimarkoConfig.shareDrawStoryButton,
-                        () -> NimarkoConfig.toggleShareDrawStoryButton(),
+                        () -> AppConfig.shareDrawStoryButton,
+                        () -> AppConfig.toggleShareDrawStoryButton(),
                         true,
                         false
                 ),
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.FilterChats),
                         0,
-                        () -> NimarkoConfig.usersDrawShareButton,
-                        () -> NimarkoConfig.toggleUsersDrawShareButton(),
+                        () -> AppConfig.usersDrawShareButton,
+                        () -> AppConfig.toggleUsersDrawShareButton(),
                         false,
                         false
                 ),
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.FilterGroups),
                         0,
-                        () -> NimarkoConfig.supergroupsDrawShareButton,
-                        () -> NimarkoConfig.toggleSupergroupsDrawShareButton(),
+                        () -> AppConfig.supergroupsDrawShareButton,
+                        () -> AppConfig.toggleSupergroupsDrawShareButton(),
                         false,
                         false
                 ),
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.FilterChannels),
                         0,
-                        () -> NimarkoConfig.channelsDrawShareButton,
-                        () -> NimarkoConfig.toggleChannelsDrawShareButton(),
+                        () -> AppConfig.channelsDrawShareButton,
+                        () -> AppConfig.toggleChannelsDrawShareButton(),
                         false,
                         false
                 ),
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.FilterBots),
                         0,
-                        () -> NimarkoConfig.botsDrawShareButton,
-                        () -> NimarkoConfig.toggleBotsDrawShareButton(),
+                        () -> AppConfig.botsDrawShareButton,
+                        () -> AppConfig.toggleBotsDrawShareButton(),
                         false,
                         false
                 ),
                 new ChatsPreferencesActivity.MenuItemConfig(
                         getString(R.string.StickersName),
                         0,
-                        () -> NimarkoConfig.stickersDrawShareButton,
-                        () -> NimarkoConfig.toggleStickersDrawShareButton(),
+                        () -> AppConfig.stickersDrawShareButton,
+                        () -> AppConfig.toggleStickersDrawShareButton(),
                         false,
                         false
                 )
@@ -219,11 +219,11 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
     }
 
     private String getLeftBottomButtonValue() {
-        return switch (NimarkoConfig.actionsBarLeftButton) {
-            case NimarkoConfig.ACTIONS_LEFT_SAVE_MESSAGE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE -> getString(R.string.DirectShare);
-            case NimarkoConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP -> getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship);
-            case NimarkoConfig.ACTIONS_LEFT_REPLY -> getString(R.string.Reply);
+        return switch (AppConfig.actionsBarLeftButton) {
+            case AppConfig.ACTIONS_LEFT_SAVE_MESSAGE -> getString(R.string.NM_ToSaved);
+            case AppConfig.ACTIONS_LEFT_DIRECT_SHARE -> getString(R.string.DirectShare);
+            case AppConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP -> getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship);
+            case AppConfig.ACTIONS_LEFT_REPLY -> getString(R.string.Reply);
             default -> getString(R.string.Reply);
         };
     }
@@ -233,31 +233,31 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         ArrayList<Integer> configValues = new ArrayList<>();
 
         configStringKeys.add(getString(R.string.Forward) + " " + getString(R.string.NM_Without_Authorship));
-        configValues.add(NimarkoConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP);
+        configValues.add(AppConfig.ACTIONS_LEFT_FORWARD_WO_AUTHORSHIP);
 
         configStringKeys.add(getString(R.string.Reply));
-        configValues.add(NimarkoConfig.ACTIONS_LEFT_REPLY);
+        configValues.add(AppConfig.ACTIONS_LEFT_REPLY);
 
         configStringKeys.add(getString(R.string.NM_ToSaved));
-        configValues.add(NimarkoConfig.ACTIONS_LEFT_SAVE_MESSAGE);
+        configValues.add(AppConfig.ACTIONS_LEFT_SAVE_MESSAGE);
 
         configStringKeys.add(getString(R.string.DirectShare));
-        configValues.add(NimarkoConfig.ACTIONS_LEFT_DIRECT_SHARE);
+        configValues.add(AppConfig.ACTIONS_LEFT_DIRECT_SHARE);
 
-        PopupHelper.show(configStringKeys, getString(R.string.NM_LeftBottomButtonAction), configValues.indexOf(NimarkoConfig.actionsBarLeftButton), getContext(), i -> {
-            NimarkoConfig.setActionsBarLeftButton(configValues.get(i));
+        PopupHelper.show(configStringKeys, getString(R.string.NM_LeftBottomButtonAction), configValues.indexOf(AppConfig.actionsBarLeftButton), getContext(), i -> {
+            AppConfig.setActionsBarLeftButton(configValues.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getDoubleTapActionValue() {
-        return switch (NimarkoConfig.doubletapaction) {
-            case NimarkoConfig.DOUBLE_TAP_ACTION_REACTION -> getString(R.string.Reactions);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_REPLY -> getString(R.string.Reply);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_SAVE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_EDIT -> getString(R.string.Edit);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION -> getString(R.string.NM_DoubleTap_EditOrReact);
-            case NimarkoConfig.DOUBLE_TAP_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
+        return switch (AppConfig.doubletapaction) {
+            case AppConfig.DOUBLE_TAP_ACTION_REACTION -> getString(R.string.Reactions);
+            case AppConfig.DOUBLE_TAP_ACTION_REPLY -> getString(R.string.Reply);
+            case AppConfig.DOUBLE_TAP_ACTION_SAVE -> getString(R.string.NM_ToSaved);
+            case AppConfig.DOUBLE_TAP_ACTION_EDIT -> getString(R.string.Edit);
+            case AppConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION -> getString(R.string.NM_DoubleTap_EditOrReact);
+            case AppConfig.DOUBLE_TAP_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
             default -> getString(R.string.Disable);
         };
     }
@@ -267,37 +267,37 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         ArrayList<Integer> configValues = new ArrayList<>();
 
         configStringKeys.add(getString(R.string.Disable));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_NONE);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_NONE);
 
         configStringKeys.add(getString(R.string.Reactions));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_REACTION);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_REACTION);
 
         configStringKeys.add(getString(R.string.Reply));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_REPLY);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_REPLY);
 
         configStringKeys.add(getString(R.string.NM_ToSaved));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_SAVE);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_SAVE);
 
         configStringKeys.add(getString(R.string.Edit));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_EDIT);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_EDIT);
 
         configStringKeys.add(getString(R.string.TranslateMessage));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_TRANSLATE);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_TRANSLATE);
 
         configStringKeys.add(getString(R.string.NM_DoubleTap_EditOrReact));
-        configValues.add(NimarkoConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION);
+        configValues.add(AppConfig.DOUBLE_TAP_ACTION_EDIT_OR_REACTION);
 
-        PopupHelper.show(configStringKeys, getString(R.string.NM_DoubleTapAction), configValues.indexOf(NimarkoConfig.doubletapaction), getContext(), i -> {
-            NimarkoConfig.setDoubleTapAction(configValues.get(i));
+        PopupHelper.show(configStringKeys, getString(R.string.NM_DoubleTapAction), configValues.indexOf(AppConfig.doubletapaction), getContext(), i -> {
+            AppConfig.setDoubleTapAction(configValues.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getSlideActionValue() {
-        return switch (NimarkoConfig.messageslideaction) {
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_SAVE -> getString(R.string.NM_ToSaved);
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
-            case NimarkoConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE -> getString(R.string.DirectShare);
+        return switch (AppConfig.messageslideaction) {
+            case AppConfig.MESSAGE_SLIDE_ACTION_SAVE -> getString(R.string.NM_ToSaved);
+            case AppConfig.MESSAGE_SLIDE_ACTION_TRANSLATE -> getString(R.string.TranslateMessage);
+            case AppConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE -> getString(R.string.DirectShare);
             default -> getString(R.string.Reply);
         };
     }
@@ -307,19 +307,19 @@ public class MessagesPreferencesActivity extends NimarkoUniversalPreferencesActi
         ArrayList<Integer> configValues = new ArrayList<>();
 
         configStringKeys.add(getString(R.string.Reply));
-        configValues.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_REPLY);
+        configValues.add(AppConfig.MESSAGE_SLIDE_ACTION_REPLY);
 
         configStringKeys.add(getString(R.string.NM_ToSaved));
-        configValues.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_SAVE);
+        configValues.add(AppConfig.MESSAGE_SLIDE_ACTION_SAVE);
 
         configStringKeys.add(getString(R.string.TranslateMessage));
-        configValues.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_TRANSLATE);
+        configValues.add(AppConfig.MESSAGE_SLIDE_ACTION_TRANSLATE);
 
         configStringKeys.add(getString(R.string.DirectShare));
-        configValues.add(NimarkoConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE);
+        configValues.add(AppConfig.MESSAGE_SLIDE_ACTION_DIRECT_SHARE);
 
-        PopupHelper.show(configStringKeys, getString(R.string.NM_MsgSlideAction), configValues.indexOf(NimarkoConfig.messageslideaction), getContext(), i -> {
-            NimarkoConfig.setMessageSlideAction(configValues.get(i));
+        PopupHelper.show(configStringKeys, getString(R.string.NM_MsgSlideAction), configValues.indexOf(AppConfig.messageslideaction), getContext(), i -> {
+            AppConfig.setMessageSlideAction(configValues.get(i));
             if (runnable != null) runnable.run();
         });
     }

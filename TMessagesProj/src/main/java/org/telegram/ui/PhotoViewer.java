@@ -10,7 +10,7 @@
 
 package org.telegram.ui;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -334,8 +334,8 @@ import org.telegram.ui.Stories.recorder.KeyboardNotifier;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 import app.nimarkogram.messenger.components.ChooseSubtitlesLayout;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoPhotoViewerHelper;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.PhotoViewerHelper;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -1516,7 +1516,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         bottomSheet.scrollNavBar = true;
         bottomSheet.show();
         // NG: disableVibration gate (CG parity, PhotoViewer:1384).
-        if (!NimarkoConfig.disableVibration) {
+        if (!AppConfig.disableVibration) {
             try {
                 containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignore) {}
@@ -2189,6 +2189,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private Bitmap videoFrameBitmap = null;
     private int currentIndex;
     private volatile int openGeneration;
+    private PhotoReturnHandoff photoReturnHandoff;
     private volatile int playerGeneration;
     private volatile long coverOperationGeneration;
     private volatile int segmentationGeneration;
@@ -2392,7 +2393,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private final ArrayList<TLRPC.Message> imagesArrMessages = new ArrayList<>();
     private final ArrayList<SecureDocument> secureDocuments = new ArrayList<>();
     private final ArrayList<TLRPC.Photo> avatarsArr = new ArrayList<>();
-    private NimarkoPhotoViewerHelper photoViewerHelper;
+    private PhotoViewerHelper photoViewerHelper;
     private final ArrayList<Object> imagesArrLocals = new ArrayList<>();
     private ImageLocation currentAvatarLocation = null;
     private SavedState savedState = null;
@@ -3019,6 +3020,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         public boolean fadeIn;
         public boolean keepImageReceiverVisible;
         public boolean clipTransitionToParent;
+        public Rect returnSourceBounds;
     }
 
     private static class TransitionGeometry {
@@ -5084,6 +5086,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     public void setParentActivity(Activity inActivity, BaseFragment fragment, Theme.ResourcesProvider resourcesProvider) {
+        final int generationBeforeHandoff = openGeneration;
+        if (!finishPhotoReturnHandoff() || openGeneration != generationBeforeHandoff) {
+            return;
+        }
         if (activityVisibilityController != null) {
             activityVisibilityController.destroy();
             activityVisibilityController = null;
@@ -5334,6 +5340,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     closePhoto(true, false);
                 } else if (id == gallery_menu_save) {
+                    if (pageBlocksAdapter != null && !allowShare) {
+                        return;
+                    }
                     if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || BuildVars.NO_SCOPED_STORAGE) && parentActivity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
                         parentActivity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 4);
                         return;
@@ -5785,7 +5794,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         }
                     }
 
-                    final boolean[] deleteForAll = {NimarkoConfig.deleteForAll};
+                    final boolean[] deleteForAll = {AppConfig.deleteForAll};
                     if (currentMessageObject != null && !currentMessageObject.scheduled) {
                         long dialogId = currentMessageObject.getDialogId();
                         if (!DialogObject.isEncryptedDialog(dialogId)) {
@@ -5816,9 +5825,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                         CheckBoxCell cell = new CheckBoxCell(parentActivity, 1, resourcesProvider);
                                         cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
                                         if (currentChat != null) {
-                                            cell.setText(getString("DeleteForAll", R.string.DeleteForAll), "", NimarkoConfig.deleteForAll, false);
+                                            cell.setText(getString("DeleteForAll", R.string.DeleteForAll), "", AppConfig.deleteForAll, false);
                                         } else {
-                                            cell.setText(LocaleController.formatString("DeleteForUser", R.string.DeleteForUser, UserObject.getFirstName(currentUser)), "", NimarkoConfig.deleteForAll, false);
+                                            cell.setText(LocaleController.formatString("DeleteForUser", R.string.DeleteForUser, UserObject.getFirstName(currentUser)), "", AppConfig.deleteForAll, false);
                                         }
                                         cell.setPadding(LocaleController.isRTL ? dp(16) : dp(8), 0, LocaleController.isRTL ? dp(8) : dp(16), 0);
                                         frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT, 0, 0, 0, 0));
@@ -7849,7 +7858,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             // the system long-press haptic is fired by View.performLongClick() before this callback
             // returns. Suppress the system haptic when disableVibration is on by toggling
             // hapticFeedbackEnabled on the button. ItemOptions itself does not emit additional haptics.
-            view.setHapticFeedbackEnabled(!NimarkoConfig.disableVibration);
+            view.setHapticFeedbackEnabled(!AppConfig.disableVibration);
             final boolean showSendAsFile = !canEdit && !captionEdit.hasTimer() && (placeProvider == null || placeProvider.canSendAsFile()) && !hasVideoEditsLostAsDocument();
             final boolean showSchedule = !canEdit && canScheduleMessage && !hasTtl;
             final boolean showWithoutSound = !(canEdit && canReplace) && !userIsSelf;
@@ -9997,7 +10006,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             isVisibleOrAnimating = true;
             WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
             wm.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             onShowView();
             if (currentPlaceObject != null && !currentPlaceObject.keepImageReceiverVisible) {
                 currentPlaceObject.imageReceiver.setVisible(false, false);
@@ -11543,7 +11552,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             // at construction kept a SurfaceView in use after Media Glow was toggled ON later, leaving
             // TextureView.getBitmap() unavailable until app restart. Reading NimarkoConfig.mediaGlow at
             // surface-creation time keeps the original intent (SurfaceView only when SDK >= 30 and glow off).
-            final boolean useSurfaceView = Build.VERSION.SDK_INT >= 30 && !app.nimarkogram.messenger.NimarkoConfig.mediaGlow;
+            final boolean useSurfaceView = Build.VERSION.SDK_INT >= 30 && !app.nimarkogram.messenger.AppConfig.mediaGlow;
             if (useSurfaceView && injectingVideoPlayerSurface == null) {
                 videoSurfaceView = new SurfaceView(parentActivity);
                 usedSurfaceView = true;
@@ -12815,9 +12824,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     private void detectFaces(String key, ImageReceiver.BitmapHolder bitmap, int orientation) {
         if (key == null || bitmap == null || bitmap.bitmap == null) {
+            if (bitmap != null) {
+                AndroidUtilities.runOnUIThread(bitmap::release);
+            }
             return;
         }
-        Utilities.globalQueue.postRunnable(() -> {
+        Runnable detection = () -> {
             FaceDetector faceDetector = null;
             try {
                 faceDetector = new FaceDetector.Builder(ApplicationLoader.applicationContext)
@@ -12840,7 +12852,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         FileLog.e("face detection is not operational");
                     }
                     AndroidUtilities.runOnUIThread(() -> {
-                        bitmap.release();
                         String imageKey = centerImage.getImageKey();
                         if (key.equals(imageKey)) {
                             currentImageHasFace = 2;
@@ -12851,11 +12862,23 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             } catch (Exception e) {
                 FileLog.e(e);
             } finally {
+                try {
                 if (faceDetector != null) {
                     faceDetector.release();
                 }
+                } finally {
+                    AndroidUtilities.runOnUIThread(bitmap::release);
+                }
             }
-        });
+        };
+        boolean submitted = false;
+        try {
+            submitted = Utilities.globalQueue.postRunnable(detection);
+        } finally {
+            if (!submitted) {
+                AndroidUtilities.runOnUIThread(bitmap::release);
+            }
+        }
     }
 
     private boolean wasCountViewShown;
@@ -14978,6 +15001,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         menuItem.hideSubItem(gallery_menu_edit_avatar);
         menuItem.hideSubItem(gallery_menu_set_as_main);
         menuItem.hideSubItem(gallery_menu_delete);
+        menuItem.hideSubItem(gallery_menu_cancel_loading);
         speedItem.setVisibility(View.GONE);
         speedGap.setVisibility(View.GONE);
         videoItem.setVisibility(View.GONE);
@@ -15816,7 +15840,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                 /** NimarkoGram start (CG PhotoViewerHelper port) */
                 if (parentFragment != null) {
-                    photoViewerHelper = new NimarkoPhotoViewerHelper(
+                    photoViewerHelper = new PhotoViewerHelper(
                             avatarsArr,
                             switchingToIndex,
                             avatarsDialogId,
@@ -16008,7 +16032,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     if (isLivePhoto && object instanceof MediaController.PhotoEntry) {
                         final MediaController.PhotoEntry entry = (MediaController.PhotoEntry) object;
-                        compressItem.setVisibility(isDocumentsPicker || sendPhotoTypeIsGif || sendPhotoTypeIsPollMedia ? View.GONE : View.VISIBLE);
+                        compressItem.setVisibility(isDocumentsPicker || sendPhotoTypeIsGif || sendPhotoTypeIsPollMedia || sendPhotoType == SELECT_TYPE_QR ? View.GONE : View.VISIBLE);
                         compressItem.setPhotoState(highQuality);
                     }
                 } else {
@@ -16023,8 +16047,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     isCurrentVideo = false;
                     if (object instanceof MediaController.PhotoEntry && !((MediaController.PhotoEntry) object).isVideo) {
                         final MediaController.PhotoEntry entry = (MediaController.PhotoEntry) object;
-                        if (!entry.isVideo && sendPhotoType != SELECT_TYPE_STICKER && (currentIndex == index ? getCurrentVideoEditedInfo() : entry.editedInfo) == null) {
-                            compressItem.setVisibility(isDocumentsPicker || sendPhotoTypeIsGif || sendPhotoTypeIsPollMedia ? View.GONE : View.VISIBLE);
+                        if (!entry.isVideo && sendPhotoType != SELECT_TYPE_STICKER && sendPhotoType != SELECT_TYPE_QR && (currentIndex == index ? getCurrentVideoEditedInfo() : entry.editedInfo) == null) {
+                            compressItem.setVisibility(isDocumentsPicker || sendPhotoTypeIsGif || sendPhotoTypeIsPollMedia || sendPhotoType == SELECT_TYPE_QR ? View.GONE : View.VISIBLE);
                             compressItem.setPhotoState(highQuality);
                         } else {
                             compressItem.setVisibility(View.GONE);
@@ -16153,7 +16177,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             menuItem.hideSubItem(gallery_menu_translate);
             menuItem.hideSubItem(gallery_menu_hide_translation);
-            allowShare = !MessagesController.getInstance(currentAccount).isPeerNoForwards(currentDialogId) && (currentMessageObject == null || !currentMessageObject.hasRevealedExtendedMedia());
+            allowShare = !MessagesController.getInstance(currentAccount).isPeerNoForwards(currentDialogId) && (currentMessageObject == null || !currentMessageObject.hasRevealedExtendedMedia()) && !isPageBlocksNoForwards(pageBlocksAdapter);
             TL_iv.PageBlock pageBlock = pageBlocksAdapter.get(switchingToIndex);
             caption = pageBlocksAdapter.getCaption(switchingToIndex);
             isVideo = pageBlocksAdapter.isVideo(switchingToIndex);
@@ -16202,8 +16226,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         title = getString(R.string.AttachPhoto);
                     }
                 }
-                galleryButton.setVisibility(View.VISIBLE);
-                galleryGap.setVisibility(View.VISIBLE);
+                galleryButton.setVisibility(allowShare ? View.VISIBLE : View.GONE);
+                galleryGap.setVisibility(allowShare ? View.VISIBLE : View.GONE);
                 menuItem.hideSubItem(gallery_menu_savegif);
                 menuItem.checkHideMenuItem();
             }
@@ -17138,7 +17162,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // the adjacent receiver, so calling this at the top of setImageIndex would bind the capture
         // to the OUTGOING photo's receiver (e.g. the dark neighbor), painting its glow under the new
         // photo. Reading `centerImage` here guarantees the freshly-committed photo is captured.
-        if (app.nimarkogram.messenger.NimarkoConfig.mediaGlow) {
+        if (app.nimarkogram.messenger.AppConfig.mediaGlow) {
             app.nimarkogram.messenger.mediaglow.MediaGlowController.getInstance().onMediaChanged(
                     this, centerImage, getMediaGlowVideoTexture());
         }
@@ -18098,6 +18122,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return result;
     }
 
+    public static boolean isShowingPageBlock(TL_iv.PageBlock block) {
+        return block != null && Instance != null && !Instance.pipAnimationInProgress
+                && Instance.isVisible && !Instance.disableShowCheck && Instance.currentPageBlock == block;
+    }
+
     public static boolean isPlayingMessageInPip(MessageObject object) {
         return PipInstance != null && object != null && PipInstance.currentMessageObject != null && PipInstance.currentMessageObject.getId() == object.getId() && PipInstance.currentMessageObject.getDialogId() == object.getDialogId();
     }
@@ -18547,11 +18576,19 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             return false;
         }
         // NimarkoGram: pause the profile-banner video while the photo viewer is open.
-        if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
-            try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayOpen(); } catch (Throwable ignored) {}
+        if (!finishPhotoReturnHandoff() || isVisible) {
+            return false;
+        }
+        if (app.nimarkogram.messenger.banners.BannerConfig.enabled) {
+            try { app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onOverlayOpen(); } catch (Throwable ignored) {}
         }
 
+        final int openingGeneration = openGeneration;
+        final Activity openingActivity = parentActivity;
+        final FrameLayout openingWindow = windowView;
+
         final PlaceProviderObject object = provider.getPlaceForPhoto(messageObject, fileLocation, index, true, false);
+        if (openGeneration != openingGeneration || parentActivity != openingActivity || windowView != openingWindow || isVisible) return false;
         WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
         if (attachedToWindow) {
             try {
@@ -18572,7 +18609,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (chatActivity != null && chatActivity.getCurrentEncryptedChat() != null ||
                 avatarsDialogId != 0 && MessagesController.getInstance(currentAccount).isPeerNoForwards(avatarsDialogId) ||
                 messageObject != null && (MessagesController.getInstance(currentAccount).isPeerNoForwards(messageObject.getDialogId()) ||
-                (messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) || messageObject != null && messageObject.hasRevealedExtendedMedia()
+                (messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) || messageObject != null && messageObject.hasRevealedExtendedMedia() ||
+                isPageBlocksNoForwards(pageBlocksAdapter)
             ) {
                 windowLayoutParams.flags |= WindowManager.LayoutParams.FLAG_SECURE;
                 AndroidUtilities.logFlagSecure();
@@ -18584,7 +18622,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             windowView.setFocusable(false);
             containerView.setFocusable(false);
             wm.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             onShowView();
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -19214,8 +19252,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // closePhoto() — edit-mode/quality early returns and checkAnimation() — fading the glow out
         // and freeing its bitmap while the photo stayed on screen.
         // NimarkoGram: resume the profile-banner video when the photo viewer closes.
-        if (app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
-            try { app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayClose(); } catch (Throwable ignored) {}
+        if (app.nimarkogram.messenger.banners.BannerConfig.enabled) {
+            try { app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onOverlayClose(); } catch (Throwable ignored) {}
         }
         if (stickerMakerView != null) {
             stickerMakerView.isThanosInProgress = false;
@@ -19364,6 +19402,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         final boolean[] allowStart = new boolean[] { true };
         final Runnable[] start = new Runnable[1];
         final PlaceProviderObject object = placeProvider == null ? null : placeProvider.getPlaceForPhoto(currentMessageObject, getFileLocation(currentFileLocation), currentIndex, true, true);
+        final View returnSource = animated && !isInline && !fromEditMode
+                && currentEditMode == EDIT_MODE_NONE && imagesArrLocals.isEmpty()
+                && placeProvider != null && placeProvider.capturesClosingBackdrop()
+                && (currentMessageObject != null || currentPageBlock != null)
+                && this != PipInstance && !switchingInlineMode
+                && LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)
+                && object != null && object.clipTransitionToParent && object.imageReceiver != null
+                ? object.imageReceiver.getParentView() : null;
+        final PhotoReturnTarget returnTarget = returnSource == null ? null : new PhotoReturnTarget(object.imageReceiver, object.returnSourceBounds);
         if (videoPlayer == null && currentAnimation != null && object != null && object.imageReceiver != null) {
             AnimatedFileDrawable sourceAnimation = object.imageReceiver.getAnimation();
             if (sourceAnimation == currentAnimation) {
@@ -19437,7 +19484,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (isInline) {
             isInline = false;
             animationInProgress = 0;
-            onPhotoClosed(object, closeGeneration);
+            onPhotoClosed(object, closeGeneration, null);
             containerView.setScaleX(1.0f);
             containerView.setScaleY(1.0f);
             if (!doneButtonPressed) {
@@ -19642,7 +19689,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     containerView.setLayerType(View.LAYER_TYPE_NONE, null);
                     animationInProgress = 0;
                     invalidateBlur();
-                    onPhotoClosed(object, closeGeneration);
+                    onPhotoClosed(object, closeGeneration, returnTarget);
                     MediaController.getInstance().tryResumePausedAudio();
                     if (stickerEmpty && !stickerEmptySent && imagesArrLocals != null) {
                         for (Object obj : imagesArrLocals) {
@@ -19712,7 +19759,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     containerView.setLayerType(View.LAYER_TYPE_NONE, null);
                     animationInProgress = 0;
-                    onPhotoClosed(object, closeGeneration);
+                    onPhotoClosed(object, closeGeneration, null);
                     containerView.setScaleX(1.0f);
                     containerView.setScaleY(1.0f);
                     MediaController.getInstance().tryResumePausedAudio();
@@ -19819,10 +19866,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void clearAnimatingImageViews(int generation, ClippingImageView closingSecondaryImageView) {
+        try {
         if (animatingImageViewGeneration == generation) {
             animatingImageView.setImageBitmap(null);
             animatingImageViewGeneration = -1;
         }
+        } finally {
         if (closingSecondaryImageView != null
                 && (secondaryAnimatingImageView != closingSecondaryImageView
                 || secondaryAnimatingImageViewGeneration == generation)) {
@@ -19834,6 +19883,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
+    }
     private void removeObservers() {
         if (observersGroup != null) {
             observersGroup.removeAllObservers();
@@ -19842,7 +19892,51 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         ConnectionsManager.getInstance(currentAccount).cancelRequestsForGuid(classGuid);
     }
 
+    private static final class PhotoReturnTarget {
+        final ImageReceiver receiver;
+        final View source;
+        final String imageKey;
+        final String mediaKey;
+        final String thumbKey;
+        final Rect bounds = new Rect();
+        final Rect receiverBounds = new Rect();
+        final Rect currentBounds = new Rect();
+
+        PhotoReturnTarget(ImageReceiver receiver, Rect sourceBounds) {
+            this.receiver = receiver;
+            source = receiver.getParentView();
+            imageKey = receiver.getImageKey();
+            mediaKey = receiver.getMediaKey();
+            thumbKey = receiver.getThumbKey();
+            receiver.getDrawRegion().roundOut(receiverBounds);
+            bounds.set(sourceBounds != null ? sourceBounds : receiverBounds);
+        }
+
+        boolean isCurrent() {
+            receiver.getDrawRegion().roundOut(currentBounds);
+            return receiver.getParentView() == source
+                    && TextUtils.equals(imageKey, receiver.getImageKey())
+                    && TextUtils.equals(mediaKey, receiver.getMediaKey())
+                    && TextUtils.equals(thumbKey, receiver.getThumbKey())
+                    && receiverBounds.equals(currentBounds);
+        }
+    }
+
+    private boolean finishPhotoReturnHandoff() {
+        PhotoReturnHandoff handoff = photoReturnHandoff;
+        if (handoff != null) {
+            handoff.finishNow();
+            if (photoReturnHandoff == handoff && handoff.isRetired()) {
+                photoReturnHandoff = null;
+            }
+        }
+        return photoReturnHandoff == null;
+    }
     public void destroyPhotoViewer() {
+        final int generationBeforeHandoff = openGeneration;
+        if (!finishPhotoReturnHandoff() || openGeneration != generationBeforeHandoff) {
+            return;
+        }
         ++openGeneration;
         ++coverOperationGeneration;
         ++segmentationGeneration;
@@ -19910,7 +20004,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
-    private void onPhotoClosed(PlaceProviderObject object, int transitionGeneration) {
+    private void onPhotoClosed(PlaceProviderObject object, int transitionGeneration, PhotoReturnTarget returnTarget) {
         closingBackdropReceiver = null;
         normalizeParentScaleAfterClose();
         ++openGeneration;
@@ -19921,6 +20015,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         final ClippingImageView closingSecondaryImageView = secondaryAnimatingImageViewGeneration == transitionGeneration
                 ? secondaryAnimatingImageView : null;
         final PhotoViewerProvider closingProvider = placeProvider;
+        final Activity closingActivity = parentActivity;
+        final FrameLayout closingWindow = windowView;
         recycleCurrentBitmap();
         if (firstFrameView != null) {
             firstFrameView.clear();
@@ -19987,25 +20083,68 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         leftBlur.destroy();
         rightImage.setImageBitmap((Bitmap) null);
         rightBlur.destroy();
+        final Runnable clearClosingImages = () -> clearAnimatingImageViews(transitionGeneration, closingSecondaryImageView);
+        final PhotoReturnHandoff[] closingHandoff = new PhotoReturnHandoff[1];
+        final java.util.function.BooleanSupplier ownsClosingWindow = () -> openGeneration == closedGeneration
+                && windowView == closingWindow && parentActivity == closingActivity;
+        final java.util.function.BooleanSupplier retireClosingWindow = () -> {
+            if (!ownsClosingWindow.getAsBoolean()) {
+                return true;
+            }
+            if (closingWindow.getParent() != null) {
+                WindowManager wm = (WindowManager) closingActivity.getSystemService(Context.WINDOW_SERVICE);
+                if (returnTarget != null) {
+                    try {
+                        wm.removeViewImmediate(closingWindow);
+                    } catch (Throwable e) {
+                        try {
+                            FileLog.e(e);
+                        } finally {
+                            if (ownsClosingWindow.getAsBoolean() && closingWindow.getParent() != null) {
+                                wm.removeView(closingWindow);
+                            }
+                        }
+                    }
+                } else {
+                    wm.removeView(closingWindow);
+                }
+            }
+            if (!ownsClosingWindow.getAsBoolean()) {
+                return true;
+            }
+            if (returnTarget != null && closingWindow.getParent() != null) {
+                return false;
+            }
+            if (photoReturnHandoff == closingHandoff[0]) {
+                try {
+                    onHideView();
+                } finally {
+                    if (ownsClosingWindow.getAsBoolean() && photoReturnHandoff == closingHandoff[0]) {
+                        photoReturnHandoff = null;
+                    }
+                }
+            }
+            return true;
+        };
+        if (returnTarget == null) {
         containerView.post(() -> {
-            boolean cleanupCurrentGeneration = openGeneration == closedGeneration;
-            clearAnimatingImageViews(transitionGeneration, closingSecondaryImageView);
-            if (cleanupCurrentGeneration) {
                 // Keep the final transition copy until the source window has had a
                 // chance to draw its now-visible thumbnail. Clearing it only in the
                 // same task which removes the overlay prevents a transparent frame
                 // between the two windows.
                 try {
-                    if (windowView.getParent() != null) {
-                        WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
-                        wm.removeView(windowView);
-                        onHideView();
-                    }
-                } catch (Exception e) {
+                    clearClosingImages.run();
+                } catch (Throwable e) {
                     FileLog.e(e);
+                } finally {
+                    try {
+                        retireClosingWindow.getAsBoolean();
+                    } catch (Throwable e) {
+                        FileLog.e(e);
                 }
             }
         });
+        }
         groupedPhotosListView.clear();
         placeProvider = null;
         selectedPhotosAdapter.notifyDataSetChanged();
@@ -20017,6 +20156,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (object != null && object.imageReceiver != null) {
             object.imageReceiver.setVisible(true, true);
         }
+        if (returnTarget != null) {
+            PhotoReturnHandoff handoff = new PhotoReturnHandoff(closingActivity, returnTarget.source, closingSecondaryImageView, returnTarget.bounds,
+                    ownsClosingWindow, returnTarget::isCurrent,
+                    clearClosingImages, retireClosingWindow);
+            closingHandoff[0] = handoff;
+            photoReturnHandoff = handoff;
+        }
         if (parentChatActivity != null) {
             parentChatActivity.getFragmentView().invalidate();
         }
@@ -20024,9 +20170,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             videoFrameBitmap.recycle();
             videoFrameBitmap = null;
         }
+        try {
         if (closingProvider != null) {
             closingProvider.willHidePhotoViewer();
             closingProvider.onClose();
+            }
+        } finally {
+            if (closingHandoff[0] != null && photoReturnHandoff == closingHandoff[0] && ownsClosingWindow.getAsBoolean()) {
+                closingHandoff[0].start();
+            }
         }
     }
 
@@ -20109,7 +20261,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // the activity comes back to the foreground.
         if (autoPausedOnPause) {
             autoPausedOnPause = false;
-            if (app.nimarkogram.messenger.NimarkoConfig.autoPauseVideo
+            if (app.nimarkogram.messenger.AppConfig.autoPauseVideo
                     && !isPlayingVideoOrWeb()) {
                 try { playVideoOrWeb(); } catch (Throwable ignored) {}
             }
@@ -20119,6 +20271,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     public void onConfigurationChanged(Configuration newConfig) {}
 
     public void onPause() {
+        finishPhotoReturnHandoff();
         if (currentAnimation != null) {
             closePhoto(false, false);
             return;
@@ -20131,7 +20284,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         // NimarkoGram (CG parity): pause inline videos when the screen leaves
         // foreground. Track the pause so onResume can flip it back to playing.
-        if (app.nimarkogram.messenger.NimarkoConfig.autoPauseVideo
+        if (app.nimarkogram.messenger.AppConfig.autoPauseVideo
                 && (isPlayingVideoOrWeb() || photoViewerWebView != null)
                 && !AndroidUtilities.isInPictureInPictureMode(parentActivity)) {
             // Only known/controllable players are auto-resumed. Generic embeds
@@ -20818,6 +20971,17 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 && SharedConfig.isAutoplayVideo();
     }
 
+    private boolean isPageBlocksNoForwards(PageBlocksAdapter adapter) {
+        if (adapter == null) {
+            return false;
+        }
+        final Object parent = adapter.getParentObject();
+        if (parent instanceof MessageObject && ((MessageObject) parent).messageOwner != null) {
+            final MessageObject messageObject = (MessageObject) parent;
+            return MessagesController.getInstance(currentAccount).isPeerNoForwards(messageObject.getDialogId()) || messageObject.messageOwner.noforwards || messageObject.hasRevealedExtendedMedia();
+        }
+        return false;
+    }
     private boolean shouldIndexAutoPlayed(int index) {
         if (pageBlocksAdapter != null) {
             if ((pageBlocksAdapter.isVideo(index) || pageBlocksAdapter.isHardwarePlayer(index)) && SharedConfig.isAutoplayVideo()) {
@@ -22313,7 +22477,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     // NimarkoGram (CG parity): seconds-to-seek on double-tap. Exposed via
     // NimarkoConfig.videoSeekDuration; default 10 s matches stock Telegram.
     private int getDoubleTapDuration() {
-        return app.nimarkogram.messenger.NimarkoConfig.videoSeekDuration * 1000;
+        return app.nimarkogram.messenger.AppConfig.videoSeekDuration * 1000;
     }
 
     long totalRewinding;
@@ -23106,7 +23270,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // NimarkoGram (CG parity): sendVideosAtMaxQuality bumps the ceiling so
         // 4K-grade compression slots are reachable, mirroring CherrygramDebug's
         // sendVideosAtMaxQuality flag.
-        boolean maxQuality = app.nimarkogram.messenger.NimarkoConfig.sendVideosAtMaxQuality;
+        boolean maxQuality = app.nimarkogram.messenger.AppConfig.sendVideosAtMaxQuality;
         int maxCompression = maxQuality ? 5 : 2;
         int compressionsLimit = maxQuality ? 8 : 5;
         while (compressionsCount < compressionsLimit) {
@@ -23124,7 +23288,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         int maxSize = Math.max(h, w);
         // NimarkoGram (CG parity): extend the compression ladder to 4K when
         // sendVideosAtMaxQuality is on.
-        if (app.nimarkogram.messenger.NimarkoConfig.sendVideosAtMaxQuality) {
+        if (app.nimarkogram.messenger.AppConfig.sendVideosAtMaxQuality) {
             if (maxSize > 3840) {
                 compressionsCount = 7;
             } else if (maxSize > 2560) {
@@ -25047,7 +25211,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (windowView != null) {
             WindowManager wm = (WindowManager) parentActivity.getSystemService(Context.WINDOW_SERVICE);
             wm.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             windowView.invalidate();
         }
 

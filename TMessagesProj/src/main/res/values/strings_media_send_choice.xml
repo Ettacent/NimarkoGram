@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_MediaSendChoiceTitle">Sending format</string>
+    <string name="NM_MediaSendChoiceMedia">Media</string>
+    <string name="NM_MediaSendChoiceLink">As a link</string>
+    <string name="NM_MediaSendChoiceVideo">Video</string>
+    <string name="NM_MediaSendChoiceAudio">Audio</string>
+    <string name="NM_MediaSendChoiceSetting">Choose before sending</string>
+    <string name="NM_MediaSendChoiceDescription">Choose how to send media.</string>
+</resources>

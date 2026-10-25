@@ -4,7 +4,7 @@ package org.telegram.ui.Components;
 
 import app.nimarkogram.messenger.utils.ui.ProfileListPadding;
 import app.nimarkogram.messenger.utils.ParticipantOrder;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -2783,6 +2783,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
                                     mp.listView.hintPaddingBottom = getPagePaddingBottom(isStoriesView())
                                 );
                             }
+                            if (mp != null && mp.progressView != null) {
+                                updateProgressViewLayout(mp);
+                            }
                         }
                     }
                     checkUi_topPanelLayoutY();
@@ -3952,7 +3955,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     protected boolean includeStories() {
         // NimarkoGram: master toggle hides the profile Stories tab (self profile
         // still keeps it so users can manage their own posted stories — matches CG).
-        if (app.nimarkogram.messenger.NimarkoConfig.hideStories) {
+        if (app.nimarkogram.messenger.AppConfig.hideStories) {
             return isSelf();
         }
         return true;
@@ -11319,7 +11322,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
     }
 
     private boolean shouldHideArchivedStoriesTab() {
-        return app.nimarkogram.messenger.NimarkoConfig.hideArchivedStories
+        return app.nimarkogram.messenger.AppConfig.hideArchivedStories
                 && !isArchivedOnlyStoriesView();
     }
 
@@ -12798,9 +12801,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
 
         @Override
         protected void onDraw(Canvas canvas) {
-            NimarkoIconResources.NavigationIcons snapshot = NimarkoIconResources.activeNavigationIcons();
-            NimarkoIconResources.PreparedIcon more = snapshot == null ? null : snapshot.getIcon(R.drawable.ic_ab_other);
-            NimarkoIconResources.PreparedIcon search = snapshot == null ? null : snapshot.getIcon(R.drawable.msg_search);
+            IconResources.NavigationIcons snapshot = IconResources.activeNavigationIcons();
+            IconResources.PreparedIcon more = snapshot == null ? null : snapshot.getIcon(R.drawable.ic_ab_other);
+            IconResources.PreparedIcon search = snapshot == null ? null : snapshot.getIcon(R.drawable.msg_search);
             RLottieDrawable animation = getAnimatedDrawable();
             if (animation == null || more == null || search == null
                     || more.bitmap.isRecycled() || search.bitmap.isRecycled()) {
@@ -12829,7 +12832,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
             return Math.max(0f, Math.min(1f, frame < 60 ? frame / 15f : (80 - frame) / 20f));
         }
 
-        private void drawPackIcon(Canvas canvas, NimarkoIconResources.PreparedIcon icon, float progress) {
+        private void drawPackIcon(Canvas canvas, IconResources.PreparedIcon icon, float progress) {
             int alpha = Math.round(getImageAlpha() * progress);
             if (alpha <= 0) return;
             packPaint.setAlpha(alpha);
@@ -12971,11 +12974,18 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         return pagesPaddingBottom + (hasButtonPadding ? dp(44 + 8) : 0);
     }
 
+    private void updateProgressViewLayout(MediaPage page) {
+        updateLoadingViewLayout(page);
+    }
+
+    private int getStoriesTabsPadding(int type) {
+        return (int) (storiesContainer != null && (isStoryAlbumPageType(type) || type == TAB_STORIES) ? storiesContainer.getVisibilityFactor() * dp(40) : 0);
+    }
     private int getPagePaddingTop(int type) {
         return (
             dp(48 + 6) +
             topLayoutPadding +
-            (int) (storiesContainer != null && (isStoryAlbumPageType(type) || type == TAB_STORIES) ? storiesContainer.getVisibilityFactor() * dp(40) : 0) +
+            getStoriesTabsPadding(type) +
             (type == TAB_ARCHIVED_STORIES ? dp(64) : 0)
         );
     }
@@ -12985,7 +12995,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
         boolean photos = page.selectedType == TAB_PHOTOVIDEO || isAnyStoryPageType(page.selectedType);
         int side = photos ? 0 : dp(12);
         int top = page.selectedType == TAB_GROUPUSERS
-                ? getPagePaddingTop(page.selectedType) + dp(4) : dp(48 + (photos ? 8 : 12));
+                ? getPagePaddingTop(page.selectedType) + dp(4)
+                : dp(48 + (photos ? 8 : 12)) + getStoriesTabsPadding(page.selectedType);
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) page.progressView.getLayoutParams();
         if (params == null) {
             params = new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL);

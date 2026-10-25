@@ -53,7 +53,7 @@ import org.telegram.ui.Components.UniversalRecyclerView;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class MultipleStoriesSelector extends FrameLayout {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -257,7 +257,7 @@ public class MultipleStoriesSelector extends FrameLayout {
 
     private boolean drawPackClose(Canvas canvas) {
         if (strokePaint.getXfermode() != null) return false;
-        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
         final float size = 2f * dp(4.33f) + strokePaint.getStrokeWidth();
         packClose.draw(canvas, strokePaint, 0f, 0f, size, size, 1f, false);

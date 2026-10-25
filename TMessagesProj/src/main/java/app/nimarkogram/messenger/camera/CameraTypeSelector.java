@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /**
@@ -50,7 +51,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
 import org.telegram.ui.LaunchActivity;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class CameraTypeSelector extends LinearLayout {
 
@@ -67,7 +68,7 @@ public class CameraTypeSelector extends LinearLayout {
             R.drawable.camera_icon_camerax,
             R.drawable.camera_icon_system
     };
-    int currentIcon = NimarkoConfig.cameraType;
+    int currentIcon = AppConfig.cameraType;
 
     private final NumberPicker numberPicker;
     private final FrameLayout preview;
@@ -193,7 +194,7 @@ public class CameraTypeSelector extends LinearLayout {
             updateIcon(true);
             picker.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
         });
-        int selectedButton = NimarkoConfig.cameraType;
+        int selectedButton = AppConfig.cameraType;
         numberPicker.setValue(selectedButton);
         addView(numberPicker, LayoutHelper.createFrame(132, 102, Gravity.RIGHT, 0, 33, 21, 33));
         updateIcon(false);
@@ -291,7 +292,7 @@ public class CameraTypeSelector extends LinearLayout {
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     super.onAnimationEnd(animation);
-                    currentIcon = NimarkoConfig.cameraType;
+                    currentIcon = AppConfig.cameraType;
                     animator.setFloatValues(0f, 1f);
                     animator.removeAllListeners();
                     animator.start();

@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.ui;
 
 import android.content.Context;
@@ -42,7 +42,7 @@ import org.telegram.ui.Components.ScaleStateListAnimator;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public final class MessageMenuTelegramPlus {
 
@@ -55,7 +55,7 @@ public final class MessageMenuTelegramPlus {
     }
 
     public static boolean isEnabled(boolean ordinaryTap) {
-        return ordinaryTap && NimarkoConfig.telegramPlusMessageMenu;
+        return ordinaryTap && AppConfig.telegramPlusMessageMenu;
     }
 
     public static void apply(
@@ -101,7 +101,7 @@ public final class MessageMenuTelegramPlus {
                     ViewGroup.LayoutParams rawParams = icon.getLayoutParams();
                     if (rawParams instanceof FrameLayout.LayoutParams) {
                         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) rawParams;
-                        
+
                         params.width = ViewGroup.LayoutParams.WRAP_CONTENT;
                         params.height = AndroidUtilities.dp(40);
                         params.gravity = Gravity.CENTER_VERTICAL
@@ -123,7 +123,7 @@ public final class MessageMenuTelegramPlus {
             popupLayout.setPopupOverlayDrawable(new LiquidGlassForeground(resourcesProvider));
             popupLayout.requestLayout();
         } catch (Throwable ignored) {
-            
+
         }
     }
 
@@ -330,7 +330,7 @@ public final class MessageMenuTelegramPlus {
         if (swipeBack == null) {
             return;
         }
-        
+
         swipeBack.setDrawForegroundBackground(false);
         swipeBack.setDrawBackgroundTransitionOverlay(false);
         for (int i = 1; i < swipeBack.getChildCount(); i++) {
@@ -349,7 +349,7 @@ public final class MessageMenuTelegramPlus {
             float selectorAlpha
     ) {
         if (view instanceof ActionBarPopupWindow.GapView) {
-            
+
             view.setAlpha(0f);
             return;
         }

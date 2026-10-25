@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -54,6 +56,11 @@ public class LoadingSpan extends ReplacementSpan {
         return this;
     }
 
+    private boolean colorsFromPaint;
+    private void setColorsFromPaint(Paint paint) {
+        final int color = paint.getColor();
+        drawable.setColors(Theme.multAlpha(color, .1f), Theme.multAlpha(color, .25f));
+    }
     public void setColorKeys(int colorKey1, int colorKey2) {
         this.drawable.colorKey1 = colorKey1;
         this.drawable.colorKey2 = colorKey2;
@@ -66,6 +73,7 @@ public class LoadingSpan extends ReplacementSpan {
     }
 
     public void setColors(int color1, int color2) {
+        this.colorsFromPaint = false;
         this.drawable.color1 = color1;
         this.drawable.color2 = color2;
     }
@@ -88,11 +96,9 @@ public class LoadingSpan extends ReplacementSpan {
             fm.leading = (int) paintFontMetrics.leading;
             fm.top = (int) paintFontMetrics.top;
         }
-        if (paint != null && this.drawable.color1 == null && this.drawable.color2 == null) {
-            drawable.setColors(
-                Theme.multAlpha(paint.getColor(), .1f),
-                Theme.multAlpha(paint.getColor(), .25f)
-            );
+        if (paint != null && (colorsFromPaint || this.drawable.color1 == null && this.drawable.color2 == null)) {
+            colorsFromPaint = true;
+            setColorsFromPaint(paint);
         }
         if (fullWidth && view != null && view.getMeasuredWidth() > 0) {
             return view.getMeasuredWidth() - view.getPaddingLeft() - view.getPaddingRight() - size;
@@ -116,6 +122,9 @@ public class LoadingSpan extends ReplacementSpan {
                 (int) x + size,
                 (int) (bottom - dp(2) - ((bottom - dp(2)) - top) / 2f * (1f - scaleY) + yOffset)
             );
+        }
+        if (colorsFromPaint && paint != null) {
+            setColorsFromPaint(paint);
         }
         drawable.setAlpha((int) ((paint == null ? 0xFF : paint.getAlpha()) * alpha));
         drawable.draw(canvas);

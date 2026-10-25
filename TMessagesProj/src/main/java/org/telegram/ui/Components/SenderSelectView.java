@@ -26,7 +26,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class SenderSelectView extends View {
     private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer();
     private final static float SPRING_MULTIPLIER = 100f;
@@ -122,7 +122,7 @@ public class SenderSelectView extends View {
 
     private boolean drawPackClose(Canvas canvas, float padding) {
         if (menuPaint.getXfermode() != null) return false;
-        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
         packClose.draw(canvas, menuPaint, getWidth() / 2f, getHeight() / 2f,
                 Math.abs(getWidth() - 2f * padding) + menuPaint.getStrokeWidth(),

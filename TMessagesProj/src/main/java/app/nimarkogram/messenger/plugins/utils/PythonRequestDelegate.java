@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import app.nimarkogram.messenger.plugins.PluginsController;
 
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 public final class PythonRequestDelegate implements
         RequestDelegate, PluginsController.RuntimeCallbackHolder {
 
@@ -55,6 +55,7 @@ public final class PythonRequestDelegate implements
     private final AtomicReference<Invocation>
             activationInvocation = new AtomicReference<>();
 
+    private final Object activationLeaseLock = new Object();
     public PythonRequestDelegate(
             PyObject callback,
             PluginsController.PluginRuntimeToken runtimeToken) {
@@ -121,8 +122,10 @@ public final class PythonRequestDelegate implements
                 revokeAndUnregister();
                 return;
             }
+            synchronized (activationLeaseLock) {
             activationInvocation.set(invocation);
             activationDispatcher.set(captureDispatcher());
+            }
             int deferred = controller.deferRuntimeCallback(
                     runtimeToken, this);
             if (deferred == PluginsController.RUNTIME_TASK_RUN) {
@@ -150,9 +153,9 @@ public final class PythonRequestDelegate implements
         try {
             controller.getWatchdog().onPluginExecutionStarted(pluginId);
             watchdogStarted = true;
-            diagnosticToken = NimarkoCrashContext.beginInvocation();
-            diagnosticStart = NimarkoCrashContext.invocationStartedMs(diagnosticToken);
-            NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+            diagnosticToken = CrashContext.beginInvocation();
+            diagnosticStart = CrashContext.invocationStartedMs(diagnosticToken);
+            CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                     "request_enter", "PythonRequestDelegate.run", pluginId, diagnosticOwner);
             if (callback.delegateCallback != null) {
                 callback.delegateCallback.run(
@@ -170,7 +173,7 @@ public final class PythonRequestDelegate implements
         } finally {
             try {
                 try {
-                    NimarkoCrashContext.pythonPhase(diagnosticToken, diagnosticStart,
+                    CrashContext.pythonPhase(diagnosticToken, diagnosticStart,
                             "request_exit", "PythonRequestDelegate.run", pluginId, diagnosticOwner);
                 } finally {
                     if (watchdogStarted) {
@@ -186,7 +189,7 @@ public final class PythonRequestDelegate implements
                         controller.unregisterRuntimeCallbackHolder(
                                 runtimeToken, this);
                     } finally {
-                        NimarkoCrashContext.endInvocation(diagnosticToken);
+                        CrashContext.endInvocation(diagnosticToken);
                     }
                 }
             }
@@ -195,10 +198,16 @@ public final class PythonRequestDelegate implements
 
     @Override
     public void onPluginRuntimeActive() {
-        ActivationDispatcher dispatcher =
-                activationDispatcher.getAndSet(null);
-        Invocation invocation = activationInvocation.getAndSet(null);
+        final ActivationDispatcher dispatcher;
+        final Invocation invocation;
+        synchronized (activationLeaseLock) {
+            dispatcher = activationDispatcher.getAndSet(null);
+            invocation = activationInvocation.getAndSet(null);
+        }
         if (dispatcher == null || invocation == null) {
+            if (dispatcher != null || invocation != null) {
+                revokeAndUnregister();
+            }
             return;
         }
         try {
@@ -218,8 +227,10 @@ public final class PythonRequestDelegate implements
     @Override
     public void revokePluginRuntime() {
         callbackState.drop();
+        synchronized (activationLeaseLock) {
         activationDispatcher.set(null);
         activationInvocation.set(null);
+        }
     }
 
     private void registerExactHolder() {

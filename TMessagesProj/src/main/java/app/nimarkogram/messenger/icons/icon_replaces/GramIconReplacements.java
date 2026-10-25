@@ -8,7 +8,7 @@ final class GramIconReplacements {
 
     static void solar(BaseIconReplace pack) {
         apply(pack, R.drawable.ng_gram_outline_solar, R.drawable.ng_gram_menu_solar, R.drawable.ng_gram_settings_solar);
-        replace(pack, R.drawable.filled_gram_earnings, R.drawable.msg_stats_solar);
+        replace(pack, R.drawable.filled_gram_earnings, R.drawable.ng_gram_outline_solar);
     }
 
     static void liquid(BaseIconReplace pack) {
@@ -24,6 +24,10 @@ final class GramIconReplacements {
         replace(pack, R.drawable.ic_gram, outline);
         replace(pack, R.drawable.menu_gram_24, menu);
         replace(pack, R.drawable.settings_gram_24, settings);
+        replace(pack, R.drawable.settings_wallet, settings);
+        replace(pack, R.drawable.settings_wallet_dark, settings);
+        replace(pack, R.drawable.profile_balance_gram, outline);
+        replace(pack, R.drawable.profile_balance_gram_color, outline);
     }
 
     private static void replace(BaseIconReplace pack, int source, int target) {

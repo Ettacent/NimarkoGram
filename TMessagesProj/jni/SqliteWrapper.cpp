@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include <cstring>
 #include <jni.h>
 #include "sqlite/sqlite3.h"
@@ -5,9 +7,26 @@
 #include "tgnet/BuffersStorage.h"
 
 void throw_sqlite3_exception(JNIEnv *env, sqlite3 *handle, int errcode) {
+    if (env->ExceptionCheck()) {
+        return;
+    }
     const char *errmsg = sqlite3_errmsg(handle);
     jclass exClass = env->FindClass("org/telegram/SQLite/SQLiteException");
-    env->ThrowNew(exClass, errmsg);
+    if (exClass != nullptr) {
+        jmethodID constructor = env->GetMethodID(exClass, "<init>", "(ILjava/lang/String;)V");
+        if (constructor != nullptr) {
+            jstring message = env->NewStringUTF(errmsg);
+            if (message != nullptr) {
+                jobject exception = env->NewObject(exClass, constructor, errcode, message);
+                if (exception != nullptr) {
+                    env->Throw((jthrowable) exception);
+                    env->DeleteLocalRef(exception);
+                }
+                env->DeleteLocalRef(message);
+            }
+        }
+        env->DeleteLocalRef(exClass);
+    }
 }
 
 extern "C" {
@@ -32,8 +51,11 @@ JNIEXPORT jlong Java_org_telegram_SQLite_SQLitePreparedStatement_prepare(JNIEnv 
     sqlite3 *handle = (sqlite3 *) (intptr_t) sqliteHandle;
 
     char const *sqlStr = env->GetStringUTFChars(sql, 0);
+    if (sqlStr == nullptr) {
+        return 0;
+    }
 
-    sqlite3_stmt *stmt_handle;
+    sqlite3_stmt *stmt_handle = nullptr;
 
     int errcode = sqlite3_prepare_v2(handle, sqlStr, -1, &stmt_handle, 0);
     if (SQLITE_OK != errcode) {
@@ -60,11 +82,15 @@ JNIEXPORT void Java_org_telegram_SQLite_SQLitePreparedStatement_finalize(JNIEnv 
     sqlite3_finalize((sqlite3_stmt *) (intptr_t) statementHandle);
 }
 
+JNIEXPORT void Java_org_telegram_SQLite_SQLiteDatabase_finalizeStatement(JNIEnv *env, jclass clazz, jlong statementHandle) {
+    sqlite3_finalize((sqlite3_stmt *) (intptr_t) statementHandle);
+}
+
 JNIEXPORT void Java_org_telegram_SQLite_SQLitePreparedStatement_bindByteBuffer(JNIEnv *env, jobject object, jlong statementHandle, jint index, jobject value, jint length) {
     sqlite3_stmt *handle = (sqlite3_stmt *) (intptr_t) statementHandle;
     void *buf = env->GetDirectBufferAddress(value);
 
-    int errcode = sqlite3_bind_blob(handle, index, buf, length, SQLITE_STATIC);
+    int errcode = sqlite3_bind_blob(handle, index, buf, length, SQLITE_TRANSIENT);
     if (SQLITE_OK != errcode) {
         throw_sqlite3_exception(env, sqlite3_db_handle(handle), errcode);
     }
@@ -74,6 +100,9 @@ JNIEXPORT void Java_org_telegram_SQLite_SQLitePreparedStatement_bindString(JNIEn
     sqlite3_stmt *handle = (sqlite3_stmt *) (intptr_t) statementHandle;
 
     char const *valueStr = env->GetStringUTFChars(value, 0);
+    if (valueStr == nullptr) {
+        return;
+    }
 
     int errcode = sqlite3_bind_text(handle, index, valueStr, -1, SQLITE_TRANSIENT);
     if (SQLITE_OK != errcode) {
@@ -141,7 +170,14 @@ JNIEXPORT void Java_org_telegram_SQLite_SQLiteDatabase_commitTransaction(JNIEnv 
 
 JNIEXPORT jlong Java_org_telegram_SQLite_SQLiteDatabase_opendb(JNIEnv *env, jobject object, jstring fileName, jstring tempDir) {
     char const *fileNameStr = env->GetStringUTFChars(fileName, 0);
+    if (fileNameStr == nullptr) {
+        return 0;
+    }
     char const *tempDirStr = env->GetStringUTFChars(tempDir, 0);
+    if (tempDirStr == nullptr) {
+        env->ReleaseStringUTFChars(fileName, fileNameStr);
+        return 0;
+    }
 
     if (sqlite3_temp_directory != 0 && strcmp(sqlite3_temp_directory, tempDirStr)) {
         sqlite3_free(sqlite3_temp_directory);
@@ -154,6 +190,8 @@ JNIEXPORT jlong Java_org_telegram_SQLite_SQLiteDatabase_opendb(JNIEnv *env, jobj
     int err = sqlite3_open(fileNameStr, &handle);
     if (SQLITE_OK != err) {
         throw_sqlite3_exception(env, handle, err);
+        sqlite3_close(handle);
+        handle = nullptr;
     }
     if (fileNameStr != 0) {
         env->ReleaseStringUTFChars(fileName, fileNameStr);
@@ -222,7 +260,9 @@ JNIEXPORT jbyteArray Java_org_telegram_SQLite_SQLiteCursor_columnByteArrayValue(
     int length = sqlite3_column_bytes(handle, columnIndex);
     if (buf != nullptr && length > 0) {
         jbyteArray result = env->NewByteArray(length);
-        env->SetByteArrayRegion(result, 0, length, buf);
+        if (result != nullptr) {
+            env->SetByteArrayRegion(result, 0, length, buf);
+        }
         return result;
     }
     return nullptr;
@@ -234,12 +274,12 @@ JNIEXPORT jlong Java_org_telegram_SQLite_SQLiteCursor_columnByteBufferValue(JNIE
     if (length <= 0) {
         return 0;
     }
-    NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(length);
-    if (buffer == nullptr) {
-        return 0;
-    }
     const char *buf = (const char *) sqlite3_column_blob(handle, columnIndex);
     if (buf == nullptr) {
+        return 0;
+    }
+    NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(length);
+    if (buffer == nullptr) {
         return 0;
     }
     memcpy(buffer->bytes(), buf, length);

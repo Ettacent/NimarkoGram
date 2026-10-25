@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -61,7 +63,7 @@ public class DialogMeUrlCell extends BaseCell {
         super(context);
 
         Theme.createDialogsResources(context);
-        avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(52));
+        avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(52));
     }
 
     public void setRecentMeUrl(TLRPC.RecentMeUrl url) {

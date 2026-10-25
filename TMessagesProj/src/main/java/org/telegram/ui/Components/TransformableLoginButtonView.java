@@ -18,7 +18,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
@@ -100,9 +100,9 @@ public class TransformableLoginButtonView extends View {
 
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
-        NimarkoIconResources.PreparedIcon check = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_done);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_back);
+        IconResources.PreparedIcon check = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_ab_done);
         if (drawBackground) {
             boolean animateCornerRadius = transformType == TRANSFORM_OPEN_ARROW;
             float rad = AndroidUtilities.dp(BUTTON_RADIUS_DP + (CIRCLE_RADIUS_DP - BUTTON_RADIUS_DP) * (animateCornerRadius ? progress : 1f));

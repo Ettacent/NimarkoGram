@@ -71,6 +71,10 @@ public class SolarIconReplace extends BaseIconReplace {
         put(replaces, R.drawable.group_edit_profile, R.drawable.group_edit_profile_solar);
         put(replaces, R.drawable.outline_header_search, R.drawable.ic_ab_search_solar);
         put(replaces, R.drawable.ic_arrow_drop_down, R.drawable.ic_arrow_drop_down_solar);
+        put(replaces, R.drawable.menu_feature_code, R.drawable.msg_pin_code_solar);
+        put(replaces, R.drawable.iv_code, R.drawable.msg_pin_code_solar);
+        put(replaces, R.drawable.menu_website, R.drawable.ic_goinline_solar);
+        put(replaces, R.drawable.msg_go_down, R.drawable.ic_arrow_drop_down_solar);
         put(replaces, R.drawable.ic_call, R.drawable.profile_phone_solar);
         put(replaces, R.drawable.ic_chatlist_add_2, R.drawable.ic_chatlist_add_2_solar);
         put(replaces, R.drawable.ic_gallery_background, R.drawable.ic_gallery_background_solar);

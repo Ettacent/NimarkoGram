@@ -134,7 +134,7 @@ import org.telegram.ui.RoundVideoProgressShadow;
 import org.telegram.ui.ThemeActivity;
 import org.telegram.ui.ThemePreviewActivity;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -4575,7 +4575,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static Drawable getCurrentHolidayDrawable() {
         // NimarkoGram: short-circuit the 60s cache when the user-flag is on so the
         // snowflake-effect drawable is loaded immediately after the toggle is flipped.
-        boolean nimarkoForce = NimarkoConfig.drawSnowInActionBar;
+        boolean nimarkoForce = AppConfig.drawSnowInActionBar;
         if (nimarkoForce && dialogs_holidayDrawable == null) {
             dialogs_holidayDrawable = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.newyear);
             dialogs_holidayDrawableOffsetX = -dp(3);
@@ -9340,7 +9340,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 return animatingColors.valueAt(index);
             }
         }
-        if (app.nimarkogram.messenger.NimarkoConfig.disableDividers && key_divider == key) {
+        if (app.nimarkogram.messenger.AppConfig.disableDividers && key_divider == key) {
             return 0x00ffffff;
         }
         if (serviceBitmapShader != null && (key_chat_serviceText == key || key_chat_serviceLink == key || key_chat_serviceIcon == key

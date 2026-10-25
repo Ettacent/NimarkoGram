@@ -3,6 +3,16 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
     repositories {
+        exclusiveContent {
+            forRepository {
+                ivy {
+                    url uri('TMessagesProj/libs/chaquopy-runtime')
+                    patternLayout { artifact '[artifact]-[revision]-[classifier].[ext]' }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule('com.chaquo.python.runtime', 'chaquopy') }
+        }
         mavenCentral()
         google()
         maven { url 'https://developer.huawei.com/repo/' }
@@ -60,6 +70,7 @@ allprojects {
             }
         }
     }
+
     configurations.configureEach {
         resolutionStrategy.dependencySubstitution {
             ['common', 'container', 'muxer'].each { mediaModule ->

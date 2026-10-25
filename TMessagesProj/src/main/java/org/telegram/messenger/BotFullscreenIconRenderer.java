@@ -6,7 +6,7 @@ import android.graphics.Paint;
 
 import org.telegram.ui.Components.BoundedPackIconRenderer;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 
 final class BotFullscreenIconRenderer {
     private final BoundedPackIconRenderer close = new BoundedPackIconRenderer();
@@ -14,10 +14,10 @@ final class BotFullscreenIconRenderer {
     private final BoundedPackIconRenderer collapse = new BoundedPackIconRenderer();
     private final BoundedPackIconRenderer overflow = new BoundedPackIconRenderer();
     private final BoundedPackIconRenderer download = new BoundedPackIconRenderer();
-    private NimarkoIconResources.NavigationIcons snapshot;
+    private IconResources.NavigationIcons snapshot;
 
     void update() {
-        snapshot = NimarkoIconResources.activeNavigationIcons();
+        snapshot = IconResources.activeNavigationIcons();
     }
 
     boolean drawCloseBack(Canvas canvas, Paint source, float progress, float radius, float shaft) {

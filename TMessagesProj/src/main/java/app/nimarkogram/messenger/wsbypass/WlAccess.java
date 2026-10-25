@@ -42,8 +42,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import app.nimarkogram.messenger.banners.NimarkoBannerConfig;
-import app.nimarkogram.messenger.utils.NimarkoInlineAuth;
+import app.nimarkogram.messenger.banners.BannerConfig;
+import app.nimarkogram.messenger.utils.InlineAuth;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -272,7 +272,7 @@ public final class WlAccess {
                     result = call(path, method, token, body);
                 } catch (ApiError error) {
                     if (error.code != 401 || !current(account, owner, epoch)) throw error;
-                    NimarkoBannerConfig.setAuthToken(account, owner, "");
+                    BannerConfig.setAuthToken(account, owner, "");
                     token = bannerToken(account, owner, epoch);
                     if (!current(account, owner, epoch)) throw new IOException("account_changed");
                     result = call(path, method, token, body);
@@ -324,9 +324,9 @@ public final class WlAccess {
         if (value && cached() == null) return;
         if (enabled() == value) return;
         prefs().edit().putBoolean("enabled", value).apply();
-        NimarkoWsBypassController controller = NimarkoWsBypassController.getInstance();
+        WsBypassController controller = WsBypassController.getInstance();
         controller.stop();
-        if (value) NimarkoWsBypassConfig.setEnabled(true);
+        if (value) WsBypassConfig.setEnabled(true);
         controller.ensureStarted();
     }
 
@@ -336,7 +336,7 @@ public final class WlAccess {
                 if (cached() == null) {
                     setEnabled(false);
                 } else {
-                    NimarkoWsBypassController controller = NimarkoWsBypassController.getInstance();
+                    WsBypassController controller = WsBypassController.getInstance();
                     controller.stop();
                     controller.ensureStarted();
                 }
@@ -500,7 +500,7 @@ public final class WlAccess {
         remainingRequestMillis();
         DeadlineTask task = REQUEST.get();
         final boolean backgroundWarm = Boolean.TRUE.equals(BACKGROUND_WARM.get());
-        NimarkoInlineAuth.EnablePredicate permit = new NimarkoInlineAuth.EnablePredicate() {
+        InlineAuth.EnablePredicate permit = new InlineAuth.EnablePredicate() {
             @Override public boolean isEnabled() {
                 return (task == null || task.active()) && current(account, owner, epoch)
                         && (!backgroundWarm || !FOREGROUND_REQUESTED.get());
@@ -513,13 +513,13 @@ public final class WlAccess {
                 }
             }
         };
-        String token = NimarkoInlineAuth.ensureToken(account, owner, AUTH_LOCK, new NimarkoInlineAuth.Backend() {
-            @Override public String cachedToken() { return NimarkoBannerConfig.getAuthToken(account, owner); }
+        String token = InlineAuth.ensureToken(account, owner, AUTH_LOCK, new InlineAuth.Backend() {
+            @Override public String cachedToken() { return BannerConfig.getAuthToken(account, owner); }
             @Override public void cacheToken(String token) {
-                if (current(account, owner, epoch)) NimarkoBannerConfig.setAuthToken(account, owner, token);
+                if (current(account, owner, epoch)) BannerConfig.setAuthToken(account, owner, token);
             }
-            @Override public NimarkoInlineAuth.Reg register(long id) {
-                NimarkoInlineAuth.Reg result = new NimarkoInlineAuth.Reg();
+            @Override public InlineAuth.Reg register(long id) {
+                InlineAuth.Reg result = new InlineAuth.Reg();
                 try {
                     JSONObject json = call("/api/v1/banners/auth/register?user_id=" + owner, "POST", null, EMPTY);
                     result.code = json.getString("code");
@@ -555,7 +555,7 @@ public final class WlAccess {
         catch (ApiError e) {
             if (e.code != 401) throw e;
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
-            NimarkoBannerConfig.setAuthToken(account, owner, "");
+            BannerConfig.setAuthToken(account, owner, "");
             auth = bannerToken(account, owner, epoch);
             state = call(PREFIX + "/status", "GET", auth, null);
         }
@@ -623,7 +623,7 @@ public final class WlAccess {
             String code = pending.getString("code"), secret = pending.getString("poll_secret");
             JSONObject poll = new JSONObject().put("code", code).put("poll_secret", secret)
                     .put("signature", sign(key, ("nimarko-wl-enroll-v1\n" + code + "\n" + secret).getBytes(StandardCharsets.US_ASCII)));
-            NimarkoInlineAuth.sendInlineVerification(account, "NimarkoBanner_Bot", code,
+            InlineAuth.sendInlineVerification(account, "NimarkoBanner_Bot", code,
                     () -> (task == null || task.active()) && current(account, owner, epoch));
             JSONObject issued = null;
             for (int attempt = 0; attempt < 15; attempt++) {
@@ -736,8 +736,8 @@ public final class WlAccess {
             Utilities.globalQueue.postRunnable(cleanup);
         }
         if (enabled()) AndroidUtilities.runOnUIThread(() -> {
-            NimarkoWsBypassController.getInstance().stop();
-            NimarkoWsBypassController.getInstance().ensureStarted();
+            WsBypassController.getInstance().stop();
+            WsBypassController.getInstance().ensureStarted();
         });
     }
 

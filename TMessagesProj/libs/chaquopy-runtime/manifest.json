@@ -1,0 +1,40 @@
+{
+  "upstream": "https://github.com/chaquo/chaquopy",
+  "revision": "e01057c72fdd737f202bd1be1de85af51e06cad0",
+  "version": "17.0.0",
+  "patch": "patches/chaquopy-proxy-publication.patch",
+  "buildScript": "patches/build-chaquopy-runtime.sh",
+  "patchSha256": "cca7904ab9d4009b8b1f691525d486490e7a2fec8f531df6e51e5dfbb8c021e6",
+  "python": "3.11",
+  "pythonTarget": "3.11.14-0",
+  "cython": "3.0.11",
+  "ndk": "27.3.13750724",
+  "minSdk": 24,
+  "pageAlignment": 16384,
+  "cmakeBuildType": "Release",
+  "cmakeTarget": "chaquopy-3.11",
+  "linkerFlags": "-Wl,--build-id=sha1 -Wl,-z,max-page-size=16384",
+  "generatedSourcePrefix": "generated/",
+  "artifacts": {
+    "armeabi-v7a": {
+      "sha256": "9db56995cb3436b9726e0a1a7216a184fd19414614bc3560251e692be24f2261",
+      "buildId": "acb53910ab59bae8688734d07b781c89a868008f",
+      "targetSha256": "49b297ab1943891c374e81bb605d421309afa40208d9cd4433171b34864b6b3c"
+    },
+    "arm64-v8a": {
+      "sha256": "03f3aa6a57d41a9b992a584de5b90a5807b67fc8176ac1596e04f07989e61dc7",
+      "buildId": "4c0cfb041251edc458e597232544889cd48bcd6d",
+      "targetSha256": "b92651286e61d3e72b8fcb23289d6a2eb243b9c2b8ee7bde9a350f8923e481a1"
+    },
+    "x86": {
+      "sha256": "a662855795c6b2af58cfbfe6399826046bc76ee88651652ab94c28cb0d8892b2",
+      "buildId": "207f6dd654dc84bb958350d727f431bb14f2ea77",
+      "targetSha256": "968025876c25c6929a8e87b681d14a1a7fb0b47957ef4293828e5f6c4247a3cf"
+    },
+    "x86_64": {
+      "sha256": "acba823b0062e057f06e566d9f5e613dea3977ecb247d131351947cab73706e0",
+      "buildId": "74d13f45b880351b4aae2b90a6d24144e0ac6347",
+      "targetSha256": "269d92bd0982e3cc4df36114ee73481d311c0cdef4e3b7ca9d44c856bdf0ad01"
+    }
+  }
+}

@@ -12,7 +12,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.widget.ImageView;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.R;
 
 public final class MediaControlIconHelper {
@@ -36,13 +36,13 @@ public final class MediaControlIconHelper {
     static Drawable getMissingPackDrawable(Context context, int stockId) {
         final int role = semanticRole(stockId);
         final Resources resources = context.getResources();
-        if (role == 0 || !(resources instanceof NimarkoIconResources)
-                || ((NimarkoIconResources) resources).hasReplacement(stockId)
-                || !((NimarkoIconResources) resources).hasReplacement(role)) {
+        if (role == 0 || !(resources instanceof IconResources)
+                || ((IconResources) resources).hasReplacement(stockId)
+                || !((IconResources) resources).hasReplacement(role)) {
             return null;
         }
         try {
-            Drawable stock = NimarkoIconResources.getStockDrawable(context, stockId).mutate();
+            Drawable stock = IconResources.getStockDrawable(context, stockId).mutate();
             Drawable icon = resources.getDrawable(role, context.getTheme()).mutate();
             return fitToStock(icon, stock);
         } catch (RuntimeException | OutOfMemoryError unavailable) {

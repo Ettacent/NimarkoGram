@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -546,7 +548,7 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     }
 
     private void checkSnowflake(Canvas canvas) {
-        boolean userForced = app.nimarkogram.messenger.NimarkoConfig.drawSnowInChat;
+        boolean userForced = app.nimarkogram.messenger.AppConfig.drawSnowInChat;
         boolean wantSnow = userForced
                 || (Theme.canStartHolidayAnimation() && LiteMode.isEnabled(LiteMode.FLAG_CHAT_BACKGROUND));
         if (backgroundView != null && wantSnow) {

@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -12,7 +13,7 @@ import android.text.TextUtils;
 import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.TranslateAlert2;
 
@@ -25,7 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import app.nimarkogram.messenger.utils.chats.NimarkoMessageHelper;
+import app.nimarkogram.messenger.utils.chats.MessageHelper;
 
 public class TelegramTranslator extends BaseTranslator {
 
@@ -50,6 +51,8 @@ public class TelegramTranslator extends BaseTranslator {
     }
 
     private ArrayList<Result> internalTranslate(ArrayList<Object> query, String tl, String subToken) throws Exception {
+        final TranslationTask task = translationTask;
+        task.checkActive();
         int count = query.size();
         final CountDownLatch waitDetect = new CountDownLatch(count);
         final ArrayList<String> languages = new ArrayList<>(Collections.nCopies(count, null));
@@ -69,7 +72,7 @@ public class TelegramTranslator extends BaseTranslator {
                 waitDetect.countDown();
             });
         }
-        if (!waitDetect.await(15, TimeUnit.SECONDS)) {
+        if (!task.await(waitDetect, 15, TimeUnit.SECONDS)) {
             throw new TimeoutException("Language detection timed out");
         }
         if (exception.get() != null) {
@@ -89,7 +92,9 @@ public class TelegramTranslator extends BaseTranslator {
             }
             req.text.add(textWithEntities);
         }
-        int reqId = ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> {
+        RequestDelegate callback = (res, err) -> {
+            try {
+                task.checkActive();
             if (res instanceof TLRPC.TL_messages_translateResult &&
                     !((TLRPC.TL_messages_translateResult) res).result.isEmpty()) {
                 TLRPC.TL_messages_translateResult result = (TLRPC.TL_messages_translateResult) res;
@@ -105,16 +110,34 @@ public class TelegramTranslator extends BaseTranslator {
             } else {
                 exception.set(new Exception("Unknown error"));
             }
+            } catch (Exception e) {
+                exception.set(e);
+            } finally {
             waitTranslate.countDown();
+            }
+        };
+        Utilities.stageQueue.postRunnable(() -> {
+            try {
+                task.sendRequest(req, callback);
+            } catch (Exception e) {
+                exception.set(e);
+                waitTranslate.countDown();
+            }
         });
-        if (!waitTranslate.await(30, TimeUnit.SECONDS)) {
-            ConnectionsManager.getInstance(account).cancelRequest(reqId, true);
+        boolean completed = false;
+        try {
+            if (!task.await(waitTranslate, 30, TimeUnit.SECONDS)) {
             throw new TimeoutException("Translation request timed out");
         }
         if (exception.get() != null) {
             throw exception.get();
         }
+            completed = true;
         return results;
+        } finally {
+            if (completed) task.clearRequest();
+            else task.cancel();
+        }
     }
 
     @Override
@@ -134,14 +157,14 @@ public class TelegramTranslator extends BaseTranslator {
                 Object translationData = res.translation;
                 if (translationData instanceof String || translationData instanceof TLRPC.TL_textWithEntities) {
                     textMessagesQuery.add(translationData);
-                    if (res.additionalInfo instanceof NimarkoMessageHelper.ReplyMarkupButtonsTexts) {
-                        NimarkoMessageHelper.ReplyMarkupButtonsTexts buttonRows = (NimarkoMessageHelper.ReplyMarkupButtonsTexts) res.additionalInfo;
+                    if (res.additionalInfo instanceof MessageHelper.ReplyMarkupButtonsTexts) {
+                        MessageHelper.ReplyMarkupButtonsTexts buttonRows = (MessageHelper.ReplyMarkupButtonsTexts) res.additionalInfo;
                         for (int x = 0; x < buttonRows.getTexts().size(); x++) {
                             textMessagesQuery.addAll(buttonRows.getTexts().get(x));
                         }
                     }
-                } else if (translationData instanceof NimarkoMessageHelper.PollTexts) {
-                    textMessagesQuery.addAll(new ArrayList<>(((NimarkoMessageHelper.PollTexts) translationData).getTexts()));
+                } else if (translationData instanceof MessageHelper.PollTexts) {
+                    textMessagesQuery.addAll(new ArrayList<>(((MessageHelper.PollTexts) translationData).getTexts()));
                 }
             }
         }
@@ -149,7 +172,7 @@ public class TelegramTranslator extends BaseTranslator {
         for (int i = 0; i < textMessagesQuery.size(); i += maxSize) {
             chunks.add(new ArrayList<>(textMessagesQuery.subList(i, Math.min(i + maxSize, textMessagesQuery.size()))));
         }
-        
+
         for (ArrayList<Object> chunk : chunks) {
             if (exception.get() != null) break;
             try {
@@ -174,16 +197,16 @@ public class TelegramTranslator extends BaseTranslator {
                     Result mainResult = Objects.requireNonNull(rawResults.get(cursor++));
                     res.translation = mainResult.translation;
                     sourceLanguage = mainResult.sourceLanguage;
-                    if (res.additionalInfo instanceof NimarkoMessageHelper.ReplyMarkupButtonsTexts) {
-                        NimarkoMessageHelper.ReplyMarkupButtonsTexts buttonRows = (NimarkoMessageHelper.ReplyMarkupButtonsTexts) res.additionalInfo;
+                    if (res.additionalInfo instanceof MessageHelper.ReplyMarkupButtonsTexts) {
+                        MessageHelper.ReplyMarkupButtonsTexts buttonRows = (MessageHelper.ReplyMarkupButtonsTexts) res.additionalInfo;
                         for (int x = 0; x < buttonRows.getTexts().size(); x++) {
                             for (int y = 0; y < buttonRows.getTexts().get(x).size(); y++) {
                                 buttonRows.getTexts().get(x).set(y, stringFromTranslation(Objects.requireNonNull(rawResults.get(cursor++)).translation));
                             }
                         }
                     }
-                } else if (translationData instanceof NimarkoMessageHelper.PollTexts) {
-                    NimarkoMessageHelper.PollTexts pollTexts = (NimarkoMessageHelper.PollTexts) translationData;
+                } else if (translationData instanceof MessageHelper.PollTexts) {
+                    MessageHelper.PollTexts pollTexts = (MessageHelper.PollTexts) translationData;
                     ArrayList<Result> totalPollResults = new ArrayList<>();
                     for (int x = 0; x < pollTexts.getTexts().size(); x++) {
                         totalPollResults.add(Objects.requireNonNull(rawResults.get(cursor++)));

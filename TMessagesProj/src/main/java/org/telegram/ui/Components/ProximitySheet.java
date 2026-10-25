@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -199,8 +201,8 @@ public class ProximitySheet extends FrameLayout {
         kmPicker.setWrapSelectorWheel(false);
         kmPicker.setTextOffset(AndroidUtilities.dp(20));
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
-            
-            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignore) {

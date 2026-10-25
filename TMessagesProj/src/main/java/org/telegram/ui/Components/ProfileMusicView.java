@@ -12,11 +12,14 @@ import static org.telegram.ui.ActionBar.Theme.multAlpha;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
 import android.graphics.RenderNode;
+import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.TextUtils;
@@ -43,17 +46,33 @@ public class ProfileMusicView extends View {
 
     private final Theme.ResourcesProvider resourcesProvider;
     private Text author, title;
+    private ProfileMusicView trailingView;
+    private ProfileMusicView leadingView;
+
+    public void setTrailingView(ProfileMusicView view) {
+        trailingView = view;
+        view.leadingView = this;
+        invalidate();
+        view.invalidate();
+    }
     private final Paint arrowPaint = new Paint();
     private final Path arrowPath = new Path();
     private final CompactChevronRenderer arrowRenderer = new CompactChevronRenderer();
     private final Drawable icon;
 
     private final RectF rect = new RectF();
+    public void getButtonBoundsOnScreen(RectF bounds) {
+        int[] location = new int[2];
+        getLocationOnScreen(location);
+        bounds.set(rect);
+        bounds.offset(location[0], location[1]);
+    }
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bannerBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clipPath = new Path();
 
+    private final Path clipAvatarPath = new Path();
     private final ButtonBounce bounce = new ButtonBounce(this);
     public ProfileMusicView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -70,6 +89,7 @@ public class ProfileMusicView extends View {
         arrowPath.lineTo(0, dpf2(3.33f));
 
         setColor(null);
+        updateVisualColors();
         setText("Author", " - Title");
     }
 
@@ -87,39 +107,44 @@ public class ProfileMusicView extends View {
         );
     }
 
-    private int textColor = Color.WHITE;
+    protected int textColor = Color.WHITE;
+    protected boolean hasProfileColor;
     private float parentExpanded;
-    private int backgroundColor;
     private int normalTextColor = Color.WHITE;
     private int appliedIconColor;
-    private boolean withShadows;
     private float bannerProgress;
 
+    private int buttonColor;
+    private boolean hasColorById;
+    private RadialGradient radialGradient;
+    private float radialGradientWidth;
+    private final Paint shaderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Matrix matrix = new Matrix();
     public void setColor(MessagesController.PeerColor peerColor) {
-        
-        if (!app.nimarkogram.messenger.NimarkoConfig.profileBackgroundColor) peerColor = null;
-        int color1, color2;
-        if (peerColor == null) {
-            color1 = color2 = Theme.getColor(Theme.key_actionBarDefault, resourcesProvider);
-        } else {
-            color1 = peerColor.getBgColor1(Theme.isCurrentThemeDark());
-            color2 = peerColor.getBgColor2(Theme.isCurrentThemeDark());
-        }
 
-        if (peerColor == null) {
-            backgroundColor = Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider);
-            withShadows = true;
-        } else {
-            backgroundColor = Theme.adaptHSV(ColorUtils.blendARGB(color1, color2, .15f), +.04f, -.09f);
-            withShadows = false;
-        }
-        backgroundPaint.setColor(backgroundColor);
+        if (!app.nimarkogram.messenger.AppConfig.profileBackgroundColor) peerColor = null;
+        hasProfileColor = peerColor != null;
+        if (trailingView != null) trailingView.setColor(peerColor);
+        invalidate();
+    }
+
+    public void setButtonColor(int color, boolean hasColorById) {
+        if (trailingView != null) trailingView.setButtonColor(color, hasColorById);
+        if (buttonColor == color && this.hasColorById == hasColorById) return;
+        buttonColor = color;
+        this.hasColorById = hasColorById;
+        radialGradient = null;
+        backgroundPaint.setColor(color);
         checkTextColor();
+    }
+
+    private boolean isButtonColorLight() {
+        return AndroidUtilities.computePerceivedBrightness(buttonColor) > 0.72f;
     }
 
     private void checkTextColor() {
         final boolean useBlackText = parentExpanded < 0.8f
-                && AndroidUtilities.computePerceivedBrightness(backgroundColor) > 0.85f;
+                && isButtonColorLight();
         normalTextColor = useBlackText ? Color.BLACK : Color.WHITE;
         updateVisualColors();
     }
@@ -136,6 +161,7 @@ public class ProfileMusicView extends View {
 
     public void setBannerProgress(float progress) {
         progress = Utilities.clamp01(progress);
+        if (trailingView != null) trailingView.setBannerProgress(progress);
         if (Math.abs(bannerProgress - progress) > 0.0001f) {
             bannerProgress = progress;
             updateVisualColors();
@@ -143,6 +169,7 @@ public class ProfileMusicView extends View {
     }
 
     public void setParentExpanded(float expanded) {
+        if (trailingView != null) trailingView.setParentExpanded(expanded);
         if (parentExpanded != expanded) {
             parentExpanded = expanded;
             checkTextColor();
@@ -219,6 +246,7 @@ public class ProfileMusicView extends View {
     private float renderNodeTranslateY;
 
     public void drawingBlur(boolean drawing) {
+        if (trailingView != null) trailingView.drawingBlur(drawing);
         if (ignoreRect != drawing || renderNode != null) {
             ignoreRect = drawing;
             renderNode = null;
@@ -228,6 +256,7 @@ public class ProfileMusicView extends View {
     }
 
     public void drawingBlur(RenderNode renderNode, ProfileActivity.AvatarImageView avatarView, float scale, float dy) {
+        if (trailingView != null) trailingView.drawingBlur(renderNode, avatarView, scale, dy);
         this.ignoreRect = false;
         this.renderNode = renderNode;
         this.avatarView = avatarView;
@@ -244,7 +273,17 @@ public class ProfileMusicView extends View {
     private boolean animateGeometry;
     private final AnimatedFloat animatedPositionY = new AnimatedFloat(this, 140, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final AnimatedFloat animatedHeight = new AnimatedFloat(this, 140, CubicBezierInterpolator.EASE_OUT_QUINT);
+    @Override
+    public void setAlpha(float alpha) {
+        super.setAlpha(alpha);
+        if (trailingView != null) trailingView.setAlpha(alpha);
+    }
+
+    protected boolean isOnProfilePhoto() {
+        return parentExpanded >= 0.8f;
+    }
     public void updatePosition(float y, float newHeight) {
+        if (trailingView != null) trailingView.updatePosition(y, newHeight);
         long now = android.os.SystemClock.uptimeMillis();
         boolean discontinuity = lastPositionUpdate != 0L
                 && now - lastPositionUpdate > 90L
@@ -283,6 +322,49 @@ public class ProfileMusicView extends View {
         return bounce.isPressed();
     }
 
+    protected float getContentWidth(float maxWidth) {
+        final float textWidth = Math.max(0, maxWidth - dp(16) - dp(16.6f) - dp(8));
+        this.author.ellipsize(textWidth / 2f);
+        this.title.ellipsize(Math.max(0, textWidth - this.author.getWidth()));
+        return dp(16.6f) + this.author.getWidth() + this.title.getWidth() + dp(8);
+    }
+
+    protected void drawContent(Canvas canvas, float alpha) {
+        final float cy = getHeight() / 2f;
+
+        final int iconSz = dp(13);
+        icon.setBounds(0, (int) cy - iconSz / 2, iconSz, (int) cy + iconSz / 2);
+        icon.draw(canvas);
+
+        canvas.translate(dp(16.6f), 0);
+        this.author.draw(canvas, 0, cy, textColor, alpha);
+        canvas.translate(this.author.getWidth(), 0);
+        this.title.draw(canvas, 0, cy, textColor, 0.85f * alpha);
+        canvas.translate(this.title.getWidth(), 0);
+
+        arrowPaint.setStrokeWidth(dpf2(1.16f));
+        canvas.translate(dpf2(4.8f), cy);
+        if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, CompactChevronRenderer.RIGHT)) {
+        canvas.drawPath(arrowPath, arrowPaint);
+
+        }
+    }
+
+    private boolean hasVisibleCompanion() {
+        ProfileMusicView companion = trailingView != null ? trailingView : leadingView;
+        return companion != null && companion.getVisibility() == VISIBLE;
+    }
+
+    protected void invalidateContentWidth() {
+        invalidate();
+        if (leadingView != null) leadingView.invalidate();
+        if (trailingView != null) trailingView.invalidate();
+    }
+
+    private float getPillWidth(float maxWidth) {
+        return dp(16) + getContentWidth(maxWidth);
+    }
+
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
         if (this.author == null || this.title == null) return;
@@ -303,30 +385,36 @@ public class ProfileMusicView extends View {
         final int padding = dp(12);
         final int maxWidth = getWidth() - padding * 2;
 
-        this.author.ellipsize((maxWidth - dp(35)) / 2f);
-        this.title.ellipsize(maxWidth - this.author.getWidth() - dp(35));
+        float containerWidth;
+        float left;
+        if (hasVisibleCompanion()) {
+            ProfileMusicView leading = leadingView != null ? leadingView : this;
+            ProfileMusicView trailing = trailingView != null ? trailingView : this;
+            float trailingWidth = trailing.getPillWidth(maxWidth / 2f);
+            float leadingWidth = leading.getPillWidth(Math.max(0, maxWidth - trailingWidth - dp(6)));
+            left = (getWidth() - leadingWidth - dp(6) - trailingWidth) / 2f;
+            containerWidth = leadingView != null ? trailingWidth : leadingWidth;
+            if (leadingView != null) left += leadingWidth + dp(6);
+        } else {
+            containerWidth = getPillWidth(maxWidth);
+            left = (getWidth() - containerWidth) / 2f;
+        }
 
-        final float width = dp(16.6f) + this.author.getWidth() + this.title.getWidth() + dp(8);
-        final float containerWidth = dp(16) + width;
-
+        rect.set(left, dp(10), left + containerWidth, dp(10) + dp(17) * alpha);
         canvas.save();
-        canvas.scale(scale, scale, getWidth() / 2f, getHeight() / 2f);
+        canvas.scale(scale, scale, rect.centerX(), getHeight() / 2f);
 
-        rect.set(
-            (getWidth() - containerWidth) / 2f,
-            dp(10),
-            (getWidth() + containerWidth) / 2f,
-            dp(10) + dp(17) * alpha
-        );
+        final boolean withShadows = SharedConfig.shadowsInSections && isButtonColorLight() && parentExpanded < 0.5f;
+        final float bgAlpha = hasColorById ? 0.1f : 1f;
         if (withShadows && SharedConfig.shadowsInSections) {
-            backgroundPaint.setShadowLayer(dpf2(2), 0, dpf2(0.33f), multAlpha(0x0a000000, alpha * profileT));
-            strokePaint.setShadowLayer(dpf2(0.33f), 0, 0, multAlpha(0x0c000000, alpha * profileT));
+            backgroundPaint.setShadowLayer(dpf2(2), 0, dpf2(0.33f), multAlpha(0x0a000000, alpha * profileT * bgAlpha));
+            strokePaint.setShadowLayer(dpf2(0.33f), 0, 0, multAlpha(0x0c000000, alpha * profileT * bgAlpha));
             strokePaint.setColor(0);
         } else {
             backgroundPaint.setShadowLayer(0, 0, 0, 0);
         }
         int wasAlpha = backgroundPaint.getAlpha();
-        backgroundPaint.setAlpha((int) (wasAlpha * alpha * profileT));
+        backgroundPaint.setAlpha((int) (wasAlpha * alpha * profileT * bgAlpha));
         if (withShadows && SharedConfig.shadowsInSections && profileT > 0f) {
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, strokePaint);
         }
@@ -334,6 +422,21 @@ public class ProfileMusicView extends View {
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, backgroundPaint);
         }
         backgroundPaint.setAlpha(wasAlpha);
+        if (profileT > 0f && hasColorById && buttonColor != 0 && rect.width() > 0) {
+            if (radialGradient == null || radialGradientWidth != rect.width()) {
+                radialGradientWidth = rect.width();
+                radialGradient = new RadialGradient(
+                    rect.width() / 2f, dp(17) / 2f, rect.width() * 0.65f,
+                    Theme.multAlpha(buttonColor, 0.8f), buttonColor,
+                    Shader.TileMode.CLAMP
+                );
+                shaderPaint.setShader(radialGradient);
+            }
+            matrix.setTranslate(rect.left, rect.top);
+            radialGradient.setLocalMatrix(matrix);
+            shaderPaint.setAlpha((int) (0xFF * alpha * profileT));
+            canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, shaderPaint);
+        }
         if (bannerT > 0f) {
             bannerBackgroundPaint.setAlpha((int) (40f * alpha * bannerT));
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, bannerBackgroundPaint);
@@ -344,36 +447,37 @@ public class ProfileMusicView extends View {
 
         canvas.save();
         canvas.clipPath(clipPath);
-        if (profileT > 0f && !ignoreRect && renderNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canvas.isHardwareAccelerated()) {
+        if (profileT > 0f && !ignoreRect && renderNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && renderNode.hasDisplayList() && canvas.isHardwareAccelerated()) {
             int restoreCount = profileT >= 0.999f
                     ? canvas.save()
                     : canvas.saveLayerAlpha(rect, Math.round(255 * profileT));
+            if (avatarView != null && avatarView.getParent() instanceof View) {
+                View v = (View) avatarView.getParent();
+                float vl = v.getX() - getX();
+                float vt = v.getY() - getTranslationY();
+                float vw = v.getWidth() * v.getScaleX();
+                float vh = v.getHeight() * v.getScaleY();
+
+                clipAvatarPath.rewind();
+                clipAvatarPath.addRoundRect(
+                    vl,
+                    vt,
+                    vl + vw,
+                    vt + vh,
+                    avatarView.getRoundRadiusForExpand() * v.getScaleX(),
+                    avatarView.getRoundRadiusForExpand() * v.getScaleY(),
+                    Path.Direction.CCW
+                );
+                canvas.clipPath(clipAvatarPath);
+            }
             canvas.translate(0f, renderNodeTranslateY);
             canvas.scale(renderNodeScale, renderNodeScale);
             canvas.drawRenderNode(renderNode);
             canvas.restoreToCount(restoreCount);
         }
 
-        canvas.translate((getWidth() - width) / 2f, 0);
-
-        final float cy = getHeight() / 2f, hh = dp(6), w = dp(2);
-
-        final int iconSz = dp(13);
-        icon.setBounds(0, (int) cy - iconSz / 2, iconSz, (int) cy + iconSz / 2);
-        icon.draw(canvas);
-
-        canvas.translate(dp(16.6f), 0);
-        this.author.draw(canvas, 0, cy, textColor, alpha);
-        canvas.translate(this.author.getWidth(), 0);
-        this.title.draw(canvas, 0, cy, textColor, 0.85f * alpha);
-        canvas.translate(this.title.getWidth(), 0);
-
-        arrowPaint.setStrokeWidth(dpf2(1.16f));
-        canvas.translate(dpf2(4.8f), cy);
-        if (!arrowRenderer.draw(canvas, arrowPath, arrowPaint, CompactChevronRenderer.RIGHT)) {
-        canvas.drawPath(arrowPath, arrowPaint);
-
-        }
+        canvas.translate(rect.left + dp(8), 0);
+        drawContent(canvas, alpha);
         canvas.restore();
 
         canvas.restore();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Bitmap;
@@ -409,6 +411,7 @@ public class FilterGLThread extends DispatchQueue {
     }
 
     public void finish() {
+        filterShaders.releaseEnhanceBuffers();
         currentBitmap = null;
         if (eglSurface != null) {
             egl10.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
@@ -619,8 +622,12 @@ public class FilterGLThread extends DispatchQueue {
 
     @Override
     public void run() {
+        try {
         initied = initGL();
         super.run();
+        } finally {
+            filterShaders.releaseEnhanceBuffers();
+        }
     }
 
     public void requestRender(final boolean updateBlur) {

@@ -241,12 +241,37 @@ public class GLIconTextureView extends TextureView implements TextureView.Surfac
         }
         return targetFps;
     }
+    protected long getFrameDurationNanos(long targetFrameDurationNanos) {
+        return targetFrameDurationNanos;
+    }
+
+    protected int getMsaaSamples() {
+        return 4;
+    }
+
+    protected float getRenderScale() {
+        return 1f;
+    }
+
+    private volatile boolean scaledBuffer;
+    private final int[] bufferWidth = new int[1], bufferHeight = new int[1];
+
+    private void setScaledDimensions(SurfaceTexture surface, int width, int height) {
+        final float scale = getRenderScale();
+        scaledBuffer = scale < 1f;
+        if (scale < 1f && width > 0 && height > 0) {
+            width = Math.max(1, Math.round(width * scale));
+            height = Math.max(1, Math.round(height * scale));
+            surface.setDefaultBufferSize(width, height);
+        }
+        setDimensions(width, height);
+    }
     public void startThread(SurfaceTexture surface, int width, int height) {
         stopThread();
         ready = false;
         thread = new RenderThread(surface);
         isRunning = true;
-        setDimensions(width, height);
+        setScaledDimensions(surface, width, height);
         targetFrameDurationNanos = 1_000_000_000L / Math.max(1, Math.min(targetFps, getMaxFrameRate()));
         thread.start();
     }
@@ -254,7 +279,7 @@ public class GLIconTextureView extends TextureView implements TextureView.Surfac
 
     @Override
     public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-        setDimensions(width, height);
+        setScaledDimensions(surface, width, height);
     }
 
     public void setPaused(boolean isPaused) {
@@ -379,7 +404,7 @@ public class GLIconTextureView extends TextureView implements TextureView.Surfac
                     if (shouldSleep()) {
                         Thread.sleep(100);
                     } else {
-                        long remaining = targetFrameDurationNanos - (System.nanoTime() - lastFrameTime);
+                        long remaining = getFrameDurationNanos(targetFrameDurationNanos) - (System.nanoTime() - lastFrameTime);
                         if (remaining > 0) {
                             Thread.sleep(remaining / 1_000_000L, (int) (remaining % 1_000_000L));
                         }
@@ -437,6 +462,15 @@ public class GLIconTextureView extends TextureView implements TextureView.Surfac
         checkCurrent();
         if (mRenderer != null) {
             int width = surfaceWidth, height = surfaceHeight;
+            if (scaledBuffer) {
+                mEgl.eglQuerySurface(mEglDisplay, mEglSurface, EGL10.EGL_WIDTH, bufferWidth);
+                mEgl.eglQuerySurface(mEglDisplay, mEglSurface, EGL10.EGL_HEIGHT, bufferHeight);
+                if (bufferWidth[0] > 0 && bufferHeight[0] > 0 && (bufferWidth[0] != width || bufferHeight[0] != height)) {
+                    mSurface.setDefaultBufferSize(width, height);
+                    width = bufferWidth[0];
+                    height = bufferHeight[0];
+                }
+            }
             if (width != renderedWidth || height != renderedHeight) {
                 renderedWidth = width;
                 renderedHeight = height;
@@ -526,7 +560,7 @@ public class GLIconTextureView extends TextureView implements TextureView.Surfac
                     EGL10.EGL_DEPTH_SIZE, 16,  //was 0
                     EGL10.EGL_STENCIL_SIZE, 0,
                     EGL10.EGL_SAMPLE_BUFFERS, 1,
-                    EGL10.EGL_SAMPLES, 4,
+                    EGL10.EGL_SAMPLES, getMsaaSamples(),
                     EGL10.EGL_NONE
             };
         }

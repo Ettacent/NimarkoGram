@@ -24,7 +24,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class MotionPhotoDrawable extends Drawable {
 
     private final Path play = new Path();
@@ -69,9 +69,9 @@ public class MotionPhotoDrawable extends Drawable {
 
         final float cx = getBounds().centerX();
         final float cy = getBounds().centerY();
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon enabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_on);
-        NimarkoIconResources.PreparedIcon disabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_off);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon enabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_on);
+        IconResources.PreparedIcon disabledIcon = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_live_off);
         if (enabledIcon != null && disabledIcon != null
                 && strokePaint.getColor() == playPaint.getColor()
                 && strokePaint.getAlpha() == playPaint.getAlpha()

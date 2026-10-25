@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2012 The WebRTC project authors. All Rights Reserved.
  *
@@ -439,6 +441,7 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
     bool offer_extmap_allow_mixed;
     std::string turn_logging_id;
     bool enable_implicit_rollback;
+    bool disable_payload_type_demuxing;
     absl::optional<int> report_usage_pattern_delay_ms;
     absl::optional<int> stable_writable_connection_ping_interval_ms;
     VpnPreference vpn_preference;
@@ -499,6 +502,7 @@ bool PeerConnectionInterface::RTCConfiguration::operator==(
          offer_extmap_allow_mixed == o.offer_extmap_allow_mixed &&
          turn_logging_id == o.turn_logging_id &&
          enable_implicit_rollback == o.enable_implicit_rollback &&
+         disable_payload_type_demuxing == o.disable_payload_type_demuxing &&
          report_usage_pattern_delay_ms == o.report_usage_pattern_delay_ms &&
          stable_writable_connection_ping_interval_ms ==
              o.stable_writable_connection_ping_interval_ms &&
@@ -590,6 +594,7 @@ PeerConnection::PeerConnection(
           std::move(dependencies.async_dns_resolver_factory)),
       port_allocator_(std::move(dependencies.allocator)),
       ice_transport_factory_(std::move(dependencies.ice_transport_factory)),
+      dtls_transport_factory_(std::move(dependencies.dtls_transport_factory)),
       tls_cert_verifier_(std::move(dependencies.tls_cert_verifier)),
       call_(std::move(call)),
       worker_thread_safety_(PendingTaskSafetyFlag::CreateAttachedToTaskQueue(
@@ -743,7 +748,8 @@ JsepTransportController* PeerConnection::InitializeTransportController_n(
   config.redetermine_role_on_ice_restart =
       configuration.redetermine_role_on_ice_restart;
   config.ssl_max_version = options_.ssl_max_version;
-  config.disable_encryption = options_.disable_encryption;
+  config.disable_encryption =
+      options_.disable_encryption || options_.external_transport_security;
   config.bundle_policy = configuration.bundle_policy;
   config.rtcp_mux_policy = configuration.rtcp_mux_policy;
   // TODO(bugs.webrtc.org/9891) - Remove options_.crypto_options then remove
@@ -753,29 +759,20 @@ JsepTransportController* PeerConnection::InitializeTransportController_n(
                               : options_.crypto_options;
   config.transport_observer = this;
   config.rtcp_handler = InitializeRtcpCallback();
-  config.un_demuxable_packet_handler = InitializeUnDemuxablePacketHandler();
+  config.un_demuxable_packet_handler =
+      InitializeUnDemuxablePacketHandler(dependencies.observer);
   config.event_log = &env_.event_log();
 #if defined(ENABLE_EXTERNAL_AUTH)
   config.enable_external_auth = true;
 #endif
   config.active_reset_srtp_params = configuration.active_reset_srtp_params;
 
-  // TGCALLS PATCH: SCTP no longer requires DTLS.
-  //
-  // Upstream gates this on dtls_enabled_ because SCTP would otherwise run
-  // unprotected. tgcalls disables DTLS deliberately when the media is already
-  // protected by an mtproto layer below ICE, which carries its own shared key -
-  // so DTLS is redundant, and paying for its handshake and record framing is
-  // exactly what we are avoiding.
-  //
-  // The DtlsTransport object still exists under disable_encryption (it is passed
-  // to CreateUnencryptedRtpTransport), and an inactive one is a pure passthrough
-  // to ICE (dtls_transport.cc:431), so SCTP rides straight through it into
-  // mtproto - matching 13.0.0, where the data channel shares the mtproto
-  // transport (NativeNetworkingImpl.cpp:690).
-  config.sctp_factory = context_->sctp_transport_factory();
+  if (dtls_enabled_) {
+    config.sctp_factory = context_->sctp_transport_factory();
+  }
 
   config.ice_transport_factory = ice_transport_factory_.get();
+  config.dtls_transport_factory = dtls_transport_factory_.get();
   config.on_dtls_handshake_error_ =
       [weak_ptr = weak_factory_.GetWeakPtr()](rtc::SSLHandshakeError s) {
         if (weak_ptr) {
@@ -2114,6 +2111,21 @@ void PeerConnection::DestroyDataChannelTransport(RTCError error) {
   SetSctpTransportName("");
 }
 
+void PeerConnection::ResetSctpDataMidAfterRollback() {
+  RTC_DCHECK_RUN_ON(signaling_thread());
+  network_thread()->BlockingCall([&] {
+    RTC_DCHECK_RUN_ON(network_thread());
+    if (sctp_mid_n_) {
+      RTC_LOG(LS_INFO) << "Releasing rolled-back data channel mid="
+                       << *sctp_mid_n_;
+      sctp_mid_n_.reset();
+    }
+    data_channel_controller_.OnTransportChanged(nullptr);
+  });
+  sctp_mid_s_.reset();
+  SetSctpTransportName("");
+}
+
 void PeerConnection::OnSctpDataChannelStateChanged(
     int channel_id,
     DataChannelInterface::DataState state) {
@@ -2712,7 +2724,7 @@ void PeerConnection::ReportRemoteIceCandidateAdded(
 
 bool PeerConnection::SrtpRequired() const {
   RTC_DCHECK_RUN_ON(signaling_thread());
-  return dtls_enabled_;
+  return dtls_enabled_ && !options_.external_transport_security;
 }
 
 void PeerConnection::OnTransportControllerGatheringState(
@@ -2991,9 +3003,13 @@ PeerConnection::InitializeRtcpCallback() {
 }
 
 std::function<void(const RtpPacketReceived& parsed_packet)>
-PeerConnection::InitializeUnDemuxablePacketHandler() {
+PeerConnection::InitializeUnDemuxablePacketHandler(
+    PeerConnectionObserver* observer) {
   RTC_DCHECK_RUN_ON(network_thread());
-  return [this](const RtpPacketReceived& parsed_packet) {
+  return [this, observer](const RtpPacketReceived& parsed_packet) {
+    if (observer) {
+      observer->OnUnDemuxableRtpPacket(parsed_packet);
+    }
     worker_thread()->PostTask(
         SafeTask(worker_thread_safety_, [this, parsed_packet]() {
           // Deliver the packet anyway to Call to allow Call to do BWE.

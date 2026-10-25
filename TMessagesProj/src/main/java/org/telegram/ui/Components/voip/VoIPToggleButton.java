@@ -31,7 +31,7 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
@@ -271,10 +271,10 @@ public class VoIPToggleButton extends FrameLayout {
             return drawable;
         }
         Resources resources = getResources();
-        if (!(resources instanceof NimarkoIconResources) || !((NimarkoIconResources) resources).hasReplacement(iconRes)) {
+        if (!(resources instanceof IconResources) || !((IconResources) resources).hasReplacement(iconRes)) {
             return drawable;
         }
-        Drawable stock = NimarkoIconResources.getStockDrawable(getContext(), iconRes);
+        Drawable stock = IconResources.getStockDrawable(getContext(), iconRes);
         int width = drawable.getIntrinsicWidth();
         int height = drawable.getIntrinsicHeight();
         if (stock == null || stock.getIntrinsicWidth() <= 0 || stock.getIntrinsicHeight() <= 0 || width <= 0 || height <= 0) {

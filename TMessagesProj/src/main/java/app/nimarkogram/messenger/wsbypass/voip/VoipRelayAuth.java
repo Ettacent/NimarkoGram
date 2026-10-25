@@ -4,7 +4,7 @@ package app.nimarkogram.messenger.wsbypass.voip;
 
 import android.content.SharedPreferences;
 import android.os.SystemClock;
-import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.RelayRegion;
 import java.io.IOException;
 import java.util.Set;
@@ -24,8 +24,8 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.net.SocketTimeoutException;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoInlineAuth;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.InlineAuth;
 
 public final class VoipRelayAuth {
 
@@ -33,9 +33,9 @@ public final class VoipRelayAuth {
     private static final String API_URL = VoipBypassConfig.VOIP_AUTH_URL;
 
     public static final class Credential {
-        public final long expiry;   
-        public final long uid;      
-        public final byte[] hmac;   
+        public final long expiry;
+        public final long uid;
+        public final byte[] hmac;
 
         Credential(long expiry, long uid, byte[] hmac) {
             this.expiry = expiry;
@@ -89,29 +89,29 @@ public final class VoipRelayAuth {
         activeConnections.clear();
     }
 
-    private static NimarkoInlineAuth.Backend backendFor(final long uid) {
-        return new NimarkoInlineAuth.Backend() {
+    private static InlineAuth.Backend backendFor(final long uid) {
+        return new InlineAuth.Backend() {
             @Override public String cachedToken() {
-                String t = NimarkoConfig.getVoipRelayTokenForUid(uid);
+                String t = AppConfig.getVoipRelayTokenForUid(uid);
                 return (t == null || t.isEmpty()) ? null : t;
             }
-            @Override public void cacheToken(String t) { NimarkoConfig.setVoipRelayTokenForUid(uid, t); }
-            @Override public NimarkoInlineAuth.Reg register(long ignored) { return httpRegister(uid); }
+            @Override public void cacheToken(String t) { AppConfig.setVoipRelayTokenForUid(uid, t); }
+            @Override public InlineAuth.Reg register(long ignored) { return httpRegister(uid); }
             @Override public String poll(long ignored, String code) { return httpPoll(uid, code); }
         };
     }
 
     public static void prefetchAsync(final int account) {
         if (!isAuthAllowed()) return;
-        
+
         RelayRegion.invalidate();
         long now = nowSeconds(account);
         Credential c = memoryOrDisk(account);
         long uid = uidOf(account);
         if (uid <= 0) return;
-        
+
         if (c != null && c.uid == uid && isFresh(c, now)) return;
-        
+
         final PrefetchOwner owner = new PrefetchOwner(authGeneration.get(), uidOf(account));
         if (owner.uid <= 0 || !claimPrefetchOwner(account, owner)) return;
         Thread worker = new Thread(() -> {
@@ -149,11 +149,11 @@ public final class VoipRelayAuth {
         Credential c = memoryOrDisk(account);
         if (uidOf(account) != ownerUid || c != null && c.uid != ownerUid) return null;
         if (isUsable(c, now)) {
-            
+
             if (!isFresh(c, now)) prefetchAsync(account);
             return c;
         }
-        
+
         prefetchAsync(account);
         return null;
     }
@@ -165,7 +165,7 @@ public final class VoipRelayAuth {
     private static Credential get(int account, boolean forceRefresh) {
         if (!isAuthAllowed()) return null;
         final long generation = authGeneration.get();
-        final NimarkoInlineAuth.EnablePredicate permit = new NimarkoInlineAuth.EnablePredicate() {
+        final InlineAuth.EnablePredicate permit = new InlineAuth.EnablePredicate() {
             @Override public boolean isEnabled() {
                 return generation == authGeneration.get() && isAuthAllowed();
             }
@@ -193,11 +193,11 @@ public final class VoipRelayAuth {
                 }
                 long uid = uidOf(account);
                 if (uid <= 0 || uid != ownerUid) return null;
-                NimarkoInlineAuth.Backend backend = backendFor(uid);
+                InlineAuth.Backend backend = backendFor(uid);
                 if (!isAuthAllowed()) {
                     return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
                 }
-                String token = NimarkoInlineAuth.ensureToken(
+                String token = InlineAuth.ensureToken(
                         account, uid, lock, backend, permit);
                 if (token == null || !permit.isEnabled()) {
                     return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
@@ -205,16 +205,16 @@ public final class VoipRelayAuth {
                 int[] status = new int[1];
                 Credential fresh = fetchCredential(token, status);
                 if (fresh == null && (status[0] == 401 || status[0] == 403)) {
-                    
+
                     final String rejectedToken = token;
                     final AtomicBoolean tokenInvalidated =
                             new AtomicBoolean(false);
                     if (!permit.runIfEnabled(() -> {
-                        
+
                         String currentToken = backend.cachedToken();
                         if (UserConfig.getInstance(account).getClientUserId() == uid
                                 && rejectedToken.equals(currentToken)) {
-                            NimarkoConfig.setVoipRelayTokenForUid(uid, null);
+                            AppConfig.setVoipRelayTokenForUid(uid, null);
                             tokenInvalidated.set(true);
                         }
                     }) || !tokenInvalidated.get()) {
@@ -222,7 +222,7 @@ public final class VoipRelayAuth {
                                 && isUsable(old, now) && permit.isEnabled() ? old : null;
                     }
                     token = authRemainingMs() > 0 && permit.isEnabled()
-                            ? NimarkoInlineAuth.ensureToken(
+                            ? InlineAuth.ensureToken(
                                     account, uid, lock, backend, permit) : null;
                     if (token == null) {
                         return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
@@ -234,7 +234,7 @@ public final class VoipRelayAuth {
                     final AtomicBoolean committed =
                             new AtomicBoolean(false);
                     if (!permit.runIfEnabled(() -> {
-                        
+
                         if (UserConfig.getInstance(account).getClientUserId() == credential.uid) {
                             cached.put(account, credential);
                             saveCredentialToDisk(account, credential);
@@ -310,8 +310,8 @@ public final class VoipRelayAuth {
         }
     }
 
-    private static NimarkoInlineAuth.Reg httpRegister(long uid) {
-        NimarkoInlineAuth.Reg reg = new NimarkoInlineAuth.Reg();
+    private static InlineAuth.Reg httpRegister(long uid) {
+        InlineAuth.Reg reg = new InlineAuth.Reg();
         long generation = authGeneration.get();
         if (!isAuthAllowed()) return reg;
         HttpURLConnection con = null;
@@ -338,13 +338,13 @@ public final class VoipRelayAuth {
 
     private static String httpPoll(long uid, String code) {
         long generation = authGeneration.get();
-        if (!isAuthAllowed() || authRemainingMs() <= 0) return NimarkoInlineAuth.GIVE_UP;
+        if (!isAuthAllowed() || authRemainingMs() <= 0) return InlineAuth.GIVE_UP;
         HttpURLConnection con = null;
         try {
             URL url = new URL(API_URL + "/api/v1/voip/poll?user_id=" + uid
                     + "&code=" + URLEncoder.encode(code, "UTF-8"));
             con = (HttpURLConnection) url.openConnection();
-            if (!registerConnection(con, generation)) return NimarkoInlineAuth.GIVE_UP;
+            if (!registerConnection(con, generation)) return InlineAuth.GIVE_UP;
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
@@ -355,8 +355,8 @@ public final class VoipRelayAuth {
                 String token = o.optString("token", "");
                 return token.isEmpty() ? null : token;
             }
-            if (rc == 202) return null;        
-            return NimarkoInlineAuth.GIVE_UP;  
+            if (rc == 202) return null;
+            return InlineAuth.GIVE_UP;
         } catch (Throwable t) {
             Log.e(TAG, "poll failed: " + t);
             return null;
@@ -444,7 +444,7 @@ public final class VoipRelayAuth {
         return out;
     }
 
-    private static final String PREF_CRED = "voip_relay_cred";   
+    private static final String PREF_CRED = "voip_relay_cred";
     private static final String PREF_SLOT_UID = "voip_relay_slot_uid_";
 
     private static String credentialKey(int account) {
@@ -454,14 +454,14 @@ public final class VoipRelayAuth {
 
     private static long reconcileAccountLocked(int account) {
         try {
-            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = WsBypassConfig.prefs();
             long currentUid = UserConfig.getInstance(account).getClientUserId();
             long priorUid = prefs.getLong(PREF_SLOT_UID + account, 0L);
             if (priorUid != currentUid) {
                 SharedPreferences.Editor editor = prefs.edit();
                 if (priorUid > 0) {
                     editor.remove(PREF_CRED + "_" + priorUid);
-                    NimarkoConfig.setVoipRelayTokenForUid(priorUid, null);
+                    AppConfig.setVoipRelayTokenForUid(priorUid, null);
                 }
                 if (currentUid > 0) editor.putLong(PREF_SLOT_UID + account, currentUid);
                 else editor.remove(PREF_SLOT_UID + account);
@@ -480,11 +480,11 @@ public final class VoipRelayAuth {
             cached.remove(account);
             try {
                 SharedPreferences.Editor editor =
-                        NimarkoWsBypassConfig.prefs().edit()
+                        WsBypassConfig.prefs().edit()
                                 .remove(PREF_SLOT_UID + account).remove(PREF_CRED);
                 if (uid > 0) {
                     editor.remove(PREF_CRED + "_" + uid);
-                    NimarkoConfig.setVoipRelayTokenForUid(uid, null);
+                    AppConfig.setVoipRelayTokenForUid(uid, null);
                 }
                 editor.apply();
             } catch (Throwable ignore) {}
@@ -499,7 +499,7 @@ public final class VoipRelayAuth {
 
     private static void saveCredentialToDiskLocked(int account, Credential c) {
         try {
-            SharedPreferences p = NimarkoWsBypassConfig.prefs();
+            SharedPreferences p = WsBypassConfig.prefs();
             long uid = reconcileAccountLocked(account);
             String key = credentialKey(account);
             if (c == null || c.hmac == null || uid <= 0 || c.uid != uid) {
@@ -511,7 +511,7 @@ public final class VoipRelayAuth {
 
     private static Credential loadCredentialFromDisk(int account) {
         try {
-            SharedPreferences prefs = NimarkoWsBypassConfig.prefs();
+            SharedPreferences prefs = WsBypassConfig.prefs();
             String key = credentialKey(account);
             String s = prefs.getString(key, null);
             boolean legacy = false;

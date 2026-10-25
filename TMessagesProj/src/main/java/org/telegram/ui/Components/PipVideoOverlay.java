@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1159,14 +1159,14 @@ public class PipVideoOverlay implements IPipSourceDelegate {
         // Animate is a flag for PhotoViewer transition, not ours
         if (animate) {
             windowManager.addView(contentView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(contentView);
+            AppMotionBlur.attachRoot(contentView);
         } else {
             contentView.setAlpha(0f);
             contentView.setScaleX(0.1f);
             contentView.setScaleY(0.1f);
             windowManager.addView(contentView, windowLayoutParams);
 
-            NimarkoAppMotionBlur.attachRoot(contentView);
+            AppMotionBlur.attachRoot(contentView);
             AnimatorSet set = new AnimatorSet();
             set.setDuration(250);
             set.setInterpolator(CubicBezierInterpolator.DEFAULT);
@@ -1355,7 +1355,7 @@ public class PipVideoOverlay implements IPipSourceDelegate {
         }
 
         windowManager.addView(contentView, windowLayoutParams);
-        NimarkoAppMotionBlur.attachRoot(contentView);
+        AppMotionBlur.attachRoot(contentView);
         windowViewSkipRender = false;
         contentView.invalidate();
 

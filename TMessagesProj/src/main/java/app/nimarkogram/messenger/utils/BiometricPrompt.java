@@ -35,7 +35,7 @@ import org.telegram.messenger.support.fingerprint.FingerprintManagerCompat;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class BiometricPrompt {
 
@@ -68,11 +68,11 @@ public class BiometricPrompt {
     private static androidx.biometric.BiometricPrompt.PromptInfo createPromptInfo() {
         androidx.biometric.BiometricPrompt.PromptInfo.Builder builder = new androidx.biometric.BiometricPrompt.PromptInfo.Builder();
         builder.setTitle(getString(R.string.AppName));
-        if (!NimarkoConfig.allowSystemPasscode) {
+        if (!AppConfig.allowSystemPasscode) {
             builder.setNegativeButtonText(getString(R.string.Cancel));
         }
 
-        builder.setDeviceCredentialAllowed(NimarkoConfig.allowSystemPasscode);
+        builder.setDeviceCredentialAllowed(AppConfig.allowSystemPasscode);
         builder.setConfirmationRequired(false);
 
         return builder.build();
@@ -218,21 +218,21 @@ public class BiometricPrompt {
             @Override
             public void onSuccess(androidx.biometric.BiometricPrompt.AuthenticationResult result) {
                 if (successCallback != null) successCallback.run();
-                if (NimarkoConfig.showRPCErrors)
+                if (AppConfig.showRPCErrors)
                     Toast.makeText(activity, "Success", Toast.LENGTH_SHORT).show();
             }
 
             @Override
             public void onFailed() {
                 if (failCallback != null) failCallback.run();
-                if (NimarkoConfig.showRPCErrors)
+                if (AppConfig.showRPCErrors)
                     Toast.makeText(activity, "Fail", Toast.LENGTH_SHORT).show();
             }
 
             @Override
             public void onError(int error, CharSequence msg) {
                 if (failCallback != null) failCallback.run();
-                if (NimarkoConfig.showRPCErrors)
+                if (AppConfig.showRPCErrors)
                     Toast.makeText(activity, msg, Toast.LENGTH_SHORT).show();
             }
         });

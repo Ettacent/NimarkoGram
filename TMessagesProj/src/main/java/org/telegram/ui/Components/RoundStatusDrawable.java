@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -78,9 +80,9 @@ public class RoundStatusDrawable extends StatusDrawable {
     public void draw(Canvas canvas) {
         Paint paint = currentPaint == null ? Theme.chat_statusPaint : currentPaint;
         paint.setAlpha(55 + (int) (200 * progress));
-        
+
         float cx, cy;
-        if (app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride) {
+        if (app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride) {
             cx = getBounds().centerX() - AndroidUtilities.dp(1);
             cy = AndroidUtilities.dp(isChat ? 8 : 9);
         } else {
@@ -110,7 +112,7 @@ public class RoundStatusDrawable extends StatusDrawable {
 
     @Override
     public int getIntrinsicWidth() {
-        return AndroidUtilities.dp(app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride ? 8 : 12);
+        return AndroidUtilities.dp(app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride ? 8 : 12);
     }
 
     @Override

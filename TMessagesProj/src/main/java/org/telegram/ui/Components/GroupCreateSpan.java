@@ -229,7 +229,7 @@ public class GroupCreateSpan extends View {
         }
 
         imageReceiver = new ImageReceiver();
-        imageReceiver.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(32));
+        imageReceiver.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
         imageReceiver.setParentView(this);
         imageReceiver.setImageCoords(drawAvatarBackground ? 0 : dp(4), 0, dp(small ? 28 : 32), dp(small ? 28 : 32));
 

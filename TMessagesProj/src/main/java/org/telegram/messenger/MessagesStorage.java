@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -16,7 +18,6 @@ import static org.telegram.messenger.MessagesController.LOAD_FROM_UNREAD;
 
 import android.appwidget.AppWidgetManager;
 import android.content.SharedPreferences;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -59,6 +60,7 @@ import org.telegram.ui.EditWidgetActivity;
 import org.telegram.ui.Stories.StoriesController;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -231,9 +233,9 @@ public class MessagesStorage extends BaseController {
 
     public MessagesStorage(int instance) {
         super(instance);
-        storageQueue = new DispatchQueue("storageQueue_" + instance);
+        storageQueue = new DispatchQueue("storageQueue_" + instance, false);
         storageQueue.setPriority(8);
-        storageQueue.postRunnable(() -> openDatabase(1));
+        storageQueue.start(() -> openDatabase(1));
     }
 
     public SQLiteDatabase getDatabase() {
@@ -293,6 +295,13 @@ public class MessagesStorage extends BaseController {
     }
 
     public void openDatabase(int openTries) {
+        openDatabase(openTries, true);
+    }
+
+    private Exception databaseOpenError;
+
+    private void openDatabase(int openTries, boolean notifyOpened) {
+        databaseOpenError = null;
         if (!NativeLoader.loaded()) {
             int tryCount = 0;
             while (!NativeLoader.loaded()) {
@@ -323,6 +332,9 @@ public class MessagesStorage extends BaseController {
             createTable = true;
         }
         try {
+            if (database != null) {
+                database.closeForDestruction();
+            }
             database = new SQLiteDatabase(cacheFile.getPath());
             database.executeFast("PRAGMA secure_delete = ON").stepThis().dispose();
             database.executeFast("PRAGMA temp_store = MEMORY").stepThis().dispose();
@@ -397,18 +409,44 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             FileLog.e(e);
             if (openTries < 3 && e.getMessage() != null && e.getMessage().contains("malformed")) {
+                try {
+                    cleanupInternal(openTries == 2);
                 if (openTries == 2) {
-                    cleanupInternal(true);
                     clearLoadingDialogsOffsets();
-                } else {
-                    cleanupInternal(false);
-                }
-                openDatabase(openTries == 1 ? 2 : 3);
+                    }
+                    openDatabase(openTries == 1 ? 2 : 3, notifyOpened);
                 return;
+                } catch (Exception cleanupError) {
+                    e.addSuppressed(cleanupError);
+                }
             }
+            databaseOpenError = e;
+            if (database != null) {
+                try {
+                    database.closeForDestruction();
+                } catch (SQLiteException closeError) {
+                    e.addSuppressed(closeError);
+                }
+            }
+            clearDatabaseValues();
+            openSync.countDown();
+            return;
+        }
+        openSync.countDown();
+        if (notifyOpened) {
+            finishDatabaseOpen(null);
+        }
+    }
+
+    private void finishDatabaseOpen(CleanupRequest request) {
+        if (request != null && !request.isCurrent()) {
+            return;
         }
 
         AndroidUtilities.runOnUIThread(() -> {
+            if (request != null && !request.isCurrent()) {
+                return;
+            }
             if (databaseMigrationInProgress) {
                 databaseMigrationInProgress = false;
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.onDatabaseMigration, false);
@@ -425,6 +463,9 @@ public class MessagesStorage extends BaseController {
 
         AndroidUtilities.runOnUIThread(() -> {
             //TODO add progress view and uncomment
+            if (request != null && !request.isCurrent()) {
+                return;
+            }
             showClearDatabaseAlert = false;//getDatabaseSize() > 150 * 1024 * 1024;
             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.onDatabaseOpened);
         });
@@ -439,31 +480,26 @@ public class MessagesStorage extends BaseController {
     }
 
     private boolean recoverDatabase() {
-        database.close();
-        boolean restored = DatabaseMigrationHelper.recoverDatabase(cacheFile, walCacheFile, shmCacheFile, currentAccount);
+        databaseCreated = false;
+        try {
+            database.closeForDestruction();
+            boolean restored = DatabaseMigrationHelper.recoverDatabaseChecked(cacheFile, walCacheFile, shmCacheFile, currentAccount);
         FileLog.e("Database restored = " + restored);
         if (restored) {
-            try {
-                database = new SQLiteDatabase(cacheFile.getPath());
-                database.executeFast("PRAGMA secure_delete = ON").stepThis().dispose();
-                database.executeFast("PRAGMA temp_store = MEMORY").stepThis().dispose();
-                database.executeFast("PRAGMA journal_mode = WAL").stepThis().dispose();
-                database.executeFast("PRAGMA journal_size_limit = 10485760").stepThis().dispose();
-            } catch (SQLiteException e) {
-                FileLog.e(new Exception(e));
-                restored = false;
-            }
-        }
-        if (!restored) {
+                openDatabase(3);
+            } else {
             cleanupInternal(true);
             openDatabase(1);
+            }
             restored = databaseCreated;
-            FileLog.e("Try create new database = " + restored);
-        }
         if (restored) {
             reset();
         }
         return restored;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
     }
 
     public final static String[] DATABASE_TABLES = new String[] {
@@ -806,29 +842,25 @@ public class MessagesStorage extends BaseController {
         });
     }
 
-    private void cleanupInternal(boolean deleteFiles) {
-        if (deleteFiles) {
-            reset();
-        } else {
+    private void cleanupInternal(boolean deleteFiles) throws Exception {
+        try {
+            if (database != null) {
+                database.closeForDestruction();
+            }
+            DatabaseMigrationHelper.closeRecoveryDatabase(currentAccount);
+        } finally {
             clearDatabaseValues();
         }
-        if (database != null) {
-            database.close();
-            database = null;
-        }
         if (deleteFiles) {
-            if (cacheFile != null) {
-                cacheFile.delete();
-                cacheFile = null;
-            }
-            if (walCacheFile != null) {
-                walCacheFile.delete();
-                walCacheFile = null;
-            }
-            if (shmCacheFile != null) {
-                shmCacheFile.delete();
-                shmCacheFile = null;
-            }
+            deleteDatabaseFile(cacheFile);
+            deleteDatabaseFile(walCacheFile);
+            deleteDatabaseFile(shmCacheFile);
+        }
+    }
+
+    private static void deleteDatabaseFile(File file) throws IOException {
+        if (file != null && file.exists() && !file.delete()) {
+            throw new IOException("Unable to delete database file " + file.getName());
 
         }
     }
@@ -857,11 +889,234 @@ public class MessagesStorage extends BaseController {
     }
 
     public void cleanup(boolean isLogin) {
-        storageQueue.postRunnable(() -> {
+        cleanup(isLogin, result -> {
+            if (result.error == null && isLogin) {
+                if (result.loginFinished) {
+                    result.request.acknowledgeLogin();
+                } else {
+                    result.request.finishLogin();
+                }
+            }
+        });
+    }
+
+    private final AtomicReference<CleanupRequest> currentCleanup = new AtomicReference<>();
+
+    public final class CleanupRequest {
+        private final boolean login;
+        private final boolean fullReset;
+        private Consumer<CleanupResult> completion;
+        private int attempt;
+        private boolean running;
+        private boolean succeeded;
+        private boolean loginFinished;
+        private TLRPC.User loginUser;
+        private boolean loginUserStored;
+        private boolean loginStageSubmitted;
+        private volatile CleanupResult result;
+
+        private CleanupRequest(boolean login, boolean fullReset, Consumer<CleanupResult> completion) {
+            this.login = login;
+            this.fullReset = fullReset;
+            this.completion = completion;
+        }
+
+        public boolean isCurrent() {
+            return currentCleanup.get() == this;
+        }
+
+        public CleanupResult getResult() {
+            return result;
+        }
+
+        private synchronized boolean retry(int expectedAttempt) {
+            if (!isCurrent() || running || loginFinished || (succeeded && !login) || attempt != expectedAttempt) {
+                return false;
+            }
+            running = true;
+            int nextAttempt = ++attempt;
+            boolean finish = succeeded;
+            RuntimeException rejection = null;
+            boolean queued = false;
+            try {
+                queued = storageQueue.postRunnable(() -> {
+                    if (finish) {
+                        runLoginFinish(this, nextAttempt);
+                    } else {
+                        runCleanup(this, nextAttempt);
+                    }
+                });
+                if (queued) {
+                    return true;
+                }
+                rejection = new java.util.concurrent.RejectedExecutionException("Storage queue rejected cleanup");
+            } catch (RuntimeException e) {
+                rejection = e;
+            } finally {
+                if (!queued) {
+                    running = false;
+                }
+            }
+            completeCleanup(this, nextAttempt, rejection, finish);
+            return false;
+        }
+
+        public void finishLogin() {
+            finishLogin(null);
+        }
+
+        public synchronized void finishLogin(TLRPC.User user) {
+            if (!login || !isCurrent() || !succeeded || loginFinished || running) {
+                return;
+            }
+            if (user != null && !loginUserStored) {
+                loginUser = user;
+            }
+            retry(attempt);
+        }
+
+        public synchronized void acknowledgeLogin() {
+            if (loginFinished) {
+                completion = null;
+            }
+        }
+    }
+
+    public static final class CleanupResult {
+        public final CleanupRequest request;
+        public final Exception error;
+        public final boolean loginFinished;
+        private final int attempt;
+
+        private CleanupResult(CleanupRequest request, int attempt, Exception error) {
+            this.request = request;
+            this.attempt = attempt;
+            this.error = error;
+            this.loginFinished = request.loginFinished;
+        }
+
+        public boolean isCurrent() {
+            synchronized (request) {
+                return request.isCurrent() && request.attempt == attempt;
+            }
+        }
+
+        public boolean retry() {
+            return error != null && request.retry(attempt);
+        }
+    }
+
+    public CleanupRequest getCleanupRequest() {
+        return currentCleanup.get();
+    }
+
+    public CleanupRequest cleanup(boolean isLogin, Consumer<CleanupResult> completion) {
+        return startCleanup(isLogin, false, completion);
+    }
+
+    private CleanupRequest startCleanup(boolean login, boolean fullReset, Consumer<CleanupResult> completion) {
+        CleanupRequest request = new CleanupRequest(login, fullReset, completion);
+        currentCleanup.set(request);
+        request.retry(0);
+        return request;
+    }
+
+    private void runCleanup(CleanupRequest request, int attempt) {
+        synchronized (request) {
+            if (!request.isCurrent() || request.attempt != attempt || !request.running) {
+                return;
+            }
+        }
+        Exception error = null;
+        try {
             cleanupInternal(true);
-            openDatabase(1);
-            if (isLogin) {
-                Utilities.stageQueue.postRunnable(() -> getMessagesController().getDifference());
+            openDatabase(1, false);
+            if (databaseOpenError != null) {
+                throw databaseOpenError;
+            }
+            tryRecover = false;
+            if (request.fullReset && request.isCurrent()) {
+                clearLoadingDialogsOffsets();
+            }
+        } catch (Exception e) {
+            error = e;
+            FileLog.e(e);
+        }
+        completeCleanup(request, attempt, error, false);
+    }
+
+    private void runLoginFinish(CleanupRequest request, int attempt) {
+        synchronized (request) {
+            if (!request.isCurrent() || request.attempt != attempt || !request.running) {
+                return;
+            }
+        }
+        Exception error = null;
+        try {
+            if (request.loginUser != null && !request.loginUserStored) {
+                ArrayList<TLRPC.User> users = new ArrayList<>();
+                users.add(request.loginUser);
+                SQLiteDatabase transactionDatabase = database;
+                transactionDatabase.beginTransaction();
+                try {
+                    putUsersInternal(users);
+                } finally {
+                    transactionDatabase.commitTransaction();
+                }
+                request.loginUserStored = true;
+            }
+            if (!request.loginStageSubmitted) {
+                if (!Utilities.stageQueue.postRunnable(() -> {
+                    if (request.isCurrent()) {
+                        getMessagesController().getDifference();
+                    }
+                })) {
+                    throw new java.util.concurrent.RejectedExecutionException("Stage queue rejected login completion");
+                }
+                request.loginStageSubmitted = true;
+            }
+            reset(request);
+            finishDatabaseOpen(request);
+        } catch (Exception e) {
+            error = e;
+        }
+        completeCleanup(request, attempt, error, true);
+    }
+
+    private void completeCleanup(CleanupRequest request, int attempt, Exception error, boolean finish) {
+        CleanupResult result;
+        synchronized (request) {
+            if (request.attempt != attempt) {
+                return;
+            }
+            request.running = false;
+            if (finish) {
+                request.loginFinished = error == null;
+                if (error == null) {
+                    request.loginUser = null;
+                }
+            } else {
+                request.succeeded = error == null;
+            }
+            result = new CleanupResult(request, attempt, error);
+            request.result = result;
+        }
+        if (error == null && !request.login && request.isCurrent()) {
+            reset(request);
+            finishDatabaseOpen(request);
+        }
+        AndroidUtilities.runOnUIThread(() -> {
+            if (result.isCurrent()) {
+                Consumer<CleanupResult> completion;
+                synchronized (request) {
+                    completion = request.completion;
+                    if (result.error == null && !request.login) {
+                        request.completion = null;
+                    }
+                }
+                if (completion != null) {
+                    completion.accept(result);
+                }
             }
         });
     }
@@ -1426,6 +1681,7 @@ public class MessagesStorage extends BaseController {
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state5 = null;
             SQLitePreparedStatement state6 = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 ArrayList<Long> dialogsToCleanup = new ArrayList<>();
 
@@ -1547,8 +1803,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state5 != null) {
                     state5.dispose();
@@ -1632,6 +1888,7 @@ public class MessagesStorage extends BaseController {
 
     private void saveTopicsInternal(long dialogId, List<TLRPC.TL_forumTopic> topics, boolean replace, boolean inTransaction, int date) {
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             HashSet<Integer> existingTopics = new HashSet<>();
             HashMap<Integer, Integer> pinnedValues = new HashMap<>();
@@ -1718,7 +1975,7 @@ public class MessagesStorage extends BaseController {
             if (state != null) {
                 state.dispose();
             }
-            database.commitTransaction();
+            transactionDatabase.commitTransaction();
         }
     }
 
@@ -1733,6 +1990,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
             SQLiteCursor cursor = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 if ((flags & TopicsController.TOPIC_FLAG_TOTAL_MESSAGES_COUNT) != 0) {
                     state = database.executeFast("UPDATE topics SET total_messages_count = ? WHERE did = ? AND topic_id = ?");
@@ -1806,7 +2064,7 @@ public class MessagesStorage extends BaseController {
                 if (cursor != null) {
                     cursor.dispose();
                 }
-                database.commitTransaction();
+                transactionDatabase.commitTransaction();
             }
         });
     }
@@ -2237,9 +2495,16 @@ public class MessagesStorage extends BaseController {
     }
 
     public void reset() {
+        reset(null);
+    }
+
+    private void reset(CleanupRequest request) {
         clearDatabaseValues();
 
         AndroidUtilities.runOnUIThread(() -> {
+            if (request != null && !request.isCurrent()) {
+                return;
+            }
             for (int a = 0; a < 2; a++) {
                 getUserConfig().setDialogsLoadOffset(a, 0, 0, 0, 0, 0, 0);
                 getUserConfig().setTotalDialogsCount(a, 0);
@@ -2250,22 +2515,20 @@ public class MessagesStorage extends BaseController {
             getNotificationCenter().postNotificationName(NotificationCenter.didClearDatabase);
             getMediaDataController().loadAttachMenuBots(false, true);
             getNotificationCenter().postNotificationName(NotificationCenter.onDatabaseReset);
-            
+
             getMessagesController().getStoriesController().cleanup();
+            if (request != null && request.fullReset) {
+                getMessagesController().getSavedMessagesController().cleanup();
+            }
         });
     }
 
     public void fullReset() {
-        storageQueue.postRunnable(() -> {
-            cleanupInternal(true);
-            clearLoadingDialogsOffsets();
-            openDatabase(1);
-            AndroidUtilities.runOnUIThread(() -> {
-                getNotificationCenter().postNotificationName(NotificationCenter.onDatabaseReset);
-                getNotificationCenter().postNotificationName(NotificationCenter.didClearDatabase);
-                getMessagesController().getSavedMessagesController().cleanup();
-            });
-        });
+        fullReset(null);
+    }
+
+    public CleanupRequest fullReset(Consumer<CleanupResult> completion) {
+        return startCleanup(false, true, completion);
 
     }
 
@@ -3175,6 +3438,7 @@ public class MessagesStorage extends BaseController {
 
     private void saveDialogFilterInternal(MessagesController.DialogFilter filter, boolean atBegin, boolean peers) {
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (!dialogFilters.contains(filter)) {
                 if (atBegin) {
@@ -3255,8 +3519,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (state != null) {
                 state.dispose();
@@ -4066,6 +4330,7 @@ public class MessagesStorage extends BaseController {
     public void putWallpapers(ArrayList<TLRPC.WallPaper> wallPapers, int action) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 if (action == 1) {
                     database.executeFast("DELETE FROM wallpapers2 WHERE num >= -1").stepThis().dispose();
@@ -4103,8 +4368,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -4189,6 +4454,7 @@ public class MessagesStorage extends BaseController {
         executeInStorageQueue(() -> {
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 final SparseArray<TLRPC.TL_messageReactions> updatedReactions = new SparseArray<>();
                 for (int s = 0; s < 2; s++) {
@@ -4285,8 +4551,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (cursor != null) {
                     cursor.dispose();
@@ -4604,6 +4870,7 @@ public class MessagesStorage extends BaseController {
     public void resetDialogs(TLRPC.messages_Dialogs dialogsRes, int messagesCount, int seq, int newPts, int date, int qts, LongSparseArray<TLRPC.Dialog> new_dialogs_dict, LongSparseArray<ArrayList<MessageObject>> new_dialogMessage, TLRPC.Message lastMessage, int dialogsCount) {
         storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 int maxPinnedNum = 0;
 
@@ -4752,8 +5019,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (cursor != null) {
                     cursor.dispose();
@@ -5291,6 +5558,7 @@ public class MessagesStorage extends BaseController {
     public void updateMessageReactions(long dialogId, int msgId, TLRPC.TL_messageReactions reactions) {
         storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 final long selfId = getUserConfig().getClientUserId();
                 TLRPC.TL_messageReactions pastReactions = null;
@@ -5351,8 +5619,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (cursor != null) {
                     cursor.dispose();
@@ -5503,6 +5771,7 @@ public class MessagesStorage extends BaseController {
     public void updateMessageVoiceTranscriptionOpen(long dialogId, int msgId, TLRPC.Message saveFromMessage) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 TLRPC.Message message = getMessageWithCustomParamsOnlyInternal(msgId, dialogId);
@@ -5538,8 +5807,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -5551,6 +5820,7 @@ public class MessagesStorage extends BaseController {
     public void updateMessageVoiceTranscription(long dialogId, int messageId, String text, long transcriptionId, boolean isFinal) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 TLRPC.Message message = getMessageWithCustomParamsOnlyInternal(messageId, dialogId);
@@ -5578,8 +5848,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -5591,6 +5861,7 @@ public class MessagesStorage extends BaseController {
     public void updateMessageVoiceTranscription(long dialogId, int messageId, String text, TLRPC.Message saveFromMessage) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 TLRPC.Message message = getMessageWithCustomParamsOnlyInternal(messageId, dialogId);
@@ -5627,8 +5898,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -5640,6 +5911,7 @@ public class MessagesStorage extends BaseController {
     public void updateMessageCustomParams(long dialogId, TLRPC.Message saveFromMessage) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 TLRPC.Message message = getMessageWithCustomParamsOnlyInternal(saveFromMessage.id, dialogId);
@@ -5671,8 +5943,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -5933,6 +6205,7 @@ public class MessagesStorage extends BaseController {
     private void createTaskForSecretMedia(long dialogId, SparseArray<ArrayList<Integer>> messages) {
         SQLiteCursor cursor = null;
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             int minDate = Integer.MAX_VALUE;
 
@@ -5971,8 +6244,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (state != null) {
                 state.dispose();
@@ -5987,6 +6260,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 long dialogId = DialogObject.makeEncryptedDialogId(chatId);
                 int minDate = Integer.MAX_VALUE;
@@ -6055,8 +6329,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -7067,6 +7341,7 @@ public class MessagesStorage extends BaseController {
     public void putChannelAdmins(long chatId, LongSparseArray<TLRPC.ChannelParticipant> ids) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.executeFast("DELETE FROM channel_admins_v3 WHERE did = " + chatId).stepThis().dispose();
                 database.beginTransaction();
@@ -7089,8 +7364,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -7102,6 +7377,7 @@ public class MessagesStorage extends BaseController {
     public void updateChannelUsers(long channelId, ArrayList<TLRPC.ChannelParticipant> participants) {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 long did = -channelId;
                 database.executeFast("DELETE FROM channel_users_v2 WHERE did = " + did).stepThis().dispose();
@@ -7129,8 +7405,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -7575,6 +7851,7 @@ public class MessagesStorage extends BaseController {
             SQLiteCursor cursor = null;
             SQLiteCursor cursor2 = null;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 if (pin) {
                     database.beginTransaction();
@@ -7711,8 +7988,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (cursor != null) {
                     cursor.dispose();
@@ -8216,6 +8493,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 int currentMaxId = 0;
                 int unreadCount = 0;
@@ -8324,8 +8602,8 @@ public class MessagesStorage extends BaseController {
                 if (cursor != null) {
                     cursor.dispose();
                 }
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
         });
@@ -8355,6 +8633,7 @@ public class MessagesStorage extends BaseController {
         ArrayList<TLRPC.TL_contact> contactsCopy = new ArrayList<>(contacts);
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 if (deleteAll) {
                     database.executeFast("DELETE FROM contacts WHERE 1").stepThis().dispose();
@@ -8377,8 +8656,8 @@ public class MessagesStorage extends BaseController {
                 if (state != null) {
                     state.dispose();
                 }
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
         });
@@ -8423,6 +8702,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
             SQLitePreparedStatement state2 = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d(currentAccount + " save contacts to db " + contactHashMap.size());
@@ -8473,8 +8753,8 @@ public class MessagesStorage extends BaseController {
                 if (state2 != null) {
                     state2.dispose();
                 }
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
         });
@@ -10221,19 +10501,69 @@ public class MessagesStorage extends BaseController {
     }
 
     public void clearWidgetDialogs(int widgetId) {
-        storageQueue.postRunnable(() -> {
+        clearWidgetDialogsAsync(widgetId, null);
+    }
+
+    public void clearWidgetDialogsAsync(int widgetId, Utilities.Callback<Boolean> callback) {
+        if (!storageQueue.postRunnable(() -> {
+            boolean success;
             try {
                 database.executeFast("DELETE FROM shortcut_widget WHERE id = " + widgetId).stepThis().dispose();
+                success = true;
             } catch (Exception e) {
                 checkSQLException(e);
+                success = false;
             }
-        });
+            if (callback != null) {
+                boolean result = success;
+                AndroidUtilities.runOnUIThread(() -> callback.run(result));
+            }
+        }) && callback != null) {
+            AndroidUtilities.runOnUIThread(() -> callback.run(false));
+        }
+    }
+
+    public void getWidgetDialogCountAsync(int widgetId, int type, IntCallback callback) {
+        if (!storageQueue.postRunnable(() -> {
+            ArrayList<Long> dids = new ArrayList<>();
+            int count = readWidgetDialogIds(widgetId, type, dids, null, null, false) ? dids.size() : -1;
+            AndroidUtilities.runOnUIThread(() -> callback.run(count));
+        })) {
+            AndroidUtilities.runOnUIThread(() -> callback.run(-1));
+        }
     }
 
     public void getWidgetDialogIds(int widgetId, int type, ArrayList<Long> dids, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats, boolean edit) {
         CountDownLatch countDownLatch = new CountDownLatch(1);
         storageQueue.postRunnable(() -> {
+            try {
+                readWidgetDialogIds(widgetId, type, dids, users, chats, edit);
+            } finally {
+                countDownLatch.countDown();
+            }
+        });
+        try {
+            countDownLatch.await();
+        } catch (Exception e) {
+            checkSQLException(e);
+        }
+    }
+
+    public void getWidgetDialogIdsAsync(int widgetId, int type, boolean edit, Utilities.Callback3<ArrayList<Long>, ArrayList<TLRPC.User>, ArrayList<TLRPC.Chat>> callback) {
+        if (!storageQueue.postRunnable(() -> {
+            ArrayList<Long> dids = new ArrayList<>();
+            ArrayList<TLRPC.User> users = new ArrayList<>();
+            ArrayList<TLRPC.Chat> chats = new ArrayList<>();
+            boolean success = readWidgetDialogIds(widgetId, type, dids, users, chats, edit);
+            AndroidUtilities.runOnUIThread(() -> callback.run(success ? dids : null, success ? users : null, success ? chats : null));
+        })) {
+            AndroidUtilities.runOnUIThread(() -> callback.run(null, null, null));
+        }
+    }
+
+    private boolean readWidgetDialogIds(int widgetId, int type, ArrayList<Long> dids, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats, boolean edit) {
             SQLiteCursor cursor = null;
+        boolean success = false;
             try {
                 ArrayList<Long> usersToLoad = new ArrayList<>();
                 ArrayList<Long> chatsToLoad = new ArrayList<>();
@@ -10298,25 +10628,30 @@ public class MessagesStorage extends BaseController {
                         getUsersInternal(usersToLoad, users);
                     }
                 }
+            success = true;
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
                 if (cursor != null) {
+                try {
                     cursor.dispose();
+                } catch (Exception e) {
+                    success = false;
+                    checkSQLException(e);
                 }
-                countDownLatch.countDown();
             }
-        });
-        try {
-            countDownLatch.await();
-        } catch (Exception e) {
-            checkSQLException(e);
         }
+        return success;
     }
 
     public void getWidgetDialogs(int widgetId, int type, ArrayList<Long> dids, LongSparseArray<TLRPC.Dialog> dialogs, LongSparseArray<TLRPC.Message> messages, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats) {
+        getWidgetDialogsChecked(widgetId, type, dids, dialogs, messages, users, chats);
+    }
+
+    boolean getWidgetDialogsChecked(int widgetId, int type, ArrayList<Long> dids, LongSparseArray<TLRPC.Dialog> dialogs, LongSparseArray<TLRPC.Message> messages, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats) {
         CountDownLatch countDownLatch = new CountDownLatch(1);
-        storageQueue.postRunnable(() -> {
+        boolean[] success = new boolean[1];
+        if (!storageQueue.postRunnable(() -> {
             SQLiteCursor cursor = null;
             try {
                 boolean add = false;
@@ -10419,20 +10754,31 @@ public class MessagesStorage extends BaseController {
                 if (!usersToLoad.isEmpty()) {
                     getUsersInternal(usersToLoad, users);
                 }
+                success[0] = true;
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
+                try {
                 if (cursor != null) {
                     cursor.dispose();
                 }
+                } catch (Exception e) {
+                    success[0] = false;
+                    checkSQLException(e);
+                } finally {
                 countDownLatch.countDown();
             }
-        });
+            }
+        })) {
+            return false;
+        }
         try {
             countDownLatch.await();
-        } catch (Exception e) {
-            checkSQLException(e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
+        return success[0];
     }
 
     public void putSentFile(String path, TLObject file, int type, String parent) {
@@ -11215,6 +11561,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private void putUsersAndChatsInternal(List<TLRPC.User> users, List<TLRPC.Chat> chats, boolean withTransaction) {
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (withTransaction) {
                 database.beginTransaction();
@@ -11224,8 +11571,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
         }
     }
@@ -11274,6 +11621,7 @@ public class MessagesStorage extends BaseController {
             return;
         }
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (transaction) {
                 database.beginTransaction();
@@ -11299,8 +11647,8 @@ public class MessagesStorage extends BaseController {
                 state.dispose();
             }
             if (transaction) {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
         }
@@ -11388,6 +11736,7 @@ public class MessagesStorage extends BaseController {
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state = null;
             SQLitePreparedStatement state2 = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 ArrayList<TLRPC.Message> messages = new ArrayList<>();
                 for (int a = 0, N = webPages.size(); a < N; a++) {
@@ -11479,8 +11828,8 @@ public class MessagesStorage extends BaseController {
                 if (state2 != null) {
                     state2.dispose();
                 }
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
         });
@@ -11569,6 +11918,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             boolean inTransaction = false;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 inTransaction = true;
@@ -11684,8 +12034,8 @@ public class MessagesStorage extends BaseController {
                 checkSQLException(e);
             } finally {
                 if (inTransaction) {
-                    if (database != null) {
-                        database.commitTransaction();
+                    if (transactionDatabase != null) {
+                        transactionDatabase.commitTransaction();
                     }
                 }
                 if (state != null) {
@@ -11907,6 +12257,7 @@ public class MessagesStorage extends BaseController {
         Utilities.stageQueue.postRunnable(() -> {
             boolean databaseInTransaction = false;
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 databaseInTransaction = true;
@@ -11933,8 +12284,8 @@ public class MessagesStorage extends BaseController {
                 checkSQLException(e);
             } finally {
                 if (databaseInTransaction) {
-                    if (database != null) {
-                        database.commitTransaction();
+                    if (transactionDatabase != null) {
+                        transactionDatabase.commitTransaction();
                     }
                 }
                 if (state != null) {
@@ -11979,6 +12330,7 @@ public class MessagesStorage extends BaseController {
         SQLitePreparedStatement state_media_topics = null;
         SQLiteCursor cursor = null;
         ArrayList<Pair<Long, Integer>> reportMessagesDelivery = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (messages != null && !messages.isEmpty() && MessageObject.isWelcomeMessage(messages.get(0))) {
                 mode = ChatActivity.MODE_WELCOME_MESSAGES;
@@ -13327,8 +13679,8 @@ public class MessagesStorage extends BaseController {
             checkSQLException(e);
         } finally {
             if (databaseInTransaction) {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
             }
             if (state_messages != null) {
@@ -14258,6 +14610,7 @@ public class MessagesStorage extends BaseController {
 
     private void updateUsersInternal(ArrayList<TLRPC.User> users, boolean onlyStatus, boolean withTransaction) {
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (onlyStatus) {
                 if (withTransaction) {
@@ -14321,8 +14674,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (state != null) {
                 state.dispose();
@@ -14602,6 +14955,7 @@ public class MessagesStorage extends BaseController {
     private ArrayList<Long> markMessagesAsDeletedInternal(long dialogId, ArrayList<Integer> messages, boolean deleteFiles, int mode, int threadMessageId) {
         SQLiteCursor cursor = null;
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             if (getUserConfig().getClientUserId() == dialogId) {
                 database.executeFast(String.format(Locale.US, "DELETE FROM tag_message_id WHERE mid IN(%s)", TextUtils.join(",", messages))).stepThis().dispose();
@@ -15165,8 +15519,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (cursor != null) {
                 cursor.dispose();
@@ -15181,6 +15535,7 @@ public class MessagesStorage extends BaseController {
     private void updateDialogsWithDeletedMessagesInternal(long originalDialogId, long channelId, ArrayList<Integer> messages, ArrayList<Long> additionalDialogsToUpdate) {
         SQLitePreparedStatement state = null;
         SQLiteCursor cursor = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             ArrayList<Long> dialogsToUpdate = new ArrayList<>();
             if (!messages.isEmpty()) {
@@ -15381,8 +15736,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (cursor != null) {
                 cursor.dispose();
@@ -15919,6 +16274,7 @@ public class MessagesStorage extends BaseController {
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
             SQLitePreparedStatement state2 = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 SQLiteCursor cursor = null;
                 int readState = 0;
@@ -16115,8 +16471,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -16173,6 +16529,7 @@ public class MessagesStorage extends BaseController {
             SQLitePreparedStatement state_tasks = null;
             SQLitePreparedStatement state3 = null;
             SQLiteCursor cursor = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 final long selfId = getUserConfig().getClientUserId();
                 final boolean scheduled = mode == ChatActivity.MODE_SCHEDULED;
@@ -16747,8 +17104,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state_messages_topics != null) {
                     state_messages_topics.dispose();
@@ -17416,6 +17773,7 @@ public class MessagesStorage extends BaseController {
         SQLitePreparedStatement state_polls = null;
         SQLitePreparedStatement state_tasks = null;
         SQLiteCursor cursor = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             database.beginTransaction();
             LongSparseArray<TLRPC.Message> new_dialogMessage = new LongSparseArray<>(dialogs.messages.size());
@@ -17662,8 +18020,8 @@ public class MessagesStorage extends BaseController {
         } catch (Exception e) {
             checkSQLException(e);
         } finally {
-            if (database != null) {
-                database.commitTransaction();
+            if (transactionDatabase != null) {
+                transactionDatabase.commitTransaction();
             }
             if (cursor != null) {
                 cursor.dispose();
@@ -17757,6 +18115,7 @@ public class MessagesStorage extends BaseController {
         }
         storageQueue.postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            final SQLiteDatabase transactionDatabase = database;
             try {
                 database.beginTransaction();
                 state = database.executeFast("UPDATE dialogs SET folder_id = ?, pinned = ? WHERE did = ?");
@@ -17809,8 +18168,8 @@ public class MessagesStorage extends BaseController {
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
-                if (database != null) {
-                    database.commitTransaction();
+                if (transactionDatabase != null) {
+                    transactionDatabase.commitTransaction();
                 }
                 if (state != null) {
                     state.dispose();
@@ -18972,7 +19331,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private void executeInStorageQueue(Runnable runnable) {
-        if (storageQueue.getHandler().getLooper() != Looper.myLooper()) {
+        if (Thread.currentThread() != storageQueue) {
             storageQueue.postRunnable(runnable);
         } else {
             runnable.run();
@@ -18986,6 +19345,7 @@ public class MessagesStorage extends BaseController {
 
     private void saveStoryAlbumsCacheInternal(long dialogId, List<StoriesController.StoryAlbum> albums) {
         SQLitePreparedStatement state = null;
+        final SQLiteDatabase transactionDatabase = database;
         try {
             database.beginTransaction();
             database.executeFast("DELETE FROM profile_stories_albums WHERE dialog_id = " + dialogId).stepThis().dispose();
@@ -19013,7 +19373,7 @@ public class MessagesStorage extends BaseController {
             if (state != null) {
                 state.dispose();
             }
-            database.commitTransaction();
+            transactionDatabase.commitTransaction();
         }
     }
 

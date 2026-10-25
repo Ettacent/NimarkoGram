@@ -140,15 +140,16 @@ import org.telegram.ui.Wallet.GramWallet;
 import org.telegram.ui.Wallet.WalletActivity;
 import org.telegram.ui.bots.BotBiometry;
 import org.telegram.ui.bots.BotDownloads;
+import org.telegram.ui.QrShare.QrShareActivity;
 import org.telegram.ui.bots.BotLocation;
 import org.telegram.ui.bots.BotWebViewSheet;
 import org.telegram.ui.bots.SetupEmojiStatusSheet;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -327,14 +328,23 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         };
 
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
+        leftButtonIsBack = true;
         actionBar.setAllowOverlayTitle(true);
         actionBar.setUseContainerForTitles();
         actionBar.setTitle(getString(R.string.Settings));
+        actionBar.setAdditionalTextLeft(-dp(4));
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
+                    if (hasMainTabs) {
+                        final Bundle args = new Bundle();
+                        args.putLong("user_id", getUserConfig().getClientUserId());
+                        args.putBoolean(QrShareActivity.ARG_IMMEDIATE, true);
+                        presentFragment(new QrShareActivity(args));
+                    } else {
                     finishFragment();
+                    }
                 } else if (id == 2) {
                     presentSettingFragment(new LogoutActivity());
                 }
@@ -350,6 +360,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             @Override
             public void onSearchCollapse() {
+                listView.setRoundedPressFeedback(false);
                 animatorSearchPageVisible.setValue(false, true);
                 updateActionBarVisible();
                 listView.adapter.update(false);
@@ -357,6 +368,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             @Override
             public void onSearchExpand() {
+                listView.setRoundedPressFeedback(true);
                 animatorSearchPageVisible.setValue(true, true);
                 ensureSearchAdapter(context).search(query = "");
                 updateActionBarVisible();
@@ -446,7 +458,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         avatarDrawable = new AvatarDrawable();
         avatarView = new BackupImageView(context);
-        avatarView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(90));
+        avatarView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(90));
         avatarContainer.addView(avatarView, LayoutHelper.createFrame(90, 90, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 15, 0, 0));
 
         avatarProgressView = new RadialProgressView(context) {
@@ -598,7 +610,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         final StringBuilder sb = new StringBuilder();
         if (user != null) {
             if (hidePhoneNumber) {
-                sb.append(app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.replaceStringToSpoilers(
+                sb.append(app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.replaceStringToSpoilers(
                         PhoneFormat.getInstance().format("+ " + user.phone),
                         true
                 ));
@@ -693,6 +705,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (listView.adapter != null) {
+            listView.adapter.notifyDataSetChanged();
+        }
+    }
     private ArrayList<Integer> accountNumbers = new ArrayList<>();
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         if (searchItem.isSearchFieldVisible2()) {
@@ -760,7 +779,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             items.add(UItem.asShadow(null));
         }
 
-        if (accountNumbers.size() > 0 && NimarkoConfig.showAccounts) {
+        if (accountNumbers.size() > 0 && AppConfig.showAccounts) {
             items.add(UItem.asHeader(getString(R.string.SettingsAccounts)));
             for (int i = 0; i < accountNumbers.size(); ++i) {
                 items.add(AccountCell.Factory.of(i, accountNumbers.get(i)));
@@ -775,7 +794,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         final boolean walletAbove = getConnectionsManager().getCurrentTime() - 1791538462 < 4 * 7 * 24 * 60 * 60;
         if (walletAbove && walletAvailable) {
             final GramWallet wallet = GramWallet.getInstance(currentAccount);
-            items.add(SettingCell.Factory.of(25, 0, 0, Theme.isCurrentThemeDark() ? R.drawable.settings_wallet_dark : R.drawable.settings_wallet, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
+            items.add(SettingCell.Factory.of(25, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_gram_24, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
             items.add(UItem.asShadow(null));
         }
         items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account, getString(R.string.SettingsAccount), getString(R.string.SettingsAccountInfo)));
@@ -792,7 +811,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         if (!walletAbove && walletAvailable) {
             final GramWallet wallet = GramWallet.getInstance(currentAccount);
-            items.add(SettingCell.Factory.of(25, 0, 0, Theme.isCurrentThemeDark() ? R.drawable.settings_wallet_dark : R.drawable.settings_wallet, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
+            items.add(SettingCell.Factory.of(25, 0xFF1BA4ED, 0xFF1488E1, R.drawable.settings_gram_24, TextCell.applyNewSpanTimed(getString(R.string.WalletAttachMoney), 1790679020), null, wallet.getBalance() > 0 ? GramWallet.formatGrams(wallet.getBalance()) : null));
             items.add(UItem.asShadow(null));
         }
         if (!getMessagesController().premiumFeaturesBlocked()) {
@@ -1082,7 +1101,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
             avatarDrawable = new AvatarDrawable();
             avatarView = new BackupImageView(context);
-            avatarView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(28));
+            avatarView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(28));
 
             textView = new SimpleTextView(context);
             textView.setTextSize(15);
@@ -1117,8 +1136,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 @Override
                 protected void onDraw(Canvas canvas) {
                     Drawable drawable = getDrawable();
-                    if (drawable != null && getResources() instanceof NimarkoIconResources
-                            && ((NimarkoIconResources) getResources()).hasReplacement(R.drawable.msg_arrowright)) {
+                    if (drawable != null && getResources() instanceof IconResources
+                            && ((IconResources) getResources()).hasReplacement(R.drawable.msg_arrowright)) {
                         int size = Math.max(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
                         if (size > dp(16)) {
                             float scale = dp(16) / (float) size;
@@ -1434,7 +1453,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
 
             private boolean canPresent() {
-                if (NimarkoUiAnimationClock.isPaused() || !isAttachedToWindow() || getWindowVisibility() != View.VISIBLE
+                if (UiAnimationClock.isPaused() || !isAttachedToWindow() || getWindowVisibility() != View.VISIBLE
                         || !isShown() || getWidth() <= 0 || getHeight() <= 0) return false;
                 float alpha = 1f;
                 for (View view = this; view != null;) {
@@ -1530,6 +1549,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         private UItem boundSettingItem;
         @Override
         protected void onDetachedFromWindow() {
+            valueView.animate().cancel();
+            valueView.setAlpha(1f);
             valueView.cancelAnimation();
             subtitleView.resetFade();
             boundSettingItem = null;
@@ -1558,9 +1579,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             titleView.setTranslationX(icon == 0 ? dp(2) : 0);
             subtitleView.setTranslationX(icon == 0 ? dp(2) : 0);
 
-            originalIconColorTop = iconColorTop;
-            originalIconColorBottom = iconColorBottom;
-            hasBackground = iconColorTop != 0 || iconColorBottom != 0;
+            boolean themedWallet = (icon == R.drawable.settings_wallet || icon == R.drawable.settings_wallet_dark)
+                    && getContext().getResources() instanceof IconResources
+                    && ((IconResources) getContext().getResources()).hasReplacement(icon);
+            originalIconColorTop = themedWallet ? 0xFF1BA4ED : iconColorTop;
+            originalIconColorBottom = themedWallet ? 0xFF1488E1 : iconColorBottom;
+            hasBackground = originalIconColorTop != 0 || originalIconColorBottom != 0;
             hasIconColors = true;
             iconBackground.setColor(
                     app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(originalIconColorTop),
@@ -1585,8 +1609,19 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         public void setValue(CharSequence value, boolean animated) {
             animated = animated && isAttachedToWindow() && SharedConfig.animationsEnabled();
             subtitleView.setAnimateWidthChanges(animated);
-            valueView.setVisibility(!TextUtils.isEmpty(value) ? View.VISIBLE : View.GONE);
-            valueView.setText(value, animated);
+            final boolean show = !TextUtils.isEmpty(value);
+            final boolean reveal = animated && show && valueView.getVisibility() != View.VISIBLE;
+            if (!animated || !show) {
+                valueView.animate().cancel();
+                valueView.setAlpha(1f);
+            }
+            if (reveal) valueView.setAlpha(0f);
+            valueView.setVisibility(show ? View.VISIBLE : View.GONE);
+            valueView.setText(value, animated && !reveal);
+            if (reveal) {
+                valueView.animate().alpha(1f).setDuration(220)
+                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
+            }
         }
 
         @Override
@@ -1898,7 +1933,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 getMessagesStorage().clearSentMedia();
                 SharedConfig.setNoSoundHintShowed(false);
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
-                editor.remove("archivehint").remove("proximityhint").remove("archivehint_l").remove("searchpostsnew").remove("speedhint").remove("gifhint").remove("reminderhint").remove("soundHint").remove("themehint").remove("bganimationhint").remove("filterhint").remove("n_0").remove("storyprvhint").remove("storyhint").remove("storyhint2").remove("storydualhint").remove("storysvddualhint").remove("stories_camera").remove("dualcam").remove("dualmatrix").remove("dual_available").remove("archivehint").remove("askNotificationsAfter").remove("askNotificationsDuration").remove("viewoncehint").remove("voicepausehint").remove("taptostorysoundhint").remove("nothanos").remove("voiceoncehint").remove("savedhint").remove("savedsearchhint").remove("savedsearchtaghint").remove("newppsms").remove("monetizationadshint").remove("seekSpeedHintShowed").remove("unsupport_video/av01").remove("statusgiftpage").remove("multistorieshint").remove("trimvoicehint").remove("taptostoryhighlighthint").remove("proxycheckstatusip").remove("callmiconstart").remove("showchattagsinfo").remove("language_showed2").remove("aihintshown").remove("savedmsgschatshint").apply();
+                editor.remove("archivehint").remove("proximityhint").remove("archivehint_l").remove("searchpostsnew").remove("speedhint").remove("gifhint").remove("reminderhint").remove("soundHint").remove("themehint").remove("bganimationhint").remove("filterhint").remove("n_0").remove("storyprvhint").remove("storyhint").remove("storyhint2").remove("storydualhint").remove("storysvddualhint").remove("stories_camera").remove("dualcam").remove("dualmatrix").remove("dual_available").remove("archivehint").remove("askNotificationsAfter").remove("askNotificationsDuration").remove("viewoncehint").remove("voicepausehint").remove("taptostorysoundhint").remove("nothanos").remove("voiceoncehint").remove("savedhint").remove("savedsearchhint").remove("savedsearchtaghint").remove("newppsms").remove("monetizationadshint").remove("seekSpeedHintShowed").remove("unsupport_video/av01").remove("statusgiftpage").remove("multistorieshint").remove("trimvoicehint").remove("taptostoryhighlighthint").remove("proxycheckstatusip").remove("callmiconstart").remove("showchattagsinfo").remove("language_showed2").remove("aihintshown").remove("savedmsgschatshint").remove("walletcardstickerhint").apply();
                 HintsController.resetAll();
                 SharedPrefsHelper.cleanupAccount(currentAccount);
                 MessagesController.getEmojiSettings(currentAccount).edit().remove("featured_hidden").remove("emoji_featured_hidden").commit();
@@ -1961,7 +1996,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                 ApplicationLoader.applicationContext.deleteDatabase("webviewCache.db");
                 WebStorage.getInstance().deleteAllData();
                 try {
-                    WebView webView = new WebView(ApplicationLoader.applicationContext);
+                    WebView webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(ApplicationLoader.applicationContext));
                     webView.clearHistory();
                     webView.destroy();
                 } catch (Exception e) {
@@ -2433,9 +2468,27 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         }
     }
 
+    private boolean leftButtonIsBack = true;
     private void checkUi_menuItems() {
-        FragmentFloatingButton.setAnimatedVisibility(otherItem, 1f - animatorSearchPageVisible.getFloatValue());
-        FragmentFloatingButton.setAnimatedVisibility(actionBar.getBackButton(), lerp(hasMainTabs ? 0f : 1f, 1f, animatorSearchPageVisible.getFloatValue()));
+        final float searchVisible = animatorSearchPageVisible.getFloatValue();
+        FragmentFloatingButton.setAnimatedVisibility(otherItem, 1f - searchVisible);
+        if (!hasMainTabs) {
+            FragmentFloatingButton.setAnimatedVisibility(actionBar.getBackButton(), 1f);
+            return;
+        }
+        final ImageView button = actionBar.getBackButton();
+        if (button == null) return;
+        final boolean back = searchVisible > 0.5f;
+        if (back != leftButtonIsBack) {
+            leftButtonIsBack = back;
+            button.setImageResource(back ? R.drawable.ic_ab_back : R.drawable.outline_header_qr_24);
+            button.setContentDescription(getString(back ? R.string.AccDescrGoBack : R.string.QrCode));
+        }
+        final float f = Math.abs(searchVisible * 2f - 1f);
+        button.setVisibility(View.VISIBLE);
+        button.setAlpha(f);
+        button.setScaleX(lerp(0.4f, 1f, f));
+        button.setScaleY(lerp(0.4f, 1f, f));
     }
 
 

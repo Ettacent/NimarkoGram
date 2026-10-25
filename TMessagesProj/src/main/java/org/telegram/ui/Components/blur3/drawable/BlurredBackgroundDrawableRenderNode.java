@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3.drawable;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -18,7 +20,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.LiquidGlassEffect;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 @RequiresApi(api = Build.VERSION_CODES.Q)
 public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawable {
@@ -75,8 +77,8 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     private boolean liquidGlassEffectAllowed;
     private boolean liquidGlassEffectEnabled;
     private boolean lastLiquidGlassEnabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
-    private boolean lastGlareOnElements = NimarkoConfig.glareOnElements;
-    private boolean lastEnhancedGlassBlur = NimarkoConfig.enhancedGlassBlur;
+    private boolean lastGlareOnElements = AppConfig.glareOnElements;
+    private boolean lastEnhancedGlassBlur = AppConfig.enhancedGlassBlur;
 
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     public void setLiquidGlassEffectAllowed() {
@@ -84,15 +86,15 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         renderNodeInvalidated = true;
     }
     private void updateGlassSettings(boolean hardwareAccelerated) {
-        if (lastEnhancedGlassBlur != NimarkoConfig.enhancedGlassBlur) {
-            lastEnhancedGlassBlur = NimarkoConfig.enhancedGlassBlur;
+        if (lastEnhancedGlassBlur != AppConfig.enhancedGlassBlur) {
+            lastEnhancedGlassBlur = AppConfig.enhancedGlassBlur;
             renderNodeInvalidated = true;
             updateColors();
         }
         final boolean enabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
-        if (lastLiquidGlassEnabled != enabled || lastGlareOnElements != NimarkoConfig.glareOnElements) {
+        if (lastLiquidGlassEnabled != enabled || lastGlareOnElements != AppConfig.glareOnElements) {
             lastLiquidGlassEnabled = enabled;
-            lastGlareOnElements = NimarkoConfig.glareOnElements;
+            lastGlareOnElements = AppConfig.glareOnElements;
             updateColors();
         }
         if (!hardwareAccelerated) {
@@ -166,7 +168,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         c.translate(-sL, -sT);
         if (liquidGlassEffectEnabled && Build.VERSION.SDK_INT >= 33) {
             final int thickness = Math.max(Math.min(
-                boundProps.liquidThickness <= 0 ? dp(NimarkoConfig.enhancedGlassBlur ? 14 : 11) : boundProps.liquidThickness,
+                boundProps.liquidThickness <= 0 ? dp(AppConfig.enhancedGlassBlur ? 14 : 11) : boundProps.liquidThickness,
                 Math.min(boundProps.boundsWithPadding.width(), boundProps.boundsWithPadding.height()) / 5), 1);
 
             liquidGlassEffect.update(

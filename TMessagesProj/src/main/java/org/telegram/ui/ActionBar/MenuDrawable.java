@@ -29,7 +29,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Components.MediaActionDrawable;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class MenuDrawable extends Drawable {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -168,7 +168,7 @@ public class MenuDrawable extends Drawable {
         }
         lastFrameTime = newTime;
 
-        NimarkoIconResources.NavigationIcons navigationIcons = NimarkoIconResources.activeNavigationIcons();
+        IconResources.NavigationIcons navigationIcons = IconResources.activeNavigationIcons();
         Bitmap targetIcon = navigationIcons == null ? null : rotateToBack ? navigationIcons.back : navigationIcons.close;
         boolean drawPack = navigationIcons != null && navigationIcons.menu != null && !navigationIcons.menu.isRecycled()
                 && targetIcon != null && !targetIcon.isRecycled();
@@ -201,7 +201,7 @@ public class MenuDrawable extends Drawable {
         if (rotateToBack) {
             canvas.rotate(currentRotation * (reverseAngle ? -180 : 180), dp(9), 0);
             paint.setColor(color1);
-            paint.setAlpha(alpha);
+            paint.setAlpha((paint.getAlpha() * alpha + 127) / 255);
             if (!drawPack) {
             canvas.drawLine((roundCap ? dp(.5f) * currentRotation + (paint.getStrokeWidth() / 2f) * (1f - currentRotation) : 0), 0, dp(18) - dp(3.0f) * currentRotation - diffMiddle - (roundCap ? (paint.getStrokeWidth() / 2f) * (1f - currentRotation) : 0), 0, paint);
             }
@@ -220,7 +220,7 @@ public class MenuDrawable extends Drawable {
             canvas.rotate(currentRotation * (reverseAngle ? -225 : 135), dp(9), 0);
             if (miniIcon) {
                 paint.setColor(color1);
-                paint.setAlpha(alpha);
+                paint.setAlpha((paint.getAlpha() * alpha + 127) / 255);
                 if (!drawPack) {
                 canvas.drawLine(dpf2(2) * (1 - Math.abs(currentRotation)) + dp(1) * currentRotation, 0, dpf2(16) * (1f - currentRotation) + dp(17) * currentRotation - diffMiddle, 0, paint);
                 }
@@ -233,7 +233,7 @@ public class MenuDrawable extends Drawable {
                 int backColor2 = Theme.getColor(Theme.key_actionBarActionModeDefault);
                 backColor1 = AndroidUtilities.getOffsetColor(backColor1, backColor2, currentRotation, 1.0f);
                 paint.setColor(AndroidUtilities.getOffsetColor(color1, color2, currentRotation, 1.0f));
-                paint.setAlpha(alpha);
+                paint.setAlpha((paint.getAlpha() * alpha + 127) / 255);
                 if (!drawPack) {
                 canvas.drawLine(dp(1) * currentRotation, 0, dp(18) - dp(1) * currentRotation - diffMiddle, 0, paint);
                 }
@@ -246,7 +246,7 @@ public class MenuDrawable extends Drawable {
         if (drawPack) {
             float scale = miniIcon && !rotateToBack ? 1.0f - 2.0f / 9.0f * (1.0f - currentRotation) : 1.0f;
             float extent = dp(24);
-            int layer = alpha == 255 ? canvas.save() : canvas.saveLayerAlpha(dp(9) - extent, -extent, dp(9) + extent, extent, alpha);
+            int layer = paint.getAlpha() == 255 ? canvas.save() : canvas.saveLayerAlpha(dp(9) - extent, -extent, dp(9) + extent, extent, paint.getAlpha());
             drawPackIcon(canvas, navigationIcons.menu, navigationIcons.menuNoTint,
                     1.0f - currentRotation, 0, scale);
             drawPackIcon(canvas, targetIcon, rotateToBack ? navigationIcons.backNoTint : navigationIcons.closeNoTint,

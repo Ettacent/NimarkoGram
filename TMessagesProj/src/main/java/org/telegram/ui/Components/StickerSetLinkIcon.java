@@ -27,7 +27,7 @@ import java.util.ArrayList;
 
 import java.util.Arrays;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class StickerSetLinkIcon extends Drawable {
 
     private final int N, count;
@@ -84,9 +84,9 @@ public class StickerSetLinkIcon extends Drawable {
     @Override
     public void draw(@NonNull Canvas canvas) {
         if (alpha <= 0) return;
-        final long now = NimarkoUiAnimationClock.now();
-        final int epoch = NimarkoUiAnimationClock.epoch();
-        final boolean paused = NimarkoUiAnimationClock.isPaused();
+        final long now = UiAnimationClock.now();
+        final int epoch = UiAnimationClock.epoch();
+        final boolean paused = UiAnimationClock.isPaused();
         final long elapsed = !paused && lastVisualTime >= 0 && epoch == visualEpoch
                 ? Math.max(0L, Math.min(64L, now - lastVisualTime)) : 0L;
         lastVisualTime = now;

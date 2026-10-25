@@ -16,7 +16,7 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 import app.nimarkogram.messenger.preferences.tabs.MainTabsPreviewCell;
 import app.nimarkogram.messenger.utils.ui.MainTabsManager;
@@ -66,11 +66,11 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
         items.add(UItem.asHeader(-1, LocaleController.getString(R.string.NM_BT_LayoutHeader)));
         UItem enableTabs = SettingsHelper.asSwitchCG(ID_SHOW_TABS,
                         LocaleController.getString(R.string.NM_BT_ShowTabs))
-                .setChecked(NimarkoConfig.showMainTabs);
+                .setChecked(AppConfig.showMainTabs);
         enableTabs.hideDivider = true;
         items.add(enableTabs);
 
-        if (NimarkoConfig.showMainTabs) {
+        if (AppConfig.showMainTabs) {
             items.add(UItem.asShadow(-2, null));
             if (editorCell == null && getContext() != null) {
                 editorCell = new MainTabsPreviewCell(getContext());
@@ -93,19 +93,19 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             items.add(UItem.asHeader(-4, LocaleController.getString(R.string.NM_SettingsSectionDisplay)));
             items.add(UItem.asCheck(ID_SHOW_TITLE,
                             LocaleController.getString(R.string.NM_BT_ShowTabsTitle))
-                    .setChecked(NimarkoConfig.showMainTabsTitle));
+                    .setChecked(AppConfig.showMainTabsTitle));
             items.add(SettingsHelper.asSwitchCG(ID_SHOW_SEARCH_IN_TABS,
                             LocaleController.getString(R.string.NM_BT_ShowSearchInTabs),
                             LocaleController.getString(R.string.NM_BT_ShowSearchInTabs_Desc))
-                    .setChecked(NimarkoConfig.showSearchInTabs));
+                    .setChecked(AppConfig.showSearchInTabs));
             items.add(SettingsHelper.asSwitchCG(ID_FORCE_OPEN_CHATS,
                             LocaleController.getString(R.string.NM_BT_ForceOpenChats),
                             LocaleController.getString(R.string.NM_MainTabs_ForceOpenChats_Desc))
-                    .setChecked(NimarkoConfig.mainTabsForceOpenChats));
+                    .setChecked(AppConfig.mainTabsForceOpenChats));
             items.add(asSettingsLink(ID_RESET_ORDER, IconBackgroundColors.ORANGE,
                     R.drawable.msg_reset, LocaleController.getString(R.string.Reset)));
         }
-        items.add(SettingsFooterItem.of(-5, NimarkoConfig.showMainTabs
+        items.add(SettingsFooterItem.of(-5, AppConfig.showMainTabs
                 ? LocaleController.getString(R.string.NM_SettingsSummaryBottomTabs) : null));
     }
 
@@ -113,35 +113,35 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
     public void onClick(UItem item, View view, int position, float x, float y) {
         int id = item.id;
         if (id == ID_SHOW_TABS) {
-            NimarkoConfig.toggleShowMainTabs();
-            applyCheck(item, view, NimarkoConfig.showMainTabs);
+            AppConfig.toggleShowMainTabs();
+            applyCheck(item, view, AppConfig.showMainTabs);
             updateItemsAfterToggle();
 
             postCgTabsUpdated();
             showRestartBulletin();
             rebuildMainTabsFragments();
         } else if (id == ID_SHOW_TITLE) {
-            NimarkoConfig.toggleShowMainTabsTitle();
-            applyCheck(item, view, NimarkoConfig.showMainTabsTitle);
+            AppConfig.toggleShowMainTabsTitle();
+            applyCheck(item, view, AppConfig.showMainTabsTitle);
             if (editorCell != null) {
                 editorCell.refresh();
             }
             postCgTabsUpdated();
             rebuildMainTabsFragments();
         } else if (id == ID_SHOW_SEARCH_IN_TABS) {
-            NimarkoConfig.toggleShowSearchInTabs();
-            applyCheck(item, view, NimarkoConfig.showSearchInTabs);
+            AppConfig.toggleShowSearchInTabs();
+            applyCheck(item, view, AppConfig.showSearchInTabs);
             if (editorCell != null) {
                 editorCell.refresh();
             }
             postCgTabsUpdated();
             rebuildMainTabsFragments();
         } else if (id == ID_FORCE_OPEN_CHATS) {
-            NimarkoConfig.toggleMainTabsForceOpenChats();
-            applyCheck(item, view, NimarkoConfig.mainTabsForceOpenChats);
+            AppConfig.toggleMainTabsForceOpenChats();
+            applyCheck(item, view, AppConfig.mainTabsForceOpenChats);
         } else if (id == ID_RESET_ORDER) {
 
-            NimarkoConfig.setMainTabsOrder(null);
+            AppConfig.setMainTabsOrder(null);
             resetToDefaults = true;
             tabs.clear();
             for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {

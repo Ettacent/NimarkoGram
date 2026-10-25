@@ -12,7 +12,7 @@ import android.util.SparseArray;
 import org.telegram.messenger.ApplicationLoader;
 
 import org.telegram.ui.ActionBar.Theme;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import java.util.Objects;
 
 final class MessageStatusIcons {
@@ -28,8 +28,8 @@ final class MessageStatusIcons {
     static synchronized Resources ensureCurrentResources() {
         Resources resources = ApplicationLoader.applicationContext.getResources();
         int density = resources.getDisplayMetrics().densityDpi;
-        long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         boolean dark = Theme.isCurrentThemeDark();
         if (cachedResources != resources || cachedGeneration != generation || cachedDensity != density || cachedDark != dark) {
             masks.clear();
@@ -38,10 +38,10 @@ final class MessageStatusIcons {
             cachedResources = resources;
             cachedGeneration = generation;
             cachedDark = dark;
-            NimarkoChatHelper.forwardsDrawable = NimarkoChatHelper.editedDrawable = null;
-            NimarkoChatHelper.forwardsSpan = NimarkoChatHelper.editedSpan = null;
-            NimarkoChatsHelper.forwardsDrawable = NimarkoChatsHelper.editedDrawable = null;
-            NimarkoChatsHelper.forwardsSpan = NimarkoChatsHelper.editedSpan = null;
+            ChatHelper.forwardsDrawable = ChatHelper.editedDrawable = null;
+            ChatHelper.forwardsSpan = ChatHelper.editedSpan = null;
+            ChatsHelper.forwardsDrawable = ChatsHelper.editedDrawable = null;
+            ChatsHelper.forwardsSpan = ChatsHelper.editedSpan = null;
         }
         return resources;
     }
@@ -61,6 +61,6 @@ final class MessageStatusIcons {
             masks.put(resourceId, mask);
             sources.put(resourceId, vector);
         }
-        return NimarkoIconResources.preserveTintPolicy(sources.get(resourceId), resources, mask).mutate();
+        return IconResources.preserveTintPolicy(sources.get(resourceId), resources, mask).mutate();
     }
 }

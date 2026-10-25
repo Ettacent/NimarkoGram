@@ -12,7 +12,7 @@ package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -819,7 +819,7 @@ public class ActionBarPopupWindow extends PopupWindow {
     public void setContentView(View contentView) {
         super.setContentView(contentView);
         if (contentView instanceof ViewGroup) {
-            NimarkoAppMotionBlur.attachRoot((ViewGroup) contentView);
+            AppMotionBlur.attachRoot((ViewGroup) contentView);
         }
     }
     public ActionBarPopupWindow(Context context) {
@@ -1143,7 +1143,15 @@ public class ActionBarPopupWindow extends PopupWindow {
 
     @Override
     public void showAtLocation(View parent, int gravity, int x, int y) {
+        if (parent == null || !parent.isAttachedToWindow()) {
+            unregisterListener();
+            return;
+        }
+        try {
         super.showAtLocation(parent, gravity, x, y);
+        } catch (RuntimeException staleWindow) {
+            FileLog.e("ActionBarPopupWindow: unable to show at location", staleWindow);
+        }
         unregisterListener();
     }
 

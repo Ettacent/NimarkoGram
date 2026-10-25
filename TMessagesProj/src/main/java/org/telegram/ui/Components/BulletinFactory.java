@@ -359,7 +359,7 @@ public final class BulletinFactory {
 
     public Bulletin createSimpleBulletinWithIconSize(int iconRawId, CharSequence text, int iconSize) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
-        
+
         if (iconRawId == 0) {
             layout.imageView.setVisibility(View.INVISIBLE);
             android.widget.FrameLayout.LayoutParams lp =
@@ -1691,7 +1691,7 @@ public final class BulletinFactory {
             layout.imageView.getImageReceiver().setRoundRadius(AndroidUtilities.dp(4));
         }
         layout.imageView.setOnClickListener(v -> {
-            app.nimarkogram.messenger.utils.chats.NimarkoChatHelper.getInstance(selectedObject.currentAccount).openEmojiPack(selectedObject, fragment);
+            app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(selectedObject.currentAccount).openEmojiPack(selectedObject, fragment);
         });
         layout.textView.setText(text);
         layout.textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -1708,7 +1708,7 @@ public final class BulletinFactory {
         }
         layout.setAnimation(document, 36, 36);
         layout.imageView.setOnClickListener(v -> {
-            app.nimarkogram.messenger.utils.chats.NimarkoChatHelper.getInstance(selectedObject.currentAccount).openEmojiPack(selectedObject, fragment);
+            app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(selectedObject.currentAccount).openEmojiPack(selectedObject, fragment);
         });
         layout.textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         layout.textView.setSingleLine(false);
@@ -1744,7 +1744,7 @@ public final class BulletinFactory {
             }
             final long startTime = System.currentTimeMillis();
             final long minDuration = 750;
-            Bulletin bulletin = createEmojiLoadingBulletin2(document, stringBuilder, LocaleController.getString(R.string.ApplyTheme), selectedObject, () -> app.nimarkogram.messenger.utils.chats.NimarkoChatHelper.getInstance(selectedObject.currentAccount).applyReplyBackground(selectedObject, fragment));
+            Bulletin bulletin = createEmojiLoadingBulletin2(document, stringBuilder, LocaleController.getString(R.string.ApplyTheme), selectedObject, () -> app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(selectedObject.currentAccount).applyReplyBackground(selectedObject, fragment));
             if (loadingSpan != null && bulletin.getLayout() instanceof Bulletin.LoadingLottieLayout) {
                 loadingSpan.setView(((Bulletin.LoadingLottieLayout) bulletin.getLayout()).textLoadingView);
             }
@@ -1763,7 +1763,7 @@ public final class BulletinFactory {
         } else {
             CharSequence message;
             message = AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_ReplyContainsEmojiPack, cachedSet.set.title));
-            return createEmojiBulletin2(document, message, LocaleController.getString(R.string.ApplyTheme), selectedObject, () -> app.nimarkogram.messenger.utils.chats.NimarkoChatHelper.getInstance(selectedObject.currentAccount).applyReplyBackground(selectedObject, fragment));
+            return createEmojiBulletin2(document, message, LocaleController.getString(R.string.ApplyTheme), selectedObject, () -> app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(selectedObject.currentAccount).applyReplyBackground(selectedObject, fragment));
         }
     }
 }

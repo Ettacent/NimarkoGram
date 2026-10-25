@@ -18,7 +18,7 @@ import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public abstract class TranslatorUtils {
 
@@ -42,7 +42,7 @@ public abstract class TranslatorUtils {
 
     private static String getStoredTargetLanguage() {
         try {
-            String v = NimarkoConfig.translationTarget;
+            String v = AppConfig.translationTarget;
             return TextUtils.isEmpty(v) ? APP : v;
         } catch (Throwable t) {
             return APP;
@@ -61,7 +61,7 @@ public abstract class TranslatorUtils {
         try {
             String normalized = APP.equalsIgnoreCase(str) ? APP : normalizeLanguageCode(str);
             String value = TextUtils.isEmpty(normalized) ? APP : normalized;
-            NimarkoConfig.setTranslationTarget(value);
+            AppConfig.setTranslationTarget(value);
         } catch (Throwable ignored) {
         }
     }
@@ -213,7 +213,7 @@ public abstract class TranslatorUtils {
     }
 
     public static String getCurrentTranslatorName() {
-        
+
         return "Telegram";
     }
 
@@ -229,7 +229,7 @@ public abstract class TranslatorUtils {
         if (APP.equalsIgnoreCase(str)) {
             return true;
         }
-        
+
         return !TextUtils.isEmpty(normalizeLanguageCode(str));
     }
 
@@ -245,7 +245,7 @@ public abstract class TranslatorUtils {
     }
 
     public static void ensureTargetLanguageCompatibleWithProvider() {
-        
+
         try {
             if (!isTargetLanguageSupportedForCurrentProvider(getStoredTargetLanguage())) {
                 setTargetLanguage(APP);
@@ -327,7 +327,7 @@ public abstract class TranslatorUtils {
             return;
         }
         final String resolved = getResolvedTargetLanguageCode(toLang);
-        
+
         translate(charSequence, "auto", resolved, entities, callback);
     }
 

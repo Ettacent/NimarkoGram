@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -471,7 +473,7 @@ public class SharedDocumentCell extends FrameLayout implements DownloadControlle
             if (messageObject.hasHighlightedWords() && !TextUtils.isEmpty(message.messageOwner.message)) {
                 String rawDocMsg = message.messageOwner.message;
                 if (rawDocMsg.contains("$")) {
-                    rawDocMsg = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(rawDocMsg);
+                    rawDocMsg = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(rawDocMsg);
                 }
                 String str = rawDocMsg.replace("\n", " ").replaceAll(" +", " ").trim();
                 caption = AndroidUtilities.highlightText(str, message.highlightedWords, resourcesProvider);

@@ -50,7 +50,7 @@ public class BuildVars {
                 final Thread.UncaughtExceptionHandler pastHandler = Thread.getDefaultUncaughtExceptionHandler();
                 Thread.setDefaultUncaughtExceptionHandler((thread, exception) -> {
                     try {
-                        
+
                         FileLog.e("Uncaught exception on "
                                 + (thread != null ? thread.getName() : "(null)"), exception);
                     } catch (Throwable ignored) {

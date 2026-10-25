@@ -463,7 +463,7 @@ public abstract class BaseFragment {
         // NimarkoGram (CG parity): when the user disabled vibration, recursively
         // mute haptic feedback on every child of this fragment's view so framework
         // gestures don't bypass our per-callsite guards.
-        if (fragmentView != null && app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+        if (fragmentView != null && app.nimarkogram.messenger.AppConfig.disableVibration) {
             app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
         }
     }

@@ -14,7 +14,7 @@ import android.view.ViewGroup;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public final class VibrateUtils {
 
@@ -54,7 +54,7 @@ public final class VibrateUtils {
     }
 
     public static void vibrate(long timeMs) {
-        if (NimarkoConfig.disableVibration) {
+        if (AppConfig.disableVibration) {
             return;
         }
         if (vibrator == null) {
@@ -79,7 +79,7 @@ public final class VibrateUtils {
     }
 
     public static void makeClickVibration() {
-        if (NimarkoConfig.disableVibration) {
+        if (AppConfig.disableVibration) {
             return;
         }
         try {
@@ -94,26 +94,26 @@ public final class VibrateUtils {
 
     public static void vibrateForChatMode(int mode) {
         switch (mode) {
-            case NimarkoConfig.VIBRATE_CLICK:
+            case AppConfig.VIBRATE_CLICK:
                 makeClickVibration();
                 break;
-            case NimarkoConfig.VIBRATE_WAVE:
+            case AppConfig.VIBRATE_WAVE:
                 makeWaveVibration();
                 break;
-            case NimarkoConfig.VIBRATE_KEYBOARD:
+            case AppConfig.VIBRATE_KEYBOARD:
                 makeClickVibration();
                 break;
-            case NimarkoConfig.VIBRATE_LONG:
+            case AppConfig.VIBRATE_LONG:
                 vibrate();
                 break;
-            case NimarkoConfig.VIBRATE_DISABLE:
+            case AppConfig.VIBRATE_DISABLE:
             default:
                 break;
         }
     }
 
     public static void makeWaveVibration() {
-        if (NimarkoConfig.disableVibration) {
+        if (AppConfig.disableVibration) {
             return;
         }
         try {

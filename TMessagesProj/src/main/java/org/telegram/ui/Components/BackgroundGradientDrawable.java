@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Bitmap;
@@ -96,12 +98,39 @@ public class BackgroundGradientDrawable extends GradientDrawable {
     private final int[] colors;
     private final ArrayMap<IntSize, Bitmap> bitmaps = new ArrayMap<>();
     private final ArrayMap<IntSize, Boolean> isForExactBounds = new ArrayMap<>();
-    private final ArrayMap<View, Disposable> disposables = new ArrayMap<>();
+    private final ArrayMap<View, ExactBoundsDisposable> disposables = new ArrayMap<>();
+    private final ArrayMap<IntSize, Disposable> exactBoundsDisposables = new ArrayMap<>();
     private final List<Runnable[]> ditheringRunnables = new ArrayList<>();
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private boolean disposed = false;
 
+    private class ExactBoundsDisposable implements Disposable {
+        private final View ownerView;
+        private final IntSize size;
+
+        private ExactBoundsDisposable(View ownerView, IntSize size) {
+            this.ownerView = ownerView;
+            this.size = size;
+        }
+
+        @Override
+        public void dispose() {
+            if (disposables.get(ownerView) != this) {
+                return;
+            }
+            disposables.remove(ownerView);
+            for (int i = 0; i < disposables.size(); i++) {
+                if (size.equals(disposables.valueAt(i).size)) {
+                    return;
+                }
+            }
+            final Disposable delegate = exactBoundsDisposables.remove(size);
+            if (delegate != null) {
+                delegate.dispose();
+            }
+        }
+    }
     public BackgroundGradientDrawable(Orientation orientation, int[] colors) {
         super(orientation, colors);
         setDither(true);
@@ -140,10 +169,23 @@ public class BackgroundGradientDrawable extends GradientDrawable {
         final int width = (int) (bounds.width() * compressRatio);
         final int height = (int) (bounds.height() * compressRatio);
 
-        for (int i = 0, count = bitmaps.size(); i < count; i++) {
-            final IntSize size = bitmaps.keyAt(i);
-            if (size.width == width && size.height == height) {
-                final Bitmap bitmap = bitmaps.valueAt(i);
+        IntSize matchingSize = null;
+        for (int i = 0; i < bitmaps.size(); i++) {
+            final IntSize cachedSize = bitmaps.keyAt(i);
+            if (cachedSize.width == width && cachedSize.height == height) {
+                matchingSize = cachedSize;
+                break;
+            }
+        }
+        final IntSize size = matchingSize != null ? matchingSize : new IntSize(width, height);
+
+        final ExactBoundsDisposable oldDisposable = disposables.get(ownerView);
+        if (oldDisposable != null && (!size.equals(oldDisposable.size) || !bitmaps.containsKey(size))) {
+            oldDisposable.dispose();
+        }
+
+        if (bitmaps.containsKey(size)) {
+            final Bitmap bitmap = bitmaps.get(size);
 
                 if (bitmap != null) { // ready
                     canvas.drawBitmap(bitmap, null, bounds, bitmapPaint);
@@ -151,28 +193,26 @@ public class BackgroundGradientDrawable extends GradientDrawable {
                     super.draw(canvas);
                 }
 
+            if (Boolean.TRUE.equals(isForExactBounds.get(size)) && !disposables.containsKey(ownerView)) {
+                disposables.put(ownerView, new ExactBoundsDisposable(ownerView, size));
+            }
                 return disposables.get(ownerView);
             }
-        }
-
-        final Disposable oldDisposable = disposables.remove(ownerView);
-        if (oldDisposable != null) {
-            oldDisposable.dispose();
-        }
-
-        final IntSize size = new IntSize(width, height);
         bitmaps.put(size, null);
         isForExactBounds.put(size, true);
         final Disposable delegate = startDitheringInternal(new IntSize[]{size}, new ListenerAdapter() {
             @Override
             public void onAllSizesReady() {
-                ownerView.invalidate();
+                for (int i = 0; i < disposables.size(); i++) {
+                    if (size.equals(disposables.valueAt(i).size)) {
+                        disposables.keyAt(i).invalidate();
+                    }
+                }
             }
         }, 0);
-        final Disposable disposable = disposables.put(ownerView, () -> {
-            disposables.remove(ownerView);
-            delegate.dispose();
-        });
+        exactBoundsDisposables.put(size, delegate);
+        final ExactBoundsDisposable disposable = new ExactBoundsDisposable(ownerView, size);
+        disposables.put(ownerView, disposable);
         super.draw(canvas);
         return disposable;
     }
@@ -288,7 +328,12 @@ public class BackgroundGradientDrawable extends GradientDrawable {
             }, delay);
         }
 
+        final boolean[] released = new boolean[1];
         return () -> {
+            if (released[0]) {
+                return;
+            }
+            released[0] = true;
             listenerReference[0] = null;
             if (ditheringRunnables.contains(runnables)) {
                 Utilities.globalQueue.cancelRunnables(runnables);
@@ -318,6 +363,7 @@ public class BackgroundGradientDrawable extends GradientDrawable {
             }
             isForExactBounds.clear();
             disposables.clear();
+            exactBoundsDisposables.clear();
             disposed = true;
         }
     }

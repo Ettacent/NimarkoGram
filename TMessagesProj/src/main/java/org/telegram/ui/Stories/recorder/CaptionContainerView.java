@@ -78,7 +78,7 @@ import org.telegram.ui.Components.EditTextEmoji;
 import org.telegram.ui.Components.EditTextSuggestionsFix;
 import org.telegram.ui.Components.EmojiView;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MentionsContainerView;
 import org.telegram.ui.Components.PeriodPackRenderer;
@@ -320,7 +320,7 @@ public class CaptionContainerView extends FrameLayout {
             }
         };
         editText.glassDesignForEmojiView = true;
-        if (NimarkoConfig.editTextSuggestionsFix) editText.getEditText().addTextChangedListener(new EditTextSuggestionsFix());
+        if (AppConfig.editTextSuggestionsFix) editText.getEditText().addTextChangedListener(new EditTextSuggestionsFix());
         editText.setFocusable(true);
         editText.setFocusableInTouchMode(true);
         editText.getEditText().hintLayoutYFix = true;
@@ -730,7 +730,7 @@ public class CaptionContainerView extends FrameLayout {
             keyboardAnimator.addUpdateListener(anm -> {
                 keyboardT = (float) anm.getAnimatedValue();
                 editText.getEditText().setTranslationX(lerp(dp(-44 + 18) + getEditTextLeft(), dp(2), keyboardT));
-                
+
                 limitTextContainer.setTranslationX(lerp(-dp(8), dp(2), keyboardT));
                 limitTextContainer.setTranslationY(lerp(-dp(8), 0, keyboardT));
                 editText.getEmojiButton().setAlpha(keyboardT);
@@ -771,7 +771,7 @@ public class CaptionContainerView extends FrameLayout {
         } else {
             keyboardT = show ? 1 : 0;
             editText.getEditText().setTranslationX(lerp(AndroidUtilities.dp(-44 + 18) + getEditTextLeft(), AndroidUtilities.dp(2), keyboardT));
-            
+
             limitTextContainer.setTranslationX(lerp(-dp(8), dp(2), keyboardT));
             limitTextContainer.setTranslationY(lerp(-dp(8), 0, keyboardT));
             editText.getEmojiButton().setAlpha(keyboardT);
@@ -855,7 +855,7 @@ public class CaptionContainerView extends FrameLayout {
     }
 
     protected void drawBlurBitmap(Bitmap bitmap, float amount) {
-        
+
         Utilities.stackBlurBitmap(bitmap, (int) amount);
     }
 
@@ -997,7 +997,7 @@ public class CaptionContainerView extends FrameLayout {
             return;
         }
         int height = editText.getHeight();
-        
+
         if (collapsed) {
             height = dp(44);
         } else if (keyboardShown) {
@@ -1525,7 +1525,7 @@ public class CaptionContainerView extends FrameLayout {
             final float r = dpf2(diameterDp) / 2f;
             final float fillT = this.fillT.set(filled);
 
-            final int pack = clear ? NimarkoConfig.ICON_REPLACE_NONE : packRenderer.selection();
+            final int pack = clear ? AppConfig.ICON_REPLACE_NONE : packRenderer.selection();
             if (fillT > 0) {
                 fillPaint.setAlpha((int) (0xFF * alpha * fillT));
                 packRenderer.drawCircle(canvas, cx, cy, dpf2(11.33f) * fillT, fillPaint, pack);

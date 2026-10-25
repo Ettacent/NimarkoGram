@@ -585,7 +585,7 @@
         </receiver>
 
         <!-- NimarkoGram: handles the OTA download notification's "Cancel" action button. -->
-        <receiver android:name="app.nimarkogram.messenger.updater.NimarkoUpdaterReceiver" android:enabled="true" android:exported="false" />
+        <receiver android:name="app.nimarkogram.messenger.updater.UpdaterReceiver" android:enabled="true" android:exported="false" />
 
         <receiver android:name=".RefererReceiver" android:exported="true" android:permission="android.permission.INSTALL_PACKAGES">
             <intent-filter>

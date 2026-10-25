@@ -1,7 +1,10 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
+import org.telegram.SQLite.SQLiteException;
 import org.telegram.SQLite.SQLitePreparedStatement;
 import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
@@ -1711,7 +1714,54 @@ public class DatabaseMigrationHelper {
     }
 
 
+    private static final HashMap<Integer, RecoveryAttempt> recoveryAttempts = new HashMap<>();
+
+    private static class RecoveryAttempt {
+        final File source;
+        final File sourceWal;
+        final File sourceShm;
+        SQLiteDatabase database;
+        boolean ready;
+        boolean copied;
+
+        RecoveryAttempt(File source, File sourceWal, File sourceShm) {
+            this.source = source;
+            this.sourceWal = sourceWal;
+            this.sourceShm = sourceShm;
+        }
+    }
+
+    static synchronized void closeRecoveryDatabase(int currentAccount) throws SQLiteException {
+        RecoveryAttempt attempt = recoveryAttempts.get(currentAccount);
+        if (attempt != null) {
+            if (attempt.database != null) {
+                attempt.database.closeForDestruction();
+            }
+            recoveryAttempts.remove(currentAccount);
+        }
+    }
     public static boolean recoverDatabase(File oldDatabaseFile, File oldDatabaseWall, File oldDatabaseShm, int currentAccount) {
+        try {
+            return recoverDatabaseChecked(oldDatabaseFile, oldDatabaseWall, oldDatabaseShm, currentAccount);
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    static synchronized boolean recoverDatabaseChecked(File oldDatabaseFile, File oldDatabaseWall, File oldDatabaseShm, int currentAccount) throws Exception {
+        RecoveryAttempt attempt = recoveryAttempts.get(currentAccount);
+        if (attempt == null) {
+            attempt = new RecoveryAttempt(oldDatabaseFile, oldDatabaseWall, oldDatabaseShm);
+            recoveryAttempts.put(currentAccount, attempt);
+        } else if (!attempt.source.equals(oldDatabaseFile) || !attempt.sourceWal.equals(oldDatabaseWall)
+                || !attempt.sourceShm.equals(oldDatabaseShm)) {
+            throw new IOException("Recovery source changed while an attempt is pending");
+        }
+        if (attempt.database != null) {
+            attempt.database.closeForDestruction();
+            attempt.database = null;
+        }
         File filesDir = ApplicationLoader.getFilesDirFixed();
         filesDir = new File(filesDir, "recover_database_" + currentAccount + "/");
         filesDir.mkdirs();
@@ -1719,25 +1769,27 @@ public class DatabaseMigrationHelper {
         File cacheFile = new File(filesDir, "cache4.db");
         File walCacheFile = new File(filesDir, "cache4.db-wal");
         File shmCacheFile = new File(filesDir, "cache4.db-shm");
-        try {
-            cacheFile.delete();
-            walCacheFile.delete();
-            shmCacheFile.delete();
-        } catch (Exception e) {
-            e.printStackTrace();
+        long time = System.currentTimeMillis();
+        if (!attempt.ready) {
+            for (File file : new File[]{cacheFile, walCacheFile, shmCacheFile}) {
+                if (file.exists() && !file.delete()) {
+                    throw new IOException("Unable to delete recovery file " + file.getName());
+                }
         }
 
         SQLiteDatabase newDatabase = null;
-        long time = 0;
         ArrayList<Long> encryptedDialogs = new ArrayList<>();
         ArrayList<Long> dialogs = new ArrayList<>();
         boolean recovered = true;
+            boolean incompatibleVersion = false;
+            Exception recoveryFailure = null;
         FileLog.d("start recover database");
 
         try {
             time = System.currentTimeMillis();
 
             newDatabase = new SQLiteDatabase(cacheFile.getPath());
+                attempt.database = newDatabase;
             newDatabase.executeFast("PRAGMA secure_delete = ON").stepThis().dispose();
             newDatabase.executeFast("PRAGMA temp_store = MEMORY").stepThis().dispose();
             newDatabase.executeFast("PRAGMA journal_mode = WAL").stepThis().dispose();
@@ -1749,7 +1801,8 @@ public class DatabaseMigrationHelper {
             int version = newDatabase.executeInt("PRAGMA old.user_version");
             if (version != MessagesStorage.LAST_DB_VERSION) {
                 FileLog.e("can't restore database from version " + version);
-                return false;
+                    incompatibleVersion = true;
+                    throw new SQLiteException("Recovery database version mismatch");
             }
             HashSet<String> excludeTables = new HashSet<>();
             excludeTables.add("messages_v2");
@@ -1823,30 +1876,69 @@ public class DatabaseMigrationHelper {
             state6.dispose();
 
             newDatabase.executeFast("DETACH DATABASE old;").stepThis().dispose();
-            newDatabase.close();
         } catch (Exception e) {
             FileLog.e(e);
             recovered = false;
+                recoveryFailure = e;
+            } finally {
+                if (attempt.database != null) {
+                    try {
+                        attempt.database.closeForDestruction();
+                    } catch (SQLiteException closeFailure) {
+                        if (recoveryFailure != null) {
+                            closeFailure.addSuppressed(recoveryFailure);
+                        }
+                        throw closeFailure;
+                    }
+                    attempt.database = null;
+                }
         }
         if (!recovered) {
+                int errorCode = recoveryFailure instanceof SQLiteException
+                        ? ((SQLiteException) recoveryFailure).errorCode & 0xff : 0;
+                if (!incompatibleVersion && errorCode != 11 && errorCode != 26) {
+                    throw recoveryFailure;
+                }
+                recoveryAttempts.remove(currentAccount);
             return false;
         }
-        try {
-            oldDatabaseFile.delete();
-            oldDatabaseWall.delete();
-            oldDatabaseShm.delete();
-
-            AndroidUtilities.copyFile(cacheFile, oldDatabaseFile);
-            AndroidUtilities.copyFile(walCacheFile, oldDatabaseWall);
-            AndroidUtilities.copyFile(shmCacheFile, oldDatabaseShm);
-
-            cacheFile.delete();
-            walCacheFile.delete();
-            shmCacheFile.delete();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
+            attempt.ready = true;
         }
+        if (!attempt.copied) {
+            if (!cacheFile.isFile()) {
+                throw new IOException("Recovery database is missing");
+            }
+            File[] sourceFiles = {cacheFile, walCacheFile, shmCacheFile};
+            File[] destinationFiles = {oldDatabaseFile, oldDatabaseWall, oldDatabaseShm};
+            boolean[] copySource = {true, walCacheFile.exists(), shmCacheFile.exists()};
+            long[] sourceLengths = new long[sourceFiles.length];
+            for (int i = 0; i < sourceFiles.length; i++) {
+                if (copySource[i]) {
+                    if (!sourceFiles[i].isFile() || !sourceFiles[i].canRead()) {
+                        throw new IOException("Recovery file is not readable " + sourceFiles[i].getName());
+                    }
+                    sourceLengths[i] = sourceFiles[i].length();
+                }
+            }
+            for (File file : new File[]{oldDatabaseWall, oldDatabaseShm, oldDatabaseFile}) {
+                if (file.exists() && !file.delete()) {
+                    throw new IOException("Unable to replace database file " + file.getName());
+                }
+            }
+            for (int i = 0; i < sourceFiles.length; i++) {
+                if (copySource[i] && (!AndroidUtilities.copyFile(sourceFiles[i], destinationFiles[i])
+                        || sourceLengths[i] != destinationFiles[i].length() || sourceLengths[i] != sourceFiles[i].length())) {
+                    throw new IOException("Unable to copy recovery file " + sourceFiles[i].getName());
+                }
+            }
+            attempt.copied = true;
+        }
+        for (File file : new File[]{cacheFile, walCacheFile, shmCacheFile}) {
+            if (file.exists() && !file.delete()) {
+                throw new IOException("Unable to delete recovery file " + file.getName());
+            }
+        }
+        recoveryAttempts.remove(currentAccount);
 
         FileLog.d("database recovered time " + (System.currentTimeMillis() - time));
         return true;

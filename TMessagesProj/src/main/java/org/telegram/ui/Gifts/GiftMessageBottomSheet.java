@@ -438,6 +438,7 @@ public class GiftMessageBottomSheet extends BottomSheet {
         starGiftUniqueActionView.getLayout().setOnButtonClickListener(() -> writeButton.performClick());
 
         // starGiftUniqueActionView.getLayout().getMessageDrawable().setAvatarVisible(!hideMyName, false);
+        starGiftUniqueActionView.getLayout().setOnMessageClickListener(() -> commentView.openKeyboardInternal());
         publicCheckboxView.setDrawBackgroundAsArc(10);
         publicCheckboxButton.addView(publicCheckboxView, LayoutHelper.createFrame(18, 18, Gravity.CENTER_VERTICAL | Gravity.LEFT, 10, 0, 0, 0));
         publicCheckboxButton.setBackground(Theme.createServiceDrawable(AndroidUtilities.dp(16), publicCheckboxButton, containerView, getThemedPaint(Theme.key_paint_chatActionBackground)));

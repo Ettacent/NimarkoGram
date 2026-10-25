@@ -924,7 +924,7 @@ public class ViewPagerFixed extends FrameLayout {
             onItemSelected(viewPages[0], oldView, currentPosition, oldPosition);
             setTranslationX(viewPages[0], 0);
             if (tabsView != null) {
-                tabsView.selectTab(currentPosition, nextPosition, currentProgress);
+                tabsView.selectTab(nextPosition, currentPosition, currentProgress);
             }
             onTabAnimationUpdate(true);
         }
@@ -2074,7 +2074,7 @@ public class ViewPagerFixed extends FrameLayout {
                             indicatorWidth = (int) AndroidUtilities.lerp(lastDrawnIndicatorW, indicatorWidth, indicatorProgress2);
                         }
                         // NimarkoGram (CG parity): hollow stroke variant for the bubble-style selector.
-                        if (app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) {
+                        if (app.nimarkogram.messenger.AppConfig.tabStyleStroke) {
                             selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
                             selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey), 50));
                         }
@@ -2086,7 +2086,7 @@ public class ViewPagerFixed extends FrameLayout {
                                 (int) (indicatorX - dp(TAB_INTERNAL_PADDING) - add), y,
                                 (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add),
                                 y + dp(28));
-                            if (!app.nimarkogram.messenger.NimarkoConfig.tabStyleStroke) selectorDrawable.setAlpha(31);
+                            if (!app.nimarkogram.messenger.AppConfig.tabStyleStroke) selectorDrawable.setAlpha(31);
                             selectorDrawable.draw(canvas);
                         } else {
                             selectorDrawable.setBounds(indicatorX, (int) (height - AndroidUtilities.dpr(4) + hideProgress * AndroidUtilities.dpr(4)), indicatorX + indicatorWidth, (int) (height + hideProgress * AndroidUtilities.dpr(4)));

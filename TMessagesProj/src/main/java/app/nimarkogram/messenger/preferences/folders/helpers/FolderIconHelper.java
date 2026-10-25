@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -15,7 +16,7 @@ import org.telegram.messenger.R;
 
 import java.util.LinkedHashMap;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class FolderIconHelper {
 
@@ -111,8 +112,8 @@ public class FolderIconHelper {
     }
 
     public static int getPadding() {
-        
-        if (NimarkoConfig.tabMode == NimarkoConfig.TAB_TYPE_MIX) {
+
+        if (AppConfig.tabMode == AppConfig.TAB_TYPE_MIX) {
             return AndroidUtilities.dp(3);
         }
         return 0;
@@ -120,7 +121,7 @@ public class FolderIconHelper {
 
     public static int getTotalIconWidth() {
         int result = 0;
-        if (NimarkoConfig.tabMode != NimarkoConfig.TAB_TYPE_TEXT) {
+        if (AppConfig.tabMode != AppConfig.TAB_TYPE_TEXT) {
             result = getIconWidth() + getPadding();
         }
         return result;

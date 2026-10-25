@@ -4205,7 +4205,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         }
 
         public MyWebView(Context context, boolean bot, long botId) {
-            super(context);
+            super(WebViewContext.wrap(context));
             this.bot = bot;
             d("created new webview " + this);
 
@@ -4939,7 +4939,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             return false;
                         }
                     } else {
-                        WebView newWebView = new WebView(view.getContext());
+                        WebView newWebView = new WebView(org.telegram.ui.web.WebViewContext.wrap(view.getContext()));
                         newWebView.setWebViewClient(new WebViewClient() {
                             @Override
                             public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {

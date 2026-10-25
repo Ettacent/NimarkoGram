@@ -10,7 +10,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -109,7 +109,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
             super.onDetachedFromWindow();
             windowAttached = false;
             releaseSnapshot();
-            
+
             scheduleCloseComplete();
         }
     }
@@ -221,7 +221,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                     final int previousPaintColor = Theme.chat_docBackPaint.getColor();
                     final int previousPaintAlpha = Theme.chat_docBackPaint.getAlpha();
                     try {
-                        
+
                         Theme.chat_roundVideoShadow.setAlpha(255);
                         Theme.chat_roundVideoShadow.setBounds(AndroidUtilities.dp(1), AndroidUtilities.dp(2), AndroidUtilities.dp(125), AndroidUtilities.dp(125));
                         Theme.chat_roundVideoShadow.draw(canvas);
@@ -332,7 +332,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
             windowLayoutParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             windowAttached = true;
         } catch (Exception e) {
             FileLog.e(e);
@@ -535,11 +535,11 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                             }
                             removeCloseCoverPreDrawListener();
                             closeAnimationStartRunnable = null;
-                            
+
                             runShowHideAnimation(false);
                         }
                     };
-                    
+
                     closeCoverPreDrawListener = new ViewTreeObserver.OnPreDrawListener() {
                         @Override
                         public boolean onPreDraw() {
@@ -579,7 +579,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                     windowAttached = false;
                 } catch (Exception e) {
                     FileLog.e(e);
-                    
+
                     try {
                         windowManager.removeViewImmediate(windowView);
                         removalRequested = true;
@@ -599,7 +599,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
             }
             onCloseRunnable = null;
             if (windowView != null && windowView.isAttachedToWindow() && !removalRequested) {
-                
+
                 try {
                     if (textureView != null && textureView.getParent() == aspectRatioFrameLayout) {
                         aspectRatioFrameLayout.removeView(textureView);
@@ -732,7 +732,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                 return;
             }
         }
-        
+
         imageView.postOnAnimation(() -> imageView.postOnAnimation(() -> {
             if (!closed && closeAnimationStartRunnable == expectedStart) {
                 expectedStart.run();
@@ -883,7 +883,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
             imageView.animate().cancel();
             imageView.setImageDrawable(null);
         }
-        
+
         bitmap = null;
     }
 
@@ -963,7 +963,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                 windowLayoutParams.y = Math.round(fromY + (targetY - fromY) * progress);
                 windowLayoutParams.alpha = fromAlpha + (targetAlpha - fromAlpha) * progress;
                 try {
-                    
+
                     windowManager.updateViewLayout(windowView, windowLayoutParams);
                 } catch (Exception error) {
                 }
@@ -984,7 +984,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
                     if (animation == boundsAnimation) {
                         boundsAnimation = null;
                         if (!cancelled && dismiss) {
-                            
+
                             scheduleFinishAfterFrame(true);
                         }
                     }

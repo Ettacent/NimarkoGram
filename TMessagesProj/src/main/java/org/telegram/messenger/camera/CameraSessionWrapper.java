@@ -13,7 +13,7 @@ import java.util.concurrent.CountDownLatch;
 public class CameraSessionWrapper {
     public CameraSession camera1Session;
     public Camera2Session camera2Session;
-    public app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession cameraXSession;
+    public app.nimarkogram.messenger.camera.CameraXSurfaceSession cameraXSession;
 
     public boolean isInitiated() {
         if (cameraXSession != null) {
@@ -108,7 +108,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             cameraXSession.setCurrentFlashMode(flashMode);
         } else if (camera2Session != null) {
-            
+
         } else if (camera1Session != null) {
             camera1Session.setCurrentFlashMode(flashMode);
         }
@@ -118,7 +118,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             return cameraXSession.getCurrentFlashMode();
         } else if (camera2Session != null) {
-            
+
             return Camera.Parameters.FLASH_MODE_OFF;
         } else if (camera1Session != null) {
             return camera1Session.getCurrentFlashMode();
@@ -130,7 +130,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             return cameraXSession.getNextFlashMode();
         } else if (camera2Session != null) {
-            
+
             return Camera.Parameters.FLASH_MODE_OFF;
         } else if (camera1Session != null) {
             return camera1Session.getNextFlashMode();
@@ -142,7 +142,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             return cameraXSession.hasFlash();
         } else if (camera2Session != null) {
-            
+
             return false;
         } else if (camera1Session != null) {
             return !camera1Session.availableFlashModes.isEmpty();
@@ -154,7 +154,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             return;
         } else if (camera2Session != null) {
-            
+
         } else if (camera1Session != null) {
             camera1Session.setFlipFront(flip);
         }
@@ -164,7 +164,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             return true;
         } else if (camera2Session != null) {
-            
+
         } else if (camera1Session != null) {
             return camera1Session.isSameTakePictureOrientation();
         }
@@ -175,7 +175,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             cameraXSession.updateRotation();
         } else if (camera2Session != null) {
-            
+
         } else if (camera1Session != null) {
             camera1Session.updateRotation();
         }
@@ -195,7 +195,7 @@ public class CameraSessionWrapper {
         if (cameraXSession != null) {
             cameraXSession.focusToRect(focusRect);
         } else if (camera2Session != null) {
-            
+
             camera2Session.focusToNormalizedRect(focusRect, meteringRect);
         } else if (camera1Session != null) {
             camera1Session.focusToRect(focusRect, meteringRect);
@@ -239,7 +239,7 @@ public class CameraSessionWrapper {
         return wrapper;
     }
 
-    public static CameraSessionWrapper of(app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session) {
+    public static CameraSessionWrapper of(app.nimarkogram.messenger.camera.CameraXSurfaceSession session) {
         CameraSessionWrapper wrapper = new CameraSessionWrapper();
         wrapper.cameraXSession = session;
         return wrapper;
@@ -251,7 +251,7 @@ public class CameraSessionWrapper {
             return obj == camera1Session;
         } else if (obj instanceof Camera2Session) {
             return obj == camera2Session;
-        } else if (obj instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
+        } else if (obj instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
             return obj == cameraXSession;
         } else if (obj instanceof CameraSessionWrapper) {
             CameraSessionWrapper wrapper = (CameraSessionWrapper) obj;

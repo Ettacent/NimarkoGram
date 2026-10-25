@@ -1,7 +1,11 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 
 import org.telegram.messenger.DocumentObject;
@@ -46,14 +50,11 @@ public class StoriesLikeButton extends View {
         if (isLike) {
             float progress = progressToLiked.set(liked ? 1f : 0f);
             if (progress < 1f) {
-                sharedResources.likeDrawable.setBounds(getPaddingLeft(), getPaddingTop(), getMeasuredWidth() - getPaddingRight(), getMeasuredHeight() - getPaddingBottom());
-                sharedResources.likeDrawable.setAlpha((int) (255));
-                sharedResources.likeDrawable.draw(canvas);
+                drawLike(canvas, sharedResources.likeDrawable,
+                        sharedResources.crossfadeLike ? (int) ((1f - progress) * 255) : 255);
             }
             if (progress > 0) {
-                sharedResources.likeDrawableFilled.setBounds(getPaddingLeft(), getPaddingTop(), getMeasuredWidth() - getPaddingRight(), getMeasuredHeight() - getPaddingBottom());
-                sharedResources.likeDrawableFilled.setAlpha((int) (progress * 255));
-                sharedResources.likeDrawableFilled.draw(canvas);
+                drawLike(canvas, sharedResources.likeDrawableFilled, (int) (progress * 255));
             }
         } else {
             if (allowDrawReaction) {
@@ -83,6 +84,21 @@ public class StoriesLikeButton extends View {
                     receiverToDraw.draw(canvas);
                 }
             }
+        }
+    }
+
+    private void drawLike(Canvas canvas, Drawable drawable, int alpha) {
+        int previousAlpha = drawable.getAlpha();
+        Rect bounds = drawable.getBounds();
+        int left = bounds.left, top = bounds.top, right = bounds.right, bottom = bounds.bottom;
+        try {
+            drawable.setBounds(getPaddingLeft(), getPaddingTop(),
+                    getMeasuredWidth() - getPaddingRight(), getMeasuredHeight() - getPaddingBottom());
+            drawable.setAlpha(alpha);
+            drawable.draw(canvas);
+        } finally {
+            drawable.setAlpha(previousAlpha);
+            drawable.setBounds(left, top, right, bottom);
         }
     }
 

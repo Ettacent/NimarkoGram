@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -131,8 +131,8 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
                             return;
                         }
                         AndroidUtilities.runOnUIThread(micRunnable, 90);
-                        
-                        if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                        if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                             try {
                                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                             } catch (Exception ignore) {}
@@ -260,8 +260,8 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
                         if (pressed) {
                             if (VoIPService.getSharedInstance() != null) {
                                 VoIPService.getSharedInstance().setMicMute(true, false, false);
-                                
-                                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                                if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                     try {
                                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                                     } catch (Exception ignored) {}
@@ -332,7 +332,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
             private void onTap() {
                 if (VoIPService.getSharedInstance() != null) {
                     showAlert(!showAlert);
-                    
+
                 }
             }
         };
@@ -736,7 +736,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
                 WindowManager.LayoutParams.FLAG_DIM_BEHIND;
 
         wm.addView(instance.alertContainer, windowLayoutParams);
-        NimarkoAppMotionBlur.attachRoot(instance.alertContainer);
+        AppMotionBlur.attachRoot(instance.alertContainer);
         instance.alertContainer.setVisibility(View.GONE);
 
         windowLayoutParams = createWindowLayoutParams(context);
@@ -745,19 +745,19 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
         windowLayoutParams.height = AndroidUtilities.dp(150);
         wm.addView(instance.windowRemoveTooltipView, windowLayoutParams);
 
-        NimarkoAppMotionBlur.attachRoot(instance.windowRemoveTooltipView);
+        AppMotionBlur.attachRoot(instance.windowRemoveTooltipView);
         windowLayoutParams = createWindowLayoutParams(context);
         instance.windowLayoutParams = windowLayoutParams;
         wm.addView(instance.windowView, windowLayoutParams);
 
-        NimarkoAppMotionBlur.attachRoot(instance.windowView);
+        AppMotionBlur.attachRoot(instance.windowView);
         windowLayoutParams = createWindowLayoutParams(context);
         windowLayoutParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         windowLayoutParams.width = AndroidUtilities.dp(100);
         windowLayoutParams.height = AndroidUtilities.dp(150);
         wm.addView(instance.windowRemoveTooltipOverlayView, windowLayoutParams);
 
-        NimarkoAppMotionBlur.attachRoot(instance.windowRemoveTooltipOverlayView);
+        AppMotionBlur.attachRoot(instance.windowRemoveTooltipOverlayView);
         instance.windowRemoveTooltipView.setVisibility(View.GONE);
 
         instance.windowView.setScaleX(0.5f);
@@ -897,8 +897,8 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
                 deleteIcon.setCustomEndFrame(prepare ? 33 : 0);
                 iconView.playAnimation();
             }
-            if (prepare && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
-                
+            if (prepare && !app.nimarkogram.messenger.AppConfig.disableVibration) {
+
                 try {
                     button.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}

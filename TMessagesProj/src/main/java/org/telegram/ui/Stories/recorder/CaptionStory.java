@@ -30,7 +30,7 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
@@ -137,16 +137,16 @@ public class CaptionStory extends CaptionContainerView {
 
     private void checkFlipButton() {
         final Resources resources = getContext().getResources();
-        final long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         final int density = resources.getDisplayMetrics().densityDpi;
         if (flipButton != null && flipButtonResources == resources
                 && flipButtonGeneration == generation && flipButtonDensity == density) return;
         final Drawable previous = flipButton;
         clearFlipButton();
         flipButton = ContextCompat.getDrawable(getContext(), R.drawable.avd_flip).mutate();
-        if (!(flipButton instanceof Animatable) && resources instanceof NimarkoIconResources
-                && ((NimarkoIconResources) resources).hasReplacement(R.drawable.avd_flip)) {
+        if (!(flipButton instanceof Animatable) && resources instanceof IconResources
+                && ((IconResources) resources).hasReplacement(R.drawable.avd_flip)) {
             flipButton = new CaptionStoryFlipDrawable(flipButton);
         }
         if (previous != null) {

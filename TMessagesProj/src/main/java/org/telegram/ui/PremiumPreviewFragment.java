@@ -187,7 +187,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
     int totalTiersGradientHeight;
 
     FillLastLinearLayoutManager layoutManager;
-    
+
     Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     Shader shader, strokeShader;
     Matrix matrix = new Matrix();
@@ -1131,8 +1131,8 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
     }
 
     public static void buyPremium(BaseFragment fragment, SubscriptionTier tier, String source, boolean forcePremium, BillingFlowParams.SubscriptionUpdateParams updateParams) {
-        
-        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.NimarkoConfig.allowSafeStars) {
+
+        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.AppConfig.allowSafeStars) {
             if (fragment == null) {
                 new PremiumNotAvailableBottomSheet(fragment).show();
             } else {
@@ -1163,10 +1163,10 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
         SubscriptionTier selectedTier = tier;
 
         if (selectedTier != null && selectedTier.isSafeStars) {
-            
+
             return;
         }
-        
+
         PremiumPreviewFragment.sentPremiumButtonClick();
 
         if (BuildVars.useInvoiceBilling()) {
@@ -1303,12 +1303,12 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
     }
 
     public static String getPremiumButtonText(int currentAccount, SubscriptionTier tier) {
-        
+
         if (tier != null && tier.isSafeStars) {
             return getString(R.string.CG_SafeStars_BuyPremiumButton);
         }
-        
-        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.NimarkoConfig.allowSafeStars) {
+
+        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.AppConfig.allowSafeStars) {
             return getString(R.string.SubscribeToPremiumNotAvailable);
         }
 
@@ -1355,9 +1355,9 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
                 if (!details.isEmpty()) {
                     ProductDetails.SubscriptionOfferDetails offerDetails = details.get(0);
                     for (ProductDetails.PricingPhase phase : offerDetails.getPricingPhases().getPricingPhaseList()) {
-                        if (phase.getBillingPeriod().equals("P1M")) { 
+                        if (phase.getBillingPeriod().equals("P1M")) {
                             price = phase.getFormattedPrice();
-                        } else if (phase.getBillingPeriod().equals("P1Y")) { 
+                        } else if (phase.getBillingPeriod().equals("P1Y")) {
                             if (MessagesController.getInstance(currentAccount).showAnnualPerMonth) {
                                 price = BillingController.getInstance().formatCurrency(phase.getPriceAmountMicros() / 12L, phase.getPriceCurrencyCode(), 6);
                             } else {
@@ -1692,7 +1692,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
                             spannableString.setSpan(new TextStyleSpan(run), run.start, run.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         }
                     }
-                    
+
                     privacyCell.setText(spannableString);
                 }
             } else if (position == moreHeaderRow) {
@@ -2017,7 +2017,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
                 }
             }
 
-            if (app.nimarkogram.messenger.NimarkoConfig.allowSafeStars) {
+            if (app.nimarkogram.messenger.AppConfig.allowSafeStars) {
                 TLRPC.TL_premiumSubscriptionOption safeStarsOption = new TLRPC.TL_premiumSubscriptionOption();
                 safeStarsOption.months = 1390;
                 safeStarsOption.currency = "USD";
@@ -2030,7 +2030,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
 
                 subscriptionTiers.add(safeStarsTier);
             }
-            
+
             if (BuildVars.useInvoiceBilling() && getUserConfig().isPremium()) {
                 subscriptionTiers.clear();
                 currentSubscriptionTier = null;
@@ -2104,7 +2104,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
                 subtitleView.setText(AndroidUtilities.replaceTags(getString(getUserConfig().isPremium() || forcePremium ? R.string.TelegramBusinessSubscribedSubtitleTemp : R.string.TelegramBusinessSubtitleTemp)));
             }
             subtitleView.getLayoutParams().width = Math.min(AndroidUtilities.displaySize.x - dp(42), HintView2.cutInFancyHalf(subtitleView.getText(), subtitleView.getPaint()));
-            boolean tierNotVisible = forcePremium || BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.NimarkoConfig.allowSafeStars || IS_PREMIUM_TIERS_UNAVAILABLE || subscriptionTiers.size() <= 1;
+            boolean tierNotVisible = forcePremium || BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.AppConfig.allowSafeStars || IS_PREMIUM_TIERS_UNAVAILABLE || subscriptionTiers.size() <= 1;
             if (!setTierListViewVisibility || !tierNotVisible) {
                 tierListView.setVisibility(tierNotVisible ? GONE : VISIBLE);
                 setTierListViewVisibility = true;
@@ -2161,7 +2161,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
         if (LocaleController.isRTL) {
             animated = false;
         }
-        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.NimarkoConfig.allowSafeStars && selectedTierIndex < subscriptionTiers.size()) {
+        if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.AppConfig.allowSafeStars && selectedTierIndex < subscriptionTiers.size()) {
             premiumButtonView.setButton(getPremiumButtonText(currentAccount, subscriptionTiers.get(selectedTierIndex)), null, animated);
             buttonContainerInternal.setOnClickListener(v -> buyPremium(this));
             return;
@@ -2406,7 +2406,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
         public int yOffset;
 
         public boolean isSafeStars = false;
-        
+
         public SubscriptionTier(TLRPC.TL_premiumSubscriptionOption subscriptionOption) {
             this.subscriptionOption = subscriptionOption;
         }

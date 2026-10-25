@@ -124,7 +124,7 @@ public class BillingController implements PurchasesUpdatedListener, BillingClien
         try {
 
 
-            app.nimarkogram.messenger.NimarkoCrashContext.event("billing", "launch_result",
+            app.nimarkogram.messenger.CrashContext.event("billing", "launch_result",
                     "BillingClient.launchBillingFlow", billingDiagnosticVersions + " response=" + responseCode);
         } catch (Throwable ignored) {
 

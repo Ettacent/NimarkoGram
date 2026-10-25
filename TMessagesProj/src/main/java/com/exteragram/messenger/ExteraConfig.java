@@ -7,11 +7,11 @@ public final class ExteraConfig {
     private ExteraConfig() {}
 
     public static final android.content.SharedPreferences.Editor editor =
-            app.nimarkogram.messenger.NimarkoConfig.getEditor();
+            app.nimarkogram.messenger.AppConfig.getEditor();
 
     public static android.content.SharedPreferences.Editor getEditor() {
         try {
-            return app.nimarkogram.messenger.NimarkoConfig.getEditor();
+            return app.nimarkogram.messenger.AppConfig.getEditor();
         } catch (Throwable t) {
             return editor;
         }
@@ -19,57 +19,57 @@ public final class ExteraConfig {
 
     public static android.content.SharedPreferences getPreferences() {
         try {
-            return app.nimarkogram.messenger.NimarkoConfig.getPreferences();
+            return app.nimarkogram.messenger.AppConfig.getPreferences();
         } catch (Throwable t) {
             return null;
         }
     }
 
-    public static volatile boolean pluginsSafeMode = app.nimarkogram.messenger.NimarkoConfig.pluginsSafeMode;
+    public static volatile boolean pluginsSafeMode = app.nimarkogram.messenger.AppConfig.pluginsSafeMode;
 
     public static boolean getPluginsSafeMode() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsSafeMode; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsSafeMode; } catch (Throwable t) { return false; }
     }
 
     public static void setPluginsSafeMode(boolean enabled) {
         pluginsSafeMode = enabled;
-        try { app.nimarkogram.messenger.NimarkoConfig.setPluginsSafeMode(enabled); } catch (Throwable t) {   }
+        try { app.nimarkogram.messenger.AppConfig.setPluginsSafeMode(enabled); } catch (Throwable t) {   }
     }
 
     public static boolean getPluginsDevMode() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsDevMode; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsDevMode; } catch (Throwable t) { return false; }
     }
 
     public static boolean getPluginsCompactView() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsCompactView; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsCompactView; } catch (Throwable t) { return false; }
     }
 
     public static boolean getPluginsDisableArtOpts() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsDisableArtOpts; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsDisableArtOpts; } catch (Throwable t) { return false; }
     }
 
     public static boolean getPluginsPySdkAutoUpdate() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsPySdkAutoUpdate; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsPySdkAutoUpdate; } catch (Throwable t) { return false; }
     }
 
     public static boolean getPluginsPySdkBetaVersions() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsPySdkBetaVersions; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsPySdkBetaVersions; } catch (Throwable t) { return false; }
     }
 
     public static boolean getPluginsEngine() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.pluginsEngine; } catch (Throwable t) { return true; }
+        try { return app.nimarkogram.messenger.AppConfig.pluginsEngine; } catch (Throwable t) { return true; }
     }
 
     public static float getAvatarCorners() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.avatarCorners; } catch (Throwable t) { return 0f; }
+        try { return app.nimarkogram.messenger.AppConfig.avatarCorners; } catch (Throwable t) { return 0f; }
     }
 
     public static int getAvatarCorners(float size) {
-        try { return app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size); } catch (Throwable t) { return 0; }
+        try { return app.nimarkogram.messenger.AppConfig.getAvatarCorners(size); } catch (Throwable t) { return 0; }
     }
 
     public static int getAvatarCorners(float size, boolean toPx) {
-        try { return app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size, toPx); } catch (Throwable t) { return 0; }
+        try { return app.nimarkogram.messenger.AppConfig.getAvatarCorners(size, toPx); } catch (Throwable t) { return 0; }
     }
 
     public static int getAvatarCorners(float size, boolean toPx, boolean forum) {
@@ -78,7 +78,7 @@ public final class ExteraConfig {
 
     public static int getAvatarCorners(float size, boolean toPx, boolean forum, boolean withStory) {
         try {
-            float corners = app.nimarkogram.messenger.NimarkoConfig.avatarCorners;
+            float corners = app.nimarkogram.messenger.AppConfig.avatarCorners;
             if (corners == 0f) {
                 return 0;
             }
@@ -100,7 +100,7 @@ public final class ExteraConfig {
 
     public static float getAvatarSquareness() {
         try {
-            float v = 1.0f - (app.nimarkogram.messenger.NimarkoConfig.avatarCorners / 28.0f);
+            float v = 1.0f - (app.nimarkogram.messenger.AppConfig.avatarCorners / 28.0f);
             return v < 0f ? 0f : (v > 1f ? 1f : v);
         } catch (Throwable t) {
             return 0f;
@@ -108,7 +108,7 @@ public final class ExteraConfig {
     }
 
     public static void setAvatarCorners(float v) {
-        try { app.nimarkogram.messenger.NimarkoConfig.setAvatarCorners(v); } catch (Throwable t) {   }
+        try { app.nimarkogram.messenger.AppConfig.setAvatarCorners(v); } catch (Throwable t) {   }
     }
 
     public static final com.google.gson.Gson GSON = new com.google.gson.Gson();
@@ -118,19 +118,19 @@ public final class ExteraConfig {
     }
 
     public static boolean getDisableNumberRounding() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.noRounding; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.noRounding; } catch (Throwable t) { return false; }
     }
 
     public static boolean getFormatTimeWithSeconds() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.showSeconds; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.showSeconds; } catch (Throwable t) { return false; }
     }
 
     public static boolean getInAppVibration() {
-        try { return !app.nimarkogram.messenger.NimarkoConfig.disableVibration; } catch (Throwable t) { return false; }
+        try { return !app.nimarkogram.messenger.AppConfig.disableVibration; } catch (Throwable t) { return false; }
     }
 
     public static int getDoubleTapSeekDuration() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.videoSeekDuration; } catch (Throwable t) { return 0; }
+        try { return app.nimarkogram.messenger.AppConfig.videoSeekDuration; } catch (Throwable t) { return 0; }
     }
 
     public static boolean getUseSystemFonts() {
@@ -138,15 +138,15 @@ public final class ExteraConfig {
     }
 
     public static boolean getHideStories() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.hideStories; } catch (Throwable t) { return false; }
+        try { return app.nimarkogram.messenger.AppConfig.hideStories; } catch (Throwable t) { return false; }
     }
 
     public static String getTargetLang() {
-        try { return app.nimarkogram.messenger.NimarkoConfig.translationTarget; } catch (Throwable t) { return "app"; }
+        try { return app.nimarkogram.messenger.AppConfig.translationTarget; } catch (Throwable t) { return "app"; }
     }
 
     public static void setTargetLang(String v) {
-        try { app.nimarkogram.messenger.NimarkoConfig.setTranslationTarget(v); } catch (Throwable t) {   }
+        try { app.nimarkogram.messenger.AppConfig.setTranslationTarget(v); } catch (Throwable t) {   }
     }
 
     public static int getTranslationProvider() {

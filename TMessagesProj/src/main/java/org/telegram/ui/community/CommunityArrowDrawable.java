@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -20,7 +22,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.utils.DrawableUtils;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class CommunityArrowDrawable extends Drawable {
     private static final float INLINE_MAX_WIDTH_DP = 20f;
@@ -41,7 +43,7 @@ public class CommunityArrowDrawable extends Drawable {
     }
 
     private void ensureArrowDrawable() {
-        final int iconPack = NimarkoConfig.iconReplacement;
+        final int iconPack = AppConfig.iconReplacement;
         if (arrowDrawable != null
                 && loadedIconPack == iconPack
                 && loadedInline == inline) {
@@ -53,23 +55,23 @@ public class CommunityArrowDrawable extends Drawable {
         stockTelegramArrow = false;
         arrowRotationDegrees = 0f;
         switch (iconPack) {
-            case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS:
+            case AppConfig.ICON_REPLACE_LIQUID_GLASS:
                 drawableId = R.drawable.arrow_more_liquid;
                 break;
-            case NimarkoConfig.ICON_REPLACE_PLUMPY:
-                
+            case AppConfig.ICON_REPLACE_PLUMPY:
+
                 drawableId = R.drawable.community_arrow_plumpy;
                 break;
-            case NimarkoConfig.ICON_REPLACE_SOLAR:
+            case AppConfig.ICON_REPLACE_SOLAR:
                 drawableId = R.drawable.arrow_more_solar;
                 break;
-            case NimarkoConfig.ICON_REPLACE_NONE:
+            case AppConfig.ICON_REPLACE_NONE:
             default:
                 if (inline) {
-                    
+
                     drawableId = R.drawable.arrow_more;
                 } else {
-                    
+
                     drawableId = R.drawable.settings_arrow;
                     stockTelegramArrow = true;
                     arrowRotationDegrees = 90f;
@@ -88,7 +90,7 @@ public class CommunityArrowDrawable extends Drawable {
     private void setArrowBounds(float cx, float cy, float maxWidthDp, float maxHeightDp) {
         int sourceWidth = Math.max(1, arrowDrawable.getIntrinsicWidth());
         int sourceHeight = Math.max(1, arrowDrawable.getIntrinsicHeight());
-        
+
         float scale = Math.min(1f, Math.min(
                 dp(maxWidthDp) / (float) sourceWidth,
                 dp(maxHeightDp) / (float) sourceHeight));
@@ -151,7 +153,7 @@ public class CommunityArrowDrawable extends Drawable {
         }
         if (lastColor != iconColor) {
             lastColor = iconColor;
-            
+
             arrowDrawable.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.SRC_IN));
         }
 
@@ -169,7 +171,7 @@ public class CommunityArrowDrawable extends Drawable {
         canvas.drawCircle(cx, cy, dp(40 / 6f), Theme.fillingPaint(ColorUtils.setAlphaComponent(bgColor, alpha)));
         canvas.save();
         if (stockTelegramArrow) {
-            
+
             DrawableUtils.setBounds(arrowDrawable, cx, cy, Gravity.CENTER);
             canvas.translate(0, dp(0.66f));
         } else {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2018 The WebRTC project authors. All Rights Reserved.
  *
@@ -9,6 +11,8 @@
  */
 
 #include "api/peer_connection_interface.h"
+
+#include "p2p/base/dtls_transport_factory.h"
 
 #include <utility>
 

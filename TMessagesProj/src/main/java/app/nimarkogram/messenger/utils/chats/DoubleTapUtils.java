@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.utils.chats;
 
 import java.lang.reflect.Method;
@@ -9,7 +9,7 @@ import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import android.view.View;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -144,28 +144,28 @@ public final class DoubleTapUtils {
     }
 
     public static boolean isCustomActionEnabled() {
-        int a = NimarkoConfig.doubleTapAction;
-        return a != NimarkoConfig.DTAP_NONE && a != NimarkoConfig.DTAP_REACTION;
+        int a = AppConfig.doubleTapAction;
+        return a != AppConfig.DTAP_NONE && a != AppConfig.DTAP_REACTION;
     }
 
     public static boolean isDoubleTapEnabled() {
-        return NimarkoConfig.doubleTapAction != NimarkoConfig.DTAP_NONE;
+        return AppConfig.doubleTapAction != AppConfig.DTAP_NONE;
     }
 
     public static boolean canHandle(MessageObject message) {
         if (message == null) return false;
-        int action = NimarkoConfig.doubleTapAction;
+        int action = AppConfig.doubleTapAction;
         switch (action) {
-            case NimarkoConfig.DTAP_REPLY:
+            case AppConfig.DTAP_REPLY:
                 return !message.isSending() && message.getId() > 0 && !message.isSponsored();
-            case NimarkoConfig.DTAP_SAVE:
+            case AppConfig.DTAP_SAVE:
                 return !message.isSending() && !message.isSponsored() && !message.isSecret();
-            case NimarkoConfig.DTAP_EDIT:
+            case AppConfig.DTAP_EDIT:
                 return message.canEditMessage(null);
-            case NimarkoConfig.DTAP_EDIT_OR_REACTION:
+            case AppConfig.DTAP_EDIT_OR_REACTION:
                 // Editable (own) → we'll edit; otherwise → we'll fall through to a reaction.
                 return message.canEditMessage(null) || message.canSetReaction();
-            case NimarkoConfig.DTAP_TRANSLATE:
+            case AppConfig.DTAP_TRANSLATE:
                 return message.messageOwner != null && message.messageOwner.message != null
                         && message.messageOwner.message.length() > 0;
             default:
@@ -176,33 +176,33 @@ public final class DoubleTapUtils {
     public static boolean dispatch(Object chatActivity, View cell, MessageObject message) {
         if (message == null || chatActivity == null) return false;
         try {
-            switch (NimarkoConfig.doubleTapAction) {
-                case NimarkoConfig.DTAP_REPLY: {
+            switch (AppConfig.doubleTapAction) {
+                case AppConfig.DTAP_REPLY: {
                     chatActivity.getClass()
                             .getMethod("showFieldPanelForReply", MessageObject.class)
                             .invoke(chatActivity, message);
                     return true;
                 }
-                case NimarkoConfig.DTAP_SAVE: {
-                    
+                case AppConfig.DTAP_SAVE: {
+
                     long selfId = UserConfig.getInstance(message.currentAccount).getClientUserId();
-                    long targetId = NimarkoConfig.getEffectiveSavedMessagesDialogId(message.currentAccount, selfId);
+                    long targetId = AppConfig.getEffectiveSavedMessagesDialogId(message.currentAccount, selfId);
                     ArrayList<MessageObject> list = new ArrayList<>();
                     list.add(message);
                     SendMessagesHelper.getInstance(message.currentAccount)
                             .sendMessage(list, targetId, false, false, true, 0, null, -1, 0L);
                     return true;
                 }
-                case NimarkoConfig.DTAP_EDIT: {
-                    
+                case AppConfig.DTAP_EDIT: {
+
                     Method m = chatActivity.getClass()
                             .getDeclaredMethod("startEditingMessageObject", MessageObject.class);
                     m.setAccessible(true);
                     m.invoke(chatActivity, message);
                     return true;
                 }
-                case NimarkoConfig.DTAP_EDIT_OR_REACTION: {
-                    
+                case AppConfig.DTAP_EDIT_OR_REACTION: {
+
                     if (!message.canEditMessage(null)) return false;
                     Method m = chatActivity.getClass()
                             .getDeclaredMethod("startEditingMessageObject", MessageObject.class);
@@ -210,8 +210,8 @@ public final class DoubleTapUtils {
                     m.invoke(chatActivity, message);
                     return true;
                 }
-                case NimarkoConfig.DTAP_TRANSLATE: {
-                    
+                case AppConfig.DTAP_TRANSLATE: {
+
                     if (cell == null) return false;
                     org.telegram.ui.Components.TranslateAlert2.showAlert(
                             cell.getContext(),

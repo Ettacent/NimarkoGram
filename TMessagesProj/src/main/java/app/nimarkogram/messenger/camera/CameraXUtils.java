@@ -57,7 +57,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public final class CameraXUtils {
 
@@ -386,8 +386,8 @@ public final class CameraXUtils {
     }
 
     private static int getEffectiveConfiguredHeight() {
-        if (NimarkoConfig.cameraResolution > 0) {
-            return NimarkoConfig.cameraResolution;
+        if (AppConfig.cameraResolution > 0) {
+            return AppConfig.cameraResolution;
         }
         return suggestedCameraResolution > 0
                 ? suggestedCameraResolution : getSuggestedResolution(false);
@@ -415,7 +415,7 @@ public final class CameraXUtils {
     }
 
     public static boolean isCurrentCameraCameraX() {
-        return isCameraXSupported() && NimarkoConfig.cameraType == CAMERA_X;
+        return isCameraXSupported() && AppConfig.cameraType == CAMERA_X;
     }
 
     public static boolean isCurrentCameraNotCameraX() {
@@ -703,7 +703,7 @@ public final class CameraXUtils {
                                                              boolean useConfiguredUltraWide) {
         if (provider == null) return frontFacing
                 ? CameraSelector.DEFAULT_FRONT_CAMERA : CameraSelector.DEFAULT_BACK_CAMERA;
-        if (!frontFacing && useConfiguredUltraWide && NimarkoConfig.startFromUltraWideCam
+        if (!frontFacing && useConfiguredUltraWide && AppConfig.startFromUltraWideCam
                 && !hasLogicalUltraWide(provider)) {
             CameraSelector wide = buildUltraWideSelector(provider);
             if (wide != null) return wide;
@@ -1009,7 +1009,7 @@ public final class CameraXUtils {
 
     @Nullable
     public static Size getTargetResolutionSize() {
-        int shortSide = NimarkoConfig.cameraResolution;
+        int shortSide = AppConfig.cameraResolution;
         if (shortSide <= 0) return null;
         int longSide = Math.max(1, Math.round(shortSide * 16f / 9f));
         if ((shortSide & 1) != 0) shortSide++;
@@ -1232,7 +1232,7 @@ public final class CameraXUtils {
     public static boolean shouldEnableOpticalStabilization(ProcessCameraProvider provider,
                                                             CameraSelector selector) {
         CameraCapabilities capabilities = getCameraCapabilities(provider, selector);
-        return NimarkoConfig.cameraOpticalStabilization
+        return AppConfig.cameraOpticalStabilization
                 && capabilities != null
                 && containsMode(capabilities.opticalStabilizationModes,
                         CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON);
@@ -1241,7 +1241,7 @@ public final class CameraXUtils {
     public static boolean shouldEnablePreviewStabilization(ProcessCameraProvider provider,
                                                             CameraSelector selector) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-                || !NimarkoConfig.cameraStabilisation
+                || !AppConfig.cameraStabilisation
                 || shouldEnableOpticalStabilization(provider, selector)) {
             return false;
         }
@@ -1254,7 +1254,7 @@ public final class CameraXUtils {
 
     public static boolean shouldEnableVideoStabilization(ProcessCameraProvider provider,
                                                           CameraSelector selector) {
-        if (!NimarkoConfig.cameraStabilisation
+        if (!AppConfig.cameraStabilisation
                 || shouldEnableOpticalStabilization(provider, selector)) {
             return false;
         }
@@ -1300,7 +1300,7 @@ public final class CameraXUtils {
                             : CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
         }
 
-        if ((useOis || !NimarkoConfig.cameraStabilisation)
+        if ((useOis || !AppConfig.cameraStabilisation)
                 && containsMode(capabilities.videoStabilizationModes,
                         CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)) {
             extender.setCaptureRequestOption(
@@ -1310,7 +1310,7 @@ public final class CameraXUtils {
 
 
         int selectedNoiseReduction;
-        if (!NimarkoConfig.cameraNoiseReduction) {
+        if (!AppConfig.cameraNoiseReduction) {
             selectedNoiseReduction = CaptureRequest.NOISE_REDUCTION_MODE_OFF;
         } else if (stillCapture && containsMode(capabilities.noiseReductionModes,
                 CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)) {
@@ -1324,7 +1324,7 @@ public final class CameraXUtils {
         }
 
         int selectedFaceDetection = CaptureRequest.STATISTICS_FACE_DETECT_MODE_OFF;
-        if (NimarkoConfig.cameraFaceDetection) {
+        if (AppConfig.cameraFaceDetection) {
             if (containsMode(capabilities.faceDetectionModes,
                     CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE)) {
                 selectedFaceDetection = CaptureRequest.STATISTICS_FACE_DETECT_MODE_SIMPLE;
@@ -1353,7 +1353,7 @@ public final class CameraXUtils {
 
     @Nullable
     static ListenableFuture<FocusMeteringResult> startConfiguredFocus(Camera camera) {
-        if (NimarkoConfig.cameraContinuousFocus || camera == null) return null;
+        if (AppConfig.cameraContinuousFocus || camera == null) return null;
         FocusMeteringAction action = new FocusMeteringAction.Builder(
                 new SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(0.5f, 0.5f),
                 FocusMeteringAction.FLAG_AF).disableAutoCancel().build();
@@ -1371,13 +1371,13 @@ public final class CameraXUtils {
 
     @Nullable
     public static Range<Integer> getTargetFpsRange() {
-        switch (NimarkoConfig.cameraXFpsRange) {
-            case NimarkoConfig.CameraXFpsRange25to30: return new Range<>(25, 30);
-            case NimarkoConfig.CameraXFpsRange30to30: return new Range<>(30, 30);
-            case NimarkoConfig.CameraXFpsRange30to60: return new Range<>(30, 60);
+        switch (AppConfig.cameraXFpsRange) {
+            case AppConfig.CameraXFpsRange25to30: return new Range<>(25, 30);
+            case AppConfig.CameraXFpsRange30to30: return new Range<>(30, 30);
+            case AppConfig.CameraXFpsRange30to60: return new Range<>(30, 60);
 
-            case NimarkoConfig.CameraXFpsRange60to60: return new Range<>(30, 60);
-            case NimarkoConfig.CameraXFpsRangeDefault:
+            case AppConfig.CameraXFpsRange60to60: return new Range<>(30, 60);
+            case AppConfig.CameraXFpsRangeDefault:
             default:                                  return null;
         }
     }

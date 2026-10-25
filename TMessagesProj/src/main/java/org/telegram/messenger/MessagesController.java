@@ -123,7 +123,7 @@ import org.telegram.ui.bots.WebViewRequestProps;
 import org.telegram.ui.community.CommunityChatType;
 import org.telegram.ui.community.CommunityUtils;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 import java.io.File;
 import java.util.ArrayDeque;
@@ -1442,7 +1442,7 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         // NimarkoGram (CG parity): sortByUnread promotes dialogs with unread
         // messages above read ones, keeping pinned/folder ordering intact.
-        if (app.nimarkogram.messenger.NimarkoConfig.sortByUnread) {
+        if (app.nimarkogram.messenger.AppConfig.sortByUnread) {
             boolean unread1 = dialog1.unread_count > 0 || dialog1.unread_mark;
             boolean unread2 = dialog2.unread_count > 0 || dialog2.unread_mark;
             if (unread1 && !unread2) return -1;
@@ -1486,7 +1486,7 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         // NimarkoGram (CG parity): sortByUnread promotes dialogs with unread
         // messages above read ones, keeping folder/pinned ordering intact.
-        if (app.nimarkogram.messenger.NimarkoConfig.sortByUnread) {
+        if (app.nimarkogram.messenger.AppConfig.sortByUnread) {
             boolean unread1 = dialog1.unread_count > 0 || dialog1.unread_mark;
             boolean unread2 = dialog2.unread_count > 0 || dialog2.unread_mark;
             if (unread1 && !unread2) return -1;
@@ -1575,7 +1575,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public static SharedPreferences getGlobalMainSettings() {
-        return getInstance(0).mainPreferences;
+        return ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
     }
 
     public static SharedPreferences getEmojiSettings(int account) {
@@ -1604,7 +1604,7 @@ public class MessagesController extends BaseController implements NotificationCe
         addSupportUser();
         if (currentAccount == 0) {
             notificationsPreferences = ApplicationLoader.applicationContext.getSharedPreferences("Notifications", Activity.MODE_PRIVATE);
-            mainPreferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
+            mainPreferences = getGlobalMainSettings();
             emojiPreferences = ApplicationLoader.applicationContext.getSharedPreferences("emoji", Activity.MODE_PRIVATE);
         } else {
             notificationsPreferences = ApplicationLoader.applicationContext.getSharedPreferences("Notifications" + currentAccount, Activity.MODE_PRIVATE);
@@ -1649,7 +1649,7 @@ public class MessagesController extends BaseController implements NotificationCe
         promoPsaMessage = mainPreferences.getString("promo_psa_message", null);
         promoPsaType = mainPreferences.getString("promo_psa_type", null);
         proxyDialogAddress = mainPreferences.getString("proxyDialogAddress", null);
-        if (NimarkoConfig.hideProxySponsor
+        if (AppConfig.hideProxySponsor
                 && promoDialogId != 0
                 && promoDialogType == PROMO_TYPE_PROXY) {
             promoDialogId = 0;
@@ -1686,9 +1686,9 @@ public class MessagesController extends BaseController implements NotificationCe
         // NG defaults: 512 / 2200 / 96 (HD, ~2.2 Mbps, 96 kbps AAC). The
         // InstantCameraView.startRecording path re-applies the live config
         // value on each recording so changes propagate without restart.
-        roundVideoSize = mainPreferences.getInt("roundVideoSize", app.nimarkogram.messenger.NimarkoConfig.getVideoMessagesResolutionPx(512));
-        roundVideoBitrate = mainPreferences.getInt("roundVideoBitrate", app.nimarkogram.messenger.NimarkoConfig.videoMessagesBitrateKbps);
-        roundAudioBitrate = mainPreferences.getInt("roundAudioBitrate", app.nimarkogram.messenger.NimarkoConfig.videoMessagesAudioBitrateKbps);
+        roundVideoSize = mainPreferences.getInt("roundVideoSize", app.nimarkogram.messenger.AppConfig.getVideoMessagesResolutionPx(512));
+        roundVideoBitrate = mainPreferences.getInt("roundVideoBitrate", app.nimarkogram.messenger.AppConfig.videoMessagesBitrateKbps);
+        roundAudioBitrate = mainPreferences.getInt("roundAudioBitrate", app.nimarkogram.messenger.AppConfig.videoMessagesAudioBitrateKbps);
         pendingSuggestions = mainPreferences.getStringSet("pendingSuggestions", null);
         dismissedSuggestions = mainPreferences.getStringSet("dismissedSuggestions", null);
         channelsLimitDefault = mainPreferences.getInt("channelsLimitDefault", 500);
@@ -6624,6 +6624,9 @@ public class MessagesController extends BaseController implements NotificationCe
         loadingChannelAdmins.clear();
         users.clear();
         objectsByUsernames.clear();
+        userNameResolver = null;
+        cachedIsUserContactBlocked.clear();
+        loadingIsUserContactBlocked.clear();
         chats.clear();
         dialogMessage.clear();
         deletedHistory.clear();
@@ -7883,6 +7886,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
                     }
                     fullUsers.put(user.id, userFull);
+                    final boolean contactBlockedChanged = syncUserContactBlocked(user.id, userFull);
                     getTranslateController().updateDialogFull(user.id);
                     StarsController.getInstance(currentAccount).invalidateProfileGifts(userFull);
                     loadingFullUsers.remove(user.id);
@@ -7904,6 +7908,9 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                     getNotificationCenter().postNotificationName(NotificationCenter.userInfoDidLoad, user.id, userFull);
 
+                    if (contactBlockedChanged) {
+                        getNotificationCenter().postNotificationName(NotificationCenter.userIsPremiumBlockedUpadted);
+                    }
                     TLRPC.Dialog dialog = dialogs_dict.get(user.id);
                     if (dialog != null) {
                         if ((userFull.flags & 2048) != 0 && dialog.folder_id != userFull.folder_id) {
@@ -10923,7 +10930,7 @@ public class MessagesController extends BaseController implements NotificationCe
         String proxySecret = preferences.getString("proxy_secret", "");
         int removeCurrent = 0;
         if (promoDialogId != 0 && promoDialogType == PROMO_TYPE_PROXY
-                && (NimarkoConfig.hideProxySponsor
+                && (AppConfig.hideProxySponsor
                 || proxyDialogAddress != null && !proxyDialogAddress.equals(proxyAddress + proxySecret))) {
             removeCurrent = 1;
         }
@@ -10976,7 +10983,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 if (res.proxy) {
                     promoDialogType = PROMO_TYPE_PROXY;
                     // NimarkoGram (CherryGram-derived): suppress sponsored proxy promo dialog
-                    if (NimarkoConfig.hideProxySponsor) { noDialog = true; }
+                    if (AppConfig.hideProxySponsor) { noDialog = true; }
                 } else if (!TextUtils.isEmpty(res.psa_type)) {
                     promoDialogType = PROMO_TYPE_PSA;
                     promoPsaType = res.psa_type;
@@ -11216,7 +11223,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isPromoDialog(long did, boolean checkLeft) {
-        return !(NimarkoConfig.hideProxySponsor && promoDialogType == PROMO_TYPE_PROXY)
+        return !(AppConfig.hideProxySponsor && promoDialogType == PROMO_TYPE_PROXY)
                 && promoDialog != null
                 && promoDialog.id == did
                 && (!checkLeft || isLeftPromoChannel);
@@ -11267,7 +11274,7 @@ public class MessagesController extends BaseController implements NotificationCe
                             // CG-parity: when the chat title is centered, the typing
                             // line under it is constrained — drop the "is recording …"
                             // verbiage and just show the user name.
-                            if (NimarkoConfig.centerChatTitle) text = getUserNameForTyping(user);
+                            if (AppConfig.centerChatTitle) text = getUserNameForTyping(user);
                         } else {
                             text = LocaleController.getString(R.string.RecordingAudio);
                         }
@@ -11275,7 +11282,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     } else if (pu.action instanceof TLRPC.TL_sendMessageRecordRoundAction) {
                         if (isGroup) {
                             text = LocaleController.formatString("IsRecordingRound", R.string.IsRecordingRound, getUserNameForTyping(user));
-                            if (NimarkoConfig.centerChatTitle) text = getUserNameForTyping(user);
+                            if (AppConfig.centerChatTitle) text = getUserNameForTyping(user);
                         } else {
                             text = LocaleController.getString(R.string.RecordingRound);
                         }
@@ -11304,7 +11311,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     } else if (pu.action instanceof TLRPC.TL_sendMessageRecordVideoAction) {
                         if (isGroup) {
                             text = LocaleController.formatString("IsRecordingVideo", R.string.IsRecordingVideo, getUserNameForTyping(user));
-                            if (NimarkoConfig.centerChatTitle) text = getUserNameForTyping(user);
+                            if (AppConfig.centerChatTitle) text = getUserNameForTyping(user);
                         } else {
                             text = LocaleController.getString(R.string.RecordingVideoStatus);
                         }
@@ -11362,7 +11369,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     } else {
                         if (isGroup) {
                             text = LocaleController.formatString("IsTypingGroup", R.string.IsTypingGroup, getUserNameForTyping(user));
-                            if (NimarkoConfig.centerChatTitle) text = getUserNameForTyping(user);
+                            if (AppConfig.centerChatTitle) text = getUserNameForTyping(user);
                         } else {
                             text = LocaleController.getString(R.string.Typing);
                         }
@@ -11385,7 +11392,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         }
                     }
                     if (label.length() != 0) {
-                        if (NimarkoConfig.centerChatTitle) {
+                        if (AppConfig.centerChatTitle) {
                             // CG-parity: compact form for centered titles — short
                             // labels just show comma-separated names; longer ones
                             // collapse to "<first>, +N typing".
@@ -13427,6 +13434,9 @@ public class MessagesController extends BaseController implements NotificationCe
                         dialogsEndReached.put(folderId, false);
                         serverDialogsEndReached.put(folderId, false);
                     } else if (dialogsLoadOffset[UserConfig.i_dialogsLoadOffsetId] == Integer.MAX_VALUE) {
+                        if (folderId == 0) {
+                            dialogsLoadedTillDate = Integer.MIN_VALUE;
+                        }
                         dialogsEndReached.put(folderId, true);
                         serverDialogsEndReached.put(folderId, true);
                     } else {
@@ -16292,7 +16302,21 @@ public class MessagesController extends BaseController implements NotificationCe
             }
         }
         getNotificationCenter().postNotificationName(NotificationCenter.appDidLogout);
-        getMessagesStorage().cleanup(false);
+        getMessagesStorage().cleanup(false, result -> {
+            if (!result.isCurrent() || result.error == null) {
+                return;
+            }
+            LaunchActivity activity = LaunchActivity.instance;
+            if (activity != null && !activity.isFinishing() && !activity.isDestroyed() && activity.hasWindowFocus()) {
+                AlertDialog dialog = new AlertDialog.Builder(activity)
+                        .setTitle(LocaleController.getString(R.string.AppName))
+                        .setMessage(LocaleController.getString(R.string.ErrorOccurred))
+                        .setPositiveButton(LocaleController.getString(R.string.Retry), (d, which) -> result.retry())
+                        .create();
+                dialog.setCancelable(false);
+                dialog.show();
+            }
+        });
         cleanup();
         getContactsController().deleteUnknownAppAccounts();
     }
@@ -19458,8 +19482,11 @@ public class MessagesController extends BaseController implements NotificationCe
             } else if (baseUpdate instanceof TL_update.TL_updateChatParticipantDelete) {
                 TL_update.TL_updateChatParticipantDelete update = (TL_update.TL_updateChatParticipantDelete) baseUpdate;
                 getMessagesStorage().updateChatInfo(update.chat_id, update.user_id, 1, 0, update.version);
-            } else if (baseUpdate instanceof TL_update.TL_updateDcOptions || baseUpdate instanceof TL_update.TL_updateConfig) {
+            } else if (baseUpdate instanceof TL_update.TL_updateDcOptions) {
                 getConnectionsManager().updateDcSettings();
+            } else if (baseUpdate instanceof TL_update.TL_updateConfig) {
+                getConnectionsManager().updateDcSettings();
+                loadAppConfig(true);
             } else if (baseUpdate instanceof TL_update.TL_updateEncryption) {
                 getSecretChatHelper().processUpdateEncryption((TL_update.TL_updateEncryption) baseUpdate, usersDict);
             } else if (baseUpdate instanceof TL_update.TL_updatePeerBlocked) {
@@ -22673,7 +22700,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 try {
                     Collections.sort(allDialogs, dialogDateComparator);
                 } catch (Exception e) {
-                    NimarkoConfig.setSortByUnread(false);
+                    AppConfig.setSortByUnread(false);
                     try {
                         Collections.sort(allDialogs, dialogDateComparator);
                     } catch (Exception ex) {
@@ -22713,7 +22740,7 @@ public class MessagesController extends BaseController implements NotificationCe
             Collections.sort(allDialogs, dialogComparator);
         } catch (Exception e) {
             // CG-parity: same fallback for the second sort pass.
-            NimarkoConfig.setSortByUnread(false);
+            AppConfig.setSortByUnread(false);
             try {
                 Collections.sort(allDialogs, dialogComparator);
             } catch (Exception ex) {
@@ -24035,7 +24062,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public boolean storiesEnabled() {
         // NimarkoGram: hideStories master toggle kills story posting outright.
-        if (NimarkoConfig.hideStories) return false;
+        if (AppConfig.hideStories) return false;
         switch (storiesPosting) {
             case "premium":
                 return getUserConfig().isPremium();
@@ -24598,6 +24625,22 @@ public class MessagesController extends BaseController implements NotificationCe
         return null;
     }
 
+    private boolean syncUserContactBlocked(long userId, TLRPC.UserFull userFull) {
+        final TL_account.RequirementToContact cached = cachedIsUserContactBlocked.get(userId);
+        if (cached == null) {
+            return false;
+        }
+        final TL_account.RequirementToContact r = UserObject.getRequirementToContact(userFull);
+        if (UserObject.eq(cached, r)) {
+            return false;
+        }
+        if (r == null) {
+            cachedIsUserContactBlocked.remove(userId);
+        } else {
+            cachedIsUserContactBlocked.put(userId, r);
+        }
+        return true;
+    }
     public void invalidateUserPremiumBlocked(long userId, int classGuid) {
         if (loadingFullUsers.contains(userId)) {
             return;
@@ -25580,7 +25623,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public boolean isWebBrowserInAppEnabled() {
-        return app.nimarkogram.messenger.NimarkoConfig.inappBrowser
+        return app.nimarkogram.messenger.AppConfig.inappBrowser
                 || webBrowserSettings != null && !webBrowserSettings.open_external_browser;
     }
 
@@ -25856,7 +25899,7 @@ public class MessagesController extends BaseController implements NotificationCe
 
     public void toggleWebBrowserInAppEnabled() {
         final boolean enabled = !isWebBrowserInAppEnabled();
-        app.nimarkogram.messenger.NimarkoConfig.setInappBrowser(enabled);
+        app.nimarkogram.messenger.AppConfig.setInappBrowser(enabled);
         updateWebBrowserSettings(!enabled, webBrowserSettings == null || webBrowserSettings.display_close_button);
     }
 

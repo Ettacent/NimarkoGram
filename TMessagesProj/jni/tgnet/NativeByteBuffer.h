@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -11,6 +13,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <atomic>
 
 #ifdef ANDROID
 #include <jni.h>
@@ -85,6 +88,9 @@ public:
     double readDouble(bool *error);
 
     void reuse();
+
+    bool tryMarkFreePool();
+    void markInUse();
 #ifdef ANDROID
     jobject getJavaByteBuffer();
 #endif
@@ -99,6 +105,7 @@ private:
     uint32_t _limit = 0;
     uint32_t _capacity = 0;
     bool bufferOwner = true;
+    std::atomic<bool> inFreePool{false};
 #ifdef ANDROID
     jobject javaByteBuffer = nullptr;
 #endif

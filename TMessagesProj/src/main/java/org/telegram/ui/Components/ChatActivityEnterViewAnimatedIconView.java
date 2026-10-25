@@ -27,8 +27,8 @@ import org.telegram.ui.ActionBar.Theme;
 import java.util.HashMap;
 import java.util.Map;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.AppConfig;
 public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     private State currentState;
     private TransitState animatingState;
@@ -82,12 +82,12 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     public void setState(State state, boolean animate) {
         Resources resources = getContext().getResources();
         int iconId = getStaticIcon(state);
-        boolean usePack = resources instanceof NimarkoIconResources
-                && ((NimarkoIconResources) resources).hasReplacement(iconId);
-        int selection = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getAppliedSelection() : NimarkoConfig.ICON_REPLACE_NONE;
-        long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        boolean usePack = resources instanceof IconResources
+                && ((IconResources) resources).hasReplacement(iconId);
+        int selection = resources instanceof IconResources
+                ? ((IconResources) resources).getAppliedSelection() : AppConfig.ICON_REPLACE_NONE;
+        long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         int densityDpi = resources.getDisplayMetrics().densityDpi;
         boolean sameResources = hasSameIconResources(resources);
         boolean packAnimationsEnabled = SharedConfig.animationsEnabled();
@@ -255,8 +255,8 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
             return;
         }
         Resources resources = getContext().getResources();
-        NimarkoIconResources icons = resources instanceof NimarkoIconResources ? (NimarkoIconResources) resources : null;
-        int selection = icons == null ? NimarkoConfig.ICON_REPLACE_NONE : icons.getAppliedSelection();
+        IconResources icons = resources instanceof IconResources ? (IconResources) resources : null;
+        int selection = icons == null ? AppConfig.ICON_REPLACE_NONE : icons.getAppliedSelection();
         long generation = icons == null ? -1L : icons.getReplacementGeneration();
         boolean usePack = icons != null && icons.hasReplacement(getStaticIcon(currentState));
         if (selection != lastPackSelection || generation != lastPackGeneration
@@ -298,22 +298,22 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
 
     static Drawable wrapComposerIcon(Context context, int resourceId, Drawable drawable) {
         Resources resources = context.getResources();
-        if (drawable == null || !(resources instanceof NimarkoIconResources)
-                || !((NimarkoIconResources) resources).hasReplacement(resourceId)) {
+        if (drawable == null || !(resources instanceof IconResources)
+                || !((IconResources) resources).hasReplacement(resourceId)) {
             return drawable;
         }
-        int selection = ((NimarkoIconResources) resources).getAppliedSelection();
-        boolean filledPack = selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                || selection == NimarkoConfig.ICON_REPLACE_PLUMPY;
+        int selection = ((IconResources) resources).getAppliedSelection();
+        boolean filledPack = selection == AppConfig.ICON_REPLACE_LIQUID_GLASS
+                || selection == AppConfig.ICON_REPLACE_PLUMPY;
         boolean notification = resourceId == R.drawable.input_notify_on || resourceId == R.drawable.input_notify_off;
         float sizeDp = notification && filledPack ? 22 : 24;
         if (resourceId == R.drawable.input_bot1 || resourceId == R.drawable.input_bot2) {
-            if (selection == NimarkoConfig.ICON_REPLACE_SOLAR) {
+            if (selection == AppConfig.ICON_REPLACE_SOLAR) {
                 sizeDp = 23;
-            } else if (selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
+            } else if (selection == AppConfig.ICON_REPLACE_LIQUID_GLASS
                     && resourceId == R.drawable.input_bot1) {
                 sizeDp = 26.5f;
-            } else if (selection == NimarkoConfig.ICON_REPLACE_PLUMPY
+            } else if (selection == AppConfig.ICON_REPLACE_PLUMPY
                     && resourceId == R.drawable.input_bot2) {
                 sizeDp = 26;
             }
@@ -325,26 +325,26 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
     static Drawable loadComposerIcon(Context context, int resourceId, Theme.ResourcesProvider resourcesProvider) {
         Resources resources = context.getResources();
         Drawable drawable = resources.getDrawable(resourceId).mutate();
-        if (resourcesProvider != null && resources instanceof NimarkoIconResources
-                && ((NimarkoIconResources) resources).hasReplacement(resourceId)) {
-            Drawable copy = NimarkoIconResources.copyDrawable(drawable, resources, resourcesProvider::isDark);
+        if (resourcesProvider != null && resources instanceof IconResources
+                && ((IconResources) resources).hasReplacement(resourceId)) {
+            Drawable copy = IconResources.copyDrawable(drawable, resources, resourcesProvider::isDark);
             if (copy != null) {
                 drawable = copy;
             }
         }
         if ((resourceId == R.drawable.input_done || resourceId == R.drawable.attach_send)
-                && resources instanceof NimarkoIconResources
-                && ((NimarkoIconResources) resources).hasReplacement(resourceId)) {
+                && resources instanceof IconResources
+                && ((IconResources) resources).hasReplacement(resourceId)) {
             int size = drawable.getIntrinsicWidth();
             if (size > 0 && size == drawable.getIntrinsicHeight()) {
                 if (resourceId == R.drawable.input_done) {
                     float opticalScale = Math.min(1f, (float) Math.ceil(16 * resources.getDisplayMetrics().density) / size);
                     drawable = new FixedSizeIconDrawable(drawable, size, opticalScale);
                 } else if (resourceId == R.drawable.attach_send
-                        && ((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_send)) {
+                        && ((IconResources) resources).hasReplacement(R.drawable.ic_send)) {
                     Drawable glyph = loadComposerIcon(context, R.drawable.ic_send, resourcesProvider);
-                    float artworkDp = ((NimarkoIconResources) resources).getAppliedSelection()
-                            == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS ? 32f : 24f;
+                    float artworkDp = ((IconResources) resources).getAppliedSelection()
+                            == AppConfig.ICON_REPLACE_LIQUID_GLASS ? 32f : 24f;
                     float opticalScale = Math.min(1f, (float) Math.ceil(artworkDp * resources.getDisplayMetrics().density) / size);
                     drawable = new FixedSizeIconDrawable(glyph, size, opticalScale);
                 }
@@ -355,8 +355,8 @@ public class ChatActivityEnterViewAnimatedIconView extends RLottieImageView {
 
     static void fitComposerIconBounds(Context context, int resourceId, Rect bounds) {
         Resources resources = context.getResources();
-        if (!(resources instanceof NimarkoIconResources)
-                || !((NimarkoIconResources) resources).hasReplacement(resourceId)) {
+        if (!(resources instanceof IconResources)
+                || !((IconResources) resources).hasReplacement(resourceId)) {
             return;
         }
         int size = Math.min(Math.min(bounds.width(), bounds.height()),

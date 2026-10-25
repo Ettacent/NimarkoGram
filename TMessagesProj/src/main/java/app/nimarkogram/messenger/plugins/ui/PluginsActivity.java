@@ -61,7 +61,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.Plugin;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.ui.components.EmptyPluginsView;
@@ -140,7 +140,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         this.searchItem = actionBarMenuItemSearchListener;
         actionBarMenuItemSearchListener.setSearchFieldHint(LocaleController.getString(R.string.Search));
         actionBarMenuItemSearchListener.setContentDescription(LocaleController.getString(R.string.Search));
-        AndroidUtilities.updateViewVisibilityAnimated(this.searchItem, NimarkoConfig.pluginsEngine && !PluginsController.getInstance().plugins.isEmpty(), 0.5f, false);
+        AndroidUtilities.updateViewVisibilityAnimated(this.searchItem, AppConfig.pluginsEngine && !PluginsController.getInstance().plugins.isEmpty(), 0.5f, false);
 
         this.engineSettingsItem = this.actionBar.menu.addItem(
                 PLUGIN_SETTINGS, R.drawable.msg_settings);
@@ -195,7 +195,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
 
     private void updateAddButtonVisibility(boolean animated) {
         if (addPluginButton == null) return;
-        boolean visible = NimarkoConfig.pluginsEngine && !searching;
+        boolean visible = AppConfig.pluginsEngine && !searching;
         AndroidUtilities.updateViewVisibilityAnimated(addPluginButton, visible, 0.5f, animated);
     }
 
@@ -267,7 +267,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
     }
 
     private void onFabClicked() {
-        if (!NimarkoConfig.pluginsEngine) {
+        if (!AppConfig.pluginsEngine) {
             BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
                     LocaleController.getString(R.string.EnablePluginsEngine)).show();
             return;
@@ -727,10 +727,10 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         Plugin plugin;
         if (!this.searching) {
             arrayList.add(UItem.asCheck(2, LocaleController.getString(R.string.PluginsEngine))
-                    .setChecked(NimarkoConfig.pluginsEngine));
+                    .setChecked(AppConfig.pluginsEngine));
             arrayList.add(UItem.asShadow(null));
         }
-        if (NimarkoConfig.pluginsEngine) {
+        if (AppConfig.pluginsEngine) {
             HashMap<String, Plugin> map = new HashMap<>(PluginsController.getInstance().plugins);
             UItem uItemAsSpace = UItem.asSpace(AndroidUtilities.dp(8.0f));
             uItemAsSpace.transparent = true;
@@ -762,7 +762,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                 }
                 arrayList.add(UItem.asFullscreenCustom(emptyPluginsView, AndroidUtilities.dp((this.searching ? 2 : 1) * 74), true).setTransparent(true));
             } else {
-                List<String> pinnedPluginIds = NimarkoConfig.getPinnedPluginsSnapshot();
+                List<String> pinnedPluginIds = AppConfig.getPinnedPluginsSnapshot();
                 if (!pinnedPluginIds.isEmpty()) {
                     for (String str : pinnedPluginIds) {
                         if (map.containsKey(str) && (plugin = map.get(str)) != null) {
@@ -1030,8 +1030,8 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         }
         this.isSwitchingEngineState = true;
 
-        NimarkoConfig.togglePluginsEngine();
-        boolean z = NimarkoConfig.pluginsEngine;
+        AppConfig.togglePluginsEngine();
+        boolean z = AppConfig.pluginsEngine;
 
         TextCheckCell textCheckCell = (TextCheckCell) view;
         uItem.checked = z;
@@ -1115,7 +1115,7 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
         if (i == NotificationCenter.pluginsUpdated) {
             if (this.searchItem != null) {
                 AndroidUtilities.updateViewVisibilityAnimated(this.searchItem,
-                        NimarkoConfig.pluginsEngine && !PluginsController.getInstance().plugins.isEmpty(),
+                        AppConfig.pluginsEngine && !PluginsController.getInstance().plugins.isEmpty(),
                         0.5f, true);
             }
             updateAddButtonVisibility(true);

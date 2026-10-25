@@ -11,7 +11,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.view.View;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 
 import org.telegram.messenger.R;
@@ -59,7 +59,7 @@ public class PaintCancelView extends View {
     }
     private boolean drawPackGlyphs(Canvas canvas) {
         if (paint.getXfermode() != null || progress < 0f || progress > 1f) return false;
-        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         if (!packClose.prepare(batch, R.drawable.ic_close_white)
                 || !packBack.prepare(batch, R.drawable.arrow_more)) return false;
         final float x1 = dp(lerp(-5.33f, -4, progress)), y1 = dp(lerp(5.33f, 0, progress));

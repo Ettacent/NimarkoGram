@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Components.voip;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
 
 import android.animation.Animator;
@@ -651,7 +651,7 @@ public class RTMPStreamPipOverlay implements NotificationCenter.NotificationCent
         AndroidUtilities.setPreferredMaxRefreshRate(windowManager, contentView, windowLayoutParams);
         windowManager.addView(contentView, windowLayoutParams);
 
-        NimarkoAppMotionBlur.attachRoot(contentView);
+        AppMotionBlur.attachRoot(contentView);
         AnimatorSet set = new AnimatorSet();
         set.setDuration(250);
         set.setInterpolator(CubicBezierInterpolator.DEFAULT);
@@ -853,7 +853,7 @@ public class RTMPStreamPipOverlay implements NotificationCenter.NotificationCent
 
         windowViewSkipRender = false;
         windowManager.addView(contentView, windowLayoutParams);
-        NimarkoAppMotionBlur.attachRoot(contentView);
+        AppMotionBlur.attachRoot(contentView);
         contentView.invalidate();
 
         if (pipTextureView != null) {

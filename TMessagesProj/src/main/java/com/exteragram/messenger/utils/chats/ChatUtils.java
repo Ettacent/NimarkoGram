@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package com.exteragram.messenger.utils.chats;
 
 import android.app.Activity;
@@ -32,7 +34,7 @@ public final class ChatUtils {
 
     public void saveStickerToGallery(Activity activity, TLRPC.Document document,
                                      Utilities.Callback<Uri> callback) {
-        app.nimarkogram.messenger.utils.chats.NimarkoChatHelper
+        app.nimarkogram.messenger.utils.chats.ChatHelper
                 .getInstance(account).saveStickerToGallery(activity, document, callback);
     }
 }

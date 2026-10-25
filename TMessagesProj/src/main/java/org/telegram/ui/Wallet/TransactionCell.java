@@ -265,10 +265,28 @@ public class TransactionCell extends FrameLayout implements Theme.Colorable {
                 titleView.setText(UserObject.getUserName(user));
             } else {
                 avatarView.setVisibility(View.GONE);
-                setIconColor(IconBackgroundColors.BLUE);
+                setIconColor(incoming ? IconBackgroundColors.BLUE : IconBackgroundColors.GREEN);
                 iconView.setImageResource(incoming ? R.drawable.wallet_transaction_in : R.drawable.wallet_transaction_out);
                 titleView.setText(addressFormatter.format(transaction.peer.address));
             }
+        } else if (transaction.peer instanceof TL_wallet.walletTransactionPeerChannel) {
+            final TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(transaction.peer.channel_id);
+            if (chat != null) {
+                avatarView.setVisibility(View.VISIBLE);
+                avatarDrawable.setInfo(currentAccount, chat);
+                avatarView.setForUserOrChat(chat, avatarDrawable);
+                titleView.setText(chat.title);
+            } else {
+                avatarView.setVisibility(View.GONE);
+                setIconColor(incoming ? IconBackgroundColors.BLUE : IconBackgroundColors.GREEN);
+                iconView.setImageResource(incoming ? R.drawable.wallet_transaction_in : R.drawable.wallet_transaction_out);
+                titleView.setText(!TextUtils.isEmpty(transaction.peer.domain) ? transaction.peer.domain : addressFormatter.format(transaction.peer.address));
+            }
+        } else if (transaction.peer instanceof TL_wallet.walletTransactionPeerTelegramGift) {
+            avatarView.setVisibility(View.GONE);
+            setIconColor(incoming ? IconBackgroundColors.GREEN : IconBackgroundColors.BLUE);
+            iconView.setImageResource(incoming ? R.drawable.wallet_transaction_in : R.drawable.wallet_transaction_out);
+            titleView.setText(getString(R.string.WalletTransactionTelegram));
         } else if (transaction.peer instanceof TL_wallet.walletTransactionPeerOnramp) {
             final TL_wallet.walletTransactionPeerOnramp peer = (TL_wallet.walletTransactionPeerOnramp) transaction.peer;
             avatarView.setVisibility(View.GONE);
@@ -283,7 +301,7 @@ public class TransactionCell extends FrameLayout implements Theme.Colorable {
             subtitleView.setText(CurrenciesController.capitalizeFirstLetter(peer.provider_name, Locale.getDefault()));
         } else {
             avatarView.setVisibility(View.GONE);
-            setIconColor(IconBackgroundColors.BLUE);
+            setIconColor(incoming ? IconBackgroundColors.BLUE : IconBackgroundColors.GREEN);
             iconView.setImageResource(incoming ? R.drawable.wallet_transaction_in : R.drawable.wallet_transaction_out);
             if (!TextUtils.isEmpty(transaction.peer.domain)) {
                 titleView.setText(transaction.peer.domain);
@@ -302,6 +320,8 @@ public class TransactionCell extends FrameLayout implements Theme.Colorable {
             subtitleView.setText(getString(R.string.WalletFailedTransfer));
         } else if (transaction.key_change || transaction.peer instanceof TL_wallet.walletTransactionPeerOnramp) {
 
+        } else if (transaction.peer instanceof TL_wallet.walletTransactionPeerTelegramGift && ((TL_wallet.walletTransactionPeerTelegramGift) transaction.peer).own_profile) {
+            subtitleView.setText(incoming ? getString(R.string.WalletMovedFromProfile) : getString(R.string.WalletMovedToProfile));
         } else if (transaction.nft != null) {
             subtitleView.setText(incoming ? getString(R.string.WalletIncomingTransferNft) : getString(R.string.WalletOutgoingTransferNft));
         } else {

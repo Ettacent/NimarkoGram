@@ -16,7 +16,7 @@ import org.telegram.ui.Components.IconBackgroundColors;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.folders.cells.FoldersPreviewCell;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
@@ -57,27 +57,27 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionFolderTabs)));
         items.add(UItem.asCheck(ID_HIDE_ALL_CHATS, LocaleController.getString(R.string.NM_FO_TabsHideAllChats))
-                .setChecked(NimarkoConfig.tabsHideAllChats));
+                .setChecked(AppConfig.tabsHideAllChats));
         items.add(UItem.asCheck(ID_HIDE_COUNTER, LocaleController.getString(R.string.NM_FO_TabsNoCounter))
-                .setChecked(NimarkoConfig.tabsNoUnread));
+                .setChecked(AppConfig.tabsNoUnread));
         items.add(asSettingsValue(ID_TAB_ICON_TYPE, IconBackgroundColors.BLUE,
                 R.drawable.msg_customize,
                 LocaleController.getString(R.string.NM_FO_TabStyle),
-                safeAt(tabModeOptions(), NimarkoConfig.tabMode)));
+                safeAt(tabModeOptions(), AppConfig.tabMode)));
         items.add(SettingsHelper.asSwitchCG(ID_ADD_STROKE,
                         LocaleController.getString(R.string.NM_FO_TabStyleStroke),
                         LocaleController.getString(R.string.NM_FO_TabStyleStroke_Desc))
-                .setChecked(NimarkoConfig.tabStyleStroke));
+                .setChecked(AppConfig.tabStyleStroke));
         items.add(UItem.asShadow(null));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionFolderLayout)));
         items.add(SettingsHelper.asSwitchCG(ID_FOLDER_NAME_HEADER,
                 LocaleController.getString(R.string.NM_FO_FolderNameInHeader))
-                .setChecked(NimarkoConfig.folderNameInHeader));
+                .setChecked(AppConfig.folderNameInHeader));
         items.add(SettingsHelper.asSwitchCG(ID_FOLDERS_AT_BOTTOM,
                         LocaleController.getString(R.string.NM_FO_FoldersAtBottom),
                         LocaleController.getString(R.string.NM_FO_FoldersAtBottom_Desc))
-                .setChecked(NimarkoConfig.foldersAtBottom));
+                .setChecked(AppConfig.foldersAtBottom));
         items.add(UItem.asShadow(null));
     }
 
@@ -85,15 +85,15 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
     public void onClick(UItem item, View view, int position, float x, float y) {
         int id = item.id;
         if (id == ID_HIDE_ALL_CHATS) {
-            NimarkoConfig.toggleTabsHideAllChats();
-            applyCheck(item, view, NimarkoConfig.tabsHideAllChats);
+            AppConfig.toggleTabsHideAllChats();
+            applyCheck(item, view, AppConfig.tabsHideAllChats);
             if (previewCell != null) previewCell.updateAllChatsTabName(true);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
             getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
         } else if (id == ID_HIDE_COUNTER) {
-            NimarkoConfig.toggleTabsNoUnread();
-            applyCheck(item, view, NimarkoConfig.tabsNoUnread);
+            AppConfig.toggleTabsNoUnread();
+            applyCheck(item, view, AppConfig.tabsNoUnread);
             if (previewCell != null) previewCell.updateTabCounter(true);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
@@ -101,9 +101,9 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
             PopupHelper.showSimpleAlert(this,
                     LocaleController.getString(R.string.NM_FO_TabStyle),
                     tabModeOptions(),
-                    NimarkoConfig.tabMode,
+                    AppConfig.tabMode,
                     sel -> {
-                        NimarkoConfig.setTabMode(sel);
+                        AppConfig.setTabMode(sel);
                         refreshValueCell(view, safeAt(tabModeOptions(), sel));
                         if (previewCell != null) {
                             previewCell.updateTabIcons(true);
@@ -113,18 +113,18 @@ public class FoldersPreferencesActivity extends BasePreferencesActivity {
                         getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
                     });
         } else if (id == ID_ADD_STROKE) {
-            NimarkoConfig.toggleTabStyleStroke();
-            applyCheck(item, view, NimarkoConfig.tabStyleStroke);
+            AppConfig.toggleTabStyleStroke();
+            applyCheck(item, view, AppConfig.tabStyleStroke);
             if (previewCell != null) previewCell.invalidate();
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (id == ID_FOLDER_NAME_HEADER) {
-            NimarkoConfig.toggleFolderNameInHeader();
-            applyCheck(item, view, NimarkoConfig.folderNameInHeader);
+            AppConfig.toggleFolderNameInHeader();
+            applyCheck(item, view, AppConfig.folderNameInHeader);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
             getNotificationCenter().postNotificationName(NotificationCenter.dialogFiltersUpdated);
         } else if (id == ID_FOLDERS_AT_BOTTOM) {
-            NimarkoConfig.toggleFoldersAtBottom();
-            applyCheck(item, view, NimarkoConfig.foldersAtBottom);
+            AppConfig.toggleFoldersAtBottom();
+            applyCheck(item, view, AppConfig.foldersAtBottom);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
             showRestartBulletin();
         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet.tl;
 
 import org.telegram.tgnet.InputSerializedData;
@@ -10,9 +12,6 @@ import org.telegram.tgnet.Vector;
 import java.util.ArrayList;
 
 public class TL_communities {
-    private TL_communities() {
-
-    }
 
 
 

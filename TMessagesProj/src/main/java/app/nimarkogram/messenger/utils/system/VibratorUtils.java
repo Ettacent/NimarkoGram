@@ -13,7 +13,7 @@ import android.view.ViewGroup;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public abstract class VibratorUtils {
 
@@ -41,7 +41,7 @@ public abstract class VibratorUtils {
 
     private static boolean isInAppVibrationEnabled() {
         try {
-            return !NimarkoConfig.disableVibration;
+            return !AppConfig.disableVibration;
         } catch (Exception e) {
             FileLog.e(e);
             return true;

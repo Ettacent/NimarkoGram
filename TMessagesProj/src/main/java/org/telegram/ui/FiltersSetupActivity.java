@@ -73,7 +73,7 @@ import org.telegram.ui.Components.UndoView;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class FiltersSetupActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private RecyclerListView listView;
@@ -1033,7 +1033,7 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
                         if (suggested.filter.exclude_muted) {
                             filter.flags |= MessagesController.DIALOG_FILTER_FLAG_EXCLUDE_MUTED;
                         }
-                        
+
                         filter.emoticon = app.nimarkogram.messenger.preferences.folders.helpers.FolderIconHelper.getEmoticonData(filter.flags)[1];
                         FilterCreateActivity.saveFilterToServer(filter, filter.flags, null, filter.name, filter.entities, filter.title_noanimate, filter.color, filter.alwaysShow, filter.neverShow, filter.pinnedDialogs, true, true, true, true, true, FiltersSetupActivity.this, () -> {
                             getMessagesController().suggestedFilters.remove(suggested);
@@ -1086,8 +1086,8 @@ public class FiltersSetupActivity extends BaseFragment implements NotificationCe
                     drawable2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_checkboxCheck), PorterDuff.Mode.MULTIPLY));
                     CombinedDrawable combinedDrawable = new CombinedDrawable(drawable1, drawable2);
 
-                    if (mContext.getResources() instanceof NimarkoIconResources
-                            && ((NimarkoIconResources) mContext.getResources()).hasReplacement(R.drawable.poll_add_plus)) {
+                    if (mContext.getResources() instanceof IconResources
+                            && ((IconResources) mContext.getResources()).hasReplacement(R.drawable.poll_add_plus)) {
                         combinedDrawable.setIconSize(dp(16), dp(16));
                     }
                     textCell.setTextAndIcon(item.text + "", combinedDrawable, false);

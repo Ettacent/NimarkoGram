@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.recyclerview;
 
 import android.animation.Animator;
@@ -17,6 +19,7 @@ import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageReceiver;
@@ -56,6 +59,9 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
     private ArrayList<MessageObject.GroupedMessages> willChangedGroups = new ArrayList<>();
 
     HashMap<RecyclerView.ViewHolder,Animator> animators = new HashMap<>();
+    private final HashMap<MessageObject.GroupedMessages, GroupBoundsAnimation> groupBoundsAnimations = new HashMap<>();
+    private final ArrayList<Runnable> groupMoveRunnables = new ArrayList<>();
+    private ValueAnimator animationTicker;
     ArrayList<View> thanosViews = new ArrayList<>();
 
     ArrayList<Runnable> runOnAnimationsEnd = new ArrayList<>();
@@ -84,7 +90,7 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         boolean movesPending = !mPendingMoves.isEmpty();
         boolean changesPending = !mPendingChanges.isEmpty();
         boolean additionsPending = !mPendingAdditions.isEmpty();
-        if (!removalsPending && !movesPending && !additionsPending && !changesPending) {
+        if (!removalsPending && !movesPending && !additionsPending && !changesPending && !hasPendingGroupBoundsAnimations()) {
             return;
         }
 
@@ -112,7 +118,10 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
             runAlphaEnterTransition();
         }
 
-        ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
+        if (animationTicker != null) {
+            animationTicker.cancel();
+        }
+        ValueAnimator valueAnimator = animationTicker = ValueAnimator.ofFloat(0, 1f);
         valueAnimator.addUpdateListener(animation -> {
             if (activity != null) {
                 activity.onListItemAnimatorTick();
@@ -131,7 +140,7 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         boolean movesPending = !mPendingMoves.isEmpty();
         boolean changesPending = !mPendingChanges.isEmpty();
         boolean additionsPending = !mPendingAdditions.isEmpty();
-        if (!removalsPending && !movesPending && !additionsPending && !changesPending) {
+        if (!removalsPending && !movesPending && !additionsPending && !changesPending && !hasPendingGroupBoundsAnimations()) {
             // nothing to animate
             return;
         }
@@ -192,24 +201,30 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         final boolean finalThanos = hadThanos;
         mPendingRemovals.clear();
         // Next, move stuff
-        if (movesPending) {
+        if (movesPending || hasPendingGroupBoundsAnimations()) {
             final ArrayList<MoveInfo> moves = new ArrayList<>();
             moves.addAll(mPendingMoves);
             mMovesList.add(moves);
             mPendingMoves.clear();
+            final ArrayList<GroupBoundsAnimation> groups = takePendingGroupBoundsAnimations();
             Runnable mover = new Runnable() {
                 @Override
                 public void run() {
+                    if (!groupMoveRunnables.remove(this)) {
+                        return;
+                    }
+                    startGroupBoundsAnimations(groups, finalThanos);
                     for (MoveInfo moveInfo : moves) {
                         animateMoveImpl(moveInfo.holder, moveInfo, finalThanos);
                     }
                     moves.clear();
                     mMovesList.remove(moves);
+                    dispatchFinishedWhenDone();
                 }
             };
+            groupMoveRunnables.add(mover);
             if (delayAnimations && removalsPending) {
-                View view = moves.get(0).holder.itemView;
-                ViewCompat.postOnAnimationDelayed(view, mover, hadThanos ? 0 : getMoveAnimationDelay());
+                ViewCompat.postOnAnimationDelayed(recyclerListView, mover, hadThanos ? 0 : getMoveAnimationDelay());
             } else {
                 mover.run();
             }
@@ -258,7 +273,7 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         boolean changesPending = !mPendingChanges.isEmpty();
         boolean additionsPending = !mPendingAdditions.isEmpty();
 
-        if (!removalsPending && !movesPending && !additionsPending && !changesPending) {
+        if (!removalsPending && !movesPending && !additionsPending && !changesPending && !hasPendingGroupBoundsAnimations()) {
             return;
         }
 
@@ -278,14 +293,18 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
             animateRemoveImpl(holder);
         }
         mPendingRemovals.clear();
-        if (movesPending) {
+        if (movesPending || hasPendingGroupBoundsAnimations()) {
             final ArrayList<MoveInfo> moves = new ArrayList<>();
             moves.addAll(mPendingMoves);
+            mMovesList.add(moves);
             mPendingMoves.clear();
+            startGroupBoundsAnimations(takePendingGroupBoundsAnimations(), false);
             for (MoveInfo moveInfo : moves) {
                 animateMoveImpl(moveInfo.holder, moveInfo);
             }
             moves.clear();
+            mMovesList.remove(moves);
+            dispatchFinishedWhenDone();
         }
 
         if (additionsPending) {
@@ -605,6 +624,8 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
                     int animateToRight = 0;
                     int animateToTop = 0;
                     int animateToBottom = 0;
+                    boolean hasHorizontalBounds = false;
+                    boolean hasVerticalBounds = false;
                     boolean allVisibleItemsDeleted = true;
 
                     MessageObject.GroupedMessages.TransitionParams groupTransitionParams = group.transitionParams;
@@ -614,30 +635,40 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
 
                         if (child instanceof ChatMessageCell) {
                             ChatMessageCell cell = (ChatMessageCell) child;
-                            if (cell.getCurrentMessagesGroup() == group && !cell.getMessageObject().deleted) {
+                            if (cell.getCurrentMessagesGroup() == group && cell.getCurrentPosition() != null && !cell.getMessageObject().deleted) {
 
                                 int left = cell.getLeft() + cell.getBackgroundDrawableLeft();
                                 int right = cell.getLeft() + cell.getBackgroundDrawableRight();
                                 int top = cell.getTop() + cell.getPaddingTop() + cell.getBackgroundDrawableTop();
                                 int bottom = cell.getTop() + cell.getPaddingTop() + cell.getBackgroundDrawableBottom();
 
-                                if (animateToLeft == 0 || left < animateToLeft) {
+                                MessageObject.GroupedMessagePosition position = cell.getCurrentPosition();
+                                if (position != null && (position.flags & MessageObject.POSITION_FLAG_TOP) == 0) {
+                                    top -= AndroidUtilities.dp(10);
+                                }
+                                if (position != null && (position.flags & MessageObject.POSITION_FLAG_BOTTOM) == 0) {
+                                    bottom += AndroidUtilities.dp(10);
+                                }
+
+                                if (!hasHorizontalBounds || left < animateToLeft) {
                                     animateToLeft = left;
                                 }
 
-                                if (animateToRight == 0 || right > animateToRight) {
+                                if (!hasHorizontalBounds || right > animateToRight) {
                                     animateToRight = right;
                                 }
 
+                                hasHorizontalBounds = true;
                                 if (cell.getTransitionParams().wasDraw || groupTransitionParams.isNewGroup) {
                                     lastDrawingCell = cell;
                                     allVisibleItemsDeleted = false;
-                                    if (animateToTop == 0 || top < animateToTop) {
+                                    if (!hasVerticalBounds || top < animateToTop) {
                                         animateToTop = top;
                                     }
-                                    if (animateToBottom == 0 || bottom > animateToBottom) {
+                                    if (!hasVerticalBounds || bottom > animateToBottom) {
                                         animateToBottom = bottom;
                                     }
+                                    hasVerticalBounds = true;
                                 }
                             }
                         }
@@ -645,9 +676,15 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
 
                     groupTransitionParams.isNewGroup = false;
 
-                    if (animateToTop == 0 &&  animateToBottom == 0 && animateToLeft == 0 && animateToRight == 0) {
+                    if (!hasHorizontalBounds || !hasVerticalBounds) {
+                        GroupBoundsAnimation previous = groupBoundsAnimations.get(group);
+                        if (previous != null) {
+                            previous.cancel();
+                        }
                         moveInfo.animateChangeGroupBackground = false;
                         groupTransitionParams.backgroundChangeBounds = false;
+                        groupTransitionParams.offsetLeft = groupTransitionParams.offsetRight = 0;
+                        groupTransitionParams.offsetTop = groupTransitionParams.offsetBottom = 0;
                     } else {
                         moveInfo.groupOffsetTop = -animateToTop + groupTransitionParams.top;
                         moveInfo.groupOffsetBottom = -animateToBottom + groupTransitionParams.bottom;
@@ -663,6 +700,11 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
 
                         groupTransitionParams.captionEnterProgress = groupTransitionParams.drawCaptionLayout ? 1f : 0f;
 
+                        moveInfo.groupBoundsAnimation = new GroupBoundsAnimation(group, moveInfo);
+                        GroupBoundsAnimation previous = groupBoundsAnimations.put(group, moveInfo.groupBoundsAnimation);
+                        if (previous != null) {
+                            previous.cancel();
+                        }
                         recyclerListView.setClipChildren(false);
                         recyclerListView.invalidate();
                     }
@@ -917,43 +959,6 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
                 params.toDeltaRight = 0;
             }
 
-            MessageObject.GroupedMessages group = chatMessageCell.getCurrentMessagesGroup();
-            if (group == null) {
-                moveInfoExtended.animateChangeGroupBackground = false;
-            }
-
-            if (moveInfoExtended.animateChangeGroupBackground) {
-                ValueAnimator valueAnimator = ValueAnimator.ofFloat(1f, 0);
-                MessageObject.GroupedMessages.TransitionParams groupTransitionParams = group.transitionParams;
-                RecyclerListView recyclerListView = (RecyclerListView) holder.itemView.getParent();
-
-                float captionEnterFrom = group.transitionParams.captionEnterProgress;
-                float captionEnterTo = group.hasCaption ? 1 : 0;
-
-                boolean animateCaption = captionEnterFrom != captionEnterTo;
-                valueAnimator.addUpdateListener(animation -> {
-                    float v = (float) animation.getAnimatedValue();
-                    groupTransitionParams.offsetTop = moveInfoExtended.groupOffsetTop * v;
-                    groupTransitionParams.offsetBottom = moveInfoExtended.groupOffsetBottom * v;
-                    groupTransitionParams.offsetLeft = moveInfoExtended.groupOffsetLeft * v;
-                    groupTransitionParams.offsetRight = moveInfoExtended.groupOffsetRight * v;
-                    if (animateCaption) {
-                        groupTransitionParams.captionEnterProgress = captionEnterFrom * v + captionEnterTo * (1f - v);
-                    }
-                    if (recyclerListView != null) {
-                        recyclerListView.invalidate();
-                    }
-                });
-
-                valueAnimator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        groupTransitionParams.backgroundChangeBounds = false;
-                        groupTransitionParams.drawBackgroundForDeletedItems = false;
-                    }
-                });
-                animatorSet.playTogether(valueAnimator);
-            }
 
             if (moveInfoExtended.animatePinnedBottom) {
                 ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
@@ -1017,10 +1022,6 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
                     if (cell.makeVisibleAfterChange) {
                         cell.makeVisibleAfterChange = false;
                         cell.setVisibility(View.VISIBLE);
-                    }
-                    MessageObject.GroupedMessages group = cell.getCurrentMessagesGroup();
-                    if (group != null) {
-                        group.transitionParams.reset();
                     }
                 }
                 if (mMoveAnimations.remove(holder)) {
@@ -1178,6 +1179,10 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
     }
 
     private void cancelAnimators() {
+        if (animationTicker != null) {
+            animationTicker.cancel();
+            animationTicker = null;
+        }
         ArrayList<Animator> anim = new ArrayList<>(animators.values());
         animators.clear();
         for (Animator animator : anim) {
@@ -1255,6 +1260,13 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
             groupedMessages.transitionParams.isNewGroup = false;
         }
         willChangedGroups.clear();
+        for (Runnable runnable : groupMoveRunnables) {
+            recyclerListView.removeCallbacks(runnable);
+        }
+        groupMoveRunnables.clear();
+        for (GroupBoundsAnimation animation : new ArrayList<>(groupBoundsAnimations.values())) {
+            animation.cancel();
+        }
         clearPendingThanos();
         cancelAnimators();
 
@@ -1299,6 +1311,10 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         for (int i = listCount - 1; i >= 0; i--) {
             ArrayList<MoveInfo> moves = mMovesList.get(i);
             count = moves.size();
+            if (count == 0) {
+                mMovesList.remove(i);
+                continue;
+            }
             for (int j = count - 1; j >= 0; j--) {
                 MoveInfo moveInfo = moves.get(j);
                 RecyclerView.ViewHolder item = moveInfo.holder;
@@ -1659,6 +1675,7 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
     }
 
     public void onDestroy() {
+        endAnimations();
         onAllAnimationsDone();
     }
 
@@ -1691,8 +1708,148 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         this.reversePositions = reversePositions;
     }
 
+    @Override
+    public boolean isRunning() {
+        return !groupBoundsAnimations.isEmpty() || !groupMoveRunnables.isEmpty() || super.isRunning();
+    }
+
+    public boolean isRetainedQuoteBackgroundCell(ChatMessageCell cell) {
+        GroupBoundsAnimation animation = groupBoundsAnimations.get(cell.getCurrentMessagesGroup());
+        return animation != null && animation.quoteResize && animation.isRetained(cell);
+    }
+
+    private boolean hasPendingGroupBoundsAnimations() {
+        for (GroupBoundsAnimation animation : groupBoundsAnimations.values()) {
+            if (!animation.scheduled) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ArrayList<GroupBoundsAnimation> takePendingGroupBoundsAnimations() {
+        ArrayList<GroupBoundsAnimation> pending = new ArrayList<>();
+        for (GroupBoundsAnimation animation : groupBoundsAnimations.values()) {
+            if (!animation.scheduled) {
+                animation.scheduled = true;
+                pending.add(animation);
+            }
+        }
+        return pending;
+    }
+
+    private void startGroupBoundsAnimations(ArrayList<GroupBoundsAnimation> groups, boolean withThanos) {
+        for (GroupBoundsAnimation animation : groups) {
+            animation.start((long) (getMoveDuration() * (withThanos ? 1.9f : 1f)),
+                    withThanos ? CubicBezierInterpolator.EASE_OUT : translationInterpolator);
+        }
+    }
+
+    private final class GroupBoundsAnimation {
+        final MessageObject.GroupedMessages group;
+        final HashMap<ChatMessageCell, MessageObject> retainedCells = new HashMap<>();
+        boolean quoteResize;
+        boolean scheduled;
+        final float top, bottom, left, right;
+        final float captionFrom, captionTo;
+        private ValueAnimator animator;
+
+        GroupBoundsAnimation(MessageObject.GroupedMessages group, MoveInfoExtended move) {
+            this.group = group;
+            GroupBoundsAnimation previous = groupBoundsAnimations.get(group);
+            quoteResize = previous != null && previous.quoteResize;
+            for (int i = 0; i < recyclerListView.getChildCount(); i++) {
+                View child = recyclerListView.getChildAt(i);
+                if (!(child instanceof ChatMessageCell)) {
+                    continue;
+                }
+                ChatMessageCell cell = (ChatMessageCell) child;
+                if (!isEligible(cell)) {
+                    continue;
+                }
+                if (previous != null && previous.isRetained(cell)
+                        || cell.getTransitionParams().wasDraw && cell.getAlpha() == 1f && cell.getScaleX() == 1f && cell.getScaleY() == 1f) {
+                    retainedCells.put(cell, cell.getMessageObject());
+                    MessageObject primary = cell.getPrimaryMessageObject();
+                    quoteResize |= cell.getTransitionParams().animateExpandedQuotes
+                            || !MessageObject.expandedQuotesEquals(cell.getTransitionParams().lastDrawingExpandedQuotes,
+                                    primary != null ? primary.expandedQuotes : null);
+                }
+            }
+            top = move.groupOffsetTop;
+            bottom = move.groupOffsetBottom;
+            left = move.groupOffsetLeft;
+            right = move.groupOffsetRight;
+            captionFrom = group.transitionParams.captionEnterProgress;
+            captionTo = group.hasCaption ? 1f : 0f;
+        }
+
+        private boolean isEligible(ChatMessageCell cell) {
+            return cell.getParent() == recyclerListView && cell.getVisibility() == View.VISIBLE
+                    && cell.getCurrentMessagesGroup() == group && cell.getCurrentPosition() != null
+                    && cell.getMessageObject() != null && group.messages.contains(cell.getMessageObject())
+                    && !cell.getMessageObject().deleted && !cell.willRemovedAfterAnimation();
+        }
+
+        boolean isRetained(ChatMessageCell cell) {
+            return retainedCells.get(cell) == cell.getMessageObject() && isEligible(cell);
+        }
+
+        void start(long duration, Interpolator interpolator) {
+            if (animator != null || groupBoundsAnimations.get(group) != this) {
+                return;
+            }
+            animator = ValueAnimator.ofFloat(1f, 0f);
+            animator.setDuration(duration);
+            if (interpolator != null) {
+                animator.setInterpolator(interpolator);
+            }
+            animator.addUpdateListener(animation -> {
+                if (groupBoundsAnimations.get(group) != this) {
+                    return;
+                }
+                float v = (float) animation.getAnimatedValue();
+                group.transitionParams.offsetTop = top * v;
+                group.transitionParams.offsetBottom = bottom * v;
+                group.transitionParams.offsetLeft = left * v;
+                group.transitionParams.offsetRight = right * v;
+                if (captionFrom != captionTo) {
+                    group.transitionParams.captionEnterProgress = captionFrom * v + captionTo * (1f - v);
+                }
+                recyclerListView.invalidate();
+            });
+            animator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    finish();
+                }
+            });
+            animator.start();
+        }
+
+        void cancel() {
+            if (animator != null) {
+                animator.cancel();
+            }
+            finish();
+            retainedCells.clear();
+        }
+
+        private void finish() {
+            if (groupBoundsAnimations.get(group) != this) {
+                return;
+            }
+            groupBoundsAnimations.remove(group);
+            retainedCells.clear();
+            group.transitionParams.reset();
+            group.transitionParams.drawBackgroundForDeletedItems = false;
+            recyclerListView.invalidate();
+            dispatchFinishedWhenDone();
+        }
+    }
     class MoveInfoExtended extends MoveInfo {
 
+        private GroupBoundsAnimation groupBoundsAnimation;
         public float captionDeltaX;
         public float captionDeltaY;
 

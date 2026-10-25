@@ -9,7 +9,7 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.util.AtomicFile;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.Plugin;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -136,7 +136,7 @@ public final class PluginCrashReports {
         writer.println("Phase: " + clean(phase));
         writer.println("Thread: " + clean(thread));
         writer.println("Device: " + Build.MODEL + " / Android " + Build.VERSION.SDK_INT);
-        writer.println("App: " + NimarkoConfig.VERSION_NAME);
+        writer.println("App: " + AppConfig.VERSION_NAME);
         writer.println("Client process terminated: "
                 + ("native process exit during loading".equals(phase) ? "yes" : "no"));
         if (note != null) writer.println(note);

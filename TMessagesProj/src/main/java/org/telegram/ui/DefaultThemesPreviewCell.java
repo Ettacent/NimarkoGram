@@ -22,7 +22,7 @@ import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
@@ -77,9 +77,9 @@ public class DefaultThemesPreviewCell extends LinearLayout {
         super(context);
         this.currentType = type;
         this.parentFragment = parentFragment;
-        customDayNightIcons = context.getResources() instanceof NimarkoIconResources
-                && ((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.menu_day_mode_24)
-                && ((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.menu_night_mode_24);
+        customDayNightIcons = context.getResources() instanceof IconResources
+                && ((IconResources) context.getResources()).hasReplacement(R.drawable.menu_day_mode_24)
+                && ((IconResources) context.getResources()).hasReplacement(R.drawable.menu_night_mode_24);
         setOrientation(LinearLayout.VERTICAL);
         FrameLayout frameLayout = new FrameLayout(context);
         addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));

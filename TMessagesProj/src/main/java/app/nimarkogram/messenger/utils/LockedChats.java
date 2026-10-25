@@ -4,7 +4,7 @@
 
 package app.nimarkogram.messenger.utils;
 
-import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import app.nimarkogram.messenger.security.AppBiometricPrompt;
 import java.util.HashMap;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.NotificationCenter;
@@ -165,7 +165,7 @@ public final class LockedChats {
         final long uid = account >= 0 ? currentUid(account) : 0;
         AndroidUtilities.runOnUIThread(() -> {
             if (account >= 0 && currentUid(account) != uid) return;
-            NimarkoBiometricPrompt.onChatProtectionChanged(account);
+            AppBiometricPrompt.onChatProtectionChanged(account);
             NotificationCenter.getGlobalInstance().postNotificationNameInternal(
                     NotificationCenter.nimarkoChatProtectionChanged, true, account);
         });

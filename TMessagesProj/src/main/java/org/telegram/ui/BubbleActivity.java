@@ -47,7 +47,7 @@ import java.util.ArrayList;
 
 public class BubbleActivity extends BasePermissionsActivity implements INavigationLayout.INavigationLayoutDelegate {
 
-    private app.nimarkogram.messenger.icons.NimarkoActivityIconResources nmIconResources;
+    private app.nimarkogram.messenger.icons.ActivityIconResources nmIconResources;
     private boolean nmIconRebuildPending;
     private boolean nmIconRefreshResumed;
     private boolean nmIconTouchInProgress;
@@ -58,7 +58,7 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
     public synchronized Resources getResources() {
         Resources base = super.getResources();
         if (nmIconResources == null) {
-            nmIconResources = new app.nimarkogram.messenger.icons.NimarkoActivityIconResources();
+            nmIconResources = new app.nimarkogram.messenger.icons.ActivityIconResources();
         }
         return nmIconResources.getResources(base);
     }

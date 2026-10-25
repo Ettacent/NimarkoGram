@@ -13,7 +13,7 @@ import org.telegram.messenger.R;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_EMOJI_SLIDER = 1;
@@ -32,10 +32,10 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                 UItem.asIntSlideView(
                         ID_EMOJI_SLIDER,
                         25,
-                        NimarkoConfig.recentEmojisAmplifier,
+                        AppConfig.recentEmojisAmplifier,
                         80,
                         String::valueOf,
-                        NimarkoConfig::setRecentEmojisAmplifier
+                        AppConfig::setRecentEmojisAmplifier
                 ).setId(ID_EMOJI_SLIDER)
         );
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentEmoji)));
@@ -46,10 +46,10 @@ public class RecentEmojisStickersPreferencesActivity extends BasePreferencesActi
                 UItem.asIntSlideView(
                         ID_STICKERS_SLIDER,
                         10,
-                        NimarkoConfig.recentStickersAmplifier,
+                        AppConfig.recentStickersAmplifier,
                         50,
                         String::valueOf,
-                        NimarkoConfig::setRecentStickersAmplifier
+                        AppConfig::setRecentStickersAmplifier
                 ).setId(ID_STICKERS_SLIDER)
         );
         items.add(UItem.asShadow(LocaleController.getString(R.string.NM_SettingsDesc_RecentStickers)));

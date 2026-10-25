@@ -470,7 +470,7 @@ public final class WebProxyTransport implements ForegroundDetector.Listener {
         destroyWebView();
         WebView view;
         try {
-            view = new WebView(ApplicationLoader.applicationContext);
+            view = new WebView(org.telegram.ui.web.WebViewContext.wrap(ApplicationLoader.applicationContext));
         } catch (Exception e) {
             FileLog.e(e);
             failCarrier();

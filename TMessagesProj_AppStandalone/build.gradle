@@ -10,6 +10,8 @@ if (nimarkoFirebaseEnabled) {
 // resulting resource/R8 reports have been reviewed for plugin compatibility.
 def nimarkoCompactStandalone = project.hasProperty('ngCompactStandalone')
 
+def nimarkoGoogleMapsApiKey = rootProject.ext.nimarkoBuildValue('GOOGLE_MAPS_API_KEY').trim()
+
 repositories {
     mavenCentral()
     google()
@@ -91,6 +93,10 @@ android {
             debuggable true
             jniDebuggable true
             signingConfig signingConfigs.debug
+
+
+
+
             minifyEnabled false
             multiDexEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
@@ -107,6 +113,7 @@ android {
             debuggable false
             jniDebuggable false
             signingConfig nimarkoReleaseSigningConfigured ? signingConfigs.release : null
+
             // The normal standalone artifact remains plugins-friendly. Passing
             // -PngCompactStandalone enables an isolated, measurable experiment
             // with app-level R8 and resource shrinking; it is never implicit.
@@ -148,6 +155,11 @@ android {
                 manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'
             }
         }
+    }
+
+    if (!nimarkoGoogleMapsApiKey.isEmpty()) {
+        defaultConfig.manifestPlaceholders['nimarkoGoogleMapsApiKey'] = nimarkoGoogleMapsApiKey
+        sourceSets.afat.manifest.srcFile 'config/maps/AndroidManifest.xml'
     }
 
     defaultConfig.versionCode = Integer.parseInt(APP_VERSION_CODE)
@@ -195,6 +207,12 @@ android {
         checkReleaseBuilds false
     }
 }
+
+
+
+
+
+
 
 if (nimarkoFirebaseEnabled) {
     apply plugin: 'com.google.gms.google-services'

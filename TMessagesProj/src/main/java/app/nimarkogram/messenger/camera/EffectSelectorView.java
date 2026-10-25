@@ -18,7 +18,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class EffectSelectorView extends LinearLayout {
 
@@ -43,8 +43,8 @@ public class EffectSelectorView extends LinearLayout {
         for (int i = 0; i < getChildCount(); i++) {
             LinearLayout linearLayout = (LinearLayout) getChildAt(i);
             ButtonEffect buttonEffect = (ButtonEffect) linearLayout.getChildAt(0);
-            buttonEffect.toggleButton(buttonEffect.cameraType == NimarkoCameraXController.CAMERA_NONE, false);
-            if (buttonEffect.cameraType == NimarkoCameraXController.CAMERA_NONE) {
+            buttonEffect.toggleButton(buttonEffect.cameraType == CameraXController.CAMERA_NONE, false);
+            if (buttonEffect.cameraType == CameraXController.CAMERA_NONE) {
                 oldSelection = buttonEffect;
             }
         }
@@ -55,19 +55,19 @@ public class EffectSelectorView extends LinearLayout {
             boolean fuckup = false;
             ArrayList<Integer> list_effect = new ArrayList<>();
 
-            if (CameraXUtils.isCurrentCameraCameraX() && baseCameraView instanceof NimarkoCameraXView cameraXView) {
+            if (CameraXUtils.isCurrentCameraCameraX() && baseCameraView instanceof CameraXView cameraXView) {
                 if (!fuckup && cameraXView.isNightModeSupported()) {
-                    list_effect.add(NimarkoCameraXController.CAMERA_NIGHT);
+                    list_effect.add(CameraXController.CAMERA_NIGHT);
                 }
                 if (!fuckup && cameraXView.isAutoModeSupported()) {
-                    list_effect.add(NimarkoCameraXController.CAMERA_AUTO);
+                    list_effect.add(CameraXController.CAMERA_AUTO);
                 }
-                list_effect.add(NimarkoCameraXController.CAMERA_NONE);
+                list_effect.add(CameraXController.CAMERA_NONE);
                 if (cameraXView.isWideModeSupported()) {
-                    list_effect.add(NimarkoCameraXController.CAMERA_WIDE);
+                    list_effect.add(CameraXController.CAMERA_WIDE);
                 }
                 if (!fuckup && cameraXView.isHdrModeSupported()) {
-                    list_effect.add(NimarkoCameraXController.CAMERA_HDR);
+                    list_effect.add(CameraXController.CAMERA_HDR);
                 }
                 if (list_effect.size() == 1) {
                     return;
@@ -92,8 +92,8 @@ public class EffectSelectorView extends LinearLayout {
                         }
                     }
                 };
-                buttonEffect.toggleButton(effect == NimarkoCameraXController.CAMERA_NONE, false);
-                if (effect == NimarkoCameraXController.CAMERA_NONE) {
+                buttonEffect.toggleButton(effect == CameraXController.CAMERA_NONE, false);
+                if (effect == CameraXController.CAMERA_NONE) {
                     oldSelection = buttonEffect;
                 }
                 linearLayout.addView(buttonEffect, LayoutHelper.createLinear(50, 50));

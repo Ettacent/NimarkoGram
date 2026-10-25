@@ -12,7 +12,7 @@ package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -1293,7 +1293,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     public BottomSheet(Context context, boolean needFocus) {
         this(context, needFocus, null);
     }
-    
+
     public BottomSheet(Context context, boolean needFocus, Theme.ResourcesProvider resourcesProvider) {
         this(context, needFocus, false, resourcesProvider);
     }
@@ -1635,9 +1635,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
                 container.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_FULLSCREEN);
             }
             params.height = ViewGroup.LayoutParams.MATCH_PARENT;
-            if (Build.VERSION.SDK_INT >= 28) {
-                params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-            }
+            AndroidUtilities.applyEdgeToEdgeLayoutParams(params);
             window.setAttributes(params);
         }
     }
@@ -1645,7 +1643,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     @Override
     protected void onStart() {
         super.onStart();
-        NimarkoAppMotionBlur.attachWindow(getWindow());
+        AppMotionBlur.attachWindow(getWindow());
     }
 
     public void setUseLightStatusBar(boolean value) {

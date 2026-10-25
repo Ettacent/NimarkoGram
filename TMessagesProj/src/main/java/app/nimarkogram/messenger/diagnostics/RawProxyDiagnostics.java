@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.locks.ReentrantLock;
 
-import app.nimarkogram.messenger.NimarkoCrashContext;
+import app.nimarkogram.messenger.CrashContext;
 
 public final class RawProxyDiagnostics {
     public enum Phase {
@@ -94,8 +94,8 @@ public final class RawProxyDiagnostics {
                 }
             }
             if (entry == null) return 0;
-            entry.journal = NimarkoCrashContext.beginInvocation();
-            NimarkoCrashContext.pythonPhase(entry.journal, now, "interface_enter",
+            entry.journal = CrashContext.beginInvocation();
+            CrashContext.pythonPhase(entry.journal, now, "interface_enter",
                     entry.target(), "", "");
             CrashDiagnostics.recordEvent("raw_proxy", phase.name(), entry.detail("active", now));
             return entry.token;
@@ -184,7 +184,7 @@ public final class RawProxyDiagnostics {
             } else {
                 drop();
             }
-            NimarkoCrashContext.pythonPhase(entry.journal, entry.started, "interface_exit",
+            CrashContext.pythonPhase(entry.journal, entry.started, "interface_exit",
                     entry.target(), "", "");
             CrashDiagnostics.recordEvent("raw_proxy", entry.phase.name(),
                     entry.detail(entry.failed ? "failed" : "recent", entry.ended));
@@ -192,7 +192,7 @@ public final class RawProxyDiagnostics {
         } finally {
             if (entry != null) {
                 try {
-                    NimarkoCrashContext.endInvocation(entry.journal);
+                    CrashContext.endInvocation(entry.journal);
                 } catch (RuntimeException | Error ignored) {
                 }
             }

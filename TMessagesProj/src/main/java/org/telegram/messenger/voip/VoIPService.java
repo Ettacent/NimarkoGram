@@ -162,7 +162,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 
-import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
 import app.nimarkogram.messenger.wsbypass.voip.VoipBypassCore;
 import java.util.HashMap;
@@ -224,6 +224,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private static volatile VoIPService sharedInstance;
 	private static Runnable setModeRunnable;
 	private static final Object sync = new Object();
+	private static long soundServiceGeneration;
+	private long soundGeneration = soundServiceGeneration;
+	private volatile boolean serviceDestroyed;
+	private volatile boolean soundPoolReleased;
+	private boolean terminalStateHandled;
 	private NetworkInfo lastNetInfo;
 	private int currentState = 0;
 	private boolean wasConnected;
@@ -260,7 +265,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private int spVoiceChatConnecting;
 	private int spBusyId;
 	private int spConnectingId;
-	private int spPlayId;
+	private volatile int spPlayId;
 	private int spStartRecordId;
 	private int spAllowTalkId;
 	private boolean needPlayEndSound;
@@ -360,7 +365,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private long callStartTime;
-	private boolean playingSound;
+	private volatile boolean playingSound;
 	private boolean isOutgoing;
 	public boolean videoCall;
 	private Runnable timeoutRunnable;
@@ -378,7 +383,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private boolean bluetoothScoConnecting;
 	private boolean needSwitchToBluetoothAfterScoActivates;
 	private boolean didDeleteConnectionServiceContact;
-	private Runnable connectingSoundRunnable;
+	private volatile Runnable connectingSoundRunnable;
 
 	public String currentBluetoothDeviceName;
 
@@ -419,21 +424,26 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		@Override
 		public void run() {
 
+			if (!playingSound) {
+				return;
+			}
+			playingSound = false;
 			AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
 			try {
 				VoipAudioManager vam = VoipAudioManager.get();
 				am.abandonAudioFocus(VoIPService.this);
-				if (sharedInstance == null || sharedInstance == VoIPService.this) {
+				if (ownsSoundAudioCleanup()) {
 					am.unregisterMediaButtonEventReceiver(new ComponentName(VoIPService.this, VoIPMediaButtonReceiver.class));
 				}
 				if (audioDeviceCallback != null) {
 					am.unregisterAudioDeviceCallback(audioDeviceCallback);
+					audioDeviceCallback = null;
 				}
 				if (communicationDeviceListener != null) {
 					am.removeOnCommunicationDeviceChangedListener(communicationDeviceListener);
 					communicationDeviceListener = null;
 				}
-				if (!USE_CONNECTION_SERVICE && sharedInstance == null) {
+				if (!USE_CONNECTION_SERVICE && sharedInstance == null && ownsSoundAudioCleanup()) {
 					if (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting) {
 						VoipAudioManager.get().stopBluetooth();
 						VoipAudioManager.get().setBluetoothOn(false);
@@ -445,20 +455,94 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			} catch (Exception e) {
 				FileLog.e(e);
 			} finally {
-				playingSound = false;
-				Utilities.globalQueue.postRunnable(() -> {
-					if (soundPool != null) {
-						soundPool.release();
-						soundPool = null;
-					}
-				});
+				releaseSoundPool();
 				resetAudioMode(am);
 			}
 		}
 	};
+
+	private boolean ownsSoundAudioCleanup() {
+		synchronized (sync) {
+			return soundGeneration == soundServiceGeneration
+					&& (sharedInstance == null || sharedInstance == this);
+		}
+	}
+
+	private boolean canPlaySound(boolean terminal) {
+		return !soundPoolReleased && soundPool != null
+				&& soundGeneration == soundServiceGeneration
+				&& (terminal ? playingSound && (sharedInstance == null || sharedInstance == this)
+						: !serviceDestroyed && !isCallEnded && sharedInstance == this);
+	}
+
+	private void postSound(Runnable sound) {
+				Utilities.globalQueue.postRunnable(() -> {
+			synchronized (sync) {
+				if (canPlaySound(false)) {
+					sound.run();
+				}
+			}
+		});
+	}
+
+	private void stopSoundPoolStream() {
+		if (soundPool != null && spPlayId != 0) {
+			soundPool.stop(spPlayId);
+		}
+		spPlayId = 0;
+	}
+
+	private void releaseSoundPool() {
+		soundPoolReleased = true;
+		Utilities.globalQueue.postRunnable(() -> {
+			SoundPool pool = soundPool;
+						soundPool = null;
+			spPlayId = 0;
+			if (pool != null) {
+				pool.release();
+			}
+		});
+	}
+
+	private void playTerminalSound(Runnable sound, int delay, int duration, boolean disconnect) {
+		playingSound = true;
+		Utilities.globalQueue.postRunnable(() -> {
+			boolean attempted = false;
+			try {
+				synchronized (sync) {
+					if (canPlaySound(true)) {
+						stopSoundPoolStream();
+						sound.run();
+						attempted = true;
+					}
+				}
+			} finally {
+				final long cleanupAt = SystemClock.uptimeMillis() + (attempted ? duration : 0);
+				AndroidUtilities.runOnUIThread(() -> {
+					if (playingSound) {
+						final long cleanupDelay = Math.max(0, cleanupAt - SystemClock.uptimeMillis());
+						AndroidUtilities.runOnUIThread(afterSoundRunnable, cleanupDelay);
+						if (disconnect) {
+							endConnectionServiceCall(cleanupDelay);
+						}
+					}
+				});
+			}
+		}, delay);
+	}
+
+	private boolean beginCallTermination() {
+		if (terminalStateHandled || serviceDestroyed || sharedInstance != null && sharedInstance != this
+				|| soundGeneration != 0 && soundGeneration != soundServiceGeneration) {
+			return false;
+		}
+		terminalStateHandled = true;
+		isCallEnded = true;
+		return true;
+	}
 	private void resetAudioMode(AudioManager am) {
 		synchronized (sync) {
-			if (sharedInstance != null && sharedInstance != this) {
+			if (!ownsSoundAudioCleanup()) {
 				return;
 			}
 			Utilities.globalQueue.postRunnable(setModeRunnable = new Runnable() {
@@ -469,7 +553,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 							return;
 						}
 						setModeRunnable = null;
-						if (sharedInstance != null) {
+						if (sharedInstance != null || soundGeneration != soundServiceGeneration) {
 							return;
 						}
 						try {
@@ -827,7 +911,10 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (currentAccount == -1) {
 			throw new IllegalStateException("No account specified when starting VoIP service");
 		}
-		if (NimarkoWsBypassConfig.enabled && VoipBypassConfig.isVoipBypassEnabled()) {
+		synchronized (sync) {
+			soundGeneration = ++soundServiceGeneration;
+		}
+		if (WsBypassConfig.enabled && VoipBypassConfig.isVoipBypassEnabled()) {
 			app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(currentAccount);
 		}
 		classGuid = ConnectionsManager.generateClassGuid();
@@ -1770,12 +1857,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 				startConferenceGroupCall(false, 0, null, false);
 			} else if (phoneCall.reason instanceof TLRPC.TL_phoneCallDiscardReasonBusy) {
-				dispatchStateChanged(STATE_BUSY);
-				playingSound = true;
-				Utilities.globalQueue.postRunnable(() -> soundPool.play(spBusyId, 1, 1, 0, -1, 1));
-				AndroidUtilities.runOnUIThread(afterSoundRunnable, 1500);
-				endConnectionServiceCall(1500);
-				stopSelf();
+				callBusy();
 			} else {
 				callEnded();
 			}
@@ -1847,7 +1929,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					AndroidUtilities.cancelRunOnUIThread(connectingSoundRunnable);
 					connectingSoundRunnable = null;
 				}
-				Utilities.globalQueue.postRunnable(() -> {
+				postSound(() -> {
 					if (spPlayId != 0) {
 						soundPool.stop(spPlayId);
 					}
@@ -3433,7 +3515,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (state == 0) {
 			startGroupCheckShortpoll();
 			if (playedConnectedSound && spPlayId == 0 && !switchingStream && !switchingAccount) {
-				Utilities.globalQueue.postRunnable(() -> {
+				postSound(() -> {
 					if (spPlayId != 0) {
 						soundPool.stop(spPlayId);
 					}
@@ -3451,7 +3533,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				switchingStreamTimeoutRunnable = null;
 			}
 			if (playedConnectedSound) {
-				Utilities.globalQueue.postRunnable(() -> {
+				postSound(() -> {
 					if (spPlayId != 0) {
 						soundPool.stop(spPlayId);
 						spPlayId = 0;
@@ -3833,12 +3915,12 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public void playConnectedSound() {
-		Utilities.globalQueue.postRunnable(() -> soundPool.play(spVoiceChatStartId, 1.0f, 1.0f, 0, 0, 1));
+		postSound(() -> soundPool.play(spVoiceChatStartId, 1.0f, 1.0f, 0, 0, 1));
 		playedConnectedSound = true;
 	}
 
 	private void startConnectingSound() {
-		Utilities.globalQueue.postRunnable(() -> {
+		postSound(() -> {
 			if (spPlayId != 0) {
 				soundPool.stop(spPlayId);
 			}
@@ -3847,10 +3929,13 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				AndroidUtilities.runOnUIThread(connectingSoundRunnable = new Runnable() {
 					@Override
 					public void run() {
-						if (sharedInstance == null) {
+						if (connectingSoundRunnable != this || isCallEnded || serviceDestroyed || sharedInstance != VoIPService.this) {
 							return;
 						}
-						Utilities.globalQueue.postRunnable(() -> {
+						postSound(() -> {
+							if (connectingSoundRunnable != this) {
+								return;
+							}
 							if (spPlayId == 0) {
 								spPlayId = soundPool.play(spConnectingId, 1, 1, 0, -1, 1);
 							}
@@ -4468,7 +4553,15 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 	@Override
 	public void onDestroy() {
+		if (serviceDestroyed) {
+			return;
+		}
+		serviceDestroyed = true;
 		isCallEnded = true;
+		if (connectingSoundRunnable != null) {
+			AndroidUtilities.cancelRunOnUIThread(connectingSoundRunnable);
+			connectingSoundRunnable = null;
+		}
 		nmCancelPrivateCallPreparation();
 		if (delayedStartOutgoingCall != null) {
 			AndroidUtilities.cancelRunOnUIThread(delayedStartOutgoingCall);
@@ -4560,7 +4653,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (!playingSound) {
 			VoipAudioManager vam = VoipAudioManager.get();
 			if (!USE_CONNECTION_SERVICE) {
-				if (sharedInstance == null && (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting)) {
+				if (sharedInstance == null && ownsSoundAudioCleanup() && (isBtHeadsetConnected || bluetoothScoActive || bluetoothScoConnecting)) {
 					VoipAudioManager.get().stopBluetooth();
 					VoipAudioManager.get().setBluetoothOn(false);
 					vam.setSpeakerphoneOn(false);
@@ -4571,7 +4664,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				am.abandonAudioFocus(this);
 			}
 			try {
-				if (sharedInstance == null) {
+				if (sharedInstance == null && ownsSoundAudioCleanup()) {
 				am.unregisterMediaButtonEventReceiver(new ComponentName(this, VoIPMediaButtonReceiver.class));
 				}
 			} catch (Exception e) {
@@ -4579,18 +4672,14 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			}
 			if (audioDeviceCallback != null) {
 				am.unregisterAudioDeviceCallback(audioDeviceCallback);
+				audioDeviceCallback = null;
 			}
 			if (communicationDeviceListener != null) {
 				am.removeOnCommunicationDeviceChangedListener(communicationDeviceListener);
 				communicationDeviceListener = null;
 			}
 
-			Utilities.globalQueue.postRunnable(() -> {
-				if (soundPool != null) {
-					soundPool.release();
-					soundPool = null;
-				}
-			});
+			releaseSoundPool();
 		}
 		if (hasAudioFocus) {
 			am.abandonAudioFocus(this);
@@ -4601,7 +4690,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				ContactsController.getInstance(currentAccount).deleteConnectionServiceContact();
 			}
 			if (systemCallConnection != null && !playingSound) {
-				systemCallConnection.destroy();
+				CallConnection connection = systemCallConnection;
+				systemCallConnection = null;
+				connection.destroy();
 			}
 		}
 
@@ -4609,7 +4700,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 		setSinks(null, null);
 		if (onDestroyRunnable != null) {
-			onDestroyRunnable.run();
+			Runnable onDone = onDestroyRunnable;
+			onDestroyRunnable = null;
+			onDone.run();
 		}
 		if (currentAccount >= 0) {
 			ConnectionsManager.getInstance(currentAccount).setAppPaused(true, false);
@@ -5106,6 +5199,9 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			WebRtcAudioTrack.setAudioTrackUsageAttribute(AudioAttributes.USAGE_VOICE_COMMUNICATION);
 		}
 		Utilities.globalQueue.postRunnable(() -> {
+			if (soundPoolReleased || serviceDestroyed && !playingSound || soundPool != null) {
+				return;
+			}
 			soundPool = new SoundPool(1, AudioManager.STREAM_VOICE_CALL, 0);
 			spConnectingId = soundPool.load(this, R.raw.voip_connecting, 1);
 			spRingbackID = soundPool.load(this, R.raw.voip_ringback, 1);
@@ -5826,7 +5922,13 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void callFailed(String error) {
-		isCallEnded = true;
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			AndroidUtilities.runOnUIThread(() -> callFailed(error));
+			return;
+		}
+		if (!beginCallTermination()) {
+			return;
+		}
 		nmCancelPrivateCallPreparation();
 		forceProximityFar();
 		if (privateCall != null) {
@@ -5859,16 +5961,15 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			FileLog.e(x);
 		}
 		lastError = error;
-		AndroidUtilities.runOnUIThread(() -> dispatchStateChanged(STATE_FAILED));
-		if (TextUtils.equals(error, Instance.ERROR_LOCALIZED) && soundPool != null) {
-			playingSound = true;
-			Utilities.globalQueue.postRunnable(() -> soundPool.play(spFailedID, 1, 1, 0, 0, 1));
-			AndroidUtilities.runOnUIThread(afterSoundRunnable, 1000);
+		if (TextUtils.equals(error, Instance.ERROR_LOCALIZED)) {
+			playTerminalSound(() -> spPlayId = soundPool.play(spFailedID, 1, 1, 0, 0, 1), 0, 1000, false);
 		}
+		dispatchStateChanged(STATE_FAILED);
 		if (USE_CONNECTION_SERVICE && systemCallConnection != null) {
-			systemCallConnection.setDisconnected(new DisconnectCause(DisconnectCause.ERROR));
-			systemCallConnection.destroy();
+			CallConnection connection = systemCallConnection;
 			systemCallConnection = null;
+			connection.setDisconnected(new DisconnectCause(DisconnectCause.ERROR));
+			connection.destroy();
 		}
 		stopSelf();
 	}
@@ -5900,7 +6001,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					AndroidUtilities.cancelRunOnUIThread(connectingSoundRunnable);
 					connectingSoundRunnable = null;
 				}
-				Utilities.globalQueue.postRunnable(() -> {
+				postSound(() -> {
 					if (spPlayId != 0) {
 						soundPool.stop(spPlayId);
 						spPlayId = 0;
@@ -5930,7 +6031,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				}
 			}
 			if (newState == STATE_RECONNECTING && !isCallEnded) {
-				Utilities.globalQueue.postRunnable(() -> {
+				postSound(() -> {
 					if (spPlayId != 0) {
 						soundPool.stop(spPlayId);
 					}
@@ -5942,11 +6043,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	public void playStartRecordSound() {
-		Utilities.globalQueue.postRunnable(() -> soundPool.play(spStartRecordId, 0.5f, 0.5f, 0, 0, 1));
+		postSound(() -> soundPool.play(spStartRecordId, 0.5f, 0.5f, 0, 0, 1));
 	}
 
 	public void playAllowTalkSound() {
-		Utilities.globalQueue.postRunnable(() -> soundPool.play(spAllowTalkId, 0.5f, 0.5f, 0, 0, 1));
+		postSound(() -> soundPool.play(spAllowTalkId, 0.5f, 0.5f, 0, 0, 1));
 	}
 
 	public void onSignalBarCountChanged(int newCount) {
@@ -5971,70 +6072,87 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		return isHeadsetPlugged;
 	}
 
+	private void callBusy() {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			AndroidUtilities.runOnUIThread(this::callBusy);
+			return;
+		}
+		if (!beginCallTermination()) {
+			return;
+		}
+		forceProximityFar();
+		if (connectingSoundRunnable != null) {
+			AndroidUtilities.cancelRunOnUIThread(connectingSoundRunnable);
+			connectingSoundRunnable = null;
+		}
+		playTerminalSound(() -> spPlayId = soundPool.play(spBusyId, 1, 1, 0, -1, 1), 0, 1500, true);
+		dispatchStateChanged(STATE_BUSY);
+		stopSelf();
+	}
 	private void callEnded() {
+		if (Looper.myLooper() != Looper.getMainLooper()) {
+			AndroidUtilities.runOnUIThread(this::callEnded);
+			return;
+		}
+		if (!beginCallTermination()) {
+			return;
+		}
 		if (BuildVars.LOGS_ENABLED) {
 			FileLog.d("Call " + getCallID() + " ended");
 		}
-		isCallEnded = true;
 		nmCancelPrivateCallPreparation();
 		forceProximityFar();
 		if (groupCall != null && (!playedConnectedSound || onDestroyRunnable != null)) {
 			needPlayEndSound = false;
 		}
-		AndroidUtilities.runOnUIThread(() -> dispatchStateChanged(STATE_ENDED));
-		int delay = 700;
-		Utilities.globalQueue.postRunnable(() -> {
-			if (spPlayId != 0) {
-				soundPool.stop(spPlayId);
-				spPlayId = 0;
-			}
-		});
+		Utilities.globalQueue.postRunnable(this::stopSoundPoolStream);
 
 		if (connectingSoundRunnable != null) {
 			AndroidUtilities.cancelRunOnUIThread(connectingSoundRunnable);
 			connectingSoundRunnable = null;
 		}
 		if (needPlayEndSound) {
-			playingSound = true;
 			if (groupCall == null) {
-				Utilities.globalQueue.postRunnable(() -> soundPool.play(spEndId, 1, 1, 0, 0, 1));
+				playTerminalSound(() -> spPlayId = soundPool.play(spEndId, 1, 1, 0, 0, 1), 0, 700, true);
 			} else {
-				Utilities.globalQueue.postRunnable(() -> soundPool.play(spVoiceChatEndId, 1.0f, 1.0f, 0, 0, 1), 100);
-				delay = 500;
+				playTerminalSound(() -> spPlayId = soundPool.play(spVoiceChatEndId, 1.0f, 1.0f, 0, 0, 1), 100, 400, true);
 			}
-			AndroidUtilities.runOnUIThread(afterSoundRunnable, delay);
 		}
 		if (timeoutRunnable != null) {
 			AndroidUtilities.cancelRunOnUIThread(timeoutRunnable);
 			timeoutRunnable = null;
 		}
-		endConnectionServiceCall(needPlayEndSound ? delay : 0);
+		dispatchStateChanged(STATE_ENDED);
+		if (!needPlayEndSound) {
+			endConnectionServiceCall(0);
+		}
 		stopSelf();
 	}
 
 	private void endConnectionServiceCall(long delay) {
 		if (USE_CONNECTION_SERVICE) {
+			final CallConnection connection = systemCallConnection;
 			Runnable r = () -> {
-				if (systemCallConnection != null) {
+				if (connection != null && systemCallConnection == connection) {
+					systemCallConnection = null;
 					switch (callDiscardReason) {
 						case DISCARD_REASON_HANGUP:
-							systemCallConnection.setDisconnected(new DisconnectCause(isOutgoing ? DisconnectCause.LOCAL : DisconnectCause.REJECTED));
+							connection.setDisconnected(new DisconnectCause(isOutgoing ? DisconnectCause.LOCAL : DisconnectCause.REJECTED));
 							break;
 						case DISCARD_REASON_DISCONNECT:
-							systemCallConnection.setDisconnected(new DisconnectCause(DisconnectCause.ERROR));
+							connection.setDisconnected(new DisconnectCause(DisconnectCause.ERROR));
 							break;
 						case DISCARD_REASON_LINE_BUSY:
-							systemCallConnection.setDisconnected(new DisconnectCause(DisconnectCause.BUSY));
+							connection.setDisconnected(new DisconnectCause(DisconnectCause.BUSY));
 							break;
 						case DISCARD_REASON_MISSED:
-							systemCallConnection.setDisconnected(new DisconnectCause(isOutgoing ? DisconnectCause.CANCELED : DisconnectCause.MISSED));
+							connection.setDisconnected(new DisconnectCause(isOutgoing ? DisconnectCause.CANCELED : DisconnectCause.MISSED));
 							break;
 						default:
-							systemCallConnection.setDisconnected(new DisconnectCause(DisconnectCause.REMOTE));
+							connection.setDisconnected(new DisconnectCause(DisconnectCause.REMOTE));
 							break;
 					}
-					systemCallConnection.destroy();
-					systemCallConnection = null;
+					connection.destroy();
 				}
 			};
 			if (delay > 0) {

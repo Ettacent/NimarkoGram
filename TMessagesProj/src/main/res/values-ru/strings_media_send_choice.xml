@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_MediaSendChoiceTitle">Способ отправки</string>
+    <string name="NM_MediaSendChoiceMedia">Медиа</string>
+    <string name="NM_MediaSendChoiceLink">Ссылкой</string>
+    <string name="NM_MediaSendChoiceVideo">Видео</string>
+    <string name="NM_MediaSendChoiceAudio">Аудио</string>
+    <string name="NM_MediaSendChoiceSetting">Выбор перед отправкой</string>
+    <string name="NM_MediaSendChoiceDescription">Выбирать способ отправки медиа.</string>
+</resources>

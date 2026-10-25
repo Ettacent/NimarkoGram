@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3;
 
 import android.graphics.Color;
@@ -23,7 +25,7 @@ public class LiquidGlassEffect {
         updateShader();
     }
     private void updateShader() {
-        final boolean requested = app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur;
+        final boolean requested = app.nimarkogram.messenger.AppConfig.enhancedGlassBlur;
         if (shader != null && enhanced == requested) return;
         enhanced = requested;
         shader = new RuntimeShader(AndroidUtilities.readRes(enhanced
@@ -61,7 +63,7 @@ public class LiquidGlassEffect {
         int foregroundColor
     ) {
         updateShader();
-        final boolean reflectionEnabled = app.nimarkogram.messenger.NimarkoConfig.glareOnElements;
+        final boolean reflectionEnabled = app.nimarkogram.messenger.AppConfig.glareOnElements;
         float resolutionX = node.getWidth();
         float resolutionY = node.getHeight();
         float centerX = (left + right) / 2;

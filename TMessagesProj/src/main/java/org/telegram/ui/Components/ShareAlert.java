@@ -151,6 +151,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
     private ChatActivityEnterView.SendButton writeButton;
     private FrameLayout writeButtonContainer;
     private FrameLayout pickerBottom;
+    private float sheetBackgroundTop;
     private View bottomFadeView;
     private FrameLayout pickerBottomLayout;
     private LinearLayout linkContainer;
@@ -444,8 +445,8 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         iBlur3FactoryFade = new BlurredBackgroundDrawableViewFactory(iBlur3SourceColor);
 
         this.resourcesProvider = theme;
-        
-        this.includeStory = app.nimarkogram.messenger.NimarkoConfig.shareDrawStoryButton && includeStory;
+
+        this.includeStory = app.nimarkogram.messenger.AppConfig.shareDrawStoryButton && includeStory;
 
         parentActivity = AndroidUtilities.findActivity(context);
 
@@ -931,6 +932,11 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 shadowDrawable.setBounds(0, top, getMeasuredWidth(), height);
                 shadowDrawable.draw(canvas);
 
+                final float newSheetBackgroundTop = top + backgroundPaddingTop + currentPanTranslationY;
+                if (sheetBackgroundTop != newSheetBackgroundTop) {
+                    sheetBackgroundTop = newSheetBackgroundTop;
+                    frameLayout.invalidate();
+                }
                 if (bulletinContainer2 != null) {
                     if (top <= systemInsets.top && bulletinContainer2.getChildCount() > 0) {
                         bulletinContainer2.setTranslationY(0);
@@ -1019,7 +1025,31 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         containerView.setPadding(backgroundPaddingLeft, 0, backgroundPaddingLeft, systemInsets.bottom);
 
         frameLayout = new FrameLayout(context);
-        frameLayout.setBackgroundColor(getThemedColor(Theme.key_dialogBackground));
+        frameLayout.setBackground(new Drawable() {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Path path = new Path();
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                final android.graphics.Rect b = getBounds();
+                final float r = dp(25);
+                final float sheetTop = Math.min(b.top, sheetBackgroundTop - frameLayout.getY());
+                paint.setColor(getThemedColor(Theme.key_dialogBackground));
+                path.rewind();
+                path.addRoundRect(b.left, sheetTop, b.right, b.bottom + r, r, r, Path.Direction.CW);
+                canvas.save();
+                canvas.clipRect(b);
+                canvas.drawPath(path, paint);
+                canvas.restore();
+            }
+            @Override
+            public void setAlpha(int alpha) {}
+            @Override
+            public void setColorFilter(@Nullable android.graphics.ColorFilter colorFilter) {}
+            @Override
+            public int getOpacity() {
+                return android.graphics.PixelFormat.TRANSLUCENT;
+            }
+        });
 
         if (darkTheme && linkToCopy[1] != null) {
             switchView = new SwitchView(context) {
@@ -1421,7 +1451,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 });
                 ScaleStateListAnimator.apply(linkCopyButton);
 
-                containerView.addView(pickerBottom, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44 + 7 + 7, Gravity.LEFT | Gravity.BOTTOM)); 
+                containerView.addView(pickerBottom, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44 + 7 + 7, Gravity.LEFT | Gravity.BOTTOM));
 
                 LinearLayout sharesLayout = null;
                 int rightMargin = 11;
@@ -1469,7 +1499,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 pickerBottom.addView(pickerBottomLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, -2, 0, -2, 0));
 
                 TextView pickerTextView = new TextView(context);
-                pickerTextView.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 2, dp(22)));
+                pickerTextView.setBackground(Theme.createRadSelectorDrawable(getThemedColor(Theme.key_listSelector), 20, 20));
                 pickerTextView.setTextColor(getThemedColor(darkTheme ? Theme.key_voipgroup_listeningText : Theme.key_dialogTextBlue2));
                 pickerTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
                 pickerTextView.setPadding(dp(18), 0, dp(18), 0);
@@ -1480,7 +1510,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                 } else {
                     pickerTextView.setText(LocaleController.getString(R.string.CopyLink).toUpperCase());
                 }
-                
+
                 pickerTextView.setOnClickListener(v -> {
                     if (selectedDialogs.size() == 0 && (isChannel || linkToCopy[0] != null)) {
                         dismiss();
@@ -1502,8 +1532,8 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                         sharesCountLayout = new LinearLayout(context);
                         sharesCountLayout.setOrientation(LinearLayout.HORIZONTAL);
                         sharesCountLayout.setGravity(Gravity.CENTER_VERTICAL);
-                        sharesCountLayout.setBackground(Theme.createSelectorDrawable(getThemedColor(darkTheme ? Theme.key_voipgroup_listSelector : Theme.key_listSelector), 2, dp(22)));
-                        pickerBottomLayout.addView(sharesCountLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 48, Gravity.RIGHT | Gravity.BOTTOM, 6, 0, -6, 0));
+                        sharesCountLayout.setBackground(Theme.createRadSelectorDrawable(getThemedColor(darkTheme ? Theme.key_voipgroup_listSelector : Theme.key_listSelector), 20, 20));
+                        pickerBottomLayout.addView(sharesCountLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.RIGHT | Gravity.CENTER_VERTICAL));
                         sharesCountLayout.setOnClickListener(v -> {
                             BaseFragment fragment2 = parentFragment;
                             if (fragment2 == null) fragment2 = LaunchActivity.getSafeLastFragment();
@@ -1897,7 +1927,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
     protected void onShareStory(View cell) {
 
     }
-    
+
     private void showPremiumBlockedToast(View view, long dialogId) {
         AndroidUtilities.shakeViewSpring(view, shiftDp = -shiftDp);
         BotWebViewVibrationEffect.APP_ERROR.vibrate();
@@ -2257,7 +2287,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         return containerView.getMeasuredHeight() - containerViewTop;
     }
 
-    private boolean showSendersName = !app.nimarkogram.messenger.NimarkoConfig.forwardWithoutAuthor;
+    private boolean showSendersName = !app.nimarkogram.messenger.AppConfig.forwardWithoutAuthor;
     private ActionBarPopupWindow sendPopupWindow;
     private boolean onSendLongClick(View view) {
         if (parentActivity == null) {
@@ -2300,8 +2330,8 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
             }
             sendPopupLayout1.addView(showSendersNameView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
             showSendersNameView.setTextAndIcon(false ? LocaleController.getString(R.string.ShowSenderNames) : LocaleController.getString(R.string.ShowSendersName), 0);
-            
-            showSendersName = !app.nimarkogram.messenger.NimarkoConfig.forwardWithoutAuthor;
+
+            showSendersName = !app.nimarkogram.messenger.AppConfig.forwardWithoutAuthor;
             showSendersNameView.setChecked(showSendersName);
 
             ActionBarMenuSubItem hideSendersNameView = new ActionBarMenuSubItem(getContext(), true, false, true, resourcesProvider);
@@ -2519,9 +2549,9 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                         params.monoForumPeer = monoForumPeerId;
                         SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
                     }
-                    
-                    boolean ngStripAuthor = !showSendersName || !app.nimarkogram.messenger.NimarkoConfig.forwardAuthorship;
-                    boolean ngStripCaption = !app.nimarkogram.messenger.NimarkoConfig.forwardCaptions;
+
+                    boolean ngStripAuthor = !showSendersName || !app.nimarkogram.messenger.AppConfig.forwardAuthorship;
+                    boolean ngStripCaption = !app.nimarkogram.messenger.AppConfig.forwardCaptions;
                     result = SendMessagesHelper.getInstance(currentAccount).sendMessage(sendingMessageObjects, key, ngStripAuthor, ngStripCaption, withSound, 0, 0, replyTopMsg, video_timestamp, price == null ? 0 : price, monoForumPeerId, null);
                     if (result != 0) {
                         removeKeys.add(key);
@@ -2663,12 +2693,12 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.dialogsNeedReload) {
             if (listAdapter != null) {
-                
+
                 if (foldersView != null && foldersView.filterTabsView != null) {
                     if (foldersView.filterTabsView.currentTabIsDefault()) {
                         updateDialogsWithFirstFrameReveal(listAdapter::fetchDialogs);
                     } else {
-                        if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) foldersView.applyFilter(foldersView.filterTabsView.getFirstTabId());
+                        if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) foldersView.applyFilter(foldersView.filterTabsView.getFirstTabId());
                     }
                 } else {
                     updateDialogsWithFirstFrameReveal(listAdapter::fetchDialogs);
@@ -2955,7 +2985,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
         public ShareDialogsAdapter(Context context) {
             this.context = context;
-            
+
             if (foldersView != null && foldersView.filterTabsView != null && hasFolders()) {
                 if (foldersView.filterTabsView.currentTabIsDefault()) {
                     fetchDialogs();
@@ -3033,7 +3063,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         public void setDialogs(List<TLRPC.Dialog> newDialogs) {
             dialogs.clear();
             dialogsMap.clear();
-            if (app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats && foldersView != null && foldersView.filterTabsView != null && hasFolders() && includeStory) {
+            if (app.nimarkogram.messenger.AppConfig.tabsHideAllChats && foldersView != null && foldersView.filterTabsView != null && hasFolders() && includeStory) {
                 MyStoryDialog d = new MyStoryDialog();
                 dialogs.add(d);
                 dialogsMap.put(d.id, d);
@@ -3959,9 +3989,6 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
         }
         if (pickerBottom != null) {
             pickerBottom.setTranslationY(-bottomMargin);
-            if (sharesCountLayout != null) {
-                sharesCountLayout.setTranslationY(-bottomMargin);
-            }
         }
         frameLayout2.setTranslationY(-bottomMargin);
         writeButtonContainer.setTranslationY(-bottomMargin);
@@ -4228,13 +4255,13 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
                     filterTabsView.removeTabs();
                     for (int a = 0, N = filters.size(); a < N; a++) {
                         if (filters.get(a).isDefault()) {
-                            if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked, filters.get(a).emoticon);
+                            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked, filters.get(a).emoticon);
                         } else {
                             final MessagesController.DialogFilter filter = filters.get(a);
                             filterTabsView.addTab(a, filter.localId, filter.name, filter.entities, filter.title_noanimate, false, filters.get(a).locked, filter.emoticon);
                         }
                     }
-                    if (app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats && stableId <= 0) {
+                    if (app.nimarkogram.messenger.AppConfig.tabsHideAllChats && stableId <= 0) {
                         id = filterTabsView.getFirstTabId();
                         filterTabsView.selectTabWithStableId(filterTabsView.getStableId(0));
                     } else if (stableId >= 0) {
@@ -4320,5 +4347,5 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
     private boolean checkSearchVisible() {
         return !TextUtils.isEmpty(searchView.editText.getText()) || (keyboardVisible && searchView.editText.hasFocus()) || searchWasVisibleBeforeTopics;
     }
-     
+
 }

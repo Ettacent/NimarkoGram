@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Adapters;
 
 import android.animation.Animator;
@@ -589,7 +591,7 @@ public class FiltersView extends RecyclerListView {
         return false;
     }
 
-    public boolean drawDivider = !app.nimarkogram.messenger.NimarkoConfig.disableDividers;
+    public boolean drawDivider = !app.nimarkogram.messenger.AppConfig.disableDividers;
 
     @Override
     public void onDraw(Canvas c) {
@@ -752,12 +754,12 @@ public class FiltersView extends RecyclerListView {
                         Theme.setCombinedDrawableColor(combinedDrawable, getThemedColor(Theme.key_featuredStickers_buttonText), true);
                         avatarImageView.setImageDrawable(combinedDrawable);
                     } else {
-                        avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(32));
+                        avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
                         avatarImageView.getImageReceiver().setForUserOrChat(user, thumbDrawable);
                     }
                 } else if (data.chat instanceof TLRPC.Chat) {
                     TLRPC.Chat chat = (TLRPC.Chat) data.chat;
-                    avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(32, ChatObject.isCommunity(chat)));
+                    avatarImageView.getImageReceiver().setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(32, ChatObject.isCommunity(chat)));
                     avatarImageView.getImageReceiver().setForUserOrChat(chat, thumbDrawable);
                 }
             } else {

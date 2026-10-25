@@ -14,7 +14,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class SpeedLineParticles {
 
     public static class Drawable {
@@ -65,7 +65,7 @@ public class SpeedLineParticles {
 
 
         public void resetPositions() {
-            if (paused || NimarkoUiAnimationClock.isPaused()) {
+            if (paused || UiAnimationClock.isPaused()) {
                 resetPending = true;
                 return;
             }
@@ -77,9 +77,9 @@ public class SpeedLineParticles {
         }
 
         private long sampleTime() {
-            long now = NimarkoUiAnimationClock.now();
-            int epoch = NimarkoUiAnimationClock.epoch();
-            boolean stopped = paused || NimarkoUiAnimationClock.isPaused();
+            long now = UiAnimationClock.now();
+            int epoch = UiAnimationClock.epoch();
+            boolean stopped = paused || UiAnimationClock.isPaused();
             long diff = prevTime < 0 || epoch != clockEpoch || stopped || wasPaused ? 0 : Math.max(0, now - prevTime);
             animationTime += diff;
             dt = Math.min(diff, 50);

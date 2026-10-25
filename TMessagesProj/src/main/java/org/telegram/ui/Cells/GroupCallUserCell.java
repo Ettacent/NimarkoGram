@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import android.animation.Animator;
@@ -263,7 +265,7 @@ public class GroupCallUserCell extends FrameLayout {
         setClipChildren(false);
 
         avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(48));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(48));
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 11, 6, LocaleController.isRTL ? 11 : 0, 0));
 
         avatarProgressView = new RadialProgressView(context) {
@@ -641,10 +643,10 @@ public class GroupCallUserCell extends FrameLayout {
         muteButton.setEnabled(!isSelfUser() || participant.raise_hand_rating != 0);
 
         boolean hasVoice;
-         
+
         if (SystemClock.elapsedRealtime() - participant.lastVoiceUpdateTime < 500) {
             hasVoice = participant.hasVoiceDelayed;
-             
+
         } else {
             hasVoice = participant.hasVoice;
         }
@@ -807,7 +809,7 @@ public class GroupCallUserCell extends FrameLayout {
                 if (animators == null) {
                     animators = new ArrayList<>();
                 }
-                 
+
                 if (newStatus == 0) {
                     for (int a = 0; a < statusTextView.length; a++) {
                         animators.add(ObjectAnimator.ofFloat(statusTextView[a], View.TRANSLATION_Y, a == newStatus ? 0 : AndroidUtilities.dp(-2)));
@@ -892,19 +894,19 @@ public class GroupCallUserCell extends FrameLayout {
     }
 
     private void applyStatus(int newStatus) {
-        
+
         for (int a = 0; a < statusTextView.length; a++) {
             statusTextView[a].setImportantForAccessibility(a == newStatus ? IMPORTANT_FOR_ACCESSIBILITY_YES : IMPORTANT_FOR_ACCESSIBILITY_NO);
         }
         if (newStatus == 0) {
             for (int a = 0; a < statusTextView.length; a++) {
-                
+
                 statusTextView[a].setTranslationY(a == newStatus ? 0 : AndroidUtilities.dp(-2));
                 statusTextView[a].setAlpha(a == newStatus ? 1.0f : 0.0f);
             }
         } else {
             for (int a = 0; a < statusTextView.length; a++) {
-                
+
                 statusTextView[a].setTranslationY(a == newStatus ? 0 : AndroidUtilities.dp(a == 0 ? 2 : -2));
                 statusTextView[a].setAlpha(a == newStatus ? 1.0f : 0.0f);
             }

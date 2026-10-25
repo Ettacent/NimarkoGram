@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.SharedPreferences;
@@ -64,7 +66,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
         return SharedConfig.isProxyEnabled() && SharedConfig.proxyRotationEnabled
                 && SharedConfig.proxyList.size() > 1 && current != null
                 && current.getSettings().getType() != ProxySettings.Type.WEB
-                && !app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled;
+                && !app.nimarkogram.messenger.wsbypass.WsBypassConfig.enabled;
     }
 
     @SuppressWarnings("ComparatorCombinators")

@@ -22,7 +22,7 @@ import androidx.annotation.Nullable;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class MuteDrawable extends Drawable {
 
     private Drawable baseDrawable;
@@ -33,7 +33,7 @@ public class MuteDrawable extends Drawable {
     private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
     private int alpha = 255;
     public MuteDrawable(Context context) {
-        baseDrawable = NimarkoIconResources.getStockDrawable(context, R.drawable.filled_sound_on).mutate();
+        baseDrawable = IconResources.getStockDrawable(context, R.drawable.filled_sound_on).mutate();
         packPaint.setColor(0xFFFFFFFF);
 
         strokePaint.setStyle(Paint.Style.STROKE);
@@ -57,9 +57,9 @@ public class MuteDrawable extends Drawable {
     public void draw(@NonNull Canvas canvas) {
         final Rect bounds = getBounds();
         final float muted = animatedMuted.set(this.muted);
-        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        final NimarkoIconResources.PreparedIcon soundOn = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_mute);
-        final NimarkoIconResources.PreparedIcon soundOff = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_unmute);
+        final IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        final IconResources.PreparedIcon soundOn = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_mute);
+        final IconResources.PreparedIcon soundOff = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.media_unmute);
         if (soundOn != null && soundOff != null) {
             final float size = Math.min(dp(24), Math.min(bounds.width(), bounds.height()));
             packIconRenderer.draw(canvas, soundOn, packPaint, bounds.exactCenterX(), bounds.exactCenterY(),

@@ -61,7 +61,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 @SuppressLint("ViewConstructor")
 public class ProfileActionsView extends View {
 
@@ -1259,8 +1259,8 @@ public class ProfileActionsView extends View {
         @SuppressLint("UseCompatLoadingForDrawables")
         public void updateDrawable(@RawRes int animatedRes, @DrawableRes int filledRes, @DrawableRes int outlineRes) {
             Resources resources = getResources();
-            long generation = resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            long generation = resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
             int densityDpi = resources.getDisplayMetrics().densityDpi;
             boolean sameResources = iconResources == resources && iconGeneration == generation && iconDensityDpi == densityDpi;
             boolean notification = animatedRes == R.raw.profile_muting || animatedRes == R.raw.profile_unmuting;
@@ -1274,9 +1274,9 @@ public class ProfileActionsView extends View {
                 targetOutline = ActionButton.VOICE_CHAT.outlineIcon;
             }
             boolean usePack = (notification || animatedRes == R.raw.profile_leave || animatedRes == R.raw.profile_voicechat)
-                    && resources instanceof NimarkoIconResources
-                    && (((NimarkoIconResources) resources).hasReplacement(targetFilled)
-                    || ((NimarkoIconResources) resources).hasReplacement(targetOutline));
+                    && resources instanceof IconResources
+                    && (((IconResources) resources).hasReplacement(targetFilled)
+                    || ((IconResources) resources).hasReplacement(targetOutline));
             float previousPackProgress = sameResources && packAnimationRes == animatedRes ? packProgress : 0f;
             cancelPackAnimation();
             if (drawableAnimated != null) {
@@ -1367,8 +1367,8 @@ public class ProfileActionsView extends View {
 
         private boolean hasCurrentIconResources(Resources resources) {
             return iconResources == resources && iconDensityDpi == resources.getDisplayMetrics().densityDpi
-                    && iconGeneration == (resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L);
+                    && iconGeneration == (resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L);
         }
 
         private Drawable resolvePackIcon(Resources resources, int res, int previousRes, Drawable previous, boolean sameResources) {

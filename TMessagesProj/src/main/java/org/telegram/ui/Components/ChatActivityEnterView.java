@@ -18,6 +18,7 @@ import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.ui.LaunchActivity.getLastFragment;
 
 import android.Manifest;
+import app.nimarkogram.messenger.media.MediaSendChoiceView;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -240,8 +241,8 @@ import java.util.Locale;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 import app.nimarkogram.messenger.utils.ui.MonetHelper;
 
 public class ChatActivityEnterView extends FrameLayout implements
@@ -262,6 +263,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     float emojiButtonAlpha = 1f;
     float emojiButtonPaddingScale = 1f;
     float emojiButtonPaddingAlpha = 1f;
+    private float emojiButtonPaddingTranslationX;
+    private float emojiSenderTransitionX;
     private boolean overrideKeyboardAnimation;
     private Runnable animationEndRunnable;
     private float attachLayoutTranslationX;
@@ -515,7 +518,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             textView = new SimpleTextView(context);
             addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
             setWillNotDraw(false);
-            closeDrawable = NimarkoIconResources.getStockDrawable(context, R.drawable.msg_mini_close_tooltip).mutate();
+            closeDrawable = IconResources.getStockDrawable(context, R.drawable.msg_mini_close_tooltip).mutate();
             closeDrawable.setBounds(0, 0, closeDrawable.getIntrinsicWidth(), closeDrawable.getIntrinsicHeight());
             setClipToPadding(false);
             setClipChildren(false);
@@ -710,6 +713,18 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean draftSearchWebpage;
     private long nimarkoMediaDraftGeneration;
 
+    private int nimarkoMediaSendChoice;
+    private String mediaSendChoiceDraft;
+    private int mediaSendChoiceAccount = -1;
+    private long mediaSendChoiceUserId;
+    private long mediaSendChoiceDialogId;
+    private long mediaSendChoiceTopicId;
+    private final Runnable mediaSendChoiceUpdate = () -> updateMediaSendChoice(true);
+    private MediaSendChoiceView mediaSendChoiceView;
+    private boolean mediaSendChoiceOpen;
+    private ValueAnimator mediaSendChoiceAnimator;
+    private float mediaSendChoiceProgress;
+    private int mediaSendChoiceHeight;
     private boolean separatedComposerLayout;
 
     private boolean isPaste;
@@ -790,6 +805,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private TLRPC.TL_document audioToSend;
     private String audioToSendPath;
     private MediaDataController.DraftVoice audioToSendDraft;
+    private java.util.concurrent.atomic.AtomicBoolean voiceDraftRestoreCancelled;
     private VoiceSendPreparation.Work pendingVoiceSend;
     private TLRPC.Document submittedVoiceSend;
     private MessageObject audioToSendMessageObject;
@@ -939,7 +955,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (delegate == null) {
             return;
         }
-        app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront = frontface;
+        app.nimarkogram.messenger.AppConfig.pendingRoundFront = frontface;
         delegate.needStartRecordVideo(0, true, 0, 0, 0, 0, 0);
         if (!recordingAudioVideo) {
             recordingAudioVideo = true;
@@ -961,7 +977,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // selection from there (nmUpdateCameraChooserDrag / nmCommitCameraChooser). No lift needed.
     private void nmShowRoundCameraChooser() {
         if (parentActivity == null) {
-            nmOpenRoundCamera(app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera != 1);
+            nmOpenRoundCamera(app.nimarkogram.messenger.AppConfig.videoMessagesCamera != 1);
             return;
         }
         // Rounded + dimmed exactly like the profile long-press menu (popup_fixed_alert bg + a rounded
@@ -1050,7 +1066,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
 
-        if (!NimarkoConfig.disableVibration) {
+        if (!AppConfig.disableVibration) {
             try {
                 anchor.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignore) {}
@@ -1066,7 +1082,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         nmChooserHover = hover;
         nmSetChooserItemHighlighted(nmChooserFront, hover == 0);
         nmSetChooserItemHighlighted(nmChooserRear, hover == 1);
-        if (hover != -1 && !NimarkoConfig.disableVibration) {
+        if (hover != -1 && !AppConfig.disableVibration) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignore) {}
@@ -1233,12 +1249,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // "slide to cancel" UI) starts only after the pick. Other modes record immediately.
                 final boolean upstreamRoundCamera2 = InstantCameraViewBase.isUsingCamera2Implementation();
 
-                if (!upstreamRoundCamera2 && app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera == 2) {
+                if (!upstreamRoundCamera2 && app.nimarkogram.messenger.AppConfig.videoMessagesCamera == 2) {
                     nmShowRoundCameraChooser();
                     return;
                 }
                 if (!upstreamRoundCamera2) {
-                    app.nimarkogram.messenger.NimarkoConfig.pendingRoundFront = app.nimarkogram.messenger.NimarkoConfig.videoMessagesCamera == 0;
+                    app.nimarkogram.messenger.AppConfig.pendingRoundFront = app.nimarkogram.messenger.AppConfig.videoMessagesCamera == 0;
                 }
                 if (upstreamRoundCamera2 || app.nimarkogram.messenger.camera.CameraXUtils.isCurrentCameraCameraX()) {
 
@@ -1649,7 +1665,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public void showTooltipIfNeed() {
-            if (NimarkoConfig.disableSendHints) {
+            if (AppConfig.disableSendHints) {
                 return;   // NimarkoGram: suppress the "slide up to lock" tooltip shown while holding the record button
             }
             if (SharedConfig.lockRecordAudioVideoHint < 3) {
@@ -1684,7 +1700,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         public void showOnceHint() {
             hideHintView();
             boolean left = isSideRecordingPauseOnLeft();
-            boolean inline = isInVideoMode && !NimarkoConfig.centerCameraControlButtons
+            boolean inline = isInVideoMode && !AppConfig.centerCameraControlButtons
                     && parentFragment != null && parentFragment.instantCameraView instanceof InstantCameraView
                     && getMeasuredWidth() >= dp(240);
             int hintMargin = inline ? 106 : 54;
@@ -1771,8 +1787,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         @Override
         protected void onDraw(Canvas canvas) {
             float sc;
-            boolean roundStyle = isInVideoMode && NimarkoConfig.cameraType == NimarkoConfig.CAMERA_X
-                    && NimarkoConfig.roundZoomScale;
+            boolean roundStyle = isInVideoMode && AppConfig.cameraType == AppConfig.CAMERA_X
+                    && AppConfig.roundZoomScale;
             if (roundControlStyle != roundStyle) {
                 roundControlStyle = roundStyle;
                 updateColors();
@@ -1796,11 +1812,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
 
-            int cx = getRecordingButtonCenter(this, recordingButtonCenter)
+            boolean buttonAnchored = getRecordingButtonCenter(this, recordingButtonCenter);
+            int cx = buttonAnchored
                     ? Math.round(recordingButtonCenter[0])
                     : getMeasuredWidth() - AndroidUtilities.dp2(26);
             float moveProgress = 1.0f - yAdd / dp(57);
-            final float multilinTooltipOffset = getMeasuredHeight() - dp(194);
+            final float multilinTooltipOffset = getMeasuredHeight() - dp(194)
+                    + (isStories && buttonAnchored ? recordingButtonCenter[1] - (getMeasuredHeight() - dp(24)) : 0f);
 
             float lockSize;
             float lockY;
@@ -2097,7 +2115,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     rectF.left, rectF.top - dpf2(36) - onceOffset, rectF.right, rectF.top - onceOffset
                 );
                 if (sideControlsProgress > 0f && getMeasuredWidth() >= dp(240)) {
-                    rectF.offset(dpf2(NimarkoConfig.cameraControlButtonsRight ? 48 : -48) * sideControlsProgress,
+                    rectF.offset(dpf2(AppConfig.cameraControlButtonsRight ? 48 : -48) * sideControlsProgress,
                             (lockY + dy - rectF.top) * sideControlsProgress);
                 }
                 if (onceHint != null) {
@@ -2443,7 +2461,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private final Matrix recordingButtonInverseMatrix = new Matrix();
 
     private boolean getRecordingButtonCenter(View overlay, float[] point) {
-        if (!separatedComposerLayout || audioVideoButtonContainer == null
+        if ((!separatedComposerLayout && !isStories) || audioVideoButtonContainer == null
                 || audioVideoButtonContainer.getWidth() == 0
                 || overlay.getParent() != sizeNotifierLayout) {
             return false;
@@ -2455,19 +2473,19 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private boolean getRoundRecordingControlsAnchor(View overlay, float[] point) {
-        if (NimarkoConfig.centerCameraControlButtons || parentFragment == null
+        if (AppConfig.centerCameraControlButtons || parentFragment == null
                 || !(parentFragment.instantCameraView instanceof InstantCameraView)
                 || overlay.getParent() != sizeNotifierLayout) return false;
         InstantCameraViewBase camera = parentFragment.instantCameraView;
         View buttons = camera.getButtonsLayout();
         if (buttons == null || buttons.getWidth() == 0 || camera.getWidth() < dp(160)) return false;
-        point[0] = NimarkoConfig.cameraControlButtonsRight ? dp(40) : camera.getWidth() - dp(40);
+        point[0] = AppConfig.cameraControlButtonsRight ? dp(40) : camera.getWidth() - dp(40);
         point[1] = buttons.getTop() + buttons.getHeight() / 2f;
         return mapRecordingPointToOverlay(camera, overlay, point);
     }
 
     private boolean isSideRecordingPauseOnLeft() {
-        return isInVideoMode && !NimarkoConfig.centerCameraControlButtons && NimarkoConfig.cameraControlButtonsRight
+        return isInVideoMode && !AppConfig.centerCameraControlButtons && AppConfig.cameraControlButtonsRight
                 && parentFragment != null && parentFragment.instantCameraView instanceof InstantCameraView;
     }
 
@@ -3398,7 +3416,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // Reuses the existing senderSelectView click pipeline rather than duplicating it:
         // updateSendAsButton would otherwise skip creating the view because forceHide is
         // set, so we lazily build it here and dispatch its click.
-        if (NimarkoConfig.hideSendAsChannel) {
+        if (AppConfig.hideSendAsChannel) {
             emojiButton.setOnLongClickListener(v -> {
                 if (delegate == null || delegate.getSendAsPeers() == null) {
                     return false;
@@ -3819,7 +3837,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                             }
                             // NimarkoGram (CG parity): respect disableVibration on the
                             // video<->voice mode switch inside the record button.
-                            if (!NimarkoConfig.disableVibration) {
+                            if (!AppConfig.disableVibration) {
                                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                             }
                             sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
@@ -4303,9 +4321,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
                 oldSendButton.setVisibility(View.GONE);
             }
-            if (paidMessagesPrice > 0 || isLiveComment) {
                 sendButton.setStarsPrice(paidMessagesPrice, 1);
-            }
             updateFieldRight(lastAttachVisible);
         }
         if (isLiveComment) {
@@ -4610,8 +4626,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public void setIcon(int resId, boolean animated) {
                 Resources resources = getContext().getResources();
-                long generation = resources instanceof NimarkoIconResources
-                        ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+                long generation = resources instanceof IconResources
+                        ? ((IconResources) resources).getReplacementGeneration() : -1L;
                 boolean sameResources = resources == iconResources && generation == iconGeneration
                         && resources.getDisplayMetrics().densityDpi == iconDensityDpi
                         && resources.getDisplayMetrics().density == iconDensity
@@ -4960,6 +4976,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         post(this::reconcileVoiceSend);
+        scheduleMediaSendChoiceUpdate();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        hideMediaSendChoice(false);
+        super.onDetachedFromWindow();
     }
 
     private boolean canShowVoiceSendOutcome() {
@@ -5072,6 +5095,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         millisecondsRecorded = 0;
     }
     private void resetRecordedState() {
+        cancelVoiceDraftRestore();
         cancelVoiceSend();
         final MediaController media = MediaController.getInstance();
         final long topicId = parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0;
@@ -5654,7 +5678,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private void startLockTransition() {
         AnimatorSet animatorSet = new AnimatorSet();
         // NimarkoGram (CG parity): suppress lock-slide haptic when disableVibration is on.
-        if (!NimarkoConfig.disableVibration) {
+        if (!AppConfig.disableVibration) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignored) {}
@@ -5689,6 +5713,15 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        if (mediaSendChoiceView != null && child == mediaSendChoiceView) {
+            int save = canvas.save();
+            try {
+                clipToComposer(canvas, this);
+                return super.drawChild(canvas, child, drawingTime);
+            } finally {
+                canvas.restoreToCount(save);
+            }
+        }
         boolean clip = child == topView || child == textFieldContainer;
         if (clip) {
             final float separatorY = getMeasuredHeight() - animatorInputFieldHeight.getFactor();
@@ -5875,7 +5908,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                             sendPopupWindow.dismiss();
                         }
                         // CG-parity: emit a haptic on the long-press that opens the translate target picker.
-                        if (!NimarkoConfig.disableVibration) {
+                        if (!AppConfig.disableVibration) {
                             performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP, android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                         }
                         app.nimarkogram.messenger.utils.text.Translator.showTranslationTargetSelector(getContext(), true, () -> {
@@ -5934,7 +5967,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             sendPopupWindow.dimBehind();
             sendButton.invalidate();
             // NimarkoGram (CG parity): suppress send-popup haptic when disableVibration is on.
-            if (!NimarkoConfig.disableVibration) {
+            if (!AppConfig.disableVibration) {
                 try {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignore) {}
@@ -6182,7 +6215,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageSendPreview.show();
 
         // NimarkoGram (CG parity): suppress message-send-preview haptic when disableVibration is on.
-        if (!NimarkoConfig.disableVibration) {
+        if (!AppConfig.disableVibration) {
             try {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
             } catch (Exception ignore) {}
@@ -6981,6 +7014,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public void onTextChanged(CharSequence charSequence, int start, int before, int count) {
                 ++nimarkoMediaDraftGeneration;
+                scheduleMediaSendChoiceUpdate();
                 if (ignorePrevTextChange) {
                     return;
                 }
@@ -7045,7 +7079,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     return;
                 }
 
-                if (NimarkoConfig.replacePunctuationMarks) {
+                if (AppConfig.replacePunctuationMarks) {
                     if (!isReplacing) {
                         long now = System.currentTimeMillis();
                         long elapsed = now - lastInputTime;
@@ -7157,7 +7191,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 checkIsEphemeralMessage(true);
             }
         });
-        if (NimarkoConfig.editTextSuggestionsFix) messageEditText.addTextChangedListener(new EditTextSuggestionsFix());
+        if (AppConfig.editTextSuggestionsFix) messageEditText.addTextChangedListener(new EditTextSuggestionsFix());
         messageEditText.setEnabled(messageEditTextEnabled);
         if (messageEditTextWatchers != null) {
             for (TextWatcher textWatcher : messageEditTextWatchers) {
@@ -8003,6 +8037,147 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public static final int DEFAULT_HEIGHT = 44;
 
+    private void scheduleMediaSendChoiceUpdate() {
+        removeCallbacks(mediaSendChoiceUpdate);
+        if (mediaSendChoiceView != null) mediaSendChoiceView.clearActions();
+        if (!destroyed && !isPaused) post(mediaSendChoiceUpdate);
+    }
+
+    private int getMediaSendChoice(CharSequence message) {
+        if (!mediaSendChoiceOpen || destroyed || isPaused || !isAttachedToWindow()
+                || (!AppConfig.mediaSendChoice && nimarkoMediaSendChoice == MediaSendChoiceView.LINK)
+                || parentFragment == null || parentFragment.isFinished || parentFragment.isPaused()
+                || parentFragment.getCurrentAccount() != currentAccount
+                || mediaSendChoiceAccount != currentAccount || mediaSendChoiceDialogId != dialog_id
+                || mediaSendChoiceTopicId != parentFragment.getTopicId()
+                || mediaSendChoiceUserId == 0
+                || mediaSendChoiceUserId != UserConfig.getInstance(currentAccount).getClientUserId()
+                || !TextUtils.equals(mediaSendChoiceDraft, message == null ? null : message.toString().trim())) return 0;
+        return nimarkoMediaSendChoice;
+    }
+
+    private void updateMediaSendChoice(boolean animated) {
+        removeCallbacks(mediaSendChoiceUpdate);
+        CharSequence message = messageEditText == null ? null : messageEditText.getTextToUse();
+        if (destroyed || isPaused || !isAttachedToWindow() || isStories || isLiveComment
+                || parentFragment == null || parentFragment.isFinished || parentFragment.isPaused()
+                || parentFragment.getCurrentAccount() != currentAccount
+                || editingMessageObject != null || richDraftActive || recordingAudioVideo
+                || audioToSend != null || videoToSendMessageObject != null
+                || !app.nimarkogram.messenger.media.MediaControllerExt.isSendChoiceEnabled(message)) {
+            mediaSendChoiceDraft = null;
+            nimarkoMediaSendChoice = 0;
+            hideMediaSendChoice(animated);
+            return;
+        }
+        app.nimarkogram.messenger.media.MediaDownloader.UrlMatch match =
+                app.nimarkogram.messenger.media.MediaDownloader.findUrl(message);
+        if (match == null) {
+            hideMediaSendChoice(animated);
+            return;
+        }
+        String draft = message.toString().trim();
+        long userId = UserConfig.getInstance(currentAccount).getClientUserId();
+        if (userId == 0) {
+            hideMediaSendChoice(false);
+            return;
+        }
+        if (!TextUtils.equals(mediaSendChoiceDraft, draft)
+                || mediaSendChoiceAccount != currentAccount || mediaSendChoiceUserId != userId
+                || mediaSendChoiceDialogId != dialog_id || mediaSendChoiceTopicId != parentFragment.getTopicId()) {
+            mediaSendChoiceDraft = draft;
+            mediaSendChoiceAccount = currentAccount;
+            mediaSendChoiceUserId = userId;
+            mediaSendChoiceDialogId = dialog_id;
+            mediaSendChoiceTopicId = parentFragment.getTopicId();
+            nimarkoMediaSendChoice = app.nimarkogram.messenger.media.MediaControllerExt.getLastSendChoice(match.platform);
+        }
+        if (!AppConfig.mediaSendChoice && nimarkoMediaSendChoice == MediaSendChoiceView.LINK) {
+            nimarkoMediaSendChoice = AppConfig.nimarkoMediaYtFmt == 1
+                    ? MediaSendChoiceView.AUDIO : MediaSendChoiceView.VIDEO;
+        }
+        if (mediaSendChoiceView == null) {
+            mediaSendChoiceView = new MediaSendChoiceView(getContext(), resourcesProvider);
+            addView(mediaSendChoiceView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT,
+                    LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT));
+        }
+        final long generation = nimarkoMediaDraftGeneration;
+        mediaSendChoiceView.bind(match.platform, nimarkoMediaSendChoice, AppConfig.mediaSendChoice, choice -> {
+            if (generation != nimarkoMediaDraftGeneration || messageEditText == null
+                    || getMediaSendChoice(messageEditText.getTextToUse()) == 0
+                    || (choice == MediaSendChoiceView.LINK && !AppConfig.mediaSendChoice)) return;
+            nimarkoMediaSendChoice = choice;
+            app.nimarkogram.messenger.media.MediaControllerExt.rememberSendChoice(match.platform, choice);
+            mediaSendChoiceView.setSelection(choice, true);
+        });
+        boolean opening = !mediaSendChoiceOpen;
+        mediaSendChoiceOpen = true;
+        mediaSendChoiceView.setVisibility(VISIBLE);
+        if (opening) animateMediaSendChoice(true, animated);
+    }
+
+    private void hideMediaSendChoice(boolean animated) {
+        removeCallbacks(mediaSendChoiceUpdate);
+        if (mediaSendChoiceView == null) return;
+        if (!mediaSendChoiceOpen && animated) return;
+        mediaSendChoiceOpen = false;
+        mediaSendChoiceView.clearActions();
+        animateMediaSendChoice(false, animated);
+    }
+
+    private void animateMediaSendChoice(boolean show, boolean animated) {
+        animated = animated && isAttachedToWindow() && SharedConfig.animationsEnabled();
+        if (mediaSendChoiceAnimator != null) {
+            ValueAnimator previous = mediaSendChoiceAnimator;
+            mediaSendChoiceAnimator = null;
+            previous.cancel();
+        }
+        float target = show ? 1f : 0f;
+        if (!animated) {
+            mediaSendChoiceProgress = target;
+            mediaSendChoiceView.setReveal(target);
+            mediaSendChoiceView.setVisibility(show ? VISIBLE : GONE);
+            requestLayout();
+            return;
+        }
+        ValueAnimator animator = ValueAnimator.ofFloat(mediaSendChoiceProgress, target);
+        mediaSendChoiceAnimator = animator;
+        animator.setDuration(200);
+        animator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        animator.addUpdateListener(value -> {
+            mediaSendChoiceProgress = (float) value.getAnimatedValue();
+            mediaSendChoiceView.setReveal(mediaSendChoiceProgress);
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (mediaSendChoiceAnimator != animation) return;
+                mediaSendChoiceAnimator = null;
+                if (!mediaSendChoiceOpen) mediaSendChoiceView.setVisibility(GONE);
+                requestLayout();
+            }
+        });
+        animator.start();
+    }
+
+    private void positionMediaSendChoice() {
+        if (mediaSendChoiceView == null || mediaSendChoiceView.getVisibility() == GONE) return;
+        mediaSendChoiceView.setTranslationY(getMeasuredHeight() - animatorInputFieldHeight.getFactor()
+                - mediaSendChoiceView.getMeasuredHeight());
+    }
+
+    private void updateMediaSendChoiceLayout() {
+        FrameLayout.LayoutParams fieldParams = (FrameLayout.LayoutParams) textFieldContainer.getLayoutParams();
+        FrameLayout.LayoutParams inputParams = (FrameLayout.LayoutParams) messageEditTextContainer.getLayoutParams();
+        FrameLayout.LayoutParams choiceParams = (FrameLayout.LayoutParams) mediaSendChoiceView.getLayoutParams();
+        int left = fieldParams.leftMargin + textFieldContainer.getPaddingLeft() + inputParams.leftMargin;
+        int right = fieldParams.rightMargin + textFieldContainer.getPaddingRight() + inputParams.rightMargin;
+        if (choiceParams.leftMargin != left || choiceParams.rightMargin != right) {
+            choiceParams.leftMargin = left;
+            choiceParams.rightMargin = right;
+            mediaSendChoiceView.setLayoutParams(choiceParams);
+        }
+    }
     private float resizeForTopViewLastProgress = -1f;
     private void resizeForTopView(float progress) {
         progress = Math.max(0f, Math.min(1f, progress));
@@ -8014,14 +8189,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         final int panelHeight = topView != null
                 ? Math.max(0, topView.getLayoutParams().height) : 0;
         final int animatedPanelHeight = Math.round(panelHeight * progress);
-        final int topMargin = animatedPanelHeight + dp(9); // prevent clipping
+        final int topMargin = animatedPanelHeight + mediaSendChoiceHeight + dp(9); // prevent clipping
         if (layoutParams.topMargin != topMargin) {
             layoutParams.topMargin = topMargin;
             textFieldContainer.setLayoutParams(layoutParams);
         }
 
         resizeForTopViewLastProgress = progress;
-        setMinimumHeight(dp(44) + animatedPanelHeight);
+        setMinimumHeight(dp(44) + animatedPanelHeight + mediaSendChoiceHeight);
         if (progress > 0f && stickersExpanded) {
             if (searchingType == 0) {
                 setStickersExpanded(false, true, false);
@@ -8032,6 +8207,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        hideMediaSendChoice(false);
+        saveVoiceDraftRegion();
+        cancelVoiceDraftRestore();
+        cancelPreSendTranslation();
         detachVoiceSend();
         cancelRestoredVoicePreviewReveal();
         if (audioToSend != null) MediaController.getInstance().cancelRecordingTrim(audioToSend);
@@ -8057,14 +8236,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (audioTimelineView != null) {
             audioTimelineView.destroy();
-        }
-        final MediaDataController.DraftVoice voiceDraft = MediaDataController.getInstance(currentAccount).getDraftVoice(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0);
-        if (audioTimelineView != null && audioToSend != null && voiceDraft != null && voiceDraft == audioToSendDraft
-                && TextUtils.equals(voiceDraft.path, audioToSendPath)
-                && (voiceDraft.id == 0 || voiceDraft.id == audioToSend.id)
-                && !VoiceSendPreparation.isPending(currentAccount, audioToSendPath)
-                && !VoiceSendPreparation.wasSubmitted(currentAccount, audioToSendPath)) {
-            MediaDataController.getInstance(currentAccount).setDraftVoiceRegion(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, audioTimelineView == null ? 0.0f : audioTimelineView.getAudioLeft(), audioTimelineView == null ? 1.0f : audioTimelineView.getAudioRight());
         }
         destroyed = true;
         nmDismissCameraChooser();
@@ -8185,6 +8356,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Runnable hideKeyboardRunnable;
 
     public void onPause() {
+        hideMediaSendChoice(false);
+        saveVoiceDraftRegion();
+        cancelVoiceDraftRestore();
         detachVoiceSend();
         cancelRestoredVoicePreviewReveal();
         if (audioToSend != null) MediaController.getInstance().cancelRecordingTrim(audioToSend);
@@ -8211,6 +8385,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void onResume(boolean restoreKeyboard) {
         isPaused = false;
+        scheduleMediaSendChoiceUpdate();
         reconcileVoiceSend();
         post(this::reconcileVoiceSend);
         if (hideKeyboardRunnable != null) {
@@ -8273,6 +8448,12 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void setDialogId(long id, int account) {
         if (dialog_id != id || currentAccount != account) {
+            hideMediaSendChoice(false);
+            mediaSendChoiceDraft = null;
+            nimarkoMediaSendChoice = 0;
+            saveVoiceDraftRegion();
+            cancelVoiceDraftRestore();
+            cancelPreSendTranslation();
             detachVoiceSend();
             ++nimarkoMediaDraftGeneration;
         }
@@ -8323,6 +8504,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (messageEditText != null) {
             updateSendAsButton(parentFragment != null && parentFragment.getFragmentBeginToShow());
         }
+        scheduleMediaSendChoiceUpdate();
     }
 
     public void setChatInfo(TLRPC.ChatFull chatInfo) {
@@ -8574,6 +8756,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private void hideRecordedAudioPanel(boolean wasSent) {
+        cancelVoiceDraftRestore();
         detachVoiceSend();
         if (recordPannelAnimation != null && recordPannelAnimation.isRunning()) {
             return;
@@ -9029,10 +9212,21 @@ public class ChatActivityEnterView extends FrameLayout implements
             // send but KEEP the editor text so the user can retry without
             // retyping (and without the URL leaking into the chat next to a
             // "still downloading" bulletin).
+            int mediaChoice = 0;
+            if (parentFragment instanceof ChatActivity && !isStories && !isLiveComment
+                    && app.nimarkogram.messenger.media.MediaControllerExt.isSendChoiceEnabled(message)) {
+                mediaChoice = getMediaSendChoice(message);
+                if (mediaChoice == 0) {
+                    updateMediaSendChoice(false);
+                    mediaChoice = getMediaSendChoice(message);
+                    if (mediaChoice == 0) return;
+                }
+            }
             if (parentFragment instanceof ChatActivity
-                    && app.nimarkogram.messenger.NimarkoConfig.nimarkoMediaAuto) {
-                app.nimarkogram.messenger.media.NimarkoMediaController.SendOptions sendOptions =
-                        new app.nimarkogram.messenger.media.NimarkoMediaController.SendOptions(
+                    && mediaChoice != MediaSendChoiceView.LINK
+                    && app.nimarkogram.messenger.AppConfig.nimarkoMediaAuto) {
+                app.nimarkogram.messenger.media.MediaControllerExt.SendOptions sendOptions =
+                        new app.nimarkogram.messenger.media.MediaControllerExt.SendOptions(
                                 notify,
                                 scheduleDate,
                                 scheduleRepeatPeriod,
@@ -9095,9 +9289,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                         draftDelegate.onMessageSend(null, notify, scheduleDate, scheduleRepeatPeriod, payStars);
                     }
                 };
-                int interceptResult = app.nimarkogram.messenger.media.NimarkoMediaController.getInstance()
-                        .interceptOutgoingMessage(message, draftHost, sendOptions, onAccepted);
-                if (interceptResult != app.nimarkogram.messenger.media.NimarkoMediaController.INTERCEPT_NONE) {
+                int interceptResult = app.nimarkogram.messenger.media.MediaControllerExt.getInstance()
+                        .interceptOutgoingMessage(message, draftHost, sendOptions, onAccepted,
+                                mediaChoice == MediaSendChoiceView.VIDEO ? "video"
+                                        : mediaChoice == MediaSendChoiceView.AUDIO ? "audio" : null);
+                if (interceptResult != app.nimarkogram.messenger.media.MediaControllerExt.INTERCEPT_NONE) {
 
                     return;
                 }
@@ -9171,7 +9367,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         // NimarkoGram: local premium emoji — don't block a non-premium sender;
         // the custom emoji are smuggled as tg://emoji?id= entities on send.
-        if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.canUse(currentAccount)) {
+        if (app.nimarkogram.messenger.utils.LocalEmoji.canUse(currentAccount)) {
             return false;
         }
         final boolean isPremium = UserConfig.getInstance(currentAccount).isPremium();
@@ -11955,6 +12151,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         boolean hadEditingMessage = editingMessageObject != null;
         editingMessageObject = messageObject;
         editingCaption = caption;
+        scheduleMediaSendChoiceUpdate();
         CharSequence textToSetWithKeyboard;
         if (editingMessageObject != null) {
             captionAbove = groupedMessages != null ? groupedMessages.captionAbove : messageObject.messageOwner.invert_media;
@@ -12397,6 +12594,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     public void updateColors() {
+        if (mediaSendChoiceView != null) mediaSendChoiceView.updateColors();
         if (messageSendPreview != null) {
             messageSendPreview.updateColors();
         }
@@ -12535,14 +12733,50 @@ public class ChatActivityEnterView extends FrameLayout implements
         resume.run();
     }
 
+    private void cancelVoiceDraftRestore() {
+        if (voiceDraftRestoreCancelled != null) {
+            voiceDraftRestoreCancelled.set(true);
+            voiceDraftRestoreCancelled = null;
+        }
+    }
+
+    private void saveVoiceDraftRegion() {
+        if (destroyed || audioTimelineView == null || audioToSend == null || parentFragment == null
+                || parentFragment.getCurrentAccount() != currentAccount || parentFragment.getDialogId() != dialog_id
+                || audioToSend.user_id == 0 || UserConfig.getInstance(currentAccount).getClientUserId() != audioToSend.user_id) return;
+        final long topicId = parentFragment.isTopic ? parentFragment.getTopicId() : 0;
+        final MediaDataController controller = MediaDataController.getInstance(currentAccount);
+        final MediaDataController.DraftVoice draft = controller.getDraftVoice(dialog_id, topicId);
+        if (draft != null && !draft.isDiscarded() && draft == audioToSendDraft
+                && TextUtils.equals(draft.path, audioToSendPath)
+                && (draft.id == 0 || draft.id == audioToSend.id)
+                && !VoiceSendPreparation.isPending(currentAccount, audioToSendPath)
+                && !VoiceSendPreparation.wasSubmitted(currentAccount, audioToSendPath)) {
+            controller.setDraftVoiceRegion(dialog_id, topicId, audioTimelineView.getAudioLeft(), audioTimelineView.getAudioRight());
+        }
+    }
     public void setVoiceDraft(MediaDataController.DraftVoice draft) {
-        if (draft == null || VoiceSendPreparation.wasSubmitted(currentAccount, draft.path)) return;
+        if (destroyed || draft == null || draft.isDiscarded() || VoiceSendPreparation.wasSubmitted(currentAccount, draft.path)) return;
+        saveVoiceDraftRegion();
+        cancelVoiceDraftRestore();
+        final java.util.concurrent.atomic.AtomicBoolean cancelled = voiceDraftRestoreCancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        final int account = currentAccount;
+        final long userId = UserConfig.getInstance(account).getClientUserId();
+        final long dialogId = dialog_id;
+        final long topicId = parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0;
+        final ChatActivity host = parentFragment;
         voiceOnce = draft.once;
         if (controlsView != null) {
             controlsView.periodDrawable.setValue(1, voiceOnce, true);
         }
         TL_stories.StoryItem storyItem = delegate != null ? delegate.getReplyToStory() : null;
-        MediaController.getInstance().prepareResumedRecording(currentAccount, draft, dialog_id, replyingMessageObject, getThreadMessage(), storyItem, recordingGuid, parentFragment != null ? parentFragment.getMessageChatSendParams() : null, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        MediaController.getInstance().prepareResumedRecording(currentAccount, draft, dialog_id, replyingMessageObject, getThreadMessage(), storyItem, recordingGuid, parentFragment != null ? parentFragment.getMessageChatSendParams() : null, getSendMonoForumPeerId(), getSendMessageSuggestionParams(),
+                () -> !cancelled.get() && !destroyed && currentAccount == account && dialog_id == dialogId
+                        && userId != 0 && UserConfig.getInstance(account).getClientUserId() == userId
+                        && parentFragment == host && host != null && !host.isFinished
+                        && host.getCurrentAccount() == account && host.getDialogId() == dialogId
+                        && (host.isTopic ? host.getTopicId() : 0) == topicId,
+                () -> !isPaused && host != null && !host.isPaused());
     }
 
     public void setSelection(int start) {
@@ -12859,6 +13093,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (richDraftPreview == null) return;
         final boolean wasActive = richDraftActive;
         richDraftActive = richDraftMessage != null && editingMessageObject == null;
+        scheduleMediaSendChoiceUpdate();
         if (richDraftActive) {
             cancelKeyboardRestoreForRichDraft();
             richDraftPreview.setResourcesProvider(resourcesProvider);
@@ -13225,7 +13460,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private void clipSenderToComposer(Canvas canvas) {
 
-        ViewParent parent = messageEditTextContainer.getParent();
+        clipToComposer(canvas, messageEditTextContainer);
+    }
+
+    private void clipToComposer(Canvas canvas, View target) {
+        ViewParent parent = target.getParent();
         while (parent instanceof View && !(parent instanceof ChatInputViewsContainer)) {
             parent = parent.getParent();
         }
@@ -13240,7 +13479,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         senderComposerClipMatrix.reset();
         host.transformMatrixToGlobal(senderComposerClipMatrix);
-        messageEditTextContainer.transformMatrixToLocal(senderComposerClipMatrix);
+        target.transformMatrixToLocal(senderComposerClipMatrix);
         senderComposerClipPath.transform(senderComposerClipMatrix);
         canvas.clipPath(senderComposerClipPath);
     }
@@ -13323,7 +13562,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         final float startX = senderSelectView.getTranslationX();
         final float endAlpha = visible ? 1f : 0f;
         final float endX = visible ? 0f : getSenderHiddenTranslationX();
-        final float startEmojiX = separatedComposerLayout ? 0f : emojiButton.getTranslationX();
+        final float startEmojiX = separatedComposerLayout ? 0f
+                : emojiButton.getTranslationX() - emojiButtonPaddingTranslationX;
 
         senderSelectView.setVisibility(VISIBLE);
         if (!animated || (Math.abs(startAlpha - endAlpha) < .001f
@@ -13383,7 +13623,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // but the send-as picker is still reachable via long-press on the emoji button.
         // We force-hide rather than early-return so the senderSelectView is still
         // constructed lazily and callable from the long-press handler.
-        if (NimarkoConfig.hideSendAsChannel) {
+        if (AppConfig.hideSendAsChannel) {
             forceHide = true;
         }
         createMessageEditText();
@@ -13554,8 +13794,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private void setEmojiSenderTransitionX(float translationX) {
+        emojiSenderTransitionX = translationX;
         if (!separatedComposerLayout) {
-            emojiButton.setTranslationX(translationX);
+            emojiButton.setTranslationX(emojiButtonPaddingTranslationX + translationX);
         }
     }
 
@@ -17004,6 +17245,21 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int choiceHeight = 0;
+        if (mediaSendChoiceView != null && mediaSendChoiceView.getVisibility() != GONE) {
+            updateMediaSendChoiceLayout();
+            FrameLayout.LayoutParams choiceParams = (FrameLayout.LayoutParams) mediaSendChoiceView.getLayoutParams();
+            mediaSendChoiceView.measure(MeasureSpec.makeMeasureSpec(
+                    Math.max(0, MeasureSpec.getSize(widthMeasureSpec) - getPaddingLeft() - getPaddingRight()
+                            - choiceParams.leftMargin - choiceParams.rightMargin), MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            choiceHeight = mediaSendChoiceView.getMeasuredHeight();
+        }
+        if (mediaSendChoiceHeight != choiceHeight) {
+            mediaSendChoiceHeight = choiceHeight;
+            resizeForTopViewLastProgress = -1f;
+            resizeForTopView(animatorTopViewVisibility.getFloatValue());
+        }
         int wasHeight = textFieldContainer.getMeasuredHeight();
         if (separatedComposerLayout) {
             int baseLeftMargin;
@@ -17166,6 +17422,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
+        positionMediaSendChoice();
         showVoiceSendOutcome();
         if (botCommandLastPosition != -1 && botCommandsMenuContainer != null) {
             LinearLayoutManager layoutManager = (LinearLayoutManager) botCommandsMenuContainer.listView.getLayoutManager();
@@ -17252,8 +17509,34 @@ public class ChatActivityEnterView extends FrameLayout implements
      */
     private int translatePreSendGeneration;
 
+    private AlertDialog translatePreSendDialog;
+    private app.nimarkogram.messenger.utils.text.BaseTranslator.TranslationTask translatePreSendTask;
+
+    private void cancelPreSendTranslation() {
+        ++translatePreSendGeneration;
+        if (translatePreSendTask != null) {
+            translatePreSendTask.cancel();
+            translatePreSendTask = null;
+        }
+        AlertDialog dialog = translatePreSendDialog;
+        translatePreSendDialog = null;
+        if (dialog != null) {
+            try {
+                dialog.dismiss();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+    }
     public void translatePreSend() {
-        final int generation = ++translatePreSendGeneration;
+        cancelPreSendTranslation();
+        if (destroyed || messageEditText == null) return;
+        final int generation = translatePreSendGeneration;
+        final int account = currentAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long dialogId = dialog_id;
+        final long topicId = parentFragment == null ? 0 : parentFragment.getTopicId();
+        if (owner == 0 || !UserConfig.getInstance(account).isClientActivated()) return;
         final CharSequence source = new SpannableStringBuilder(messageEditText.getText());
         final String sourcePlain = source.toString();
         final TLRPC.TL_textWithEntities sourceWithEntities = new TLRPC.TL_textWithEntities();
@@ -17261,31 +17544,36 @@ public class ChatActivityEnterView extends FrameLayout implements
         sourceWithEntities.entities.addAll(MediaDataController.getInstance(currentAccount).getEntities(entitySource, true));
         sourceWithEntities.text = entitySource[0].toString();
         final AlertDialog progressDialog = new AlertDialog(getContext(), AlertDialog.ALERT_TYPE_SPINNER);
+        translatePreSendDialog = progressDialog;
+        progressDialog.setOnCancelListener(dialog -> {
+            if (generation == translatePreSendGeneration) cancelPreSendTranslation();
+        });
         AndroidUtilities.runOnUIThread(() -> {
+            if (destroyed || generation != translatePreSendGeneration) return;
             try {
                 progressDialog.show();
             } catch (Exception e) {
                 FileLog.e(e);
             }
         });
-        app.nimarkogram.messenger.utils.text.Translator.translate(sourceWithEntities, true, currentAccount, (error, text) -> {
-            if (error != null) {
+        final app.nimarkogram.messenger.utils.text.BaseTranslator.TranslationTask task =
+                new app.nimarkogram.messenger.utils.text.BaseTranslator.TranslationTask(account, owner);
+        translatePreSendTask = task;
+        app.nimarkogram.messenger.utils.text.Translator.translate(sourceWithEntities, true, account, task, (error, text) -> {
                 AndroidUtilities.runOnUIThread(() -> {
+                if (translatePreSendTask == task) translatePreSendTask = null;
+                if (translatePreSendDialog == progressDialog) translatePreSendDialog = null;
                     try {
                         if (progressDialog.isShowing()) progressDialog.dismiss();
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
-                });
-                return;
-            }
-            AndroidUtilities.runOnUIThread(() -> {
-                try {
-                    if (progressDialog.isShowing()) progressDialog.dismiss();
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-                if (generation != translatePreSendGeneration
+                if (error != null || destroyed || generation != translatePreSendGeneration
+                        || currentAccount != account || dialog_id != dialogId
+                        || (parentFragment == null ? 0 : parentFragment.getTopicId()) != topicId
+                        || !UserConfig.getInstance(account).isClientActivated()
+                        || UserConfig.getInstance(account).getClientUserId() != owner
+                        || messageEditText == null
                         || !TextUtils.equals(messageEditText.getText(), sourcePlain)) {
                     return;
                 }
@@ -17351,6 +17639,28 @@ public class ChatActivityEnterView extends FrameLayout implements
         return paint != null ? paint : Theme.getThemePaint(paintKey);
     }
 
+    public void setStoryControlsPosition(float centerY, float keyboardProgress) {
+        if (!isStories) return;
+        alignStoryControl(sendButtonContainer, centerY, keyboardProgress);
+        alignStoryControl(emojiButton, centerY, keyboardProgress);
+        alignStoryControl(recordPanel, centerY, keyboardProgress);
+        alignStoryControl(recordedAudioPanel, centerY, keyboardProgress);
+    }
+
+    private void alignStoryControl(View control, float centerY, float keyboardProgress) {
+        if (control == null || control.getMeasuredHeight() == 0) return;
+        float controlCenter = control.getTop() + control.getMeasuredHeight() / 2f;
+        android.view.ViewParent parent = control.getParent();
+        while (parent instanceof View && parent != this) {
+            View view = (View) parent;
+            controlCenter += view.getTop() + view.getTranslationY() - view.getScrollY();
+            parent = view.getParent();
+        }
+        if (parent == this) {
+            control.setTranslationY((centerY - controlCenter) * (1f - Math.max(0f, Math.min(1f, keyboardProgress))));
+        }
+    }
+
     public void setHorizontalPadding(float leftPadding, float rightPadding, float progress, boolean allowShare) {
         leftPadding *= (1f - progress);
         rightPadding *= (1f - progress);
@@ -17358,7 +17668,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         emojiButtonPaddingScale = s;
         emojiButtonPaddingAlpha = progress;
         updateEmojiButtonParams();
-        emojiButton.setTranslationX(separatedComposerLayout ? rightPadding : -leftPadding);
+        emojiButtonPaddingTranslationX = separatedComposerLayout ? rightPadding : -leftPadding;
+        emojiButton.setTranslationX(emojiButtonPaddingTranslationX
+                + (separatedComposerLayout ? 0f : emojiSenderTransitionX));
         messageTextPaddingTranslationX = -leftPadding - (messageEditText == null ? 0 : dp(40) + (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE ? dp(18) : 0)) * (1f - progress);
         if (recordDeleteImageView != null) {
             if (separatedComposerLayout && recordedAudioPanel != null) {
@@ -17651,8 +17963,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         private void updateIconDrawables() {
             Resources resources = getContext().getResources();
-            long generation = resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            long generation = resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
             int density = resources.getDisplayMetrics().densityDpi;
             Configuration configuration = resources.getConfiguration();
             if (drawable != null && loadedIconResourceId == resId && iconResources == resources
@@ -17661,8 +17973,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return;
             }
             customSendIcon = resId == R.drawable.send_plane_24
-                    && resources instanceof NimarkoIconResources
-                    && ((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_send);
+                    && resources instanceof IconResources
+                    && ((IconResources) resources).hasReplacement(R.drawable.ic_send);
             int iconId = customSendIcon ? R.drawable.ic_send : resId;
             drawable = loadSendIcon(iconId);
             inactiveDrawable = loadSendIcon(iconId);
@@ -17865,10 +18177,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         private float getPlanePressProgress() {
-            int selection = iconResources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) iconResources).getAppliedSelection() : NimarkoConfig.ICON_REPLACE_NONE;
-            boolean enabled = customSendIcon && (selection == NimarkoConfig.ICON_REPLACE_SOLAR
-                    || selection == NimarkoConfig.ICON_REPLACE_PLUMPY)
+            int selection = iconResources instanceof IconResources
+                    ? ((IconResources) iconResources).getAppliedSelection() : AppConfig.ICON_REPLACE_NONE;
+            boolean enabled = customSendIcon && (selection == AppConfig.ICON_REPLACE_SOLAR
+                    || selection == AppConfig.ICON_REPLACE_PLUMPY)
                     && isAttachedToWindow() && SharedConfig.animationsEnabled()
                     && !AndroidUtilities.isAccessibilityTouchExplorationEnabled()
                     && (Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled()
@@ -17882,11 +18194,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         private void drawSendIcon(Canvas canvas, Drawable icon, float press) {
             float opticalScale = 1f;
-            if (isNewDesignSendButton && customSendIcon && iconResources instanceof NimarkoIconResources) {
-                switch (((NimarkoIconResources) iconResources).getAppliedSelection()) {
-                    case NimarkoConfig.ICON_REPLACE_SOLAR: opticalScale = 1.10f; break;
-                    case NimarkoConfig.ICON_REPLACE_PLUMPY: opticalScale = 1.14f; break;
-                    case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS:
+            if (isNewDesignSendButton && customSendIcon && iconResources instanceof IconResources) {
+                switch (((IconResources) iconResources).getAppliedSelection()) {
+                    case AppConfig.ICON_REPLACE_SOLAR: opticalScale = 1.10f; break;
+                    case AppConfig.ICON_REPLACE_PLUMPY: opticalScale = 1.14f; break;
+                    case AppConfig.ICON_REPLACE_LIQUID_GLASS:
                         opticalScale = ChatActivityEnterViewAnimatedIconView.LIQUID_SEND_ARTWORK_FRACTION * (38f / 24f);
                         break;
                 }
@@ -18018,7 +18330,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 canvas.clipPath(path);
                 if (loadingShown > 0) {
-                    loadingPaint.setColor(fillContentColor);
+                    loadingPaint.setColor(fillIconColor);
                     loadingPaint.setAlpha((int) (0xFF * loadingShown));
                     final float R = dp(8.66f);
                     AndroidUtilities.rectTmp.set(right - w / 2.0f - R, cy - R, right - w / 2.0f + R, cy + R);
@@ -18184,6 +18496,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         private boolean drawableThemeDark;
         private boolean drawableColorsInitialized;
         private int fillContentColor = Color.WHITE;
+        private int fillIconColor = Color.WHITE;
         public void updateColors() {
             updateIconDrawables();
             int fillColor = Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider);
@@ -18193,8 +18506,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 fillColor = ColorUtils.blendARGB(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), accentColor, 0.12f);
             }
             boolean monetFilled = isNewDesignSendButton && MonetHelper.isActiveMonetTheme();
-            int color = packSurface ? MonetHelper.ensureReadableForeground(accentColor, fillColor) : isNewDesignSendButton
-                    ? MonetHelper.ensureReadableForeground(MonetHelper.getOnPrimaryColor(Color.WHITE), fillColor)
+            int color = packSurface ? MonetHelper.ensureReadableIconForeground(accentColor, fillColor) : isNewDesignSendButton
+                    ? MonetHelper.ensureReadableIconForeground(MonetHelper.getOnPrimaryColor(Color.WHITE), fillColor)
                     : fillColor;
             int c = monetFilled || packSurface ? color : Theme.getColor(Theme.key_glass_defaultIcon, resourcesProvider);
             int inactiveColor = Color.argb(0xb4, Color.red(c), Color.green(c), Color.blue(c));
@@ -18202,9 +18515,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (packSurface) {
                 inverseColor = color;
             } else if (monetFilled) {
-                inverseColor = MonetHelper.ensureReadableForeground(inverseColor, fillColor);
+                inverseColor = MonetHelper.ensureReadableIconForeground(inverseColor, fillColor);
             }
-            int nextFillContentColor = monetFilled || packSurface ? color : Color.WHITE;
+            fillIconColor = monetFilled || packSurface ? color : Color.WHITE;
+            int nextFillContentColor = monetFilled || packSurface
+                    ? MonetHelper.ensureReadableForeground(color, fillColor) : Color.WHITE;
             if (fillContentColor != nextFillContentColor) {
                 fillContentColor = nextFillContentColor;
                 priceText.setTextColor(fillContentColor);
@@ -18629,8 +18944,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     private void checkUi_TopViewVisibility() {
         final float visibility = animatorTopViewVisibility.getFloatValue();
 
+        positionMediaSendChoice();
         if (topView != null) {
-            final float y = getMeasuredHeight() - animatorInputFieldHeight.getFactor();
+            final float y = getMeasuredHeight() - animatorInputFieldHeight.getFactor() - mediaSendChoiceHeight;
 
             topView.setTranslationY(y - topView.getMeasuredHeight() * visibility);
             // The floating composer contour already grows/shrinks with this
@@ -18653,7 +18969,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             (animatorTopViewVisibility.getValue() ? 1 : 0):
             animatorTopViewVisibility.getFloatValue();
 
-        return fieldHeight + (topView != null ? topView.getMeasuredHeight() : 0) * topViewVisibility;
+        return fieldHeight + mediaSendChoiceHeight
+                + (topView != null ? topView.getMeasuredHeight() : 0) * topViewVisibility;
     }
 
     private float currentIslandTotalHeight;

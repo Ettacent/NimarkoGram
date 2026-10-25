@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -176,7 +178,7 @@ public class NotificationsCheckCell extends FrameLayout {
         textView.setText(text);
         if (imageView != null) {
             imageView.setImageResource(iconResId);
-            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
+            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
         }
         checkBox.setChecked(checked, iconType, animationsEnabled);
         setMultiline(multiline);

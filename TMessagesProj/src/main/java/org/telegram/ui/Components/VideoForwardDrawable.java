@@ -16,7 +16,7 @@ import org.telegram.messenger.LocaleController;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class VideoForwardDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -137,8 +137,8 @@ public class VideoForwardDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon play = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_play);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon play = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_play);
         android.graphics.Rect rect = getBounds();
 
         int x = rect.left + (rect.width() - getIntrinsicWidth()) / 2;
@@ -282,7 +282,7 @@ public class VideoForwardDrawable extends Drawable {
         }
     }
 
-    private void drawPlayGlyph(Canvas canvas, NimarkoIconResources.PreparedIcon play) {
+    private void drawPlayGlyph(Canvas canvas, IconResources.PreparedIcon play) {
         if (play == null) {
             canvas.drawPath(path1, paint);
         } else {

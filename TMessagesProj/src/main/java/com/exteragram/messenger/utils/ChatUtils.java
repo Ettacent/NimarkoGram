@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package com.exteragram.messenger.utils;
 
 import org.telegram.messenger.MessageObject;
@@ -26,7 +28,7 @@ public final class ChatUtils {
     }
 
     public CharSequence getMessageText(MessageObject selectedObject, MessageObject.GroupedMessages selectedObjectGroup) {
-        return app.nimarkogram.messenger.utils.chats.NimarkoChatHelper.getInstance(account)
+        return app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(account)
                 .getMessageText(selectedObject, selectedObjectGroup);
     }
 }

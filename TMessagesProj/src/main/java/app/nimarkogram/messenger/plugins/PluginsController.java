@@ -2,8 +2,8 @@
 
 package app.nimarkogram.messenger.plugins;
 
-import app.nimarkogram.messenger.banners.NimarkoBannerController;
-import app.nimarkogram.messenger.media.NimarkoMediaController;
+import app.nimarkogram.messenger.banners.BannerController;
+import app.nimarkogram.messenger.media.MediaControllerExt;
 import app.nimarkogram.messenger.plugins.intents.IntentsController;
 import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
 import app.nimarkogram.messenger.plugins.utils.PluginsWatchdog;
@@ -16,7 +16,7 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import com.chaquo.python.PyObject;
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.hooks.EventHookRecord;
 import app.nimarkogram.messenger.plugins.hooks.HookRecord;
 import app.nimarkogram.messenger.plugins.hooks.MenuItemRecord;
@@ -78,6 +78,12 @@ public class PluginsController implements PluginsHooks {
     private final PluginsWatchdog watchdog =
             new PluginsWatchdog(this);
     private final Object controllerLifecycleLock = new Object();
+    private final Object appLifecycleLock = new Object();
+    private boolean appResumed;
+    private long appLifecycleGeneration;
+    private long deliveredStartEpoch = -1;
+    private long deliveredResumeGeneration = -1;
+    private long deliveredResumeEpoch = -1;
     private final ArrayList<Runnable> shutdownCompletionCallbacks =
             new ArrayList<>();
     private final ArrayList<Runnable> initializationCompletionCallbacks =
@@ -102,7 +108,7 @@ public class PluginsController implements PluginsHooks {
     public PluginsWatchdog getWatchdog() { return watchdog; }
 
     static {
-        
+
         engines.put(PluginsConstants.PYTHON, new com.exteragram.messenger.plugins.PythonPluginsEngine());
     }
 
@@ -146,7 +152,7 @@ public class PluginsController implements PluginsHooks {
     private final Object hooksCacheLock = new Object();
     private volatile boolean hooksCacheDirty = true;
     public SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("plugin_settings", 0);
-    
+
     private final Set<String> enablingInProgress =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
 
@@ -230,7 +236,7 @@ public class PluginsController implements PluginsHooks {
     private final AtomicLong nextRuntimeInstanceId = new AtomicLong();
     private final ConcurrentHashMap<String, RuntimeSlot> currentRuntimeByPlugin =
             new ConcurrentHashMap<>();
-     
+
     private final ConcurrentHashMap<PluginRuntimeToken, RuntimeSlot> runtimeSlotsByToken =
             new ConcurrentHashMap<>();
     private static final int MAX_RETAINED_RUNTIME_SCOPE_DEPTH = 32;
@@ -279,15 +285,15 @@ public class PluginsController implements PluginsHooks {
             return Objects.hash(pluginId, generation);
         }
     }
-     
+
     private final ThreadLocal<PluginInitializationToken> initializationPermit = new ThreadLocal<>();
-     
+
     private final ThreadLocal<PluginRuntimeToken> pluginUnloadPermit =
             new ThreadLocal<>();
-     
+
     private final ConcurrentHashMap<PluginInitializationToken, AtomicInteger>
             activePluginInitializations = new ConcurrentHashMap<>();
-    
+
     private final ConcurrentHashMap<String, Boolean> pendingToggleState =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<PendingToggleCallback>>
@@ -295,7 +301,7 @@ public class PluginsController implements PluginsHooks {
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> toggleGenerations = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> toggleGenerationLocks = new ConcurrentHashMap<>();
-     
+
     private final ConcurrentHashMap<String, Integer> runtimeEpochs = new ConcurrentHashMap<>();
 
     private static final class PendingToggleCallback {
@@ -317,9 +323,9 @@ public class PluginsController implements PluginsHooks {
 
     private static final class PluginCleanup {
         final String pluginId;
-         
+
         final PluginRuntimeToken runtimeToken;
-         
+
         final PluginRuntimeToken quiescenceToken;
         final List<HookRecord> detachedHooks;
         final boolean settingsDetached;
@@ -466,7 +472,7 @@ public class PluginsController implements PluginsHooks {
                 runtimeScopes.get().push(token);
                 return true;
             }
-            if (NimarkoConfig.pluginsSafeMode) return false;
+            if (AppConfig.pluginsSafeMode) return false;
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || slot.state == RuntimeState.REVOKED
                     || !slot.token.equals(token)
@@ -558,7 +564,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public boolean isPluginRuntimeCurrent(PluginRuntimeToken token) {
-        if (token == null || NimarkoConfig.pluginsSafeMode) return false;
+        if (token == null || AppConfig.pluginsSafeMode) return false;
         synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             return slot != null
@@ -580,7 +586,7 @@ public class PluginsController implements PluginsHooks {
 
     public boolean registerRuntimeCallbackHolder(
             PluginRuntimeToken token, RuntimeCallbackHolder holder) {
-        if (token == null || holder == null || NimarkoConfig.pluginsSafeMode) {
+        if (token == null || holder == null || AppConfig.pluginsSafeMode) {
             return false;
         }
         synchronized (generationLock(token.pluginId)) {
@@ -601,7 +607,7 @@ public class PluginsController implements PluginsHooks {
 
     public int deferRuntimeCallback(
             PluginRuntimeToken token, RuntimeCallbackHolder holder) {
-        if (token == null || holder == null || NimarkoConfig.pluginsSafeMode) {
+        if (token == null || holder == null || AppConfig.pluginsSafeMode) {
             return RUNTIME_TASK_DROP;
         }
         synchronized (generationLock(token.pluginId)) {
@@ -641,7 +647,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public int getPluginRuntimeTaskDecision(PluginRuntimeToken token) {
-        if (token == null || NimarkoConfig.pluginsSafeMode) return RUNTIME_TASK_DROP;
+        if (token == null || AppConfig.pluginsSafeMode) return RUNTIME_TASK_DROP;
         synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || !slot.token.equals(token)
@@ -766,14 +772,14 @@ public class PluginsController implements PluginsHooks {
     }
 
     public boolean isPluginEnableRequested(String pluginId, int generation) {
-        if (TextUtils.isEmpty(pluginId) || NimarkoConfig.pluginsSafeMode) return false;
+        if (TextUtils.isEmpty(pluginId) || AppConfig.pluginsSafeMode) return false;
         synchronized (generationLock(pluginId)) {
             return isPluginEnableRequestedLocked(pluginId, generation);
         }
     }
 
     private boolean isPluginEnableRequestedLocked(String pluginId, int generation) {
-        if (NimarkoConfig.pluginsSafeMode
+        if (AppConfig.pluginsSafeMode
                 || toggleGenerations.getOrDefault(pluginId, 0) != generation) {
             return false;
         }
@@ -924,14 +930,14 @@ public class PluginsController implements PluginsHooks {
     }
 
     public boolean canPluginRegisterRuntime(String pluginId) {
-        if (TextUtils.isEmpty(pluginId) || NimarkoConfig.pluginsSafeMode) return false;
+        if (TextUtils.isEmpty(pluginId) || AppConfig.pluginsSafeMode) return false;
         synchronized (generationLock(pluginId)) {
             return canPluginRegisterRuntimeLocked(pluginId);
         }
     }
 
     private boolean canPluginRegisterRuntimeLocked(String pluginId) {
-        if (NimarkoConfig.pluginsSafeMode) return false;
+        if (AppConfig.pluginsSafeMode) return false;
         Deque<PluginRuntimeToken> stack = runtimeScopes.get();
         PluginRuntimeToken scoped = stack.peek();
         if (scoped != null) {
@@ -943,7 +949,7 @@ public class PluginsController implements PluginsHooks {
                     && toggleGenerations.getOrDefault(pluginId, 0) == scoped.generation
                     && isPluginEnableRequestedLocked(pluginId, scoped.generation);
         }
-        
+
         PluginInitializationToken permit = initializationPermit.get();
         if (permit != null && Objects.equals(permit.pluginId, pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(pluginId);
@@ -952,7 +958,7 @@ public class PluginsController implements PluginsHooks {
                     && slot.token.generation == permit.generation
                     && isPluginEnableRequestedLocked(pluginId, permit.generation);
         }
-        
+
         if (currentRuntimeByPlugin.containsKey(pluginId)) {
             return false;
         }
@@ -987,7 +993,7 @@ public class PluginsController implements PluginsHooks {
         final int cancellationGeneration;
         final PluginCleanup cleanup;
         synchronized (generationLock(pluginId)) {
-            
+
             if (toggleGenerations.getOrDefault(pluginId, 0) != generation) return -1;
             if (persistDisabled) {
                 cancellationGeneration = generation + 1;
@@ -996,7 +1002,7 @@ public class PluginsController implements PluginsHooks {
                     pendingToggleState.put(pluginId, false);
                 }
             } else {
-                
+
                 cancellationGeneration = generation;
             }
             enablingInProgress.remove(pluginId);
@@ -1117,7 +1123,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public String attributePluginFromCrashStack(Thread thread, Throwable t) {
-        
+
         return watchdog.getCrashingPluginId(thread, t);
     }
 
@@ -1126,7 +1132,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public static boolean isPluginEngineAvailable() {
-        if (isPluginEngineSupported() && NimarkoConfig.pluginsEngine && !NimarkoConfig.pluginsSafeMode) {
+        if (isPluginEngineSupported() && AppConfig.pluginsEngine && !AppConfig.pluginsSafeMode) {
             for (PluginsEngine pluginsEngine : engines.values()) {
                 if (pluginsEngine != null) {
                     try {
@@ -1176,7 +1182,7 @@ public class PluginsController implements PluginsHooks {
         if (TextUtils.isEmpty(str) || (lastFragment = LaunchActivity.getLastFragment()) == null) {
             return;
         }
-        if (!NimarkoConfig.pluginsEngine) {
+        if (!AppConfig.pluginsEngine) {
             BulletinFactory.of(lastFragment).createSimpleBulletin(R.raw.error, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginEngineNotEnabled, str)), LocaleController.getString(R.string.Enable), 2750, () -> lastFragment.presentFragment(new PluginsActivity())).show();
             return;
         }
@@ -1185,7 +1191,7 @@ public class PluginsController implements PluginsHooks {
             BulletinFactory.of(lastFragment).createEmojiBulletin("🤷\u200d♂️", AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginNotFound, str)).toString()).show();
             return;
         }
-        
+
         if (!plugin.isEnabled()) {
             BulletinFactory.of(lastFragment).createSimpleBulletin(R.raw.info,
                     AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NM_PluginIsDisabled, plugin.getName()))).show();
@@ -1236,14 +1242,14 @@ public class PluginsController implements PluginsHooks {
     }
 
     public static boolean isPluginPinned(String str) {
-        return !TextUtils.isEmpty(str) && NimarkoConfig.isPluginPinned(str);
+        return !TextUtils.isEmpty(str) && AppConfig.isPluginPinned(str);
     }
 
     public static void setPluginPinned(String str, boolean z) {
         if (TextUtils.isEmpty(str)) {
             return;
         }
-        NimarkoConfig.setPluginPinned(str, z);
+        AppConfig.setPluginPinned(str, z);
     }
 
     private DispatchQueue getOrCreatePluginsQueue() {
@@ -1266,7 +1272,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void init(final boolean startWithSafeMode, final Runnable runnable) {
-        if (!isPluginEngineSupported() || !NimarkoConfig.pluginsEngine) {
+        if (!isPluginEngineSupported() || !AppConfig.pluginsEngine) {
             if (runnable != null) {
                 runnable.run();
             }
@@ -1407,7 +1413,7 @@ public class PluginsController implements PluginsHooks {
             }
             if (manual) {
                 PluginCrashReports.setSafeModeReason("manual");
-                NimarkoConfig.setPluginsSafeMode(true);
+                AppConfig.setPluginsSafeMode(true);
             }
             if (!TextUtils.isEmpty(attributedId)) {
                 if (nativeCorrelation) PluginCrashReports.recordLoadInterruption(attributedId, loadStartedAt);
@@ -1424,7 +1430,7 @@ public class PluginsController implements PluginsHooks {
         } catch (Exception failure) {
             FileLog.e("Plugin recovery state could not be saved", failure);
             PluginCrashReports.setSafeModeReason("recovery_failed");
-            NimarkoConfig.setPluginsSafeMode(true);
+            AppConfig.setPluginsSafeMode(true);
         }
     }
 
@@ -1439,7 +1445,7 @@ public class PluginsController implements PluginsHooks {
         }
         try {
         NativeCrashHandler.schedulePreviousExitDiagnostics();
-        
+
         try {
             ClassProxy.setMvelEvaluator((expression, context) -> {
                 try {
@@ -1452,7 +1458,7 @@ public class PluginsController implements PluginsHooks {
         } catch (Throwable t) {
             FileLog.e("nimarko: ClassProxy.setMvelEvaluator wiring failed", t);
         }
-        
+
         if (!Utilities.pluginsQueue.isAlive()) {
             Utilities.pluginsQueue = new DispatchQueue("pluginsQueue");
         }
@@ -1460,17 +1466,17 @@ public class PluginsController implements PluginsHooks {
         if (this.preferences == null) {
             this.preferences = ApplicationLoader.applicationContext.getSharedPreferences("plugin_settings", 0);
         }
-        
+
         PythonPluginsEngine.recoverInterruptedPluginUpdates(this);
 
         recoverPluginSafetyState(startWithSafeMode);
-        if (NimarkoConfig.pluginsSafeMode) {
+        if (AppConfig.pluginsSafeMode) {
             AndroidUtilities.runOnUIThread(() -> {
                 BaseFragment fragment = LaunchActivity.getLastFragment();
                 if (fragment != null) new SafeModeBottomSheet(fragment).show();
             }, 800L);
         }
-        
+
         File file = new File(ApplicationLoader.getFilesDirFixed(), PluginsConstants.PLUGINS);
         this.pluginsDir = file;
         if (!file.exists()) {
@@ -1491,7 +1497,7 @@ public class PluginsController implements PluginsHooks {
             finishInitialization.run();
             return;
         }
-        
+
         for (PluginsEngine engine : engineSnapshot) {
             AtomicBoolean engineCompleted = new AtomicBoolean(false);
             Runnable engineDone = () -> {
@@ -1562,9 +1568,9 @@ public class PluginsController implements PluginsHooks {
         }
         if (!success) {
             PluginCrashReports.setSafeModeReason(reason);
-            NimarkoConfig.setPluginsSafeMode(true);
+            AppConfig.setPluginsSafeMode(true);
         }
-        
+
         try {
             watchdog.start();
         } catch (Throwable th) {
@@ -1578,6 +1584,7 @@ public class PluginsController implements PluginsHooks {
                         completionFailure);
             }
         }
+        if (success) reconcileAppLifecycle();
         return true;
     }
 
@@ -1622,7 +1629,7 @@ public class PluginsController implements PluginsHooks {
             }
             FileLog.e("nimarko: plugin engine shutdown timed out");
             synchronized (controllerLifecycleLock) {
-                
+
                 shutdownRequiresProcessRestart = true;
             }
             finishControllerShutdown();
@@ -1635,7 +1642,7 @@ public class PluginsController implements PluginsHooks {
             AndroidUtilities.runOnUIThread(
                     this::finishControllerShutdown);
         };
-        
+
         AndroidUtilities.runOnUIThread(
                 timeout, ENGINE_SHUTDOWN_TIMEOUT_MS);
         if (engineSnapshot.isEmpty()) {
@@ -1765,7 +1772,7 @@ public class PluginsController implements PluginsHooks {
             for (PendingToggleCallback pending : callbacks) {
                 if (pending == null || pending.callback == null) continue;
                 try {
-                    
+
                     pending.callback.run(null);
                 } catch (Throwable callbackFailure) {
                     FileLog.e("Plugin lifecycle callback failed",
@@ -1792,7 +1799,7 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void restart() {
-        restart(NimarkoConfig.pluginsSafeMode);
+        restart(AppConfig.pluginsSafeMode);
     }
 
     public void restart(final boolean startWithSafeMode) {
@@ -1826,7 +1833,7 @@ public class PluginsController implements PluginsHooks {
                                 ApplicationLoader.applicationContext);
                 return;
             }
-            if (NimarkoConfig.pluginsEngine) {
+            if (AppConfig.pluginsEngine) {
                 init(startWithSafeMode, null);
             }
         });
@@ -1866,7 +1873,7 @@ public class PluginsController implements PluginsHooks {
             });
             return;
         }
-        
+
         if (z && "NimarkoMedia".equals(str)) {
             final int specialGeneration;
             synchronized (generationLock(str)) {
@@ -1885,13 +1892,13 @@ public class PluginsController implements PluginsHooks {
             if (nm != null) {
                 nm.setEnabled(false);
             }
-            
+
             if (this.preferences != null) {
                 this.preferences.edit().putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + str, false).apply();
             }
             cleanupPlugin(str, getCurrentPluginRuntime(str));
             invalidateInterestedPluginsCache();
-            
+
             enablingInProgress.remove(str);
             pendingToggleState.remove(str);
             final List<PendingToggleCallback> callbacks;
@@ -1915,7 +1922,7 @@ public class PluginsController implements PluginsHooks {
                     ).show();
                 }
             });
-            
+
             deletePlugin(str, errStr -> {
                 deliverToggleCallbacks(
                         callbacks, false, specialGeneration,
@@ -1926,7 +1933,7 @@ public class PluginsController implements PluginsHooks {
         final Boolean prior;
         final int generation;
         final PluginCleanup immediateCleanup;
-        
+
         synchronized (generationLock(str)) {
             if (!isControllerLifecycleCurrent(requestEpoch)) {
                 if (callback != null) {
@@ -1956,7 +1963,7 @@ public class PluginsController implements PluginsHooks {
                 immediateCleanup = null;
             }
         }
-        
+
         if (!z) {
             if (this.preferences != null) {
                 this.preferences.edit()
@@ -1967,9 +1974,9 @@ public class PluginsController implements PluginsHooks {
             invalidateInterestedPluginsCache();
             notifyPluginsChanged();
         }
-        
+
         if (prior != null) {
-            
+
             FileLog.d("nimarko: coalesced toggle for " + str + " (target=" + z + ")");
             return;
         }
@@ -2035,7 +2042,7 @@ public class PluginsController implements PluginsHooks {
             if (!isControllerLifecycleCurrent(scheduledEpoch)) {
                 return;
             }
-            
+
             final Boolean latest;
             final int latestGeneration;
             synchronized (generationLock(str)) {
@@ -2044,7 +2051,7 @@ public class PluginsController implements PluginsHooks {
                         str, appliedGeneration);
             }
             if (latest != null && (latest != targetState || latestGeneration != appliedGeneration)) {
-                
+
                 FileLog.d("nimarko: reconciling toggle for " + str
                         + " (applied=" + targetState + ", latest=" + latest + ")");
                 Utilities.pluginsQueue.postRunnable(() -> runToggleLoop(
@@ -2105,7 +2112,7 @@ public class PluginsController implements PluginsHooks {
             for (PendingToggleCallback pending : callbacks) {
                 if (pending == null || pending.callback == null) continue;
                 try {
-                    
+
                     pending.callback.run(
                             pending.requestedState == finalState
                                     && pending.generation
@@ -2285,7 +2292,7 @@ public class PluginsController implements PluginsHooks {
                 Collections.emptyList();
         boolean deletionPrepared;
         synchronized (generationLock(str)) {
-            
+
             try {
                 deletionPrepared =
                         PythonPluginsEngine.prepareDurablePluginDeletion(
@@ -2349,7 +2356,7 @@ public class PluginsController implements PluginsHooks {
         synchronized (generationLock(str)) {
             if (runtimeToken == null
                     && currentRuntimeByPlugin.get(str) != null) {
-                
+
                 FileLog.w("Skipped tokenless cleanup for exact runtime "
                         + currentRuntimeByPlugin.get(str).token);
                 return;
@@ -2371,7 +2378,7 @@ public class PluginsController implements PluginsHooks {
 
     private PluginCleanup detachPluginRuntimeLocked(
             String str, PluginRuntimeToken runtimeToken) {
-        
+
         RuntimeSlot currentSlot = currentRuntimeByPlugin.get(str);
         boolean ownsCurrent = runtimeToken == null
                 || (currentSlot != null && currentSlot.token.equals(runtimeToken));
@@ -2445,7 +2452,7 @@ public class PluginsController implements PluginsHooks {
         }
         IntentsController.getInstance()
                 .removeIntentHooksByPluginId(str, detachToken);
-        
+
         PluginRuntimeToken delayedCleanupToken = detachToken;
         return new PluginCleanup(str, delayedCleanupToken, quiescenceToken,
                 detachedHooks, settingsDetached, menuItemsDetached, true);
@@ -2496,7 +2503,7 @@ public class PluginsController implements PluginsHooks {
         }
         if (cleanup.cleanPythonRegistries) {
             runWhenPluginRuntimeQuiescent(cleanup.quiescenceToken, () -> {
-                
+
                 pluginRegistryCleanupQueue.postRunnable(
                         () -> cleanupPythonRegistries(cleanup));
             });
@@ -2519,7 +2526,7 @@ public class PluginsController implements PluginsHooks {
 
     private void cleanupPythonRegistries(PluginCleanup cleanup) {
         try {
-            
+
             if (cleanup.runtimeToken == null
                     && getCurrentPluginRuntime(cleanup.pluginId) != null) {
                 FileLog.d("Skipped stale broad Python cleanup for active plugin "
@@ -2574,23 +2581,23 @@ public class PluginsController implements PluginsHooks {
             return;
         }
         File file = new File(pluginInstallParams.filePath);
-        
-        if (NimarkoMediaController.isNimarkoMediaPluginFile(file)) {
+
+        if (MediaControllerExt.isNimarkoMediaPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_MediaBuiltIn)))
                     .show();
             return;
         }
-        
-        if (NimarkoBannerController.isBannerPluginFile(file)) {
+
+        if (BannerController.isBannerPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_BAN_PluginIntegrated)))
                     .show();
             return;
         }
-        
+
         if (WsBypassCore.isWsBypassPluginFile(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
@@ -2598,12 +2605,12 @@ public class PluginsController implements PluginsHooks {
                     .show();
             return;
         }
-        if (!NimarkoConfig.pluginsEngine) {
+        if (!AppConfig.pluginsEngine) {
             BulletinFactory.of(baseFragment).createSimpleBulletin(R.raw.error, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginNotEnabled, file.getName())), LocaleController.getString(R.string.Enable), 2750, () -> baseFragment.presentFragment(new PluginsActivity())).show();
             return;
         }
-        
-        if (NimarkoConfig.pluginsSafeMode) {
+
+        if (AppConfig.pluginsSafeMode) {
             BulletinFactory.of(baseFragment).createSimpleBulletin(R.raw.error,
                     AndroidUtilities.replaceTags(
                             LocaleController.getString(R.string.PluginsSafeModeOn))).show();
@@ -2611,7 +2618,7 @@ public class PluginsController implements PluginsHooks {
         }
         PluginsEngine pluginEngine = getPluginEngine(file);
         if (pluginEngine == null) {
-            
+
             BulletinFactory.of(baseFragment).createSimpleBulletin(R.raw.error,
                     AndroidUtilities.replaceTags(
                             LocaleController.getString(R.string.NM_AddPluginFailed))).show();
@@ -2900,7 +2907,7 @@ public class PluginsController implements PluginsHooks {
         if (TextUtils.isEmpty(str) || pyObject == null) return null;
         if (!isPluginEngineAvailable()) return null;
         try {
-            
+
             final MenuItemRecord menuItemRecord = new MenuItemRecord(str, pyObject);
             if (menuItemRecord.menuType == null) {
                 return null;
@@ -2920,7 +2927,7 @@ public class PluginsController implements PluginsHooks {
                 }
                 this.menuItemsById.put(
                         menuItemRecord.itemId, menuItemRecord);
-                
+
                 for (Map.Entry<String, CopyOnWriteArrayList<MenuItemRecord>>
                         entry : this.menuItemsByMenuType.entrySet()) {
                     CopyOnWriteArrayList<MenuItemRecord> oldItems =
@@ -2940,7 +2947,7 @@ public class PluginsController implements PluginsHooks {
                                 entry.getKey(), oldItems);
                     }
                 }
-                
+
                 this.menuItemsByMenuType.compute(menuItemRecord.menuType, (key, list) -> {
                      CopyOnWriteArrayList<MenuItemRecord> newList = list == null ? new CopyOnWriteArrayList<>() : new CopyOnWriteArrayList<>(list);
                      newList.removeIf(item -> item.itemId.equals(menuItemRecord.itemId));
@@ -2953,7 +2960,7 @@ public class PluginsController implements PluginsHooks {
             AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.pluginMenuItemsUpdated));
             return menuItemRecord.itemId;
         } catch (Exception e) {
-            
+
             FileLog.d("nimarko: addMenuItem failed for plugin " + str + ": " + e);
         }
         return null;
@@ -3056,26 +3063,74 @@ public class PluginsController implements PluginsHooks {
     }
 
     public void executeOnAppEvent(final String str) {
-        if (!NimarkoConfig.pluginsEngine || NimarkoConfig.pluginsSafeMode) {
+        final long generation;
+        synchronized (appLifecycleLock) {
+            if (PluginsConstants.APP_RESUME.equals(str)) {
+                if (!appResumed) {
+                    appResumed = true;
+                    appLifecycleGeneration++;
+                }
+            } else if (PluginsConstants.APP_PAUSE.equals(str) || PluginsConstants.APP_STOP.equals(str)) {
+                appResumed = false;
+                appLifecycleGeneration++;
+            }
+            generation = appLifecycleGeneration;
+        }
+        dispatchAppEvent(str, generation);
+    }
+
+    public void reconcileAppLifecycle() {
+        final long generation;
+        synchronized (appLifecycleLock) {
+            if (!appResumed) return;
+            generation = appLifecycleGeneration;
+        }
+        dispatchAppEvent(PluginsConstants.APP_RESUME, generation);
+    }
+
+    private void dispatchAppEvent(final String str, final long generation) {
+        if (!AppConfig.pluginsEngine || AppConfig.pluginsSafeMode || !isInitialized()) {
             return;
         }
+        final long epoch = getControllerLifecycleEpoch();
         final Runnable dispatch = () -> {
-            
-            if (!NimarkoConfig.pluginsEngine || NimarkoConfig.pluginsSafeMode
+
+            if (!AppConfig.pluginsEngine || AppConfig.pluginsSafeMode
+                    || !isInitialized() || epoch != getControllerLifecycleEpoch()
                     || !isPluginEngineAvailable()) {
                 return;
             }
+            final boolean startRequired;
+            synchronized (appLifecycleLock) {
+                startRequired = deliveredStartEpoch != epoch;
+                if (startRequired) deliveredStartEpoch = epoch;
+            }
+            if (startRequired) deliverAppEvent(PluginsConstants.APP_START);
+            if (PluginsConstants.APP_START.equals(str)) return;
+            if (!AppConfig.pluginsEngine || AppConfig.pluginsSafeMode
+                    || !isInitialized() || epoch != getControllerLifecycleEpoch()
+                    || !isPluginEngineAvailable()) return;
+            if (PluginsConstants.APP_RESUME.equals(str)) {
+                synchronized (appLifecycleLock) {
+                    if (!appResumed || generation != appLifecycleGeneration
+                            || deliveredResumeGeneration == generation && deliveredResumeEpoch == epoch) return;
+                    deliveredResumeGeneration = generation;
+                    deliveredResumeEpoch = epoch;
+                }
+            }
+            deliverAppEvent(str);
+        };
+        final DispatchQueue queue = getOrCreatePluginsQueue();
+        if (!queue.postRunnable(dispatch)) {
+            FileLog.e("Failed to enqueue plugin app event " + str);
+        }
+    }
+
+    private void deliverAppEvent(String str) {
             FileLog.d("Execute scripts on app event " + str);
             engines.values().forEach(engine -> {
                 try { engine.executeOnAppEvent(str); } catch (Throwable t) { FileLog.e(t); }
             });
-        };
-        final DispatchQueue queue = getOrCreatePluginsQueue();
-        if (Thread.currentThread() == queue) {
-            dispatch.run();
-        } else if (!queue.postRunnable(dispatch)) {
-            FileLog.e("Failed to enqueue plugin app event " + str);
-        }
     }
 
     private void invalidateInterestedPluginsCache() {
@@ -3160,7 +3215,7 @@ public class PluginsController implements PluginsHooks {
                                                         entry.getKey()
                                                                 .pluginId))
                         .map(Map.Entry::getKey)
-                        
+
                         .filter(this::isInterestedPluginKnown)
                         .collect(Collectors.toList());
             }
@@ -3187,7 +3242,7 @@ public class PluginsController implements PluginsHooks {
                 if (this.hooksCacheDirty) {
                     Map<String, List<EventHookRecord>> map = new HashMap<>();
                     List<EventHookRecord> arrayList = new ArrayList<>();
-                    
+
                     for (Set<HookRecord> set : this.hooks.values()) {
                         for (HookRecord hookRecord : set) {
                             if (hookRecord instanceof EventHookRecord) {

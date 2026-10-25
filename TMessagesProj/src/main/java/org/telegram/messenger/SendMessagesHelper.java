@@ -190,6 +190,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         } else if (replyQuote != null && replyQuote.todo && replyQuote.task != null) {
             replyTo.flags |= 64;
             replyTo.todo_item_id = replyQuote.task.id;
+        } else if (replyQuote != null && replyQuote.isRich) {
+            if (replyQuote.rich != null && !replyQuote.rich.isEmpty()) {
+                replyTo.quote_rich = new ArrayList<>(replyQuote.rich);
+                replyTo.flags |= 16;
+                replyTo.quote_offset = replyQuote.getQuoteOffset();
+            }
         } else if (replyQuote != null && !replyQuote.todo && !replyQuote.poll) {
             replyTo.quote_text = replyQuote.getText();
             if (!TextUtils.isEmpty(replyTo.quote_text)) {
@@ -226,11 +232,13 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             replyTo.reply_to_peer_id = MessagesController.getInstance(currentAccount).getInputPeer(replyHeader.reply_to_peer_id);
         }
         if (replyHeader.quote) {
-            if ((replyHeader.flags & 64) != 0) {
+            if (replyHeader.quote_rich != null) {
+                replyTo.quote_rich = replyHeader.quote_rich;
+            } else if ((replyHeader.flags & 64) != 0) {
                 replyTo.flags |= 4;
                 replyTo.quote_text = replyHeader.quote_text;
             }
-            if ((replyHeader.flags & 128) != 0) {
+            if (replyHeader.quote_rich == null && (replyHeader.flags & 128) != 0) {
                 replyTo.flags |= 8;
                 replyTo.quote_entities = replyHeader.quote_entities;
             }
@@ -2441,7 +2449,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         }
                         // NimarkoGram (CG parity): keep the original send date on the fwd_from
                         // header so forwarded messages don't look brand-new when msgForwardDate is on.
-                        if (app.nimarkogram.messenger.NimarkoConfig.msgForwardDate && !msgObj.isForwarded()) {
+                        if (app.nimarkogram.messenger.AppConfig.msgForwardDate && !msgObj.isForwarded()) {
                             newMsg.fwd_from.date = msgObj.messageOwner.date;
                         }
                         newMsg.date = msgObj.messageOwner.date;
@@ -3052,7 +3060,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             // NimarkoGram: local premium emoji — same conversion as the send
             // path so an edited message keeps non-premium custom emoji.
             try {
-                app.nimarkogram.messenger.utils.NimarkoLocalEmoji.replaceCustomEmojis(
+                app.nimarkogram.messenger.utils.LocalEmoji.replaceCustomEmojis(
                         currentAccount, peer, messageObject.messageOwner.entities);
             } catch (Throwable t) {
                 FileLog.e("nimarko-local-emoji: edit convert failed", t);
@@ -4462,8 +4470,71 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         return attempted && !submission.entered
                 ? PreparedVoiceSendOutcome.PLUGIN_CANCELLED : submission.outcome;
     }
+    public static final class MediaSendResult {
+        public MessageObject message;
+        public boolean accepted;
+        private final java.util.function.BooleanSupplier canSend;
+        private final long peer;
+        private final long groupId;
+        private final boolean finalMember;
+
+        private MediaSendResult(SendMessageParams params, java.util.function.BooleanSupplier canSend) {
+            this.canSend = canSend;
+            peer = params == null ? 0 : params.peer;
+            groupId = params == null || params.params == null ? 0 : Utilities.parseLong(params.params.get("groupId"));
+            finalMember = params != null && params.params != null && params.params.get("final") != null;
+        }
+
+        private boolean allows(SendMessageParams params) {
+            if (params == null || !canSend.getAsBoolean() || params.peer != peer
+                    || params.retryMessageObject != null) return false;
+            long actualGroup = params.params == null ? 0 : Utilities.parseLong(params.params.get("groupId"));
+            boolean actualFinal = params.params != null && params.params.get("final") != null;
+            return actualGroup == groupId && actualFinal == finalMember
+                    && (groupId == 0 || params.photo != null && params.message == null
+                    && params.richMessage == null && params.poll == null && params.todo == null
+                    && params.location == null && params.pollSendParams == null
+                    && !params.params.containsKey("query_id"));
+        }
+
+        private void accept(MessageObject message) {
+            this.message = message;
+            accepted = true;
+        }
+    }
+
+    public MediaSendResult sendMediaMessage(SendMessageParams params, java.util.function.BooleanSupplier canSend) {
+        MediaSendResult result = new MediaSendResult(params, canSend);
+        if (params == null || result.groupId == 0 || canSend == null || !canSend.getAsBoolean()) return result;
+        MediaSendResult previous = params.mediaSubmission;
+        params.mediaSubmission = result;
+        try {
+            sendMessage(params);
+        } catch (Exception error) {
+            result.accepted = false;
+            FileLog.e(error);
+        } finally {
+            params.mediaSubmission = previous;
+        }
+        return result;
+    }
+
+    public void cancelPendingMediaGroup(long groupId) {
+        String key = "group_" + groupId;
+        ArrayList<DelayedMessage> messages = delayedMessages.get(key);
+        if (messages == null || messages.isEmpty()) return;
+        DelayedMessage group = messages.get(0);
+        if (group.messageObjects.isEmpty()) {
+            delayedMessages.remove(key);
+            return;
+        }
+        cancelSendingMessage(new ArrayList<>(group.messageObjects));
+        delayedMessages.remove(key);
+    }
     public void sendMessage(SendMessageParams _smpInParam) {
         // NimarkoGram plugin engine — pre-send hook. May mutate or cancel the outgoing message.
+        MediaSendResult mediaSubmission = _smpInParam == null ? null : _smpInParam.mediaSubmission;
+        if (mediaSubmission != null) _smpInParam.mediaSubmission = null;
         PreparedVoiceSubmission submission = _smpInParam == null ? null : _smpInParam.preparedVoiceSubmission;
         if (submission == null && _smpInParam != null && _smpInParam.preparedVoiceInFlight != null) return;
         if (submission != null) {
@@ -4471,13 +4542,14 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             submission.entered = true;
         }
         try {
-        sendMessageWithSubmission(_smpInParam, submission);
+            sendMessageWithSubmission(_smpInParam, submission, mediaSubmission);
         } finally {
             if (submission != null) _smpInParam.preparedVoiceInFlight = null;
         }
     }
 
-    private void sendMessageWithSubmission(SendMessageParams _smpInParam, PreparedVoiceSubmission submission) {
+    private void sendMessageWithSubmission(SendMessageParams _smpInParam, PreparedVoiceSubmission submission, MediaSendResult mediaSubmission) {
+        if (mediaSubmission != null && !mediaSubmission.allows(_smpInParam)) return;
         if (_smpInParam != null && _smpInParam.preparedVoiceOwnership != null
                 && _smpInParam.preparedVoiceOwnership.pluginOwnsFile) return;
         try {
@@ -4490,6 +4562,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         } catch (Throwable t) {
             FileLog.e("plugin sendMessage hook failed", t);
         }
+        if (mediaSubmission != null && !mediaSubmission.allows(_smpInParam)) return;
         if (submission != null && submission.pluginOwnsFile) return;
         final SendMessageParams sendMessageParams = _smpInParam;
         // NimarkoGram: local premium emoji — rewrite custom-emoji entities into
@@ -4498,7 +4571,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 || sendMessageParams.params != null
                 && Utilities.parseLong(sendMessageParams.params.get("groupId")) != 0)) return;
         try {
-            app.nimarkogram.messenger.utils.NimarkoLocalEmoji.replaceCustomEmojis(
+            app.nimarkogram.messenger.utils.LocalEmoji.replaceCustomEmojis(
                     currentAccount, sendMessageParams.peer, sendMessageParams.entities);
         } catch (Throwable t) {
             FileLog.e("nimarko-local-emoji: send convert failed", t);
@@ -4528,7 +4601,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // NimarkoGram: pre-reform Russian orthography (до 1918) — convert the outgoing text to the old
         // spelling right before sending. Default OFF. Remaps entity offsets since the text length changes;
         // leaves URLs/mentions/hashtags/code/pre entities' spans handled by the converter's skip list.
-        if (app.nimarkogram.messenger.NimarkoConfig.preReformRussian) {
+        if (app.nimarkogram.messenger.AppConfig.preReformRussian) {
             try {
                 if (message != null && message.length() > 0) {
                     app.nimarkogram.messenger.utils.PreReformRussian.Result r =
@@ -4559,7 +4632,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // outgoing GIF documents. One-shot per send — the flag stays on until the
         // user disables it from settings, but each individual document is checked
         // here so it only applies to actual GIFs (not other documents).
-        if (app.nimarkogram.messenger.NimarkoConfig.gifSpoilers
+        if (app.nimarkogram.messenger.AppConfig.gifSpoilers
                 && document != null
                 && MessageObject.isGifDocument(document)) {
             hasMediaSpoilers = true;
@@ -4603,9 +4676,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // attach a reply-quote built from the replied-to message so the recipient
         // sees the context inline. Skip channel-post comments (linked discussion,
         // already implies target) and forum topics (CG does the same).
-        if (app.nimarkogram.messenger.NimarkoConfig.autoQuoteReplies && replyToMsg != null) {
+        if (app.nimarkogram.messenger.AppConfig.autoQuoteReplies && replyToMsg != null) {
             boolean isComments = replyToMsg.messageOwner.fwd_from != null && replyToMsg.messageOwner.fwd_from.channel_post != 0;
-            boolean isTopic = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper
+            boolean isTopic = app.nimarkogram.messenger.utils.chats.ChatHelper
                     .getInstance(currentAccount).isTopic(replyToMsg);
             if (!isComments && !isTopic && replyQuote == null) {
                 replyQuote = ChatActivity.ReplyQuote.from(replyToMsg);
@@ -5225,7 +5298,8 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         newMsg.reply_to.quote = true;
                         newMsg.reply_to.flags |= 64;
                         newMsg.reply_to.flags |= 1024;
-                        newMsg.reply_to.quote_offset = replyQuote.start;
+                        newMsg.reply_to.quote_offset = replyQuote.getQuoteOffset();
+                        newMsg.reply_to.quote_rich = replyQuote.isRich ? RichQuote.copyList(replyQuote.rich) : null;
                         newMsg.reply_to.quote_entities = replyQuote.getEntities();
                         if (newMsg.reply_to.quote_entities != null && !newMsg.reply_to.quote_entities.isEmpty()) {
                             newMsg.reply_to.quote_entities = new ArrayList<>(newMsg.reply_to.quote_entities);
@@ -5352,7 +5426,8 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             newMsg.reply_to.flags |= 64;
                             newMsg.reply_to.quote_text = replyQuote.getText();
                             newMsg.reply_to.flags |= 1024;
-                            newMsg.reply_to.quote_offset = replyQuote.start;
+                            newMsg.reply_to.quote_offset = replyQuote.getQuoteOffset();
+                            newMsg.reply_to.quote_rich = replyQuote.isRich ? RichQuote.copyList(replyQuote.rich) : null;
                         }
                         if (replyQuote.getEntities() != null) {
                             newMsg.reply_to.flags |= 128;
@@ -5462,6 +5537,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     mode = 0;
                 }
                 MessagesStorage.getInstance(currentAccount).putMessages(arr, false, true, false, 0, mode, threadMessageId);
+                if (mediaSubmission != null) mediaSubmission.accept(newMsgObj);
                 if (submission != null) submission.outcome = PreparedVoiceSendOutcome.ACCEPTED;
                 MessagesController.getInstance(currentAccount).updateInterfaceWithMessages(peer, objArr, mode);
                 if (scheduleDate == 0) {
@@ -6260,6 +6336,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         StarsController.getInstance(currentAccount).beforeSendingMessage(newMsgObj);
                     }
                     if (groupId != 0) {
+                        if (mediaSubmission != null) mediaSubmission.accept(newMsgObj);
                         performSendDelayedMessage(delayedMessage);
                     } else if (type == 1) {
                         performSendMessageRequest(reqSend, newMsgObj, null, delayedMessage, parentObject, params, scheduleDate != 0);
@@ -6579,6 +6656,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         TLRPC.TL_inputEncryptedFile encryptedFile = new TLRPC.TL_inputEncryptedFile();
                         encryptedFile.id = type == 3 || type == 7 ? 1 : 0;
                         request.files.add(encryptedFile);
+                        if (mediaSubmission != null) mediaSubmission.accept(newMsgObj);
                         performSendDelayedMessage(delayedMessage);
                     }
                     if (retryMessageObject == null) {
@@ -6677,6 +6755,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 performSendMessageRequest(reqSend, newMsgObj, null, null, parentObject, params, scheduleDate != 0);
             }
         } catch (Exception e) {
+            if (mediaSubmission != null) mediaSubmission.accepted = false;
             FileLog.e(e);
             // An exception may happen before the local outgoing message has
             // been constructed. The old error path dereferenced newMsg
@@ -9502,7 +9581,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     public TLRPC.TL_photo generatePhotoSizes(String path, Uri imageUri) {
         // NimarkoGram (CG parity): respect the largePhotos toggle for legacy callers
         // that don't pass the highQuality flag (e.g. clipboard / share intents).
-        return generatePhotoSizes(null, path, imageUri, app.nimarkogram.messenger.NimarkoConfig.largePhotos);
+        return generatePhotoSizes(null, path, imageUri, app.nimarkogram.messenger.AppConfig.largePhotos);
     }
 
     public TLRPC.TL_photo generatePhotoSizes(TLRPC.TL_photo photo, String path, Uri imageUri, boolean highQuality) {
@@ -10272,10 +10351,16 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                     mediaCount++;
                     long prevGroupId = groupId[0];
-                    error = prepareSendingDocumentInternal(accountInstance, paths.get(a), originalPaths.get(a), null, mime, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, a == 0 ? captionEntities : null, editingMessageObject, groupId, !forcedPollDoNotSendFinal && (pollSendParams == null && mediaCount == 10 || a == count - 1), captionFinal, notify, scheduleDate, scheduleRepeatPeriod, docType, inputContent == null, sendMessageChatArguments, first ? effectId : 0, invertMedia, payStars, monoForumPeerId, suggestionParams, pollSendParams, pollSendIndexes!= null ? pollSendIndexes.get(a) : -1);
+                    final boolean isGroupFinal = !forcedPollDoNotSendFinal && (pollSendParams == null && mediaCount == 10 || a == count - 1);
+                    error = prepareSendingDocumentInternal(accountInstance, paths.get(a), originalPaths.get(a), null, mime, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, a == 0 ? captionEntities : null, editingMessageObject, groupId, isGroupFinal, captionFinal, notify, scheduleDate, scheduleRepeatPeriod, docType, inputContent == null, sendMessageChatArguments, first ? effectId : 0, invertMedia, payStars, monoForumPeerId, suggestionParams, pollSendParams, pollSendIndexes!= null ? pollSendIndexes.get(a) : -1);
                     first = false;
                     if (prevGroupId != groupId[0] || groupId[0] == -1) {
                         mediaCount = 1;
+                    }
+                    if (error != 0 && isGroupFinal && pollSendParams == null && groupId[0] != 0) {
+                        finishGroup(accountInstance, groupId[0], scheduleDate);
+                        groupId[0] = 0;
+                        mediaCount = 0;
                     }
                 }
             }
@@ -10295,10 +10380,16 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                     mediaCount++;
                     long prevGroupId = groupId[0];
-                    error = prepareSendingDocumentInternal(accountInstance, null, null, uris.get(a), mime, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, captionEntitiesFinal, editingMessageObject, groupId, !forcedPollDoNotSendFinal && (pollSendParams == null && mediaCount == 10 || a == count - 1), captionFinal, notify, scheduleDate, scheduleRepeatPeriod, docType, inputContent == null, sendMessageChatArguments, first ? effectId : 0, invertMedia, payStars, monoForumPeerId, suggestionParams, pollSendParams, pollSendUriIndexes != null ? pollSendUriIndexes.get(a) : -1);
+                    final boolean isGroupFinal = !forcedPollDoNotSendFinal && (pollSendParams == null && mediaCount == 10 || a == count - 1);
+                    error = prepareSendingDocumentInternal(accountInstance, null, null, uris.get(a), mime, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, captionEntitiesFinal, editingMessageObject, groupId, isGroupFinal, captionFinal, notify, scheduleDate, scheduleRepeatPeriod, docType, inputContent == null, sendMessageChatArguments, first ? effectId : 0, invertMedia, payStars, monoForumPeerId, suggestionParams, pollSendParams, pollSendUriIndexes != null ? pollSendUriIndexes.get(a) : -1);
                     first = false;
                     if (prevGroupId != groupId[0] || groupId[0] == -1) {
                         mediaCount = 1;
+                    }
+                    if (error != 0 && isGroupFinal && pollSendParams == null && groupId[0] != 0) {
+                        finishGroup(accountInstance, groupId[0], scheduleDate);
+                        groupId[0] = 0;
+                        mediaCount = 0;
                     }
                 }
             }
@@ -11044,7 +11135,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 for (int a = 0; a < count; a++) {
                     final SendingMediaInfo info = media.get(a);
                     info.highQuality = !info.forceAsSticker
-                            && (info.highQuality || app.nimarkogram.messenger.NimarkoConfig.largePhotos);
+                            && (info.highQuality || app.nimarkogram.messenger.AppConfig.largePhotos);
                     if (info.searchImage == null && !info.isVideo && info.videoEditedInfo == null) {
                         if (info.originalPhotoEntry != null && info.highQuality) {
                             info.originalPhotoEntry.rebuildPhoto(true);
@@ -12127,7 +12218,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
 
         float maxSize = Math.max(videoEditedInfo.originalWidth, videoEditedInfo.originalHeight);
         // NimarkoGram (CG parity): sendVideosAtMaxQuality extends the compression ladder so 1080p+ stays uncompressed.
-        if (app.nimarkogram.messenger.NimarkoConfig.sendVideosAtMaxQuality) {
+        if (app.nimarkogram.messenger.AppConfig.sendVideosAtMaxQuality) {
             if (maxSize > 3840) {
                 compressionsCount = 7;
             } else if (maxSize > 2560) {
@@ -12160,9 +12251,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
         boolean needCompress = false;
         if (new File(videoPath).length() < 1024L * 1024L * 1000L) {
-            if (selectedCompression != compressionsCount || Math.max(videoEditedInfo.originalWidth, videoEditedInfo.originalHeight) > (app.nimarkogram.messenger.NimarkoConfig.sendVideosAtMaxQuality ? 3840 : 1280)) {
+            if (selectedCompression != compressionsCount || Math.max(videoEditedInfo.originalWidth, videoEditedInfo.originalHeight) > (app.nimarkogram.messenger.AppConfig.sendVideosAtMaxQuality ? 3840 : 1280)) {
                 needCompress = true;
-                if (app.nimarkogram.messenger.NimarkoConfig.sendVideosAtMaxQuality) {
+                if (app.nimarkogram.messenger.AppConfig.sendVideosAtMaxQuality) {
                     switch (selectedCompression) {
                         case 1:
                             maxSize = 480.0f;
@@ -12465,6 +12556,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     }
 
     public static class SendMessageParams {
+        private MediaSendResult mediaSubmission;
         private PreparedVoiceSubmission preparedVoiceSubmission;
         private PreparedVoiceSubmission preparedVoiceOwnership;
         private PreparedVoiceSubmission preparedVoiceInFlight;

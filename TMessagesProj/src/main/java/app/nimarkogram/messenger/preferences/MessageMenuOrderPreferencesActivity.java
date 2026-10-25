@@ -48,7 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class MessageMenuOrderPreferencesActivity extends BaseFragment {
 
@@ -120,7 +120,7 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
         Set<Integer> catalogue = new HashSet<>();
         for (int opt : CATALOGUE) catalogue.add(opt);
 
-        List<Integer> persisted = NimarkoConfig.messageMenuOrder;
+        List<Integer> persisted = AppConfig.messageMenuOrder;
         Set<Integer> seen = new HashSet<>();
         if (persisted != null) {
             for (Integer opt : persisted) {
@@ -151,7 +151,7 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
                 if (id == -1) {
                     finishFragment();
                 } else if (id == MENU_RESET) {
-                    NimarkoConfig.resetMessageMenuOrder();
+                    AppConfig.resetMessageMenuOrder();
                     buildWorkingOrder();
                     if (adapter != null) adapter.notifyDataSetChanged();
                 }
@@ -218,9 +218,9 @@ public class MessageMenuOrderPreferencesActivity extends BaseFragment {
 
     private void flush() {
         if (matchesCatalogue(workingOrder)) {
-            NimarkoConfig.resetMessageMenuOrder();
+            AppConfig.resetMessageMenuOrder();
         } else {
-            NimarkoConfig.setMessageMenuOrder(new ArrayList<>(workingOrder));
+            AppConfig.setMessageMenuOrder(new ArrayList<>(workingOrder));
         }
     }
 

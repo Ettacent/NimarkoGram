@@ -33,7 +33,7 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class CheckBoxBase {
 
     private View parentView;
@@ -669,7 +669,7 @@ public class CheckBoxBase {
                 || checkPaint.getXfermode() != null) {
             return false;
         }
-        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
         if (icons == null) {
             return false;
         }

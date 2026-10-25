@@ -39,8 +39,8 @@ new RandomAccessFile(lockFile, 'rw').withCloseable { lockHandle ->
     }
     try {
         def head = git(['rev-parse', 'HEAD'])
-        if (head[0] != 0 || head[1].trim() != '03d7b8662512af7528f476c02094862c1a37177d') {
-            throw new GradleException('tgcalls patch requires pinned revision 03d7b8662512af7528f476c02094862c1a37177d')
+        if (head[0] != 0 || head[1].trim() != '1398c1648f52666b3249111ec3c5b531946e41e4') {
+            throw new GradleException('tgcalls patch requires pinned revision 1398c1648f52666b3249111ec3c5b531946e41e4')
         }
         if (!tgcallsPatch.isFile()) {
             throw new GradleException('Required tgcalls source patch is missing')

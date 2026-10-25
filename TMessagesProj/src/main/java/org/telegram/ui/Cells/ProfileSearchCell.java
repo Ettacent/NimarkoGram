@@ -174,7 +174,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
         avatarImage = new ImageReceiver(this);
         avatarImage.setCurrentAccount(currentAccount);
-        avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(46));
+        avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(46));
         avatarDrawable = new AvatarDrawable();
 
         checkBox = new CheckBox2(context, 21, resourcesProvider);
@@ -231,7 +231,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     }
 
     private boolean shouldAllowEmojiStatus() {
-        return allowEmojiStatus && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
+        return allowEmojiStatus && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses;
     }
     public void setData(Object object, TLRPC.EncryptedChat ec, CharSequence n, CharSequence s, boolean needCount, boolean saved) {
         final boolean samePeer = object instanceof TLRPC.User && user != null && ((TLRPC.User) object).id == user.id
@@ -501,8 +501,8 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             }
             nameLockTop = dp(21);
             drawCheck = user.verified;
-            
-            drawPremium = !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user) && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses;
+
+            drawPremium = !savedMessages && MessagesController.getInstance(currentAccount).isPremiumUser(user) && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses;
             updateStatus(drawCheck, user, null, !drawCheck);
         } else if (contact != null) {
             dialog_id = 0;
@@ -661,7 +661,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
         if (!statusDrawable.isEmpty()) {
             if (LocaleController.isRTL) {
-                
+
             } else {
                 nameWidth -= statusDrawable.getIntrinsicWidth();
             }
@@ -832,7 +832,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         statusDrawable.center = LocaleController.isRTL;
         currentNimarkoBadge = null;
         final boolean showStatus = shouldAllowEmojiStatus();
-        
+
         app.nimarkogram.messenger.api.dto.BadgeDTO nimarkoBadge = null;
         if (showStatus && !savedMessages) {
             try {
@@ -841,9 +841,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 if (nimarkoBadge != null && nimarkoBadge.getDocumentId() == 0L) nimarkoBadge = null;
             } catch (Throwable ignored) {}
         }
-        
+
         boolean particles = false;
-        
+
         if (verified) {
             if (verifiedStatusDrawable == null) {
                 verifiedStatusDrawable = new CombinedDrawable(Theme.dialogs_verifiedDrawable, Theme.dialogs_verifiedCheckDrawable, 0, 0);
@@ -943,7 +943,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             avatarImage.setImage(null, null, avatarDrawable, null, null, 0);
         }
 
-        avatarImage.setRoundRadius(ChatObject.isCommunity(chat) ? DrawableUtils.getCommunityCardDrawableRadius(dp(46)) : chat != null && chat.monoforum ? 0 : rectangularAvatar ? dp(10) : app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(46, chat != null && chat.forum));
+        avatarImage.setRoundRadius(ChatObject.isCommunity(chat) ? DrawableUtils.getCommunityCardDrawableRadius(dp(46)) : chat != null && chat.monoforum ? 0 : rectangularAvatar ? dp(10) : app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(46, chat != null && chat.forum));
         if (mask != 0) {
             boolean continueUpdate = false;
             if ((mask & MessagesController.UPDATE_MASK_AVATAR) != 0 && user != null || (mask & MessagesController.UPDATE_MASK_CHAT_AVATAR) != 0 && chat != null) {

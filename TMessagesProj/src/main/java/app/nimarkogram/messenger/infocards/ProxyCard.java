@@ -18,13 +18,13 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProxyListActivity;
 
-import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.WsBypassCore;
 
 public class ProxyCard extends BaseInfoCard implements NotificationCenter.NotificationCenterDelegate {
 
-    private static final int STATE_CONNECTED = ConnectionsManager.ConnectionStateConnected; 
-    private static final int STATE_UPDATING = ConnectionsManager.ConnectionStateUpdating;   
+    private static final int STATE_CONNECTED = ConnectionsManager.ConnectionStateConnected;
+    private static final int STATE_UPDATING = ConnectionsManager.ConnectionStateUpdating;
 
     private final int iconRes;
     private boolean connected;
@@ -50,7 +50,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
 
     @Override
     public long getRefreshInterval() {
-        
+
         SharedConfig.ProxyInfo proxy = SharedConfig.currentProxy;
         return connected && SharedConfig.isProxyEnabled() && proxy != null && displayPing(proxy, UserConfig.selectedAccount) <= 0
                 ? 500 : 5000;
@@ -106,7 +106,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         }
         if (id == NotificationCenter.proxySettingsChanged
                 || id == NotificationCenter.didUpdateConnectionState) {
-            
+
             AndroidUtilities.cancelRunOnUIThread(coalescedUpdate);
             AndroidUtilities.runOnUIThread(coalescedUpdate, COALESCE_MS);
         }
@@ -127,9 +127,9 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         boolean isConnected = connectionState == STATE_CONNECTED || connectionState == STATE_UPDATING;
 
         if (enabled && isConnected) {
-            
+
             setIcon(R.drawable.pill_proxy);
-            
+
             if (lifecycleAttached) kickProxyCheck(proxy, !connected);
             long measuredPing = displayPing(proxy, account);
             if (measuredPing > 0) {
@@ -140,19 +140,19 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
             stopLoading();
             connected = true;
         } else if (enabled) {
-            
+
             setIcon(R.drawable.pill_proxy_off);
             setText(LocaleController.getString(R.string.MenuProxyConnecting), animated);
             startLoading();
             connected = false;
         } else {
-            
+
             setIcon(R.drawable.pill_proxy_off);
             setText(LocaleController.getString(R.string.Proxy), animated);
             stopLoading();
             connected = false;
         }
-        
+
         applyColorMode();
     }
 
@@ -170,14 +170,14 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
         } else if (enabled) {
             return LocaleController.getString(R.string.MenuProxyConnecting);
         }
-        
+
         return null;
     }
 
     private static boolean isOwnBypass(SharedConfig.ProxyInfo proxy) {
         return proxy != null && proxy.getSettings() != null
                 && WsBypassCore.LOCAL_PROXY_HOST.equals(proxy.getSettings().getAddress())
-                && proxy.getSettings().getPort() == NimarkoWsBypassConfig.localPort;
+                && proxy.getSettings().getPort() == WsBypassConfig.localPort;
     }
     private static long displayPing(SharedConfig.ProxyInfo proxy, int account) {
         return isOwnBypass(proxy) ? ConnectionsManager.native_getCurrentMainPingTime(account) : proxy.ping;
@@ -232,13 +232,13 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
             }
         } catch (Throwable ignore) {
         }
-        
+
         onUpdateData(true);
     }
 
     @Override
     public void updateColors() {
-        
+
         applyColorMode();
     }
 }

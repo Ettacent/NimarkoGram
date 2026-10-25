@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import android.text.SpannableString;
@@ -184,6 +186,7 @@ public class DraftsController {
         final MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
         storage.getStorageQueue().postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            NativeByteBuffer data = null;
             try {
                 SQLiteDatabase database = storage.getDatabase();
                 if (database == null) {
@@ -192,7 +195,7 @@ public class DraftsController {
 
                 state = database.executeFast("REPLACE INTO story_drafts VALUES (?, ?, ?, ?)");
                 state.requery();
-                NativeByteBuffer data = new NativeByteBuffer(draft.getObjectSize());
+                data = new NativeByteBuffer(draft.getObjectSize());
                 draft.toStream(data);
                 state.bindLong(1, draft.id);
                 state.bindLong(2, draft.date);
@@ -205,14 +208,18 @@ public class DraftsController {
                 }
                 state.bindInteger(4, type);
                 state.step();
-                data.reuse();
-                state.dispose();
 
             } catch (Exception e) {
                 FileLog.e(e);
             } finally {
+                try {
                 if (state != null) {
                     state.dispose();
+                    }
+                } finally {
+                    if (data != null) {
+                        data.reuse();
+                    }
                 }
             }
         });
@@ -283,6 +290,7 @@ public class DraftsController {
         FileLog.d("StoryDraft append " + draft.id + " (edit=" + draft.isEdit + (draft.isEdit ? ", storyId=" + draft.editStoryId + ", " + (draft.editDocumentId != 0 ? "documentId=" + draft.editDocumentId : "photoId=" + draft.editPhotoId) + ", expireDate=" + draft.editExpireDate : "") + ", now="+System.currentTimeMillis()+")");
         storage.getStorageQueue().postRunnable(() -> {
             SQLitePreparedStatement state = null;
+            NativeByteBuffer data = null;
             try {
                 SQLiteDatabase database = storage.getDatabase();
                 if (database == null) {
@@ -291,7 +299,7 @@ public class DraftsController {
 
                 state = database.executeFast("INSERT INTO story_drafts VALUES (?, ?, ?, ?)");
                 state.requery();
-                NativeByteBuffer data = new NativeByteBuffer(draft.getObjectSize());
+                data = new NativeByteBuffer(draft.getObjectSize());
                 draft.toStream(data);
                 state.bindLong(1, draft.id);
                 state.bindLong(2, draft.date);
@@ -304,14 +312,18 @@ public class DraftsController {
                 }
                 state.bindInteger(4, type);
                 state.step();
-                data.reuse();
-                state.dispose();
 
             } catch (Exception e) {
                 FileLog.e(e);
             } finally {
+                try {
                 if (state != null) {
                     state.dispose();
+                    }
+                } finally {
+                    if (data != null) {
+                        data.reuse();
+                    }
                 }
             }
         });

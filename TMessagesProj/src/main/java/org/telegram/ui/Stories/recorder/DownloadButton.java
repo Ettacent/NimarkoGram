@@ -42,7 +42,6 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.BoundedPackIconRenderer;
 import org.telegram.messenger.Utilities;
-import org.telegram.messenger.VideoEncodingService;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedFloat;
@@ -53,7 +52,7 @@ import org.telegram.ui.Components.RLottieDrawable;
 
 import java.io.File;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class DownloadButton extends ImageView {
 
     private int currentAccount;
@@ -309,7 +308,7 @@ public class DownloadButton extends ImageView {
                     return;
                 }
                 messageObject.videoEditedInfo = info;
-                MediaController.getInstance().scheduleVideoConvert(messageObject);
+                MediaController.getInstance().scheduleVideoConvert(messageObject, false, true, true);
             });
         }
 
@@ -347,7 +346,6 @@ public class DownloadButton extends ImageView {
 
                     if (finalSize > 0) {
                         onDone.run();
-                        VideoEncodingService.stop();
                         stop(false);
                     }
                 }
@@ -529,7 +527,7 @@ public class DownloadButton extends ImageView {
 
         private boolean drawPackClose(Canvas canvas, float cx, float cy) {
             if (whitePaint.getXfermode() != null) return false;
-            final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+            final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
             if (!packClose.prepare(batch, R.drawable.ic_close_white)) return false;
             final float size = 2f * dp(7) + whitePaint.getStrokeWidth();
             packClose.draw(canvas, whitePaint, cx, cy, size, size, 1f, false);

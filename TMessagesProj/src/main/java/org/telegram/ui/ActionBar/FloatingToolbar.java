@@ -105,7 +105,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 @RequiresApi(23)
 public final class FloatingToolbar {
 
@@ -158,7 +158,7 @@ public final class FloatingToolbar {
     };
 
     private final Comparator<MenuItem> mMenuItemComparator = (menuItem1, menuItem2) -> menuItem1.getOrder() - menuItem2.getOrder();
-    
+
     private final Theme.ResourcesProvider resourcesProvider;
 
     BlurredBackgroundDrawableViewFactory blurredBackgroundDrawableViewFactory;
@@ -437,13 +437,13 @@ public final class FloatingToolbar {
             mLinearOutSlowInInterpolator = AnimationUtils.loadInterpolator(mContext, android.R.interpolator.linear_out_slow_in);
             mFastOutLinearInInterpolator = AnimationUtils.loadInterpolator(mContext, android.R.interpolator.fast_out_linear_in);
 
-            mArrow = NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow).mutate();
+            mArrow = IconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow).mutate();
             mArrow.setAutoMirrored(true);
-            mOverflow = NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow).mutate();
+            mOverflow = IconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow).mutate();
             mOverflow.setAutoMirrored(true);
-            mToArrow = (AnimatedVectorDrawable) NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow_animation).mutate();
+            mToArrow = (AnimatedVectorDrawable) IconResources.getStockDrawable(mContext, R.drawable.ft_avd_toarrow_animation).mutate();
             mToArrow.setAutoMirrored(true);
-            mToOverflow = (AnimatedVectorDrawable) NimarkoIconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow_animation).mutate();
+            mToOverflow = (AnimatedVectorDrawable) IconResources.getStockDrawable(mContext, R.drawable.ft_avd_tooverflow_animation).mutate();
             mToOverflow.setAutoMirrored(true);
 
             mOverflowButton = new FrameLayout(mContext);
@@ -619,14 +619,14 @@ public final class FloatingToolbar {
                     finishTransition();
                 }
                 Drawable drawable = getDrawable();
-                NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-                NimarkoIconResources.PreparedIcon back = icons == null ? null : icons.getIcon(R.drawable.ic_ab_back);
-                NimarkoIconResources.PreparedIcon more = icons == null ? null : icons.getIcon(R.drawable.ic_ab_other);
+                IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+                IconResources.PreparedIcon back = icons == null ? null : icons.getIcon(R.drawable.ic_ab_back);
+                IconResources.PreparedIcon more = icons == null ? null : icons.getIcon(R.drawable.ic_ab_other);
                 Resources resources = getResources();
                 boolean current = icons != null && icons.densityDpi == resources.getDisplayMetrics().densityDpi;
-                if (current && resources instanceof NimarkoIconResources) {
-                    current = icons.generation == ((NimarkoIconResources) resources).getReplacementGeneration()
-                            && icons.selection == ((NimarkoIconResources) resources).getAppliedSelection();
+                if (current && resources instanceof IconResources) {
+                    current = icons.generation == ((IconResources) resources).getReplacementGeneration()
+                            && icons.selection == ((IconResources) resources).getAppliedSelection();
                 }
                 if (!current || back == null || more == null || back.bitmap == null || more.bitmap == null
                         || back.bitmap.isRecycled() || more.bitmap.isRecycled()
@@ -662,7 +662,7 @@ public final class FloatingToolbar {
                 canvas.restoreToCount(save);
             }
 
-            private void drawIcon(Canvas canvas, NimarkoIconResources.PreparedIcon icon, float alpha, float motion, float rotation) {
+            private void drawIcon(Canvas canvas, IconResources.PreparedIcon icon, float alpha, float motion, float rotation) {
                 int opacity = Math.round(alpha * getImageAlpha() * Color.alpha(iconColor) / 255f);
                 if (opacity <= 0) {
                     return;

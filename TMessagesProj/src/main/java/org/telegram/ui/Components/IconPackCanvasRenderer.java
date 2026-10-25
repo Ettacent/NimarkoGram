@@ -4,7 +4,7 @@ package org.telegram.ui.Components;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 
 public final class IconPackCanvasRenderer {
     private final MediaActionDrawable.PackIconRenderer renderer =
@@ -12,8 +12,8 @@ public final class IconPackCanvasRenderer {
 
     public boolean draw(Canvas canvas, int resourceId, Paint foreground,
                         float cx, float cy, float size) {
-        NimarkoIconResources.PreparedIcon icon = MediaActionDrawable.PackIconRenderer.get(
-                NimarkoIconResources.activeNavigationIcons(), resourceId);
+        IconResources.PreparedIcon icon = MediaActionDrawable.PackIconRenderer.get(
+                IconResources.activeNavigationIcons(), resourceId);
         if (icon == null) {
             return false;
         }

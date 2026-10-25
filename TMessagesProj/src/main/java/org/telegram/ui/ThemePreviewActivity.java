@@ -70,7 +70,7 @@ import android.widget.Scroller;
 import android.widget.TextView;
 
 import app.nimarkogram.messenger.icons.CompactIconHelper;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import androidx.annotation.NonNull;
 import androidx.collection.LongSparseArray;
 import androidx.core.graphics.ColorUtils;
@@ -3466,11 +3466,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
     private static Drawable getEditorDropDownDrawable(Context context) {
         Drawable icon = context.getResources().getDrawable(R.drawable.ic_arrow_drop_down, context.getTheme()).mutate();
-        if (!(context.getResources() instanceof NimarkoIconResources)
-                || !((NimarkoIconResources) context.getResources()).hasReplacement(R.drawable.ic_arrow_drop_down)) {
+        if (!(context.getResources() instanceof IconResources)
+                || !((IconResources) context.getResources()).hasReplacement(R.drawable.ic_arrow_drop_down)) {
             return icon;
         }
-        Drawable stock = NimarkoIconResources.getStockDrawable(context, R.drawable.ic_arrow_drop_down).mutate();
+        Drawable stock = IconResources.getStockDrawable(context, R.drawable.ic_arrow_drop_down).mutate();
         RectF stockInk = getEditorDropDownInkBounds(stock);
         RectF iconInk = getEditorDropDownInkBounds(icon);
         if (stockInk == null || iconInk == null) {

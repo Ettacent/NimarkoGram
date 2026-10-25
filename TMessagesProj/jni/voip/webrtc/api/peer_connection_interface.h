@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2012 The WebRTC project authors. All Rights Reserved.
  *
@@ -144,7 +146,12 @@ namespace rtc {
 class Thread;
 }  // namespace rtc
 
+namespace cricket {
+class DtlsTransportFactory;
+}
+
 namespace webrtc {
+class RtpPacketReceived;
 
 // MediaFactory class definition is not part of the api.
 class MediaFactory;
@@ -655,6 +662,8 @@ class RTC_EXPORT PeerConnectionInterface : public webrtc::RefCountInterface {
 
     // Added to be able to control rollout of this feature.
     bool enable_implicit_rollback = false;
+
+    bool disable_payload_type_demuxing = false;
 
     // The delay before doing a usage histogram report for long-lived
     // PeerConnections. Used for testing only.
@@ -1355,6 +1364,8 @@ class PeerConnectionObserver {
   // The heuristics for defining what constitutes "interesting" are
   // implementation-defined.
   virtual void OnInterestingUsage(int usage_pattern) {}
+
+  virtual void OnUnDemuxableRtpPacket(const RtpPacketReceived& packet) {}
 };
 
 // PeerConnectionDependencies holds all of PeerConnections dependencies.
@@ -1385,6 +1396,7 @@ struct RTC_EXPORT PeerConnectionDependencies final {
   std::unique_ptr<webrtc::AsyncDnsResolverFactoryInterface>
       async_dns_resolver_factory;
   std::unique_ptr<webrtc::IceTransportFactory> ice_transport_factory;
+  std::unique_ptr<cricket::DtlsTransportFactory> dtls_transport_factory;
   std::unique_ptr<rtc::RTCCertificateGeneratorInterface> cert_generator;
   std::unique_ptr<rtc::SSLCertificateVerifier> tls_cert_verifier;
   std::unique_ptr<webrtc::VideoBitrateAllocatorFactory>
@@ -1488,6 +1500,8 @@ class RTC_EXPORT PeerConnectionFactoryInterface
     // requirement, allowing unsecured media. Should only be used for
     // testing/debugging.
     bool disable_encryption = false;
+
+    bool external_transport_security = false;
 
     // If set to true, any platform-supported network monitoring capability
     // won't be used, and instead networks will only be updated via polling.

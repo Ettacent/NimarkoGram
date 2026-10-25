@@ -746,6 +746,14 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
                     recordDrawFailure(failure);
                 } catch (Throwable ignored) {
                 }
+                if (failure instanceof IllegalArgumentException
+                        && AndroidUtilities.isColorSpaceDrawCrash((IllegalArgumentException) failure)) {
+                    if (!loggedError) {
+                        FileLog.e("NG: skipped invalid ColorSpace text frame", failure);
+                        loggedError = true;
+                    }
+                    return;
+                }
                 throw failure;
             }
             boolean restore = false;

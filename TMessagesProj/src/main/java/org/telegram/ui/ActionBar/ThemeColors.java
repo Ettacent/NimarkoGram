@@ -671,7 +671,7 @@ public class ThemeColors {
         defaultColors[key_chat_outTextSelectionCursor] = 0xFF419FE8;
         defaultColors[key_chat_outBubbleLocationPlaceholder] = 0x1e307311;
         defaultColors[key_chat_inBubbleLocationPlaceholder] = 0x1e506373;
-        defaultColors[key_chat_BlurAlpha] = app.nimarkogram.messenger.NimarkoConfig.forceBlur ? 0xCF000000 : 0xB2000000;
+        defaultColors[key_chat_BlurAlpha] = app.nimarkogram.messenger.AppConfig.forceBlur ? 0xCF000000 : 0xB2000000;
         defaultColors[key_chat_BlurAlphaSlow] = 0xC1000000;
         defaultColors[key_chat_editMediaButton] = 0xff1A9CFF;
 

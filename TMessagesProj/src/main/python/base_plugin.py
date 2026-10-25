@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 import traceback
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -10,7 +12,7 @@ from typing import Any, List, final, Optional, Callable, Dict, Union
 import plugin_settings
 import plugin_runtime
 from android_utils import log
-from app.nimarkogram.messenger import NimarkoConfig as NekoConfig
+from app.nimarkogram.messenger import AppConfig as NekoConfig
 from app.nimarkogram.messenger.plugins import PluginsController, PluginsConstants
 from app.nimarkogram.messenger.plugins.hooks import HookFilter as JavaHookFilter
 from app.nimarkogram.messenger.plugins.xposed import PyMethodHook, PyMethodReplacement
@@ -159,47 +161,47 @@ class HookFilter(Enum):
     @staticmethod
     def ResultIsInstanceOf(clazz):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.RESULT_IS_INSTANCE_OF, instance_of=clazz)
-   
+
     @staticmethod
     def ResultEqual(value):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.RESULT_EQUAL, object=value)
-   
+
     @staticmethod
     def ResultNotEqual(value):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.RESULT_NOT_EQUAL, object=value)
-   
+
     @staticmethod
     def ArgumentIsNull(index: int):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_IS_NULL, arg_index=index)
-   
+
     @staticmethod
     def ArgumentIsTrue(index: int):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_IS_TRUE, arg_index=index)
- 
+
     @staticmethod
     def ArgumentIsFalse(index: int):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_IS_FALSE, arg_index=index)
-  
+
     @staticmethod
     def ArgumentNotNull(index: int):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_NOT_NULL, arg_index=index)
-  
+
     @staticmethod
     def ArgumentIsInstanceOf(index: int, clazz):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_IS_INSTANCE_OF, arg_index=index, instance_of=clazz)
-  
+
     @staticmethod
     def ArgumentEqual(index: int, value):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_EQUAL, arg_index=index, object=value)
-  
+
     @staticmethod
     def ArgumentNotEqual(index: int, value):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.ARGUMENT_NOT_EQUAL, arg_index=index, object=value)
-  
+
     @staticmethod
     def Condition(condition: str, object: Any=None):
         return HookFilterData(filter_type=PluginsConstants.HookFilterTypes.CONDITION, mvel_expression=condition, object=object)
-  
+
     @staticmethod
     def Or(*filters):
         if not filters:
@@ -222,11 +224,12 @@ def hook_filters(*filters):
             else:
                 target = filters
         func.__hook_filters__ = [
-            (f if isinstance(f, HookFilterData) else f.filter_data).to_java_filter() 
+            (f if isinstance(f, HookFilterData) else f.filter_data).to_java_filter()
             for f in target
         ]
         return func
     return decorator
+
 
 def _runtime_owned(default=None):
     """Run an SDK operation under the exact plugin-instance capability."""
@@ -237,7 +240,6 @@ def _runtime_owned(default=None):
                 or plugin_runtime.capture_callback_owner(fn)
             )
             if token is None:
-                
                 return default
             controller = PluginsController.getInstance()
             if not controller.enterPluginRuntime(token):
@@ -251,6 +253,7 @@ def _runtime_owned(default=None):
         return wrapped
     return decorate
 
+
 class BasePlugin:
     def __init__(self):
         self.id = ''
@@ -263,40 +266,38 @@ class BasePlugin:
         self.error_message = None
         self.enabled = False
         self.initialized = False
-        
         self._runtime_token = None
         self._nimarko_runtime_token = None
-        
         self.isenabled = False
         self._initializing = False
 
     def on_plugin_load(self):
         return
-  
+
     def on_plugin_unload(self):
         return
-  
+
     def create_settings(self) -> List[Any]:
         return []
-  
+
     def on_app_event(self, event_type: AppEvent):
         return
-  
+
     def pre_request_hook(self, request_name: str, account: int, request: Any) -> HookResult:
         return HookResult()
-  
+
     def post_request_hook(self, request_name: str, account: int, response: Any, error: Any) -> HookResult:
         return HookResult()
-  
+
     def on_update_hook(self, update_name: str, account: int, update: Any) -> HookResult:
         return HookResult()
-  
+
     def on_updates_hook(self, container_name: str, account: int, updates: Any) -> HookResult:
         return HookResult()
-  
+
     def on_send_message_hook(self, account: int, params: Any) -> HookResult:
         return HookResult()
-  
+
     @final
     @_runtime_owned()
     def add_hook(self, name: str, match_substring: bool=False, priority: int=0):
@@ -304,12 +305,12 @@ class BasePlugin:
             return None
         else:
             PluginsController.getInstance().addEventHook(self.id, name, match_substring, priority)
- 
+
     @final
     @_runtime_owned()
     def add_on_send_message_hook(self, priority: int=0):
         self.add_hook(PluginsConstants.SEND_MESSAGE_HOOK, False, priority)
- 
+
     @final
     @_runtime_owned()
     def remove_hook(self, name: str):
@@ -362,7 +363,7 @@ class BasePlugin:
             return None
         import file_utils
         file_utils.FilesController.get_instance().unregister(handle)
-  
+
     @final
     @_runtime_owned()
     def get_setting(self, key: str, default: Any=None) -> Any:
@@ -370,7 +371,7 @@ class BasePlugin:
             return default
         else:
             return plugin_settings.get_setting(self.id, key, default)
-  
+
     @final
     @_runtime_owned()
     def set_setting(self, key: str, value: Any, reload_settings: bool=False):
@@ -382,9 +383,8 @@ class BasePlugin:
                 return None
             if reload_settings:
                 PluginsController.getInstance().loadPluginSettings(self.id)
-            
             return None
- 
+
     @final
     @_runtime_owned({})
     def export_settings(self) -> dict:
@@ -392,7 +392,7 @@ class BasePlugin:
             return {}
         else:
             return plugin_settings.get_all_settings(self.id)
-   
+
     @final
     @_runtime_owned()
     def import_settings(self, settings: dict, reload_settings: bool=True):
@@ -481,7 +481,7 @@ class BasePlugin:
                                 if hasattr((method := getattr(xposed_hook, PluginsConstants.Xposed.AFTER_HOOKED_METHOD, None)), PluginsConstants.Xposed.HOOK_FILTERS):
                                     java_callback_instance.setAfterHookedFilters(cast_to_array_list(getattr(method, PluginsConstants.Xposed.HOOK_FILTERS)))
                 return java_callback_instance
-   
+
     @final
     @_runtime_owned()
     def hook_method(self, method_or_constructor: Member, xposed_hook: Optional[Any]=None, priority: Optional[int]=None, before: Optional[Callable]=None, after: Optional[Callable]=None) -> Optional[XC_MethodHook.Unhook]:
@@ -519,7 +519,7 @@ class BasePlugin:
                 self.log('An error occurred after the hook was created, attempting to unhook it immediately.')
                 unhook.unhook()
             return None
-  
+
     @final
     @_runtime_owned()
     def hook_all_methods(self, hook_class: Class, method_name: str, xposed_hook: Optional[Any]=None, priority: Optional[int]=None, before: Optional[Callable]=None, after: Optional[Callable]=None) -> Optional[List[XC_MethodHook.Unhook]]:
@@ -544,7 +544,7 @@ class BasePlugin:
         except Exception as e:
             self.log(f'Error while hooking class methods with name {method_name} for {hook_class.getName()}: {e}')
             return None
-  
+
     @final
     @_runtime_owned()
     def hook_all_constructors(self, hook_class: Class, xposed_hook: Optional[Any]=None, priority: Optional[int]=None, before: Optional[Callable]=None, after: Optional[Callable]=None) -> Optional[List[XC_MethodHook.Unhook]]:
@@ -567,16 +567,16 @@ class BasePlugin:
         except Exception as e:
             self.log(f'Error while hooking class constructors for {hook_class.getName()}: {e}')
             return None
-   
+
     @final
     @_runtime_owned()
     def unhook_method(self, unhook: XC_MethodHook.Unhook):
         PluginsController.getInstance().removeXposedHook(self.id, unhook)
-  
+
     @final
     def log(self, message: str):
         log(f'[{self.id}] {message}')
-  
+
     @final
     @_runtime_owned()
     def add_menu_item(self, menu_item_data: MenuItemData) -> Optional[str]:
@@ -589,7 +589,7 @@ class BasePlugin:
             except Exception as e:
                 self.log(f'Error adding menu item: {e}')
                 return None
-   
+
     @final
     @_runtime_owned(False)
     def remove_menu_item(self, item_id: str) -> bool:

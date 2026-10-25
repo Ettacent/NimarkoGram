@@ -432,7 +432,15 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         @Override
         public void addView(View child, int index, ViewGroup.LayoutParams params) {
             super.addView(child, index, params);
-            ViewCompat.requestApplyInsets(this);
+            applyInsets(this);
+        }
+
+        private void applyInsets(View fallback) {
+            if (lastWindowInsetsCompat != null && getParent() == ActionBarLayout.this) {
+                dispatchApplyWindowInsetsInternal(this, lastWindowInsetsCompat);
+            } else if (fallback != null) {
+                ViewCompat.requestApplyInsets(fallback);
+            }
         }
 
         @Override
@@ -476,7 +484,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             if (this.edgeToEdgeSupportMode != edgeToEdgeSupportMode) {
                 this.edgeToEdgeSupportMode = edgeToEdgeSupportMode;
                 this.isSupportEdgeToEdge = edgeToEdgeSupportMode != EdgeToEdgeSupportMode.NONE;
-                ViewCompat.requestApplyInsets((View) getParent());
+                applyInsets((View) getParent());
             }
         }
         public void setDrawNavigationBar(boolean drawNavigationBar) {
@@ -535,7 +543,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                                         ripple.setState(shouldBeEnabled ? new int[]{android.R.attr.state_pressed, android.R.attr.state_enabled} : new int[]{});
                                         if (shouldBeEnabled) {
                                             // NimarkoGram (CG parity): gate haptic on disableVibration flag.
-                                            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                                            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                                 AndroidUtilities.vibrateCursor(button);
                                             }
                                         }
@@ -1590,7 +1598,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragmentView = lastFragment.performCreateView(parentActivity);
             if (fragmentView != null && lastFragment.isSupportEdgeToEdge() && lastFragment.drawEdgeNavigationBar()) {
                 // NimarkoGram (CG L1326): strip haptic feedback when disableVibration on.
-                if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, lastFragment::onInsetsInternal);
@@ -3098,19 +3106,19 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 long chatId = arguments.getLong("chat_id");
                 int encId = arguments.getInt("enc_id");
                 int account = fragment.getCurrentAccount();
-                boolean required = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                boolean required = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper
                         .shouldRequireBiometrics(userId, chatId, encId, account);
-                if (required && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                if (required && !app.nimarkogram.messenger.security.AppBiometricPrompt
                         .isRecentlyVerified(account, userId, chatId, encId)) {
                     if (parentActivity == null) {
                         return false;
                     }
-                    app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(
+                    app.nimarkogram.messenger.security.AppBiometricPrompt.promptForChat(
                             parentActivity,
                             account,
                             userId, chatId, encId,
                             () -> {
-                                app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                                app.nimarkogram.messenger.security.AppBiometricPrompt
                                         .markVerified(account, userId, chatId, encId);
                                 presentFragment(params);
                             },
@@ -3207,7 +3215,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
                 // NimarkoGram (CG L2163): strip haptic feedback when disableVibration on.
-                if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, fragment::onInsetsInternal);
@@ -3627,7 +3635,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
                 // NimarkoGram (CG L2537): strip haptic feedback when disableVibration on.
-                if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, fragment::onInsetsInternal);
@@ -3666,7 +3674,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragmentView = fragment.performCreateView(parentActivity);
             if (fragmentView != null && fragment.isSupportEdgeToEdge() && fragment.drawEdgeNavigationBar()) {
                 // NimarkoGram (CG L2575): strip haptic feedback when disableVibration on.
-                if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, fragment::onInsetsInternal);
@@ -3803,7 +3811,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             springAnimation.addEndListener(endListener);
             springAnimation.start();
             // NimarkoGram (CG L2690): only haptic when disableVibration is off.
-            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                 } catch (Exception ignore) {}
@@ -3848,7 +3856,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
         });
         animatorSet.start();
         // NimarkoGram (CG L2713): only haptic when disableVibration is off.
-        if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+        if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             } catch (Exception ignore) {}
@@ -3960,7 +3968,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 fragmentView = previousFragment.performCreateView(parentActivity);
                 if (fragmentView != null && previousFragment.isSupportEdgeToEdge() && previousFragment.drawEdgeNavigationBar()) {
                     // NimarkoGram (CG L2775): strip haptic feedback when disableVibration on.
-                    if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                    if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                         app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                     }
                     ViewCompat.setOnApplyWindowInsetsListener(fragmentView, previousFragment::onInsetsInternal);
@@ -4160,7 +4168,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             fragmentView = previousFragment.performCreateView(parentActivity);
             if (fragmentView != null && previousFragment.isSupportEdgeToEdge() && previousFragment.drawEdgeNavigationBar()) {
                 // NimarkoGram (CG L2966): strip haptic feedback when disableVibration on.
-                if (app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                if (app.nimarkogram.messenger.AppConfig.disableVibration) {
                     app.nimarkogram.messenger.utils.VibrateUtils.disableHapticFeedback(fragmentView);
                 }
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, previousFragment::onInsetsInternal);
@@ -5150,8 +5158,8 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
     private DynamicAnimation.OnAnimationEndListener currentSpringEndListener;
     private AnimatorSet previewExpandAnimator;
     private View previewExpandView;
-    private final boolean USE_SPRING_ANIMATION = app.nimarkogram.messenger.NimarkoConfig.isSpringAnimationEnabled();
-    private final boolean USE_MATERIAL_ANIMATION = app.nimarkogram.messenger.NimarkoConfig.isMaterialAnimationEnabled();
+    private final boolean USE_SPRING_ANIMATION = app.nimarkogram.messenger.AppConfig.isSpringAnimationEnabled();
+    private final boolean USE_MATERIAL_ANIMATION = app.nimarkogram.messenger.AppConfig.isMaterialAnimationEnabled();
     private static final boolean USE_ACTIONBAR_CROSSFADE = false;
     private final float SPRING_STIFFNESS = 700f;
     private final float SPRING_STIFFNESS_PREVIEW = 650f;

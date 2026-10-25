@@ -140,6 +140,10 @@ public class UserInfoCell extends View implements NotificationCenter.Notificatio
     }
 
     public void set(long dialogId, TLRPC.PeerSettings settings) {
+        if (footer != null) {
+            footer.detach();
+            footer = null;
+        }
         this.dialogId = dialogId;
 
         width = 0;

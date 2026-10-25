@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tgnet;
 
 import org.telegram.messenger.Utilities;
@@ -33,6 +35,10 @@ public class Vector<T extends TLObject> extends TLObject {
     @Override
     public void readParams(InputSerializedData stream, boolean exception) {
         final int size = stream.readInt32(exception);
+        if (!validateSize(size, 4, stream.remaining())) {
+            TLParseException.doThrowOrLog(stream, "VectorWrongSize", constructor, exception);
+            return;
+        }
         for (int i = 0; i < size; ++i) {
             objects.add(itemDeserializer.deserialize(stream, stream.readInt32(exception), exception));
         }
@@ -158,14 +164,14 @@ public class Vector<T extends TLObject> extends TLObject {
         return (count >= 0) && (bytesPerItem > 0) && (((long) count) * bytesPerItem <= remaining);
     }
 
-    private static <T> ArrayList<T> deserialize(InputSerializedData stream, Utilities.CallbackReturn<Boolean, T> read, boolean exception) {
+    private static <T> ArrayList<T> deserialize(InputSerializedData stream, Utilities.CallbackReturn<Boolean, T> read, int bytesPerItem, boolean exception) {
         final int magic = stream.readInt32(exception);
         if (magic != Vector.constructor) {
             TLParseException.doThrowOrLog(stream, "Vector", magic, exception);
             return new ArrayList<>();
         }
         final int size = stream.readInt32(exception);
-        if (!validateSize(size, 1, stream.remaining())) {
+        if (!validateSize(size, bytesPerItem, stream.remaining())) {
             TLParseException.doThrowOrLog(stream, "VectorWrongSize", magic, exception);
             return new ArrayList<>();
         }
@@ -176,16 +182,16 @@ public class Vector<T extends TLObject> extends TLObject {
         return result;
     }
     public static ArrayList<java.lang.Integer> deserializeInt(InputSerializedData stream, boolean exception) {
-        return deserialize(stream, stream::readInt32, exception);
+        return deserialize(stream, stream::readInt32, 4, exception);
     }
     public static ArrayList<java.lang.Long> deserializeLong(InputSerializedData stream, boolean exception) {
-        return deserialize(stream, stream::readInt64, exception);
+        return deserialize(stream, stream::readInt64, 8, exception);
     }
     public static ArrayList<java.lang.String> deserializeString(InputSerializedData stream, boolean exception) {
-        return deserialize(stream, stream::readString, exception);
+        return deserialize(stream, stream::readString, 4, exception);
     }
     public static ArrayList<byte[]> deserializeByteArray(InputSerializedData stream, boolean exception) {
-        return deserialize(stream, stream::readByteArray, exception);
+        return deserialize(stream, stream::readByteArray, 4, exception);
     }
     public static <T extends TLObject> ArrayList<T> deserialize(InputSerializedData stream, TLDeserializer<T> deserializer, boolean exception) {
         final int magic = stream.readInt32(exception);

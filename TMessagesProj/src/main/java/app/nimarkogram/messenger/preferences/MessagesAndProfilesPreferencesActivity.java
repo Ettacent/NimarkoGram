@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /**
@@ -112,7 +113,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Locale;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
@@ -208,27 +209,27 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
             if (type == PAGE_PROFILE) {
                 if (user != null && user.premium && UserObject.getProfileColorId(user) != -1) {
-                    selectedColor = NimarkoConfig.profileBackgroundColor ? UserObject.getProfileColorId(user) : -1;
+                    selectedColor = AppConfig.profileBackgroundColor ? UserObject.getProfileColorId(user) : -1;
                 } else {
-                    selectedColor = NimarkoConfig.profileBackgroundColor ? PROFILE_BACKGROUND_COLOR_ID_RED : -1;
+                    selectedColor = AppConfig.profileBackgroundColor ? PROFILE_BACKGROUND_COLOR_ID_RED : -1;
                 }
 
                 if (user != null && user.premium && UserObject.getProfileEmojiId(user) != 0) {
-                    selectedEmoji = NimarkoConfig.profileBackgroundEmoji ? UserObject.getProfileEmojiId(user) : 0;
+                    selectedEmoji = AppConfig.profileBackgroundEmoji ? UserObject.getProfileEmojiId(user) : 0;
                 } else {
-                    selectedEmoji = NimarkoConfig.profileBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
+                    selectedEmoji = AppConfig.profileBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
                 }
             } else {
                 if (user != null && user.premium && UserObject.getColorId(user) != -1) {
-                    selectedColor = NimarkoConfig.replyCustomColors ? UserObject.getColorId(user) : -1;
+                    selectedColor = AppConfig.replyCustomColors ? UserObject.getColorId(user) : -1;
                 } else {
-                    selectedColor = NimarkoConfig.replyCustomColors ? REPLY_BACKGROUND_COLOR_ID : -1;
+                    selectedColor = AppConfig.replyCustomColors ? REPLY_BACKGROUND_COLOR_ID : -1;
                 }
 
                 if (user != null && user.premium && UserObject.getEmojiId(user) != 0) {
-                    selectedEmoji = NimarkoConfig.replyBackgroundEmoji ? UserObject.getEmojiId(user) : 0;
+                    selectedEmoji = AppConfig.replyBackgroundEmoji ? UserObject.getEmojiId(user) : 0;
                 } else {
-                    selectedEmoji = NimarkoConfig.replyBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
+                    selectedEmoji = AppConfig.replyBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
                 }
             }
 
@@ -325,37 +326,37 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             NotificationsCheckCell switchCell = (NotificationsCheckCell) holder.itemView;
                             if (position == timeWithSecondsSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ShowSeconds,
-                                        R.string.NM_MP_ShowSeconds_Desc, NimarkoConfig.showSeconds, true);
+                                        R.string.NM_MP_ShowSeconds_Desc, AppConfig.showSeconds, true);
                             } else if (position == premiumStatusSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_DisablePremiumStatuses,
-                                        R.string.NM_MP_DisablePremiumStatuses_Desc, NimarkoConfig.disablePremiumStatuses, true);
+                                        R.string.NM_MP_DisablePremiumStatuses_Desc, AppConfig.disablePremiumStatuses, true);
                             } else if (position == replyBackgroundSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ReplyBackground,
-                                        R.string.NM_MP_ReplyBackground_Desc, NimarkoConfig.replyBackground, false);
+                                        R.string.NM_MP_ReplyBackground_Desc, AppConfig.replyBackground, false);
                             } else if (position == replyColorSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ReplyCustomColors,
-                                        R.string.NM_MP_ReplyCustomColors_Desc, NimarkoConfig.replyCustomColors, false);
+                                        R.string.NM_MP_ReplyCustomColors_Desc, AppConfig.replyCustomColors, false);
                             } else if (position == replyEmojiSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ReplyBackgroundEmoji,
-                                        R.string.NM_MP_ReplyBackgroundEmoji_Desc, NimarkoConfig.replyBackgroundEmoji, false);
+                                        R.string.NM_MP_ReplyBackgroundEmoji_Desc, AppConfig.replyBackgroundEmoji, false);
                             } else if (position == channelPreviewSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ProfileChannelPreview,
-                                        R.string.NM_MP_ProfileChannelPreview_Desc, NimarkoConfig.profileChannelPreview, false);
+                                        R.string.NM_MP_ProfileChannelPreview_Desc, AppConfig.profileChannelPreview, false);
                             } else if (position == showDcIdSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ShowIdDc,
-                                        R.string.NM_MP_ShowIdDc_Desc, NimarkoConfig.showIDDC, false);
+                                        R.string.NM_MP_ShowIdDc_Desc, AppConfig.showIDDC, false);
                             } else if (position == birthdayPreviewSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ProfileBirthDatePreview,
-                                        R.string.NM_MP_ProfileBirthDatePreview_Desc, NimarkoConfig.profileBirthDatePreview, false);
+                                        R.string.NM_MP_ProfileBirthDatePreview_Desc, AppConfig.profileBirthDatePreview, false);
                             } else if (position == businessPreviewSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ProfileBusinessPreview,
-                                        R.string.NM_MP_ProfileBusinessPreview_Desc, NimarkoConfig.profileBusinessPreview, false);
+                                        R.string.NM_MP_ProfileBusinessPreview_Desc, AppConfig.profileBusinessPreview, false);
                             } else if (position == profileBackgroundSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ProfileBackgroundColor,
-                                        R.string.NM_MP_ProfileBackgroundColor_Desc, NimarkoConfig.profileBackgroundColor, false);
+                                        R.string.NM_MP_ProfileBackgroundColor_Desc, AppConfig.profileBackgroundColor, false);
                             } else if (position == profileEmojiSwitchRow) {
                                 bindSwitch(switchCell, R.string.NM_MP_ProfileBackgroundEmoji,
-                                        R.string.NM_MP_ProfileBackgroundEmoji_Desc, NimarkoConfig.profileBackgroundEmoji, true);
+                                        R.string.NM_MP_ProfileBackgroundEmoji_Desc, AppConfig.profileBackgroundEmoji, true);
                             }
                             break;
                         }
@@ -462,8 +463,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 final TLRPC.User me = getUserConfig().getCurrentUser();
 
                 if (position == timeWithSecondsSwitchRow) {
-                    NimarkoConfig.toggleShowSeconds();
-                    setSwitchChecked(view, NimarkoConfig.showSeconds);
+                    AppConfig.toggleShowSeconds();
+                    setSwitchChecked(view, AppConfig.showSeconds);
                     LocaleController.getInstance().recreateFormatters();
                     // Refresh the in-page sample preview immediately: force each preview
                     // ChatMessageCell to fully rebuild (forceResetMessageObject -> re-runs
@@ -488,16 +489,16 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     NotificationCenter.getGlobalInstance()
                             .postNotificationName(NotificationCenter.reloadInterface);
                 } else if (position == premiumStatusSwitchRow) {
-                    NimarkoConfig.toggleDisablePremiumStatuses();
-                    setSwitchChecked(view, NimarkoConfig.disablePremiumStatuses);
+                    AppConfig.toggleDisablePremiumStatuses();
+                    setSwitchChecked(view, AppConfig.disablePremiumStatuses);
 
-                    if (!NimarkoConfig.disablePremiumStatuses) {
+                    if (!AppConfig.disablePremiumStatuses) {
                         profilePage.profilePreview.titleView.setRightDrawable(profilePage.profilePreview.statusEmoji);
                         profilePage.profilePreview.statusEmoji.play();
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online));
                     } else {
                         profilePage.profilePreview.titleView.setRightDrawable((Drawable) null);
-                        String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
+                        String tgPremium = AppConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
                         profilePage.profilePreview.subtitleView.setText(getString(R.string.Online) + tgPremium);
                     }
                     // NG nick-truncation fix: setRightDrawable re-lays out the title against its STALE
@@ -514,29 +515,29 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         profilePage.refreshPremiumStatusRow();
                     }
                 } else if (position == replyBackgroundSwitchRow) {
-                    NimarkoConfig.toggleReplyBackground();
-                    setSwitchChecked(view, NimarkoConfig.replyBackground);
+                    AppConfig.toggleReplyBackground();
+                    setSwitchChecked(view, AppConfig.replyBackground);
 
                     updateMessages();
                 } else if (position == replyColorSwitchRow) {
-                    NimarkoConfig.toggleReplyCustomColors();
-                    setSwitchChecked(view, NimarkoConfig.replyCustomColors);
+                    AppConfig.toggleReplyCustomColors();
+                    setSwitchChecked(view, AppConfig.replyCustomColors);
 
                     if (me != null && me.premium && UserObject.getColorId(me) != -1) {
-                        selectedColor = NimarkoConfig.replyCustomColors ? UserObject.getColorId(me) : -1;
+                        selectedColor = AppConfig.replyCustomColors ? UserObject.getColorId(me) : -1;
                     } else {
-                        selectedColor = NimarkoConfig.replyCustomColors ? REPLY_BACKGROUND_COLOR_ID : -1;
+                        selectedColor = AppConfig.replyCustomColors ? REPLY_BACKGROUND_COLOR_ID : -1;
                     }
 
                     updateMessages();
                 } else if (position == replyEmojiSwitchRow) {
-                    NimarkoConfig.toggleReplyBackgroundEmoji();
-                    setSwitchChecked(view, NimarkoConfig.replyBackgroundEmoji);
+                    AppConfig.toggleReplyBackgroundEmoji();
+                    setSwitchChecked(view, AppConfig.replyBackgroundEmoji);
 
                     if (me != null && me.premium && UserObject.getEmojiId(me) != 0) {
-                        selectedEmoji = NimarkoConfig.replyBackgroundEmoji ? UserObject.getEmojiId(me) : 0;
+                        selectedEmoji = AppConfig.replyBackgroundEmoji ? UserObject.getEmojiId(me) : 0;
                     } else {
-                        selectedEmoji = NimarkoConfig.replyBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
+                        selectedEmoji = AppConfig.replyBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
                     }
 
                     updateMessages();
@@ -544,33 +545,33 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     // CG opened Constants.CG_CHANNEL_URL; NG has no equivalent
                     // promo channel, so the mock preview is non-interactive.
                 } else if (position == channelPreviewSwitchRow) {
-                    NimarkoConfig.toggleProfileChannelPreview();
-                    setSwitchChecked(view, NimarkoConfig.profileChannelPreview);
+                    AppConfig.toggleProfileChannelPreview();
+                    setSwitchChecked(view, AppConfig.profileChannelPreview);
 
                     profilePage.updateRows();
                 } else if (position == showDcIdSwitchRow) {
-                    NimarkoConfig.toggleShowIDDC();
-                    setSwitchChecked(view, NimarkoConfig.showIDDC);
+                    AppConfig.toggleShowIDDC();
+                    setSwitchChecked(view, AppConfig.showIDDC);
 
                     profilePage.updateRows();
                 } else if (position == birthdayPreviewSwitchRow) {
-                    NimarkoConfig.toggleProfileBirthDatePreview();
-                    setSwitchChecked(view, NimarkoConfig.profileBirthDatePreview);
+                    AppConfig.toggleProfileBirthDatePreview();
+                    setSwitchChecked(view, AppConfig.profileBirthDatePreview);
 
                     profilePage.updateRows();
                 } else if (position == businessPreviewSwitchRow) {
-                    NimarkoConfig.toggleProfileBusinessPreview();
-                    setSwitchChecked(view, NimarkoConfig.profileBusinessPreview);
+                    AppConfig.toggleProfileBusinessPreview();
+                    setSwitchChecked(view, AppConfig.profileBusinessPreview);
 
                     profilePage.updateRows();
                 } else if (position == profileBackgroundSwitchRow) {
-                    NimarkoConfig.toggleProfileBackgroundColor();
-                    setSwitchChecked(view, NimarkoConfig.profileBackgroundColor);
+                    AppConfig.toggleProfileBackgroundColor();
+                    setSwitchChecked(view, AppConfig.profileBackgroundColor);
 
                     if (me != null && me.premium && UserObject.getProfileColorId(me) != -1) {
-                        selectedColor = NimarkoConfig.profileBackgroundColor ? UserObject.getProfileColorId(me) : -1;
+                        selectedColor = AppConfig.profileBackgroundColor ? UserObject.getProfileColorId(me) : -1;
                     } else {
-                        selectedColor = NimarkoConfig.profileBackgroundColor ? PROFILE_BACKGROUND_COLOR_ID_RED : -1;
+                        selectedColor = AppConfig.profileBackgroundColor ? PROFILE_BACKGROUND_COLOR_ID_RED : -1;
                     }
 
                     updateMessages();
@@ -587,13 +588,13 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         profilePage.profilePreview.overrideAvatarColor(messagePage.selectedColor);
                     }
                 } else if (position == profileEmojiSwitchRow) {
-                    NimarkoConfig.toggleProfileBackgroundEmoji();
-                    setSwitchChecked(view, NimarkoConfig.profileBackgroundEmoji);
+                    AppConfig.toggleProfileBackgroundEmoji();
+                    setSwitchChecked(view, AppConfig.profileBackgroundEmoji);
 
                     if (me != null && me.premium && UserObject.getProfileEmojiId(me) != 0) {
-                        selectedEmoji = NimarkoConfig.profileBackgroundEmoji ? UserObject.getProfileEmojiId(me) : 0;
+                        selectedEmoji = AppConfig.profileBackgroundEmoji ? UserObject.getProfileEmojiId(me) : 0;
                     } else {
-                        selectedEmoji = NimarkoConfig.profileBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
+                        selectedEmoji = AppConfig.profileBackgroundEmoji ? NIMARKO_EMOJI_ID_FALLBACK : 0;
                     }
 
                     updateMessages();
@@ -693,37 +694,37 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
             if (type == PAGE_PROFILE) {
                 // Channel preview
-                if (NimarkoConfig.profileChannelPreview) {
+                if (AppConfig.profileChannelPreview) {
                     channelPreviewRow = addRow(20);
                     channelPreviewDivisorRow = addRow(21);
                 }
                 // Channel preview
 
-                if (NimarkoConfig.showIDDC
-                        || NimarkoConfig.profileBirthDatePreview
-                        || NimarkoConfig.profileBusinessPreview
+                if (AppConfig.showIDDC
+                        || AppConfig.profileBirthDatePreview
+                        || AppConfig.profileBusinessPreview
                 ) {
                     infoHeaderRow = addRow(22);
                 }
 
                 // DC ID
-                if (NimarkoConfig.showIDDC) {
+                if (AppConfig.showIDDC) {
                     idDcPreviewRow = addRow(23);
                 }
                 // DC ID
 
                 // Birth date preview
-                if (NimarkoConfig.profileBirthDatePreview) {
+                if (AppConfig.profileBirthDatePreview) {
                     birthdayPreviewRow = addRow(24);
                 }
                 // Birth date preview
 
                 // Business preview
-                if (NimarkoConfig.profileBusinessPreview) {
+                if (AppConfig.profileBusinessPreview) {
                     businessHoursPreviewRow = addRow(25);
                 }
 
-                if (NimarkoConfig.profileBusinessPreview) {
+                if (AppConfig.profileBusinessPreview) {
                     businessLocationPreviewRow = addRow(26);
                 }
                 // Business preview
@@ -826,7 +827,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             if (cell.currentNameStatusDrawable == null) {
                                 cell.currentNameStatusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(this, dp(26));
                             }
-                            if (!NimarkoConfig.disablePremiumStatuses) {
+                            if (!AppConfig.disablePremiumStatuses) {
                                 TLRPC.User currentUser = getUserConfig().getCurrentUser();
                                 Long emojiStatusId = currentUser != null ? UserObject.getEmojiStatusDocumentId(currentUser.emoji_status) : null;
                                 if (emojiStatusId != null) {
@@ -1312,7 +1313,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             statusEmoji = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleView, dp(24));
             titleView.setLeftDrawableOutside(true);
             titleView.setRightDrawableOutside(true);
-            if (!NimarkoConfig.disablePremiumStatuses) titleView.setRightDrawable(statusEmoji);
+            if (!AppConfig.disablePremiumStatuses) titleView.setRightDrawable(statusEmoji);
             titleView.setRightDrawableOnClick(v -> statusEmoji.play());
             titleView.setTextColor(0xFFFFFFFF);
             titleView.setTextSize(20);
@@ -1355,7 +1356,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
 
             titleView.setText(title);
-            String tgPremium = NimarkoConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
+            String tgPremium = AppConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
             subtitleView.setText(getString(R.string.Online) + tgPremium);
 
             setWillNotDraw(false);

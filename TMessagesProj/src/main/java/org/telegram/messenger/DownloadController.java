@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -185,7 +187,7 @@ public class DownloadController extends BaseController implements NotificationCe
                     mask[a] &=~ AUTODOWNLOAD_TYPE_DOCUMENT;
                 }
             }
-            
+
             preloadStories = true;
         }
 
@@ -238,7 +240,7 @@ public class DownloadController extends BaseController implements NotificationCe
     public int currentMobilePreset;
     public int currentWifiPreset;
     public int currentRoamingPreset;
-    
+
     private static volatile DownloadController[] Instance = new DownloadController[UserConfig.MAX_ACCOUNT_COUNT];
 
     public static DownloadController getInstance(int num) {
@@ -1776,7 +1778,7 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     private boolean nimarkoCanDownload(TLRPC.Message message, MessageObject messageObject) {
-        if (app.nimarkogram.messenger.NimarkoConfig.enableMsgFilters) {
+        if (app.nimarkogram.messenger.AppConfig.enableMsgFilters) {
             if (messageObject == null) {
                 if (message == null) return true;
                 messageObject = new MessageObject(currentAccount, message, false, false);

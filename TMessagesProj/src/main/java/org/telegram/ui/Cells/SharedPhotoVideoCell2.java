@@ -30,7 +30,7 @@ import android.text.Spanned;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import android.text.TextUtils;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -1411,8 +1411,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
 
         public Bitmap getPrivacyBitmap(Context context, int resId) {
             final Resources resources = context.getResources();
-            final long generation = resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            final long generation = resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
             final int density = resources.getDisplayMetrics().densityDpi;
             final boolean dark = Theme.isCurrentThemeDark();
             if (privacyResources != resources || privacyGeneration != generation || privacyDensity != density || privacyDark != dark) {
@@ -1429,8 +1429,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             Drawable icon = resources.getDrawable(resId).mutate();
             int width = Math.max(1, icon.getIntrinsicWidth());
             int height = Math.max(1, icon.getIntrinsicHeight());
-            if (resId == R.drawable.msg_pin_mini && resources instanceof NimarkoIconResources
-                    && ((NimarkoIconResources) resources).hasReplacement(resId)) {
+            if (resId == R.drawable.msg_pin_mini && resources instanceof IconResources
+                    && ((IconResources) resources).hasReplacement(resId)) {
                 final int size = Math.max(1, (int) Math.ceil(17.33f * resources.getDisplayMetrics().density));
                 width = Math.max(width, size);
                 height = Math.max(height, size);

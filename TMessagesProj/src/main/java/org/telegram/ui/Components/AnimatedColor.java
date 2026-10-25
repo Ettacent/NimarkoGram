@@ -3,7 +3,7 @@
 package org.telegram.ui.Components;
 
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.animation.TimeInterpolator;
 import android.view.View;
 
@@ -127,8 +127,8 @@ public class AnimatedColor {
     }
 
     public int set(int mustBeColor, boolean force) {
-        final long now = NimarkoUiAnimationClock.now();
-        final boolean paused = NimarkoUiAnimationClock.isPaused();
+        final long now = UiAnimationClock.now();
+        final boolean paused = UiAnimationClock.isPaused();
         if (!paused) rebaseVisualTime(now);
         if (force || transitionDuration <= 0 || firstSet) {
             value = targetValue = mustBeColor;
@@ -161,7 +161,7 @@ public class AnimatedColor {
                 }
             }
         }
-        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+        UiAnimationClock.setResumeCallback(resumeInvalidation,
                 transition && (parent != null || invalidate != null));
         if (!paused) lastVisualTime = now;
         return value;
@@ -178,7 +178,7 @@ public class AnimatedColor {
     }
 
     private void rebaseVisualTime(long now) {
-        int epoch = NimarkoUiAnimationClock.epoch();
+        int epoch = UiAnimationClock.epoch();
         if (transition && lastVisualTime != 0L && epoch != visualEpoch && transitionStart <= lastVisualTime) {
             transitionStart += Math.max(0L, now - lastVisualTime);
             lastVisualTime = now;
@@ -190,8 +190,8 @@ public class AnimatedColor {
         if (!transition) {
             return 0;
         }
-        final long now = NimarkoUiAnimationClock.isPaused() ? lastVisualTime : NimarkoUiAnimationClock.now();
-        if (!NimarkoUiAnimationClock.isPaused()) rebaseVisualTime(now);
+        final long now = UiAnimationClock.isPaused() ? lastVisualTime : UiAnimationClock.now();
+        if (!UiAnimationClock.isPaused()) rebaseVisualTime(now);
         return MathUtils.clamp((now - transitionStart - transitionDelay) / (float) transitionDuration, 0, 1);
     }
 
@@ -205,7 +205,7 @@ public class AnimatedColor {
 
     public void setParent(View parent) {
         this.parent = parent;
-        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+        UiAnimationClock.setResumeCallback(resumeInvalidation,
                 transition && (parent != null || invalidate != null));
     }
 }

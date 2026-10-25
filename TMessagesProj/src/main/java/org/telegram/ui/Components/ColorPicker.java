@@ -52,7 +52,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import app.nimarkogram.messenger.icons.CompactIconHelper;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class ColorPicker extends FrameLayout {
 
     private final ColorPickerDelegate delegate;
@@ -625,8 +625,8 @@ public class ColorPicker extends FrameLayout {
 
     private void updateActionIcons() {
         Resources resources = getContext().getResources();
-        long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         int density = resources.getDisplayMetrics().densityDpi;
         float densityScale = resources.getDisplayMetrics().density;
         Configuration configuration = resources.getConfiguration();

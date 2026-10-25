@@ -33,7 +33,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.SeekBarView;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 @SuppressLint("ViewConstructor")
@@ -46,8 +46,8 @@ public class AvatarCornersPreviewCell extends FrameLayout {
     private final TextView rightLabel;
     private final SeekBarView seekBar;
 
-    private final int min = (int) NimarkoConfig.AVATAR_CORNERS_MIN;
-    private final int max = (int) NimarkoConfig.AVATAR_CORNERS_MAX;
+    private final int min = (int) AppConfig.AVATAR_CORNERS_MIN;
+    private final int max = (int) AppConfig.AVATAR_CORNERS_MAX;
     private int lastHaptic = Integer.MIN_VALUE;
 
     private final Paint cardPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -102,13 +102,13 @@ public class AvatarCornersPreviewCell extends FrameLayout {
 
         seekBar = new SeekBarView(context, true, null);
         seekBar.setReportChanges(true);
-        seekBar.setLineWidth(6); 
+        seekBar.setLineWidth(6);
         seekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
             @Override
             public void onSeekBarDrag(boolean stop, float progress) {
                 if (LocaleController.isRTL) progress = 1f - progress;
                 float value = min + (max - min) * progress;
-                NimarkoConfig.setAvatarCorners(value);
+                AppConfig.setAvatarCorners(value);
                 onValueChanged(Math.round(value));
                 invalidate();
                 if (stop) {
@@ -118,7 +118,7 @@ public class AvatarCornersPreviewCell extends FrameLayout {
             @Override
             public void onSeekBarPressed(boolean pressed) {}
             @Override public CharSequence getContentDescription() {
-                return getString(R.string.NM_AvatarCorners) + ": " + Math.round(NimarkoConfig.avatarCorners);
+                return getString(R.string.NM_AvatarCorners) + ": " + Math.round(AppConfig.avatarCorners);
             }
             @Override public int getStepsCount() { return max - min; }
             @Override public boolean isAccessibilityProgressInverted() { return LocaleController.isRTL; }
@@ -146,9 +146,9 @@ public class AvatarCornersPreviewCell extends FrameLayout {
         initialsPaint.setTextAlign(Paint.Align.CENTER);
         initialsPaint.setTextSize(AndroidUtilities.dp(22));
 
-        float progress = (NimarkoConfig.avatarCorners - min) / (float) (max - min);
+        float progress = (AppConfig.avatarCorners - min) / (float) (max - min);
         seekBar.setProgress(LocaleController.isRTL ? 1f - progress : progress);
-        onValueChanged(Math.round(NimarkoConfig.avatarCorners), false);
+        onValueChanged(Math.round(AppConfig.avatarCorners), false);
     }
 
     private void onValueChanged(int value) {
@@ -166,7 +166,7 @@ public class AvatarCornersPreviewCell extends FrameLayout {
         }
         valueChip.cancelAnimation();
         valueChip.setText(text.toString().toUpperCase(), animated);
-        
+
         if (value != lastHaptic) {
             if (value == min || value == max) {
                 try {
@@ -227,7 +227,7 @@ public class AvatarCornersPreviewCell extends FrameLayout {
         rect.set(avLeft, avTop, avLeft + avSize, avTop + avSize);
 
         int h = getMeasuredHeight();
-        
+
         int grayBase = Theme.getColor(Theme.key_avatar_backgroundGray);
         if (avatarGradient == null || gradientForHeight != h || gradientForColor != grayBase) {
             int topC = ColorUtils.blendARGB(grayBase, Color.WHITE, 0.12f);
@@ -238,9 +238,9 @@ public class AvatarCornersPreviewCell extends FrameLayout {
             gradientForColor = grayBase;
         }
         avatarPaint.setShader(avatarGradient);
-        
-        float r = NimarkoConfig.getAvatarCorners(56);
-        
+
+        float r = AppConfig.getAvatarCorners(56);
+
         r = Math.min(r, avSize / 2f);
         canvas.drawRoundRect(rect, r, r, avatarPaint);
         avatarPaint.setShader(null);
@@ -266,12 +266,12 @@ public class AvatarCornersPreviewCell extends FrameLayout {
         clipPath.rewind();
         clipPath.addCircle(dotCx, dotCy, dotR + AndroidUtilities.dp(2.5f), Path.Direction.CCW);
         canvas.clipPath(clipPath, Region.Op.DIFFERENCE);
-        
+
         canvas.restore();
         onlinePaint.setColor(Theme.getColor(Theme.key_chats_onlineCircle));
         canvas.drawCircle(dotCx, dotCy, dotR, onlinePaint);
 
-        if (!NimarkoConfig.disableDividers && needDivider) {
+        if (!AppConfig.disableDividers && needDivider) {
             canvas.drawLine(LocaleController.isRTL ? 0 : AndroidUtilities.dp(21),
                     getMeasuredHeight() - 1,
                     getMeasuredWidth() - (LocaleController.isRTL ? AndroidUtilities.dp(21) : 0),

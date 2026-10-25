@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3.drawable;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -240,7 +242,7 @@ public abstract class BlurredBackgroundDrawable extends Drawable {
         // back to a single uniform `strokeColorFull` stroke (extera parity —
         // their `useFullStroke` branch). Zero `strokeColorTop/Bottom` so the
         // halo halves are skipped in drawStrokeInternalIfNeeded.
-        if (app.nimarkogram.messenger.NimarkoConfig.glareOnElements) {
+        if (app.nimarkogram.messenger.AppConfig.glareOnElements) {
             strokeColorTop = colorProvider.getStrokeColorTop();
             strokeColorBottom = colorProvider.getStrokeColorBottom();
             strokeColorFull = 0;

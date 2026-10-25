@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 cmake_minimum_required(VERSION 3.6.0)
 
 set(CMAKE_CXX_FLAGS "-std=c++17 -DANDROID -g")
@@ -181,8 +183,7 @@ add_library(tgcalls STATIC
         tgcalls/tgcalls/v2/InstanceV2CompatImpl.cpp
         tgcalls/tgcalls/v2/InstanceV2Impl.cpp
         tgcalls/tgcalls/v2/InstanceV2ReferenceImpl.cpp
-        tgcalls/tgcalls/v2/MtProtoIceTransport.cpp
-        tgcalls/tgcalls/v2/MtProtoIceTransportTest.cpp
+        tgcalls/tgcalls/v2/MtProtoDtlsTransport.cpp
         tgcalls/tgcalls/v2/NativeNetworkingImpl.cpp
         tgcalls/tgcalls/v2/RawTcpSocket.cpp
         tgcalls/tgcalls/v2/ReflectorPort.cpp

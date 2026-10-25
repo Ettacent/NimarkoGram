@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -220,7 +222,7 @@ public class CheckBoxCell extends FrameLayout {
         } else if (type == TYPE_CHECK_BOX_USER) {
             avatarDrawable = new AvatarDrawable();
             avatarImageView = new BackupImageView(context);
-            avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(34));
+            avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(34));
             addView(avatarImageView, LayoutHelper.createFrameRelatively(34, 34, Gravity.START | Gravity.CENTER_VERTICAL, 56, 0, 0, 0));
         }
 

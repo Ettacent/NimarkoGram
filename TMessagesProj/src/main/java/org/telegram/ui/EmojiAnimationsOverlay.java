@@ -10,7 +10,7 @@ import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -415,7 +415,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 // .invalidate() below would repaint the WHOLE chat + input every frame forever (only cleared by
                 // re-entering the chat). Bound it: drop such an object after a short grace, plus a hard cap for
                 // any other stuck state. Legit effects carry a non-null lottie and drain via isDone in ~1-3 s.
-                long nmNow = NimarkoUiAnimationClock.now();
+                long nmNow = UiAnimationClock.now();
                 if (drawingObject.startTime < 0) drawingObject.startTime = nmNow;
                 long nmElapsed = nmNow - drawingObject.startTime;
                 boolean nmStuck = nmElapsed > 6000L
@@ -497,7 +497,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
 
     public boolean onTapItem(ChatMessageCell view, ChatActivity chatActivity, boolean userTapped) {
         // NimarkoGram: respect "Disable premium-sticker animation".
-        if (app.nimarkogram.messenger.NimarkoConfig.disablePremStickAnim) {
+        if (app.nimarkogram.messenger.AppConfig.disablePremStickAnim) {
             return false;
         }
         if (chatActivity.isSecretChat() || view.getMessageObject() == null || view.getMessageObject().getId() < 0) {

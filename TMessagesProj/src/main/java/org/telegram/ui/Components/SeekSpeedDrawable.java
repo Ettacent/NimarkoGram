@@ -26,7 +26,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.Locale;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class SeekSpeedDrawable extends Drawable {
 
     private final boolean isRound, isPiP;
@@ -36,7 +36,7 @@ public class SeekSpeedDrawable extends Drawable {
     private final Paint arrowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
-    private NimarkoIconResources.PreparedIcon measuredPlayIcon;
+    private IconResources.PreparedIcon measuredPlayIcon;
     private float playInkWidth, playInkHeight, playCenterOffsetX, playCenterOffsetY;
     private RLottieDrawable hintDrawable;
     private final Path hintArrow = new Path();
@@ -120,8 +120,8 @@ public class SeekSpeedDrawable extends Drawable {
         final float shown = animatedShown.set(this.shown);
         final float direction = animatedDirection.set(this.direction);
         if (shown <= 0.0f) return;
-        final NimarkoIconResources.PreparedIcon playIcon = MediaActionDrawable.PackIconRenderer.get(
-                NimarkoIconResources.activeNavigationIcons(), R.drawable.ic_action_play);
+        final IconResources.PreparedIcon playIcon = MediaActionDrawable.PackIconRenderer.get(
+                IconResources.activeNavigationIcons(), R.drawable.ic_action_play);
         final float speed = animatedSpeed.set(Math.abs(this.lastSpeed));
 
         final long now = System.currentTimeMillis();
@@ -224,7 +224,7 @@ public class SeekSpeedDrawable extends Drawable {
         }
     }
 
-    private void drawSeekArrow(Canvas canvas, NimarkoIconResources.PreparedIcon icon, boolean backwards) {
+    private void drawSeekArrow(Canvas canvas, IconResources.PreparedIcon icon, boolean backwards) {
         if (icon == null) {
             canvas.drawPath(backwards ? leftArrow : rightArrow, arrowPaint);
             return;

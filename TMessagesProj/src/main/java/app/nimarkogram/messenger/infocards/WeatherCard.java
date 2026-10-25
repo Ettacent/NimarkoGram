@@ -5,6 +5,7 @@ package app.nimarkogram.messenger.infocards;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.AbsoluteSizeSpan;
@@ -29,6 +30,44 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
     private static final String PLACEHOLDER = "—";
     private static AbsoluteSizeSpan weatherEmojiSize;
 
+    private static CachedWeather cachedWeather;
+    private static String automaticLocationKey;
+
+    private static final class CachedWeather {
+        final int account;
+        final long owner;
+        final String source;
+        final String locationKey;
+        final Weather.State state;
+
+        CachedWeather(int account, long owner, String source, Weather.State state) {
+            this.account = account;
+            this.owner = owner;
+            this.source = source;
+            this.state = state;
+            this.locationKey = locationKey(account, owner, state.lat, state.lng);
+        }
+    }
+
+    private static String locationKey(int account, long owner, double lat, double lng) {
+        if (Double.isNaN(lat) || Double.isInfinite(lat) || Math.abs(lat) > 90
+                || Double.isNaN(lng) || Double.isInfinite(lng) || Math.abs(lng) > 180) return null;
+        return account + ":" + owner + ":" + Math.round(lat * 1000) + ":" + Math.round(lng * 1000);
+    }
+
+    private static boolean ownsWeather(int account, long owner, String source) {
+        return owner != 0 && account == UserConfig.selectedAccount
+                && UserConfig.getInstance(account).isClientActivated()
+                && UserConfig.getInstance(account).getClientUserId() == owner
+                && java.util.Objects.equals(source, InfoCardsConfig.getCustomWeatherLocation());
+    }
+
+    private static Weather.State currentWeather() {
+        CachedWeather value = cachedWeather;
+        return value != null && ownsWeather(value.account, value.owner, value.source)
+                && (customLocation() != null || hasLocationPermission()
+                    && value.locationKey != null && value.locationKey.equals(automaticLocationKey)) ? value.state : null;
+    }
     private int requestGeneration;
     private boolean lifecycleAttached;
     private boolean requestPending;
@@ -37,7 +76,7 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
     public WeatherCard(Context context, Theme.ResourcesProvider resourcesProvider, int iconRes) {
         super(context, resourcesProvider);
         setIconVisible(false);
-        Weather.State cached = Weather.getCached();
+        Weather.State cached = currentWeather();
         if (cached != null) {
             setText(renderCardValue(cached), false);
         } else {
@@ -72,26 +111,37 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
         cancelRequest();
         final int generation = requestGeneration;
         final int account = UserConfig.selectedAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final String source = InfoCardsConfig.getCustomWeatherLocation();
         final WeakReference<WeatherCard> cardRef = new WeakReference<>(this);
         double[] custom = customLocation();
+        if (custom == null) automaticLocationKey = null;
         if (custom == null && !hasLocationPermission()) {
             showGrantState();
             if (!userInitiated) return;
             startLoading();
         } else {
             showWeatherState();
-            Weather.State cached = Weather.getCached();
-            if (cached != null) setText(renderCardValue(cached), true); else startLoading();
+            Weather.State cached = currentWeather();
+            if (cached != null) {
+                setText(renderCardValue(cached), true);
+            } else {
+                setText(PLACEHOLDER, true);
+                startLoading();
+            }
         }
 
         requestPending = true;
         Utilities.Callback<Weather.State> callback = state -> {
             WeatherCard card = cardRef.get();
-            if (card != null) card.onFetched(generation, account, state);
+            if (card != null) card.onFetched(generation, account, owner, source, state);
         };
         Runnable cancel = custom != null
                 ? Weather.fetch(custom[0], custom[1], callback)
-                : Weather.fetchCancellable(userInitiated, callback);
+                : Weather.fetchCancellable(userInitiated, callback, location -> {
+                    WeatherCard card = cardRef.get();
+                    if (card != null) card.onLocated(generation, account, owner, source, location);
+                });
         if (requestPending && generation == requestGeneration) {
             cancelFetch = cancel;
         } else if (cancel != null) {
@@ -99,14 +149,28 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
         }
     }
 
-    private void onFetched(int generation, int account, Weather.State state) {
-        if (!lifecycleAttached || generation != requestGeneration || account != UserConfig.selectedAccount
+    private void onLocated(int generation, int account, long owner, String source, Location location) {
+        if (!lifecycleAttached || generation != requestGeneration || !ownsWeather(account, owner, source)
+                || !isAttachedToWindow()) return;
+        automaticLocationKey = location == null ? null
+                : locationKey(account, owner, location.getLatitude(), location.getLongitude());
+        Weather.State cached = currentWeather();
+        setText(cached != null ? renderCardValue(cached) : PLACEHOLDER, true);
+    }
+
+    private void onFetched(int generation, int account, long owner, String source, Weather.State state) {
+        if (!lifecycleAttached || generation != requestGeneration || !ownsWeather(account, owner, source)
                 || !isAttachedToWindow()) {
             return;
         }
         requestPending = false;
         cancelFetch = null;
+        if (state != null && customLocation() == null) {
+            String key = locationKey(account, owner, state.lat, state.lng);
+            if (key == null || !key.equals(automaticLocationKey)) state = null;
+        }
         if (state != null) {
+            cachedWeather = new CachedWeather(account, owner, source, state);
             showWeatherState();
             setText(renderCardValue(state), true);
             markDataUpdated();
@@ -114,7 +178,7 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
             showGrantState();
         } else {
             showWeatherState();
-            Weather.State cached = Weather.getCached();
+            Weather.State cached = currentWeather();
             setText(cached != null ? renderCardValue(cached) : PLACEHOLDER, true);
         }
         stopLoading();
@@ -141,7 +205,7 @@ public class WeatherCard extends BaseInfoCard implements NotificationCenter.Noti
     }
 
     public static CharSequence liveValueText() {
-        Weather.State cached = Weather.getCached();
+        Weather.State cached = currentWeather();
         return cached != null ? render(cached) : null;
     }
 

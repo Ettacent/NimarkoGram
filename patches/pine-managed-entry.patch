@@ -1,0 +1,130 @@
+diff --git a/core/src/main/java/top/canyie/pine/Pine.java b/core/src/main/java/top/canyie/pine/Pine.java
+--- a/core/src/main/java/top/canyie/pine/Pine.java
++++ b/core/src/main/java/top/canyie/pine/Pine.java
+@@ -15,6 +15,7 @@
+ import java.lang.reflect.Modifier;
+ import java.lang.reflect.Proxy;
+ import java.util.HashMap;
++import java.util.Arrays;
+ import java.util.HashSet;
+ import java.util.Map;
+ import java.util.Set;
+@@ -61,6 +62,39 @@
+     private static HookListener sHookListener;
+
+     /** Internal API, used by enhances library. DO NOT USE THEM. */
++    private static volatile HookEntryFactory sHookEntryFactory;
++
++    public interface HookEntryFactory {
++        HookEntry create(HookRecord record) throws Exception;
++    }
++
++    public static final class HookEntry {
++        public final Method bridge;
++        public final Method backup;
++        public final Class<?> owner;
++
++        public HookEntry(Method bridge, Method backup) {
++            if (bridge == null || backup == null) throw new NullPointerException("entry methods");
++            if (bridge.equals(backup) || bridge.getDeclaringClass() != backup.getDeclaringClass()) {
++                throw new IllegalArgumentException("Entry and backup require distinct methods of one owner");
++            }
++            this.bridge = bridge;
++            this.backup = backup;
++            this.owner = bridge.getDeclaringClass();
++        }
++    }
++
++    public static void setHookEntryFactory(HookEntryFactory factory) {
++        synchronized (sHookLock) {
++            if (sHookEntryFactory == factory) return;
++            if (!sHookRecords.isEmpty()) throw new IllegalStateException("Entry factory must be configured before hooks");
++            sHookEntryFactory = factory;
++        }
++    }
++
++    public static HookEntryFactory getHookEntryFactory() {
++        return sHookEntryFactory;
++    }
+     public static long openElf, findElfSymbol, closeElf, getMethodDeclaringClass, syncMethodEntry,
+             suspendVM, resumeVM;
+
+@@ -313,6 +347,32 @@
+     }
+
+     static void hookNewMethod(HookRecord hookRecord, int modifiers, boolean canInitDeclaringClass) {
++        HookEntryFactory factory = sHookEntryFactory;
++        if (factory != null) {
++            synchronized (hookRecord) {
++                if (hookRecord.managedEntry != null || hookRecord.backup != null) {
++                    throw new IllegalStateException("Entry installation already attempted");
++                }
++                Member target = hookRecord.target;
++                hookRecord.isStatic = Modifier.isStatic(modifiers);
++                hookRecord.paramTypes = target instanceof Method
++                        ? ((Method) target).getParameterTypes()
++                        : ((Constructor<?>) target).getParameterTypes();
++                hookRecord.paramNumber = hookRecord.paramTypes.length;
++                HookEntry entry;
++                try {
++                    entry = factory.create(hookRecord);
++                } catch (RuntimeException | Error failure) {
++                    throw failure;
++                } catch (Exception failure) {
++                    throw new IllegalStateException("Managed entry creation failed", failure);
++                }
++                validateHookEntry(hookRecord, entry);
++                hookRecord.managedEntry = entry;
++                installReplacement(hookRecord, entry.bridge, entry.backup, canInitDeclaringClass);
++            }
++            return;
++        }
+         Member method = hookRecord.target;
+         final int mode = hookMode;
+         boolean isInlineHook = mode == HookMode.INLINE || mode == HookMode.INLINE_WITHOUT_JIT;
+@@ -393,6 +453,37 @@
+                 throw new IllegalStateException("Attempting to re-hook " + method);
+             sHookRecords.put(artMethod, hookRecord);
+         }
++        return installReplacement(hookRecord, replacement, backup, canInitDeclaringClass);
++    }
++
++    private static void validateHookEntry(HookRecord record, HookEntry entry) {
++        if (entry == null) throw new IllegalArgumentException("Entry factory returned null");
++        if (!Modifier.isStatic(entry.bridge.getModifiers()) || !Modifier.isStatic(entry.backup.getModifiers())) {
++            throw new IllegalArgumentException("Managed entry methods must be static");
++        }
++        Class<?>[] parameters = entry.bridge.getParameterTypes();
++        int offset = record.isStatic ? 0 : 1;
++        if (parameters.length != record.paramNumber + offset
++                || !Arrays.equals(parameters, entry.backup.getParameterTypes())) {
++            throw new IllegalArgumentException("Managed entry parameter count or backup prototype");
++        }
++        if (offset != 0 && parameters[0] != Object.class) throw new IllegalArgumentException("Managed receiver must be Object");
++        for (int i = 0; i < record.paramNumber; i++) {
++            Class<?> expected = record.paramTypes[i].isPrimitive() ? record.paramTypes[i] : Object.class;
++            if (parameters[i + offset] != expected) throw new IllegalArgumentException("Managed parameter kind at " + i);
++        }
++        Class<?> result = record.target instanceof Method ? ((Method) record.target).getReturnType() : void.class;
++        if (!result.isPrimitive()) result = Object.class;
++        if (entry.bridge.getReturnType() != result || entry.backup.getReturnType() != result) {
++            throw new IllegalArgumentException("Managed return kind");
++        }
++        entry.bridge.setAccessible(true);
++        entry.backup.setAccessible(true);
++    }
++
++    private static Method installReplacement(HookRecord hookRecord, Method replacement, Method backup,
++                                             boolean canInitDeclaringClass) {
++        Member method = hookRecord.target;
+         int modifiers = method.getModifiers();
+         final int mode = hookMode;
+         boolean isInlineHook = mode != HookMode.REPLACEMENT;
+@@ -967,6 +1058,7 @@
+         public volatile Object paramTypesCache;
+         public boolean skipUpdateDeclaringClass;
+
++        private HookEntry managedEntry;
+         public HookRecord(Member target, long artMethod) {
+             this.target = target;
+             this.artMethod = artMethod;

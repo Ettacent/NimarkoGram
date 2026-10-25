@@ -132,8 +132,8 @@ public class StarRatingView extends View {
     }
 
     public void updateColors(MessagesController.PeerColor peerColor) {
-        
-        if (!app.nimarkogram.messenger.NimarkoConfig.profileBackgroundColor) peerColor = null;
+
+        if (!app.nimarkogram.messenger.AppConfig.profileBackgroundColor) peerColor = null;
         colors.update(peerColor);
         invalidate();
     }

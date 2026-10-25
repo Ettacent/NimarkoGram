@@ -22,7 +22,7 @@ import android.view.View;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -147,8 +147,8 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
     private void setDrawable(int iconRes, Resources resources) {
         drawableIcon = iconRes;
         iconResources = resources;
-        iconGeneration = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        iconGeneration = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         iconDensity = resources.getDisplayMetrics().densityDpi;
         iconDark = Theme.isCurrentThemeDark();
         drawable = iconRes == 0 ? null : resources.getDrawable(iconRes).mutate();
@@ -180,8 +180,8 @@ public class ToggleButton2 extends View implements FlashViews.Invertable {
 
     private void refreshResourceDrawable() {
         final Resources resources = getResources();
-        final long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         if (drawableIcon != 0 && (iconResources != resources || iconGeneration != generation
                 || iconDensity != resources.getDisplayMetrics().densityDpi
                 || iconDark != Theme.isCurrentThemeDark())) {

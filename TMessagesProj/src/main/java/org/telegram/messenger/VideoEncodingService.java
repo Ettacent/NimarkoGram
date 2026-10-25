@@ -24,6 +24,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     private static VideoEncodingService instance;
 
     private boolean stopping;
+    private boolean restartRequested;
     int currentAccount;
     String currentPath;
 
@@ -32,6 +33,10 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     }
 
     public static void start(boolean cancelled) {
+        if (instance != null && instance.stopping) {
+            instance.restartRequested = true;
+            return;
+        }
         if (instance == null) {
             try {
                 Intent intent = new Intent(ApplicationLoader.applicationContext, VideoEncodingService.class);
@@ -57,6 +62,11 @@ public class VideoEncodingService extends Service implements NotificationCenter.
         }
     }
 
+    static void onConversionFinished(MediaController.VideoConvertMessage message) {
+        if (instance != null && instance.currentMessage == message) {
+            start(true);
+        }
+    }
     public IBinder onBind(Intent arg2) {
         return null;
     }
@@ -65,6 +75,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
     public void onDestroy() {
         stopping = true;
         super.onDestroy();
+        boolean restart = instance == this && restartRequested;
         if (instance == this) {
             instance = null;
         }
@@ -80,6 +91,9 @@ public class VideoEncodingService extends Service implements NotificationCenter.
         currentMessage = null;
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("VideoEncodingService: destroy video service");
+        }
+        if (restart && MediaController.getInstance().getCurrentForegroundConverMessage() != null) {
+            start(false);
         }
     }
 
@@ -117,8 +131,9 @@ public class VideoEncodingService extends Service implements NotificationCenter.
         } else if (id == NotificationCenter.fileUploaded || id == NotificationCenter.fileUploadFailed) {
             String fileName = (String) args[0];
             if (account == currentAccount && currentPath != null && currentPath.equals(fileName)) {
+                MediaController.VideoConvertMessage completedMessage = currentMessage;
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (stopping || instance != this) {
+                    if (stopping || instance != this || currentMessage != completedMessage) {
                         return;
                     }
                     MediaController.VideoConvertMessage message = MediaController.getInstance().getCurrentForegroundConverMessage();

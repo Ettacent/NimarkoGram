@@ -62,6 +62,10 @@ public class TextCell extends FrameLayout {
     public final AnimatedTextView valueTextView;
     public final SimpleTextView valueSpoilersTextView;
     public final RLottieImageView imageView;
+    private final int defaultIconColorKey;
+    private int colorfulIconTop;
+    private int colorfulIconBottom;
+    private SettingsActivity.SettingCell.Background colorfulIconBackground;
     public Switch checkBox;
     private ImageView valueImageView;
     public int leftPadding;
@@ -135,7 +139,8 @@ public class TextCell extends FrameLayout {
 
         imageView = new RLottieImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
+        defaultIconColorKey = dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon;
+        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(defaultIconColorKey, resourcesProvider), PorterDuff.Mode.SRC_IN));
         addView(imageView);
 
         valueImageView = new ImageView(context);
@@ -316,7 +321,9 @@ public class TextCell extends FrameLayout {
             textColor = processColor(textColor);
         }
         textView.setTextColor(textColor);
-        if (imageView.getTag() instanceof Integer) {
+        if (colorfulIconBackground != null) {
+            updateColorfulIconColors();
+        } else if (imageView.getTag() instanceof Integer) {
             int colorKey = (int) imageView.getTag();
             int color = Theme.getColor(colorKey, resourcesProvider);
             if (colorKey != Theme.key_dialogIcon && colorKey != Theme.key_windowBackgroundWhiteGrayIcon) {
@@ -333,7 +340,6 @@ public class TextCell extends FrameLayout {
         textView.setTextColor(Theme.getColor(text, resourcesProvider));
         textView.setTag(text);
         if (icon >= 0) {
-            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(icon, resourcesProvider), PorterDuff.Mode.SRC_IN));
             imageView.setTag(icon);
         }
         updateColors();
@@ -342,6 +348,7 @@ public class TextCell extends FrameLayout {
     private CharSequence valueText;
 
     public void setText(CharSequence text, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         textView.setText(text);
         textView.setRightDrawable(null);
@@ -367,6 +374,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndIcon(CharSequence text, int resId, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -402,6 +410,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndIcon(CharSequence text, Drawable drawable, boolean divider) {
+        resetColorfulIcon();
         offsetFromImage = 58;
         imageLeft = 18;
         textView.setText(text);
@@ -425,6 +434,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueAndIcon(CharSequence text, CharSequence value, Drawable drawable, boolean divider) {
+        resetColorfulIcon();
         offsetFromImage = 58;
         imageLeft = 18;
         textView.setText(text);
@@ -460,6 +470,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean animated, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -530,6 +541,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndSpoilersValueAndIcon(String text, CharSequence value, int resId, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -578,6 +590,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueAndIcon(CharSequence text, CharSequence value, boolean animated, int resId, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -629,26 +642,48 @@ public class TextCell extends FrameLayout {
     }
 
     public void setColorfulIcon(int colorTop, int colorBottom, int resId) {
-        colorTop = app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorTop);
-        colorBottom = app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorBottom);
-        final int foreground = app.nimarkogram.messenger.utils.ui.MonetHelper
-                .getSettingsIconForegroundColor(Color.WHITE);
+        colorfulIconTop = colorTop;
+        colorfulIconBottom = colorBottom;
 
         offsetFromImage = getOffsetFromImage(true);
         imageView.setVisibility(VISIBLE);
         imageView.setPadding(dp(2), dp(2), dp(2), dp(2));
         imageView.setTranslationX(dp(LocaleController.isRTL ? 0 : -3));
         imageView.setImageResource(resId);
-        imageView.setColorFilter(new PorterDuffColorFilter(foreground, PorterDuff.Mode.SRC_IN));
+        colorfulIconBackground = new SettingsActivity.SettingCell.Background();
+        imageView.setBackground(colorfulIconBackground);
+        updateColorfulIconColors();
+    }
 
-        final boolean border = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
-        SettingsActivity.SettingCell.Background drawable = new SettingsActivity.SettingCell.Background();
-        drawable.setColor(colorTop, colorBottom);
-        drawable.setDrawBorder(border);
-        imageView.setBackground(drawable);
+    private void updateColorfulIconColors() {
+        colorfulIconBackground.setColor(
+                app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorfulIconTop),
+                app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconBackgroundColor(colorfulIconBottom));
+        colorfulIconBackground.setDrawBorder(resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark());
+        imageView.setColorFilter(new PorterDuffColorFilter(
+                app.nimarkogram.messenger.utils.ui.MonetHelper.getSettingsIconForegroundColor(Color.WHITE),
+                PorterDuff.Mode.SRC_IN));
+    }
+
+    private void resetColorfulIcon() {
+        if (colorfulIconBackground == null) {
+            return;
+        }
+        colorfulIconBackground = null;
+        imageView.setBackground(null);
+        imageView.setTranslationX(0);
+        imageView.setTranslationY(0);
+        imageView.setPadding(0, dp(7), 0, 0);
+        int key = imageView.getTag() instanceof Integer ? (int) imageView.getTag() : defaultIconColorKey;
+        int color = Theme.getColor(key, resourcesProvider);
+        if (key != Theme.key_dialogIcon && key != Theme.key_windowBackgroundWhiteGrayIcon) {
+            color = processColor(color);
+        }
+        imageView.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
     }
 
     public void setTextAndCheck(CharSequence text, boolean checked, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -667,6 +702,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndCheckAndIcon(CharSequence text, boolean checked, int resId, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -693,6 +729,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndCheckAndIcon(String text, boolean checked, Drawable resDrawable, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -715,6 +752,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndValueDrawable(CharSequence text, Drawable drawable, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -737,6 +775,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndSticker(CharSequence text, TLRPC.Document document, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);
@@ -756,6 +795,7 @@ public class TextCell extends FrameLayout {
     }
 
     public void setTextAndSticker(CharSequence text, String localPath, boolean divider) {
+        resetColorfulIcon();
         imageLeft = 16;
         offsetFromImage = getOffsetFromImage(false);
         textView.setText(text);

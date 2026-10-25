@@ -378,11 +378,11 @@ public class PieChartView extends StackLinearChartView<PieChartViewData> {
             yl = (int) Math.min(rectF.centerY(), yl);
 
             yl -= AndroidUtilities.dp(50);
-           
+
             pieLegendView.setTranslationX(xl);
             pieLegendView.setTranslationY(yl);
-            
-            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                 AndroidUtilities.vibrateCursor(this);
             }
         }

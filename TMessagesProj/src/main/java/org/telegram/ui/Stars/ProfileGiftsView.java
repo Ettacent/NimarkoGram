@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stars;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -256,8 +258,8 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
     public int maxCount;
 
     public void update() {
-        
-        if (app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) return;
+
+        if (app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) return;
         if (!MessagesController.getInstance(currentAccount).enableGiftsInProfile) {
             return;
         }
@@ -374,7 +376,7 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
-        
+
         if (gifts.isEmpty() || expandProgress >= 1.0f || collapseProgress <= 0f) return;
 
         final float realX = avatarContainer.getX();
@@ -415,32 +417,32 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             float delayValue;
 
             switch (gift.position) {
-                case 0: 
+                case 0:
                     gx = acx / 2f - (dp(20) * expandScale);
                     gy = acy - dp(13);
                     delayValue = 1.6f;
                     break;
-                case 1: 
+                case 1:
                     gx = acx * 2f / 3f - (dp(6) * expandScale);
                     gy = ay - dp(4);
                     delayValue = 0;
                     break;
-                case 2: 
+                case 2:
                     gx = acx * 2f / 3f - (dp(12) * expandScale);
                     gy = ay + ah - dp(16);
                     delayValue = 0.9f;
                     break;
-                case 3: 
+                case 3:
                     gx = acx * 1.5f + (dp(20) * expandScale);
                     gy = acy - dp(13);
                     delayValue = 1.6f;
                     break;
-                case 4: 
+                case 4:
                     gx = acx * 4f / 3f + (dp(12) * expandScale);
                     gy = ay - dp(4);
                     delayValue = 0.9f;
                     break;
-                default: 
+                default:
                     gx = acx * 4f / 3f + (dp(12) * expandScale);
                     gy = ay + ah - dp(16);
                     delayValue = 0;

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -930,7 +932,7 @@ public class ThanosEffect extends TextureView {
                                 }
                             }
 
-                            if (group == null || (k == 0 && group.messages.size() == 1) || (k == 1 && !group.transitionParams.drawBackgroundForDeletedItems)) {
+                            if (group == null || cell.getCurrentPosition() == null || (k == 0 && group.messages.size() == 1) || (k == 1 && !group.transitionParams.drawBackgroundForDeletedItems)) {
                                 continue;
                             }
                             if ((k == 0 && cell.getMessageObject().deleted) || (k == 1 && !cell.getMessageObject().deleted)) {
@@ -940,7 +942,8 @@ public class ThanosEffect extends TextureView {
                                 continue;
                             }
 
-                            if (!drawingGroups.contains(group)) {
+                            final boolean firstGroupCell = !drawingGroups.contains(group);
+                            if (firstGroupCell) {
                                 group.transitionParams.left = 0;
                                 group.transitionParams.top = 0;
                                 group.transitionParams.right = 0;
@@ -952,9 +955,13 @@ public class ThanosEffect extends TextureView {
                                 drawingGroups.add(group);
                             }
 
+                            if ((cell.getCurrentPosition().flags & MessageObject.POSITION_FLAG_TOP) != 0) {
                             group.transitionParams.pinnedTop = cell.isPinnedTop();
+                            }
+                            if ((cell.getCurrentPosition().flags & MessageObject.POSITION_FLAG_BOTTOM) != 0) {
                             group.transitionParams.pinnedBotton = cell.isPinnedBottom();
 
+                            }
                             int left = (cell.getLeft() + cell.getBackgroundDrawableLeft());
                             int right = (cell.getLeft() + cell.getBackgroundDrawableRight());
                             int top = (cell.getTop() + cell.getPaddingTop() + cell.getBackgroundDrawableTop());
@@ -972,16 +979,16 @@ public class ThanosEffect extends TextureView {
                                 group.transitionParams.cell = cell;
                             }
 
-                            if (group.transitionParams.top == 0 || top < group.transitionParams.top) {
+                            if (firstGroupCell || top < group.transitionParams.top) {
                                 group.transitionParams.top = top;
                             }
-                            if (group.transitionParams.bottom == 0 || bottom > group.transitionParams.bottom) {
+                            if (firstGroupCell || bottom > group.transitionParams.bottom) {
                                 group.transitionParams.bottom = bottom;
                             }
-                            if (group.transitionParams.left == 0 || left < group.transitionParams.left) {
+                            if (firstGroupCell || left < group.transitionParams.left) {
                                 group.transitionParams.left = left;
                             }
-                            if (group.transitionParams.right == 0 || right > group.transitionParams.right) {
+                            if (firstGroupCell || right > group.transitionParams.right) {
                                 group.transitionParams.right = right;
                             }
                         }

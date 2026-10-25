@@ -43,7 +43,7 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ChatObject;
@@ -88,11 +88,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private static final int INLINE_COMMUNITY_GAP_DP = 2;
     private final BoolAnimator animatorTimeVisible = new BoolAnimator(ANIMATOR_ID_TIME_ITEM_VISIBLE, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
 
-    private boolean centerChatTitle = app.nimarkogram.messenger.NimarkoConfig.centerChatTitle;
+    private boolean centerChatTitle = app.nimarkogram.messenger.AppConfig.centerChatTitle;
     private boolean useChatTitleLayoutOutsideChat;
 
     private boolean resolveCenterChatTitle() {
-        if (!app.nimarkogram.messenger.NimarkoConfig.centerChatTitle) {
+        if (!app.nimarkogram.messenger.AppConfig.centerChatTitle) {
             return false;
         }
         if (parentFragment == null) {
@@ -330,7 +330,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
 
         private boolean isTitlePresentationVisible() {
-            if (NimarkoUiAnimationClock.isPaused() || !isLaidOut() || !isAttachedToWindow()
+            if (UiAnimationClock.isPaused() || !isLaidOut() || !isAttachedToWindow()
                     || !isShown() || getWindowVisibility() != VISIBLE) return false;
             for (View view = this; view != null;
                     view = view.getParent() instanceof View ? (View) view.getParent() : null) {
@@ -480,7 +480,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
 
         boolean isPresentationVisible() {
-            if (NimarkoUiAnimationClock.isPaused() || !isLaidOut() || !isAttachedToWindow()
+            if (UiAnimationClock.isPaused() || !isLaidOut() || !isAttachedToWindow()
                     || !hasWindowFocus() || !isShown() || getWindowVisibility() != VISIBLE) return false;
             for (View view = this; view != null;
                     view = view.getParent() instanceof View ? (View) view.getParent() : null) {
@@ -493,7 +493,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             return SharedConfig.animationsEnabled() && hasPresentedIdentity()
                     && isAttachedToWindow() && isLaidOut()
                     && titleAnimation == null && !subtitleHiddenByPreference
-                    && !app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus
+                    && !app.nimarkogram.messenger.AppConfig.hideActionBarStatus
                     && (outgoing == null || fadeCentered == centerChatTitle);
         }
         void resetPresentation() {
@@ -627,7 +627,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 }
             });
             crossfade.start();
-            NimarkoUiAnimationClock.track(crossfade);
+            UiAnimationClock.track(crossfade);
         }
         private void stopCrossfadeAnimator() {
             subtitleTransitionGeneration++;
@@ -950,12 +950,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         pressed = false;
         bounce.setPressed(false);
         if (canSearch()) {
-            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP, android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}
             }
-            app.nimarkogram.messenger.NimarkoConfig.setMessagesSearchFilter(app.nimarkogram.messenger.NimarkoConfig.FILTER_NONE);
+            app.nimarkogram.messenger.AppConfig.setMessagesSearchFilter(app.nimarkogram.messenger.AppConfig.FILTER_NONE);
             openSearch();
         }
     };
@@ -1669,7 +1669,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 titleTextLargerCopyView.layout(titleCopyL, viewTop + dp(1.66f), titleCopyL + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + dp(1.66f));
             }
         } else {
-            int titleTop = app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus ? dp(9) : dp(11);
+            int titleTop = app.nimarkogram.messenger.AppConfig.hideActionBarStatus ? dp(9) : dp(11);
             titleTextView.layout(titleL, viewTop + titleTop - titleTextView.getPaddingTop(), titleL + titleTextView.getMeasuredWidth(), viewTop + titleTextView.getTextHeight() + titleTop - titleTextView.getPaddingTop() + titleTextView.getPaddingBottom());
             if (titleTextLargerCopyView != null) {
                 titleTextLargerCopyView.layout(titleCopyL, viewTop + titleTop, titleCopyL + titleTextLargerCopyView.getMeasuredWidth(), viewTop + titleTextLargerCopyView.getTextHeight() + titleTop);
@@ -1870,7 +1870,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         final boolean titleChanged = titleTextView.setText(value);
 
-        if (app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
+        if (app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) {
             emojiStatus = null;
             premium = false;
         }
@@ -1997,7 +1997,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
 
         Drawable primaryTitleDrawable = null;
-        if ((premium || emojiStatusPresent) && !app.nimarkogram.messenger.NimarkoConfig.disablePremiumStatuses) {
+        if ((premium || emojiStatusPresent) && !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) {
             if (titleTextView.getRightDrawable() instanceof AnimatedEmojiDrawable.WrapSizeDrawable
                     && ((AnimatedEmojiDrawable.WrapSizeDrawable) titleTextView.getRightDrawable()).getDrawable() instanceof AnimatedEmojiDrawable) {
                 ((AnimatedEmojiDrawable) ((AnimatedEmojiDrawable.WrapSizeDrawable) titleTextView.getRightDrawable()).getDrawable()).removeView(titleTextView);
@@ -2156,7 +2156,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
 
     public void setSubtitle(CharSequence value) {
-        if (app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus) {
+        if (app.nimarkogram.messenger.AppConfig.hideActionBarStatus) {
             subtitleHiddenByPreference = true;
             inlineSubtitleWidthReserve = 0f;
             subtitleTransitionGeneration++;
@@ -2287,13 +2287,13 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                 : null;
         requestedTypingType = type != null && type >= 0 && type < statusDrawables.length
                 && statusDrawables[type] != null ? type : -1;
-        if (app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus) {
+        if (app.nimarkogram.messenger.AppConfig.hideActionBarStatus) {
             requestedTypingType = -1;
             applyTypingAnimation();
         }
     }
     private int getSubtitleTypingType() {
-        return lastSubtitle != null || app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus
+        return lastSubtitle != null || app.nimarkogram.messenger.AppConfig.hideActionBarStatus
                 ? -1 : requestedTypingType;
     }
     private void applyTypingAnimation() {
@@ -2433,7 +2433,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                     });
                     titleAnimation.setDuration(180);
                     titleAnimation.start();
-                    NimarkoUiAnimationClock.track(titleAnimation);
+                    UiAnimationClock.track(titleAnimation);
                 } else {
                     titleTextView.setTranslationY(dp(9.7f));
                     getSubtitleTextView().setAlpha(0.0f);
@@ -2510,7 +2510,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                     newStatus = UserObject.getBotStatus(user);
                 } else {
                     isOnline[0] = false;
-                    newStatus = app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle
+                    newStatus = app.nimarkogram.messenger.AppConfig.oldTimeStyle
                             ? LocaleController.formatUserStatus(currentAccount, user, isOnline, allowShorterStatus ? statusMadeShorter : null)
                             : LocaleController.formatUserStatusIOS(currentAccount, user, isOnline, allowShorterStatus ? statusMadeShorter : null);
                     useOnlineColor = isOnline[0];
@@ -2542,7 +2542,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                         });
                         titleAnimation.setDuration(180);
                         titleAnimation.start();
-                        NimarkoUiAnimationClock.track(titleAnimation);
+                        UiAnimationClock.track(titleAnimation);
                     } else {
                         titleTextView.setTranslationY(0.0f);
                         getSubtitleTextView().setAlpha(1.0f);
@@ -2557,7 +2557,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             useOnlineColor = true;
             setTypingAnimation(true);
         }
-        if (app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus) {
+        if (app.nimarkogram.messenger.AppConfig.hideActionBarStatus) {
             newSubtitle = "";
             if (!subtitleHiddenByPreference && subtitleTextView != null) {
                 subtitleTransitionGeneration++;
@@ -2970,7 +2970,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             if (parentFragment != null && parentFragment.getCurrentChat() != null
                     && parentFragment.getChatMode() == ChatActivity.MODE_DEFAULT
                     && !parentFragment.isThreadChat()
-                    && !app.nimarkogram.messenger.NimarkoConfig.hideActionBarStatus) {
+                    && !app.nimarkogram.messenger.AppConfig.hideActionBarStatus) {
                 updateSubtitle(false);
             }
         } else {

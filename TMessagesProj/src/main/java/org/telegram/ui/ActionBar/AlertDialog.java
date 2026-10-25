@@ -12,7 +12,7 @@ package org.telegram.ui.ActionBar;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -301,7 +301,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     public AlertDialog(Context context, int progressStyle) {
         this(context, progressStyle, null);
     }
-    
+
     public AlertDialog(Context context, int progressStyle, Theme.ResourcesProvider resourcesProvider) {
         super(context, R.style.TransparentDialog);
         this.resourcesProvider = resourcesProvider;
@@ -504,10 +504,19 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
                             maxWidth = dp(356);
                         }
 
+                        final int dialogWidth = Math.min(maxWidth, calculatedWidth) + backgroundPaddings.left + backgroundPaddings.right;
+                        if (needStarsBalance) {
+                            final ViewGroup.LayoutParams lp = getLayoutParams();
+                            if (lp != null && lp.width != dialogWidth) {
+                                lp.width = dialogWidth;
+                                requestLayout();
+                            }
+                            return;
+                        }
                         Window window = getWindow();
                         WindowManager.LayoutParams params = new WindowManager.LayoutParams();
                         params.copyFrom(window.getAttributes());
-                        params.width = Math.min(maxWidth, calculatedWidth) + backgroundPaddings.left + backgroundPaddings.right;
+                        params.width = dialogWidth;
                         try {
                             window.setAttributes(params);
                         } catch (Throwable e) {
@@ -633,6 +642,20 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     }
 
     private boolean needStarsBalance;
+    private int getDialogWidth() {
+        final int calculatedWidth = AndroidUtilities.displaySize.x - dp(48) - additioanalHorizontalPadding * 2;
+        int maxWidth;
+        if (AndroidUtilities.isTablet()) {
+            if (AndroidUtilities.isSmallTablet()) {
+                maxWidth = dp(446);
+            } else {
+                maxWidth = dp(496);
+            }
+        } else {
+            maxWidth = dp(356);
+        }
+        return Math.min(maxWidth, calculatedWidth) + backgroundPaddings.left + backgroundPaddings.right;
+    }
     private int starsCurrentAccount;
     public AlertDialog setShowStarsBalance(int currentAccount, boolean show) {
         starsCurrentAccount = currentAccount;
@@ -1299,9 +1322,12 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
         params.copyFrom(window.getAttributes());
         if (needStarsBalance) {
 //            params.width = WindowManager.LayoutParams.MATCH_PARENT;
+            params.width = WindowManager.LayoutParams.MATCH_PARENT;
             params.height = WindowManager.LayoutParams.MATCH_PARENT;
             params.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN;
 
+            lastScreenWidth = AndroidUtilities.displaySize.x;
+            containerView.getLayoutParams().width = getDialogWidth();
             window.setWindowAnimations(R.style.DialogNoAnimation);
         } else if (progressViewStyle == ALERT_TYPE_SPINNER) {
             params.width = WindowManager.LayoutParams.MATCH_PARENT;
@@ -1315,19 +1341,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
             }
 
             lastScreenWidth = AndroidUtilities.displaySize.x;
-            final int calculatedWidth = AndroidUtilities.displaySize.x - dp(48) - additioanalHorizontalPadding * 2;
-            int maxWidth;
-            if (AndroidUtilities.isTablet()) {
-                if (AndroidUtilities.isSmallTablet()) {
-                    maxWidth = dp(446);
-                } else {
-                    maxWidth = dp(496);
-                }
-            } else {
-                maxWidth = dp(356);
-            }
-
-            params.width = Math.min(maxWidth, calculatedWidth) + backgroundPaddings.left + backgroundPaddings.right;
+            params.width = getDialogWidth();
         }
         if (customView == null || !checkFocusable || !canTextInput(customView)) {
             params.flags |= WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
@@ -1412,7 +1426,7 @@ public class AlertDialog extends Dialog implements Drawable.Callback, Notificati
     @Override
     protected void onStart() {
         super.onStart();
-        NimarkoAppMotionBlur.attachWindow(getWindow());
+        AppMotionBlur.attachWindow(getWindow());
     }
 
     @Override

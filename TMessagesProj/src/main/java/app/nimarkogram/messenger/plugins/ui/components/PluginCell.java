@@ -55,11 +55,11 @@ import org.telegram.ui.LaunchActivity;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.Plugin;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import app.nimarkogram.messenger.utils.text.LocaleUtils;
 
 @SuppressLint({"ViewConstructor"})
@@ -73,7 +73,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     private final BackupImageView imageView;
     private final ImageView placeholderIcon;
     private final ImageView kebabButton;
-    
+
     private final ProgressBar loadingSpinner;
     private final FrameLayout trailingSlot;
     private boolean loading;
@@ -116,7 +116,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         rowLayout.setMinimumHeight(AndroidUtilities.dp(64));
         rowLayout.setPadding(AndroidUtilities.dp(14), AndroidUtilities.dp(8),
                 AndroidUtilities.dp(12), AndroidUtilities.dp(8));
-        
+
         rowLayout.setClipChildren(false);
         rowLayout.setClipToPadding(false);
         islandStack.addView(rowLayout, LayoutHelper.createLinear(-1, -2));
@@ -151,7 +151,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             }
         };
         imageView.setRoundRadius(AndroidUtilities.dp(20.0f));
-        
+
         imageView.getImageReceiver().setAutoRepeat(2);
         imageView.getImageReceiver().setAutoRepeatCount(-1);
         imageView.setVisibility(View.GONE);
@@ -328,7 +328,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             }
         });
         animator.start();
-        NimarkoUiAnimationClock.track(animator);
+        UiAnimationClock.track(animator);
     }
 
     private void cancelLoadingReveal() {
@@ -370,11 +370,11 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         if (isInsideViewRelativeToSelf(kebabButton, x, y)) {
             return true;
         }
-        
+
         if (isInsideViewRelativeToSelf(trailingSlot, x, y)) {
             return true;
         }
-        
+
         if (subtitleView != null && subtitleView.getVisibility() == View.VISIBLE
                 && isPointOnUrlSpan(subtitleView, x, y)) {
             return true;
@@ -412,7 +412,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         }
         int line = layout.getLineForVertical((int) localY);
         int offset = layout.getOffsetForHorizontal(line, localX);
-        
+
         if (localX > layout.getLineRight(line) || localX < layout.getLineLeft(line)) {
             return false;
         }
@@ -429,7 +429,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         if (child == null || child.getVisibility() != View.VISIBLE) {
             return false;
         }
-        
+
         float left = 0f;
         float top = 0f;
         View walker = child;
@@ -443,7 +443,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
             }
         }
         float right = left + child.getWidth();
-        
+
         float slop = fullHeight ? AndroidUtilities.dp(8) : 0;
         return x >= left - slop && x <= right + slop
                 && (fullHeight ? y >= 0 && y <= getHeight()
@@ -452,12 +452,12 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
 
     public void setCompact(boolean z) {
         this.compact = z;
-        
+
         rowLayout.setMinimumHeight(AndroidUtilities.dp(z ? 48 : 64));
         int vPad = AndroidUtilities.dp(z ? 4 : 8);
         rowLayout.setPadding(AndroidUtilities.dp(14), vPad,
                 AndroidUtilities.dp(12), vPad);
-        
+
         ViewGroup.LayoutParams iconLp = imageView.getLayoutParams();
         int iconSize = AndroidUtilities.dp(z ? 28 : 40);
         if (iconLp != null) {
@@ -482,7 +482,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         placeholderIcon.setBackground(Theme.createCircleDrawable(iconSize,
                 Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText), 0.12f)));
         imageView.setRoundRadius(iconSize / 2);
-        
+
         subtitleView.setVisibility(z ? View.GONE : View.VISIBLE);
         rowLayout.requestLayout();
     }
@@ -509,15 +509,15 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         this.pluginCellDelegate = pluginCellDelegate;
         this.plugin = plugin;
         setPinned(PluginsController.isPluginPinned(plugin.getId()));
-        
-        setCompact(NimarkoConfig.pluginsCompactView);
+
+        setCompact(AppConfig.pluginsCompactView);
 
         boolean hasImage = plugin.getPack() != null && plugin.getIndex() >= 0;
         this.imageView.setVisibility(hasImage ? View.VISIBLE : View.GONE);
         this.placeholderIcon.setVisibility(hasImage ? View.GONE : View.VISIBLE);
         if (hasImage) {
            MediaDataController.getInstance(UserConfig.selectedAccount).setPlaceholderImageByIndex(this.imageView, plugin.getPack(), plugin.getIndex(), "100_100");
-           
+
            this.imageView.getImageReceiver().setAutoRepeat(2);
            this.imageView.getImageReceiver().setAutoRepeatCount(-1);
         } else {
@@ -555,7 +555,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
                 + LocaleController.getString(
                 requestedEnabled ? R.string.Disable : R.string.Enable));
         this.checkBox.setOnClickListener(view -> pluginCellDelegate.togglePlugin(this));
-        
+
         setLoading(uiOperationEpoch != NO_UI_OPERATION_EPOCH
                 || controller.isTogglingInProgress(plugin.getId())
                 || controller.isEnablingInProgress(plugin.getId()), samePlugin);
@@ -574,9 +574,9 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
         this.descriptionView.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
         this.descriptionView.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MONO));
         this.descriptionView.setTextSize(1, 12.0f);
-        
+
         bindReportActions();
-        
+
     }
 
     private void bindReportActions() {
@@ -598,7 +598,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     }
 
     private void bindNormalState() {
-        
+
         bindSavedReportState(PluginCrashReports.hasReport(this.plugin.getId()));
     }
 
@@ -648,7 +648,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
     }
 
     public void setPinned(boolean z) {
-        
+
     }
 
     @Override
@@ -672,7 +672,7 @@ public class PluginCell extends FrameLayout implements NotificationCenter.Notifi
 
     @Override
     public void didReceivedNotification(int i, int i2, Object... objArr) {
-        
+
         if (i == NotificationCenter.pluginsUpdated && isAttachedToWindow()) {
             refreshSavedReportAvailability();
             return;

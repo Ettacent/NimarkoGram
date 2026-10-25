@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -252,8 +254,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 boolean transportConnected = currentConnectionState == ConnectionsManager.ConnectionStateConnected
                         || currentConnectionState == ConnectionsManager.ConnectionStateUpdating;
                 if (isOwnWsBypass(currentInfo)) {
-                    transportConnected = transportConnected && app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.STATE_RUNNING.equals(
-                            app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().getConnectionState());
+                    transportConnected = transportConnected && app.nimarkogram.messenger.wsbypass.WsBypassController.STATE_RUNNING.equals(
+                            app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().getConnectionState());
                 }
                 if (transportConnected) {
                     colorKey = Theme.key_windowBackgroundWhiteBlueText6;
@@ -605,7 +607,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             }
             if (position == useProxyRow) {
                 if (useProxySettings && isOwnWsBypass(SharedConfig.currentProxy)) {
-                    app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().setEnabled(false);
+                    app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().setEnabled(false);
                     reconcileProxyState();
                     updateRows(true);
                     return;
@@ -671,8 +673,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     return;
                 }
                 SharedConfig.ProxyInfo info = proxyList.get(position - proxyStartRow);
-                if (!isOwnWsBypass(info) && app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.enabled) {
-                    app.nimarkogram.messenger.wsbypass.NimarkoWsBypassController.getInstance().setEnabled(false);
+                if (!isOwnWsBypass(info) && app.nimarkogram.messenger.wsbypass.WsBypassConfig.enabled) {
+                    app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().setEnabled(false);
                 }
                 useProxySettings = true;
                 SharedPreferences.Editor editor = MessagesController.getGlobalMainSettings().edit();
@@ -1005,7 +1007,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private static boolean isOwnWsBypass(SharedConfig.ProxyInfo p) {
         return p != null
                 && app.nimarkogram.messenger.wsbypass.WsBypassCore.LOCAL_PROXY_HOST.equals(p.getSettings().getAddress())
-                && p.getSettings().getPort() == app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig.localPort;
+                && p.getSettings().getPort() == app.nimarkogram.messenger.wsbypass.WsBypassConfig.localPort;
     }
 
     @Override

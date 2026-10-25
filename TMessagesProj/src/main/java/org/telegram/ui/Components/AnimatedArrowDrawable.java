@@ -18,7 +18,7 @@ import org.telegram.messenger.AndroidUtilities;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class AnimatedArrowDrawable extends Drawable {
 
     private Paint paint;
@@ -61,8 +61,8 @@ public class AnimatedArrowDrawable extends Drawable {
 
     @Override
     public void draw(Canvas c) {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.arrow_more);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.arrow_more);
         if (arrow == null) {
         c.drawPath(path, paint);
         } else {

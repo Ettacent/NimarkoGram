@@ -76,10 +76,13 @@ public class NewBottomSheet extends BottomSheetWithRecyclerListView implements T
         if (top >= bottom) {
             return;
         }
+        final boolean narrow = containerView.getWidth() < getContainer().getWidth();
+        final float left = narrow ? containerView.getX() + backgroundPaddingLeft : 0;
+        final float right = narrow ? containerView.getX() + containerView.getWidth() - backgroundPaddingLeft : getContainer().getWidth();
         canvas.drawRect(
-                0,
+                left,
                 top,
-                getContainer().getWidth(),
+                right,
                 bottom,
                 navigationBarPaint
         );

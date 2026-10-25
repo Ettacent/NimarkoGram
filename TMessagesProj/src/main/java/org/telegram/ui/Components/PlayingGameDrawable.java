@@ -10,7 +10,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -52,8 +52,8 @@ public class PlayingGameDrawable extends StatusDrawable {
     }
 
     private void update() {
-        long newTime = NimarkoUiAnimationClock.now();
-        int epoch = NimarkoUiAnimationClock.epoch();
+        long newTime = UiAnimationClock.now();
+        int epoch = UiAnimationClock.epoch();
         long dt = epoch == visualEpoch ? Math.max(0L, newTime - lastUpdateTime) : 0L;
         visualEpoch = epoch;
         lastUpdateTime = newTime;
@@ -72,8 +72,8 @@ public class PlayingGameDrawable extends StatusDrawable {
     }
 
     public void start() {
-        lastUpdateTime = NimarkoUiAnimationClock.now();
-        visualEpoch = NimarkoUiAnimationClock.epoch();
+        lastUpdateTime = UiAnimationClock.now();
+        visualEpoch = UiAnimationClock.epoch();
         started = true;
         invalidateSelf();
     }
@@ -88,16 +88,16 @@ public class PlayingGameDrawable extends StatusDrawable {
         int size = AndroidUtilities.dp(10);
         int y = getBounds().top + (getIntrinsicHeight() - size) / 2;
         if (isChat) {
-            
+
         } else {
             y += AndroidUtilities.dp(1);
-            
+
         }
 
         paint.setColor(Theme.getColor(isDialogScreen ? Theme.key_chats_actionMessage : Theme.key_chat_status, resourcesProvider));
-        
+
         float ngOffsetX = 0;
-        if (app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride) {
+        if (app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride) {
             ngOffsetX = getBounds().centerX() - AndroidUtilities.dp(10);
         }
         rect.set(ngOffsetX, y, ngOffsetX + size, y + size);
@@ -157,7 +157,7 @@ public class PlayingGameDrawable extends StatusDrawable {
 
     @Override
     public int getIntrinsicWidth() {
-        return AndroidUtilities.dp(app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride ? 16 : 20);
+        return AndroidUtilities.dp(app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride ? 16 : 20);
     }
 
     @Override

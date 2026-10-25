@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -72,7 +74,7 @@ class Camera2Session implements CameraSession {
   private SessionState state = SessionState.RUNNING;
   private boolean firstFrameReported;
 
-  private final long constructionTimeNs; 
+  private final long constructionTimeNs;
 
   private class CameraStateCallback extends CameraDevice.StateCallback {
     private String getErrorDescription(int errorCode) {
@@ -153,10 +155,10 @@ class Camera2Session implements CameraSession {
       Logging.d(TAG, "Camera capture session configured.");
       captureSession = session;
       try {
-         
+
         final CaptureRequest.Builder captureRequestBuilder =
             cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-        
+
         captureRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
             new Range<Integer>(captureFormat.framerate.min / fpsUnitFactor,
                 captureFormat.framerate.max / fpsUnitFactor));
@@ -203,15 +205,15 @@ class Camera2Session implements CameraSession {
     }
 
     private void chooseStabilizationMode(CaptureRequest.Builder captureRequestBuilder) {
-      
-      if (!app.nimarkogram.messenger.NimarkoConfig.cameraOpticalStabilization) {
+
+      if (!app.nimarkogram.messenger.AppConfig.cameraOpticalStabilization) {
         try {
           captureRequestBuilder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE,
               CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF);
           captureRequestBuilder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
               CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF);
         } catch (Throwable ignored) {}
-        Logging.d(TAG, "Stabilization disabled by NimarkoConfig.");
+        Logging.d(TAG, "Stabilization disabled by AppConfig.");
         return;
       }
       final int[] availableOpticalStabilization = cameraCharacteristics.get(
@@ -228,7 +230,7 @@ class Camera2Session implements CameraSession {
           }
         }
       }
-      
+
       final int[] availableVideoStabilization = cameraCharacteristics.get(
           CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES);
       for (int mode : availableVideoStabilization) {
@@ -245,9 +247,9 @@ class Camera2Session implements CameraSession {
     }
 
     private void chooseFocusMode(CaptureRequest.Builder captureRequestBuilder) {
-      
-      if (!app.nimarkogram.messenger.NimarkoConfig.cameraContinuousFocus) {
-        Logging.d(TAG, "Continuous focus disabled by NimarkoConfig.");
+
+      if (!app.nimarkogram.messenger.AppConfig.cameraContinuousFocus) {
+        Logging.d(TAG, "Continuous focus disabled by AppConfig.");
         return;
       }
       final int[] availableFocusModes =

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -110,7 +112,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
     private boolean canToggleTopics;
 
     private RLottieDrawable cameraDrawable;
-    
+
     private boolean forImport;
 
     private String currentGroupCreateAddress;
@@ -499,7 +501,7 @@ public class GroupCreateFinalActivity extends BaseFragment implements Notificati
                 super.invalidate(l, t, r, b);
             }
         };
-        avatarImage.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(64, chatType == ChatObject.CHAT_TYPE_FORUM));
+        avatarImage.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(64, chatType == ChatObject.CHAT_TYPE_FORUM));
         avatarDrawable.setInfo(5, null, null);
         avatarImage.setImageDrawable(avatarDrawable);
         avatarImage.setContentDescription(getString(R.string.ChoosePhoto));

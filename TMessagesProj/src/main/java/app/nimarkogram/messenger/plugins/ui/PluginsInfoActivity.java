@@ -18,7 +18,7 @@ import org.telegram.ui.Components.UniversalAdapter;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
 import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 import app.nimarkogram.messenger.preferences.BasePreferencesActivity;
@@ -48,21 +48,21 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
 
         items.add(UItem.asCheck(PreferenceItem.COMPACT_VIEW.getId(),
                         LocaleController.getString(R.string.PluginsCompactView), R.drawable.msg_topics)
-                .setChecked(NimarkoConfig.pluginsCompactView)
-                .setEnabled(NimarkoConfig.pluginsEngine));
+                .setChecked(AppConfig.pluginsCompactView)
+                .setEnabled(AppConfig.pluginsEngine));
 
         UItem disableArt = UItem.asCheck(PreferenceItem.PLUGINS_DISABLE_ART_OPTS.getId(),
                         LocaleController.getString(R.string.PluginsDisableArt),
                         LocaleController.getString(R.string.PluginsDisableArtInfo),
                         true)
-                .setChecked(NimarkoConfig.pluginsDisableArtOpts)
-                .setEnabled(NimarkoConfig.pluginsEngine);
+                .setChecked(AppConfig.pluginsDisableArtOpts)
+                .setEnabled(AppConfig.pluginsEngine);
         items.add(disableArt);
 
         items.add(UItem.asCheck(PreferenceItem.SAFE_MODE.getId(),
                         LocaleController.getString(R.string.PluginsSafeMode), R.drawable.msg_secret)
-                .setChecked(NimarkoConfig.pluginsSafeMode));
-        items.add(UItem.asShadow(NimarkoConfig.pluginsSafeMode
+                .setChecked(AppConfig.pluginsSafeMode));
+        items.add(UItem.asShadow(AppConfig.pluginsSafeMode
                 ? PluginCrashReports.safeModeExplanation()
                 : LocaleController.getString(R.string.PluginsSafeModeInfo2)));
 
@@ -92,26 +92,26 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
 
         if (view instanceof TextCheckCell) {
             TextCheckCell checkCell = (TextCheckCell) view;
-            if (NimarkoConfig.pluginsEngine || preferenceItem == PreferenceItem.SAFE_MODE) {
+            if (AppConfig.pluginsEngine || preferenceItem == PreferenceItem.SAFE_MODE) {
                 switch (preferenceItem) {
                     case COMPACT_VIEW:
-                        NimarkoConfig.togglePluginsCompactView();
-                        checkCell.setChecked(NimarkoConfig.pluginsCompactView);
-                        uItem.checked = NimarkoConfig.pluginsCompactView;
+                        AppConfig.togglePluginsCompactView();
+                        checkCell.setChecked(AppConfig.pluginsCompactView);
+                        uItem.checked = AppConfig.pluginsCompactView;
                         NotificationCenter.getGlobalInstance()
                                 .postNotificationName(NotificationCenter.reloadInterface);
                         break;
                     case PLUGINS_DISABLE_ART_OPTS:
-                        NimarkoConfig.setPluginsDisableArtOpts(!NimarkoConfig.pluginsDisableArtOpts);
-                        checkCell.setChecked(NimarkoConfig.pluginsDisableArtOpts);
-                        uItem.checked = NimarkoConfig.pluginsDisableArtOpts;
+                        AppConfig.setPluginsDisableArtOpts(!AppConfig.pluginsDisableArtOpts);
+                        checkCell.setChecked(AppConfig.pluginsDisableArtOpts);
+                        uItem.checked = AppConfig.pluginsDisableArtOpts;
                         BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check,
                                 LocaleController.getString(R.string.RestartRequired)).show();
                         break;
                     case SAFE_MODE:
-                        NimarkoConfig.togglePluginsSafeMode();
-                        checkCell.setChecked(NimarkoConfig.pluginsSafeMode);
-                        uItem.checked = NimarkoConfig.pluginsSafeMode;
+                        AppConfig.togglePluginsSafeMode();
+                        checkCell.setChecked(AppConfig.pluginsSafeMode);
+                        uItem.checked = AppConfig.pluginsSafeMode;
                         PluginsController.getInstance().restart();
                         break;
                     default:

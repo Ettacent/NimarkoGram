@@ -21,7 +21,7 @@ import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 
@@ -49,7 +49,7 @@ public class NumberTextView extends View {
     private boolean hasPendingNumber;
     private int pendingNumber;
     private ObjectAnimator windowPausedAnimator;
-    private final NimarkoUiAnimationClock.ResumeGate animationResumeGate = value ->
+    private final UiAnimationClock.ResumeGate animationResumeGate = value ->
             isAttachedToWindow() && getWindowVisibility() == VISIBLE;
     private CounterView.CounterSnapshot snapshot;
     private float snapshotTextWidth;
@@ -58,11 +58,11 @@ public class NumberTextView extends View {
         @Override
         public void run() {
             if ((!hasPendingNumber && windowPausedAnimator == null && (snapshot == null || !snapshot.isWindowPaused())) || !isAttachedToWindow() || getWindowVisibility() != VISIBLE) return;
-            if (NimarkoUiAnimationClock.isPaused()) postOnAnimation(this);
+            if (UiAnimationClock.isPaused()) postOnAnimation(this);
             else {
                 if (snapshot != null) snapshot.resumeWindow();
                 if (windowPausedAnimator == animator && animator != null && animator.isPaused()
-                        && !NimarkoUiAnimationClock.resumeAnimation(animator)) return;
+                        && !UiAnimationClock.resumeAnimation(animator)) return;
                 windowPausedAnimator = null;
                 invalidate();
             }
@@ -101,7 +101,7 @@ public class NumberTextView extends View {
 
     public void setNumber(int number, boolean animated) {
         if (animated && presented && isAttachedToWindow()
-                && (NimarkoUiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
+                && (UiAnimationClock.isPaused() || getWindowVisibility() != VISIBLE)) {
             if (!hasPendingNumber && currentNumber != number
                     && (animator != null || (snapshot != null && snapshot.hasSnapshot()))) {
                 if (snapshot == null) snapshot = new CounterView.CounterSnapshot(this, () -> {
@@ -128,7 +128,7 @@ public class NumberTextView extends View {
         hasPendingNumber = false;
         removeCallbacks(resumeNumber);
         if (!isAttachedToWindow()) animated = false;
-        if (NimarkoUiAnimationClock.isPaused() && !presented) animated = false;
+        if (UiAnimationClock.isPaused() && !presented) animated = false;
         if (!animated) presented = false;
         if (currentNumber == number && animated) {
             if (getWindowVisibility() == VISIBLE && (windowPausedAnimator != null
@@ -193,7 +193,7 @@ public class NumberTextView extends View {
                 }
             });
             animator.start();
-            NimarkoUiAnimationClock.track(animator, animationResumeGate);
+            UiAnimationClock.track(animator, animationResumeGate);
         } else {
             oldLetters.clear();
             if (onTextWidthProgressChangedListener != null) {
@@ -264,9 +264,9 @@ public class NumberTextView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        if (canvas.isHardwareAccelerated()) NimarkoUiAnimationClock.resumeOwned(animator);
+        if (canvas.isHardwareAccelerated()) UiAnimationClock.resumeOwned(animator);
         if (hasPendingNumber && canvas.isHardwareAccelerated() && isAttachedToWindow()
-                && !NimarkoUiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
+                && !UiAnimationClock.isPaused() && getWindowVisibility() == VISIBLE) {
             CounterView.CounterSnapshot retained = snapshot;
             snapshot = null;
             setNumber(pendingNumber, animator == null && (retained == null || !retained.hasSnapshot()));
@@ -283,7 +283,7 @@ public class NumberTextView extends View {
         }
         else drawContent(canvas);
         if (canvas.isHardwareAccelerated() && isAttachedToWindow() && getWindowVisibility() == VISIBLE
-                && !NimarkoUiAnimationClock.isPaused()) {
+                && !UiAnimationClock.isPaused()) {
             presented = true;
             presentedProgress = progress;
             if (snapshot != null) snapshot.presented();

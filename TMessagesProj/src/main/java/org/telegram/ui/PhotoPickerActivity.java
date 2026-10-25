@@ -111,8 +111,8 @@ import org.telegram.ui.Components.StickerEmptyView;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 import app.nimarkogram.messenger.utils.ui.MonetHelper;
 public class PhotoPickerActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -230,7 +230,9 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
                 object.viewY = coords[1] - (Build.VERSION.SDK_INT >= 21 ? 0 : AndroidUtilities.statusBarHeight);
                 object.parentView = listView;
                 object.imageReceiver = imageView.getImageReceiver();
+                if (needPreview) {
                 object.thumb = object.imageReceiver.getBitmapSafe();
+                }
                 object.scale = cell.getScale();
                 cell.showCheck(false);
                 return object;
@@ -1151,8 +1153,8 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
                 view.getLocationInWindow(location);
                 sendPopupWindow.showAtLocation(view, Gravity.LEFT | Gravity.TOP, location[0] + view.getMeasuredWidth() - sendPopupLayout.getMeasuredWidth() + AndroidUtilities.dp(8), location[1] - sendPopupLayout.getMeasuredHeight() - AndroidUtilities.dp(2));
                 sendPopupWindow.dimBehind();
-                
-                if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                     try {
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignored) {}
@@ -1224,8 +1226,8 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
 
         private void refreshSendIcon() {
             Resources resources = getContext().getResources();
-            long generation = resources instanceof NimarkoIconResources
-                    ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+            long generation = resources instanceof IconResources
+                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
             int densityDpi = resources.getDisplayMetrics().densityDpi;
             float density = resources.getDisplayMetrics().density;
             Configuration configuration = resources.getConfiguration();
@@ -1233,12 +1235,12 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
                     || iconGeneration != generation || iconDensityDpi != densityDpi
                     || iconDensity != density || !configuration.equals(iconConfiguration);
             if (reload) {
-                customIcon = resources instanceof NimarkoIconResources
-                        && ((NimarkoIconResources) resources).hasReplacement(R.drawable.ic_send);
+                customIcon = resources instanceof IconResources
+                        && ((IconResources) resources).hasReplacement(R.drawable.ic_send);
                 if (customIcon) {
                     Drawable icon = resources.getDrawable(R.drawable.ic_send).mutate();
-                    float artworkDp = ((NimarkoIconResources) resources).getAppliedSelection()
-                            == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS ? 32f : 24f;
+                    float artworkDp = ((IconResources) resources).getAppliedSelection()
+                            == AppConfig.ICON_REPLACE_LIQUID_GLASS ? 32f : 24f;
                     int size = (int) Math.ceil(artworkDp * density);
                     int width = icon.getIntrinsicWidth();
                     int height = icon.getIntrinsicHeight();
@@ -1270,7 +1272,7 @@ public class PhotoPickerActivity extends BaseFragment implements NotificationCen
                 int accent = fill;
                 fill = ColorUtils.blendARGB(surface, fill, 0.12f);
                 pressed = ColorUtils.blendARGB(surface, pressed, 0.12f);
-                foreground = MonetHelper.ensureReadableForeground(accent, fill);
+                foreground = MonetHelper.ensureReadableIconForeground(accent, fill);
             }
             if (reload || !colorsInitialized || fill != backgroundColor || pressed != pressedColor) {
                 Drawable background = Theme.createSimpleSelectorCircleDrawable(dp(56), fill, pressed);

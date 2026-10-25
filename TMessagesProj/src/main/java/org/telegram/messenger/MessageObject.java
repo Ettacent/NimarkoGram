@@ -659,17 +659,17 @@ public class MessageObject {
         boolean addSpoiler = false;
         org.telegram.ui.ActionBar.BaseFragment currentFragment = LaunchActivity.getSafeLastFragment();
         boolean isProperActivity = currentFragment instanceof org.telegram.ui.DialogsActivity || notifications;
-        if (isProperActivity && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
+        if (isProperActivity && (app.nimarkogram.messenger.AppConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenSavedMessages
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenEncrypted)) {
             long chatID = messageOwner.dialog_id;
-            boolean require = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isChatLocked(currentAccount, chatID)
-                    || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isSavedMessagesProtected(currentAccount, chatID)
-                    || app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.isEncryptedChat(chatID, currentAccount);
+            boolean require = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isChatLocked(currentAccount, chatID)
+                    || app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isSavedMessagesProtected(currentAccount, chatID)
+                    || app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.isEncryptedChat(chatID, currentAccount);
             addSpoiler = require;
         }
-        boolean filtered = (app.nimarkogram.messenger.NimarkoConfig.isMsgFiltersHideAll()
-                || app.nimarkogram.messenger.NimarkoConfig.isMsgFiltersHideFromBlocked())
+        boolean filtered = (app.nimarkogram.messenger.AppConfig.isMsgFiltersHideAll()
+                || app.nimarkogram.messenger.AppConfig.isMsgFiltersHideFromBlocked())
                 && shouldBlockMessage();
         return filtered || addSpoiler;
     }
@@ -2033,7 +2033,7 @@ public class MessageObject {
                 paint = Theme.chat_msgTextPaint;
             }
             try {
-                app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
+                app.nimarkogram.messenger.utils.LocalEmoji.parseCustomEmojis(
                         messageText, getEntities(), getId());
             } catch (Throwable ignored) {}
             int[] emojiOnly = allowsBigEmoji() ? new int[1] : null;
@@ -5838,6 +5838,18 @@ public class MessageObject {
                     } else {
                         messageText = replaceWithLink(formatPluralStringComma("PaidMessagesPriceUpdated", (int) action.stars), "un1", fromObject);
                     }
+                } else if (messageOwner.action instanceof TLRPC.TL_messageActionNoPaidMessagesTokenUsed) {
+                    if (isOutOwner()) {
+                        final TLRPC.User user;
+                        if (messageOwner.saved_peer_id != null) {
+                            user = getUser(users, sUsers, DialogObject.getPeerDialogId(messageOwner.saved_peer_id));
+                        } else {
+                            user = getUser(users, sUsers, DialogObject.getPeerDialogId(messageOwner.peer_id));
+                        }
+                        messageText = replaceWithLink(getString(R.string.NoPaidMessagesTokenUsedOut), "un1", user);
+                    } else {
+                        messageText = replaceWithLink(getString(R.string.NoPaidMessagesTokenUsed), "un1", fromObject);
+                    }
                 } else if (messageOwner.action instanceof TLRPC.TL_messageActionPaidMessagesRefunded) {
                     final TLRPC.TL_messageActionPaidMessagesRefunded action = (TLRPC.TL_messageActionPaidMessagesRefunded) messageOwner.action;
                     if (isOutOwner()) {
@@ -6908,7 +6920,7 @@ public class MessageObject {
                 paint = Theme.chat_msgTextPaint;
             }
             try {
-                app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
+                app.nimarkogram.messenger.utils.LocalEmoji.parseCustomEmojis(
                         messageText, getEntities(), getId());
             } catch (Throwable ignored) {}
             int[] emojiOnly = allowsBigEmoji() ? new int[1] : null;
@@ -7769,7 +7781,7 @@ public class MessageObject {
             addEntitiesToText(caption, useManualParse);
             try {
                 int captionMaxW = AndroidUtilities.displaySize.x - dp(needDrawAvatar() ? 147 : 95);
-                caption = app.nimarkogram.messenger.utils.NimarkoLatexHelper.processLatex(
+                caption = app.nimarkogram.messenger.utils.LatexHelper.processLatex(
                         caption, Theme.chat_msgTextPaint.getTextSize(), captionMaxW, false);
             } catch (Throwable ignored) {}
             caption = FormattedDateSpan.applyFormatedDateEntities(caption);
@@ -8021,7 +8033,7 @@ public class MessageObject {
     }
 
     public void replaceEmojiToLottieFrame(CharSequence text, int[] emojiOnly) {
-        if (!(text instanceof Spannable) || app.nimarkogram.messenger.NimarkoConfig.systemEmoji) {
+        if (!(text instanceof Spannable) || app.nimarkogram.messenger.AppConfig.systemEmoji) {
             return;
         }
         Spannable spannable = (Spannable) text;
@@ -8458,25 +8470,25 @@ public class MessageObject {
         TLRPC.Message mo = messageOwner;
         if (mo != null && mo.from_id != null) {
             if (type == TYPE_STICKER || type == TYPE_ANIMATED_STICKER || type == TYPE_EMOJIS) {
-                if (app.nimarkogram.messenger.NimarkoConfig.stickersDrawShareButton) {
+                if (app.nimarkogram.messenger.AppConfig.stickersDrawShareButton) {
                     return true;
                 }
             }
             if (mo.from_id instanceof TLRPC.TL_peerChannel || mo.post) {
-                if (!app.nimarkogram.messenger.NimarkoConfig.channelsDrawShareButton) {
+                if (!app.nimarkogram.messenger.AppConfig.channelsDrawShareButton) {
                     return false;
                 }
             } else if (mo.peer_id != null && mo.peer_id.channel_id != 0) {
-                if (!app.nimarkogram.messenger.NimarkoConfig.supergroupsDrawShareButton) {
+                if (!app.nimarkogram.messenger.AppConfig.supergroupsDrawShareButton) {
                     return false;
                 }
             } else if (mo.from_id instanceof TLRPC.TL_peerUser) {
                 TLRPC.User u = MessagesController.getInstance(currentAccount).getUser(mo.from_id.user_id);
                 if (u != null && u.bot) {
-                    if (!app.nimarkogram.messenger.NimarkoConfig.botsDrawShareButton) {
+                    if (!app.nimarkogram.messenger.AppConfig.botsDrawShareButton) {
                         return false;
                     }
-                } else if (!app.nimarkogram.messenger.NimarkoConfig.usersDrawShareButton) {
+                } else if (!app.nimarkogram.messenger.AppConfig.usersDrawShareButton) {
                     return false;
                 }
             }
@@ -8790,14 +8802,14 @@ public class MessageObject {
             return;
         }
         try {
-            app.nimarkogram.messenger.utils.NimarkoLocalEmoji.parseCustomEmojis(
+            app.nimarkogram.messenger.utils.LocalEmoji.parseCustomEmojis(
                     messageText, getEntities(), getId());
         } catch (Throwable t) {
             FileLog.e(t);
         }
         boolean hasUrls = applyEntities();
         try {
-            messageText = app.nimarkogram.messenger.utils.NimarkoLatexHelper.processLatex(
+            messageText = app.nimarkogram.messenger.utils.LatexHelper.processLatex(
                     messageText, Theme.chat_msgTextPaint.getTextSize(), getMaxMessageTextWidth(), false);
         } catch (Throwable ignored) {}
         boolean noforwards = messageOwner != null && messageOwner.noforwards;

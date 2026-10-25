@@ -58,7 +58,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.glass.GlassTabView;
 import org.telegram.ui.DialogsActivity;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.utils.ui.MainTabsManager;
 
 public class MainTabsPreviewCell extends ViewGroup {
@@ -173,7 +173,7 @@ public class MainTabsPreviewCell extends ViewGroup {
         this.boundResourceProvider = resourceProvider;
         this.boundCurrentAccount = UserConfig.selectedAccount;
         this.boundFromSettings = true;
-        this.boundShowSearch = NimarkoConfig.showSearchInTabs;
+        this.boundShowSearch = AppConfig.showSearchInTabs;
         this.sourceTabs = source;
 
         rebuildFromSource();
@@ -185,8 +185,8 @@ public class MainTabsPreviewCell extends ViewGroup {
     public void refresh() {
         invalidateActiveDrag();
         contentGeneration++;
-        
-        this.boundShowSearch = NimarkoConfig.showSearchInTabs;
+
+        this.boundShowSearch = AppConfig.showSearchInTabs;
         if (sourceTabs != null) {
             rebuildFromSource();
         } else {
@@ -209,7 +209,7 @@ public class MainTabsPreviewCell extends ViewGroup {
         tabs[1] = GlassTabView.createMainTab(boundContext, boundResourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
         tabs[2] = GlassTabView.createMainTab(boundContext, boundResourceProvider, GlassTabView.TabAnimation.SETTINGS, R.string.Settings);
 
-        final boolean titleVisible = NimarkoConfig.showMainTabsTitle;
+        final boolean titleVisible = AppConfig.showMainTabsTitle;
         for (int i = 0; i < tabs.length; i++) {
             GlassTabView tab = tabs[i];
             tab.setTitleVisible(titleVisible);
@@ -226,21 +226,21 @@ public class MainTabsPreviewCell extends ViewGroup {
             rebuildFromFixedLayout();
             return;
         }
-        
+
         final ArrayList<MainTabsManager.Tab> snapshot = new ArrayList<>();
         boolean hasSearch = false;
         for (MainTabsManager.Tab t : src) {
-            if (t.getType() == MainTabsManager.TabType.SEARCH && !NimarkoConfig.showSearchInTabs) continue;
+            if (t.getType() == MainTabsManager.TabType.SEARCH && !AppConfig.showSearchInTabs) continue;
             if (t.getType() == MainTabsManager.TabType.SEARCH) hasSearch = true;
             snapshot.add(t);
         }
-        
+
         if (boundShowSearch && !hasSearch) {
             snapshot.add(new MainTabsManager.Tab(MainTabsManager.TabType.SEARCH, true));
         }
         tabs = new GlassTabView[snapshot.size()];
         tabTypes = new MainTabsManager.TabType[snapshot.size()];
-        final boolean titleVisible = NimarkoConfig.showMainTabsTitle;
+        final boolean titleVisible = AppConfig.showMainTabsTitle;
         for (int i = 0; i < snapshot.size(); i++) {
             final int index = i;
             final MainTabsManager.Tab entry = snapshot.get(i);
@@ -312,7 +312,7 @@ public class MainTabsPreviewCell extends ViewGroup {
     private void onTabClicked(int index, MainTabsManager.TabType type, GlassTabView tab) {
         if (sourceTabs == null) return;
         if (type == MainTabsManager.TabType.SEARCH || type == MainTabsManager.TabType.CHATS) return;
-        
+
         MainTabsManager.Tab entry = null;
         for (MainTabsManager.Tab t : sourceTabs) {
             if (t.getType() == type) { entry = t; break; }
@@ -326,7 +326,7 @@ public class MainTabsPreviewCell extends ViewGroup {
     }
 
     private boolean onTabLongClicked(int index, MainTabsManager.TabType type) {
-        
+
         if (type == MainTabsManager.TabType.SEARCH) return false;
         startDrag(index);
         return true;
@@ -373,7 +373,7 @@ public class MainTabsPreviewCell extends ViewGroup {
                     reorder(from, to);
                 }
             } catch (Throwable ignore) {
-                
+
             }
             return true;
         }
@@ -446,12 +446,12 @@ public class MainTabsPreviewCell extends ViewGroup {
             to = tabTypes.length - 1;
         }
         if (to < 0) to = 0;
-        
+
         if (to < tabTypes.length && tabTypes[to] == MainTabsManager.TabType.SEARCH) {
             to = Math.max(0, to - 1);
         }
         if (from == to) return;
-        
+
         final MainTabsManager.TabType fromType = tabTypes[from];
         final MainTabsManager.TabType toType = tabTypes[to];
         int srcFrom = -1, srcTo = -1;

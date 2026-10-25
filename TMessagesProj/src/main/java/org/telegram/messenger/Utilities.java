@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -84,6 +86,7 @@ public class Utilities {
     public static native boolean drawDitheredGradient(Bitmap bitmap, int[] colors, int startX, int startY, int endX, int endY);
 //    public static native int saveProgressiveJpeg(Bitmap bitmap, int width, int height, int stride, int quality, String path);
     public static native void generateGradient(Bitmap bitmap, int phase, float progress, int[] colors);
+    public static native void generateQrBackdrop(Bitmap bitmap, Bitmap ringBitmap, float cell, int count, float[] geom, int[] colors, float[] wave);
     public static native boolean applySoftLight(Bitmap inputBitmap, Bitmap outputBitmap, int color);
     public static native boolean applyAlphaInvert(Bitmap inputBitmap, Bitmap outputBitmap, int intensity);
     public static native boolean expandAlphaToBlack(Bitmap inputBitmap, Bitmap outputBitmap);

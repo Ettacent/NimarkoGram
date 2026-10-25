@@ -21,11 +21,11 @@ public final class CompactIconHelper {
     public static Drawable getDrawable(Context context, int resourceId) {
         Resources resources = context.getResources();
         Drawable icon = resources.getDrawable(resourceId, context.getTheme()).mutate();
-        if (!(resources instanceof NimarkoIconResources)
-                || !((NimarkoIconResources) resources).hasReplacement(resourceId)) {
+        if (!(resources instanceof IconResources)
+                || !((IconResources) resources).hasReplacement(resourceId)) {
             return icon;
         }
-        Drawable stock = NimarkoIconResources.getStockDrawable(context, resourceId).mutate();
+        Drawable stock = IconResources.getStockDrawable(context, resourceId).mutate();
         return fitActionIcon(icon, stock);
     }
 

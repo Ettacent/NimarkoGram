@@ -3,7 +3,7 @@
 package org.telegram.ui.Components;
 
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.animation.TimeInterpolator;
 import android.view.View;
 
@@ -160,7 +160,7 @@ public class AnimatedFloat {
             transition = true;
             targetValue = mustBe;
             startValue = value;
-            transitionStart = NimarkoUiAnimationClock.now();
+            transitionStart = UiAnimationClock.now();
             lastVisualTime = transitionStart;
         }
 
@@ -168,10 +168,10 @@ public class AnimatedFloat {
     }
 
     public float getValue() {
-        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+        UiAnimationClock.setResumeCallback(resumeInvalidation,
                 transition && (parent != null || invalidate != null));
-        if (NimarkoUiAnimationClock.isPaused()) return value;
-        final long now = NimarkoUiAnimationClock.now();
+        if (UiAnimationClock.isPaused()) return value;
+        final long now = UiAnimationClock.now();
         rebaseVisualTime(now);
         if (transition) {
             final float t = MathUtils.clamp((now - transitionStart - transitionDelay) / (float) transitionDuration, 0, 1);
@@ -184,7 +184,7 @@ public class AnimatedFloat {
             }
             if (t >= 1f) {
                 transition = false;
-                NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation, false);
+                UiAnimationClock.setResumeCallback(resumeInvalidation, false);
             } else {
                 if (parent != null) {
                     parent.invalidate();
@@ -209,7 +209,7 @@ public class AnimatedFloat {
     }
 
     private void rebaseVisualTime(long now) {
-        int epoch = NimarkoUiAnimationClock.epoch();
+        int epoch = UiAnimationClock.epoch();
         if (transition && lastVisualTime != 0L && epoch != visualEpoch && transitionStart <= lastVisualTime) {
             transitionStart += Math.max(0L, now - lastVisualTime);
             lastVisualTime = now;
@@ -237,8 +237,8 @@ public class AnimatedFloat {
         if (!transition) {
             return 0;
         }
-        final long now = NimarkoUiAnimationClock.isPaused() ? lastVisualTime : NimarkoUiAnimationClock.now();
-        if (!NimarkoUiAnimationClock.isPaused()) rebaseVisualTime(now);
+        final long now = UiAnimationClock.isPaused() ? lastVisualTime : UiAnimationClock.now();
+        if (!UiAnimationClock.isPaused()) rebaseVisualTime(now);
         return MathUtils.clamp((now - transitionStart - transitionDelay) / (float) transitionDuration, 0, 1);
     }
 
@@ -256,13 +256,13 @@ public class AnimatedFloat {
 
     public void setParent(View parent) {
         this.parent = parent;
-        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+        UiAnimationClock.setResumeCallback(resumeInvalidation,
                 transition && (parent != null || invalidate != null));
     }
 
     public void setInvalidate(Runnable invalidate) {
         this.invalidate = invalidate;
-        NimarkoUiAnimationClock.setResumeCallback(resumeInvalidation,
+        UiAnimationClock.setResumeCallback(resumeInvalidation,
                 transition && (parent != null || invalidate != null));
     }
 }

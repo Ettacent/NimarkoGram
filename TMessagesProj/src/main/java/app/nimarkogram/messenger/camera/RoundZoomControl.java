@@ -64,7 +64,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.AndroidUtilities;
@@ -1050,7 +1050,7 @@ public final class RoundZoomControl extends View {
     private boolean performHapticSafe(int feedbackConstant) {
         boolean major = feedbackConstant != HapticFeedbackConstants.CLOCK_TICK;
         long now = SystemClock.uptimeMillis();
-        if (NimarkoConfig.disableVibration || !isHapticFeedbackEnabled()
+        if (AppConfig.disableVibration || !isHapticFeedbackEnabled()
                 || now - (major ? lastMajorHaptic : lastSoftHaptic) < (major ? 40L : 35L)) return false;
         int effect = major ? HapticFeedbackConstants.KEYBOARD_TAP : HapticFeedbackConstants.CLOCK_TICK;
         boolean accepted = performHapticFeedback(effect);

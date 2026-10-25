@@ -289,9 +289,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector;
-import app.nimarkogram.messenger.utils.folders.NimarkoFoldersHelper;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.chats.ChatMenuInjector;
+import app.nimarkogram.messenger.utils.folders.FoldersHelper;
 
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
@@ -1803,7 +1803,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                     if (actionBar != null && filterTabsView != null) {
                                         FilterTabsView.Tab newTab = filterTabsView.findTabById(viewPages[0].selectedType);
                                         if (newTab != null) {
-                                            if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader) {
+                                            if (app.nimarkogram.messenger.AppConfig.folderNameInHeader) {
                                                 CharSequence newTitle;
                                                 if (newTab.isDefault) {
                                                     newTitle = actionBarDefaultTitle;
@@ -2812,8 +2812,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                             // NimarkoGram (CG parity): when discussInsteadOfMute is on and the dialog is a
                                             // channel with a linked discussion group, open that group instead of muting.
                                             boolean ngDiscussHandled = false;
-                                            if (app.nimarkogram.messenger.NimarkoConfig.discussInsteadOfMute
-                                                    || app.nimarkogram.messenger.NimarkoFeatureHooks.isDiscussInsteadOfMute()) {
+                                            if (app.nimarkogram.messenger.AppConfig.discussInsteadOfMute
+                                                    || app.nimarkogram.messenger.FeatureHooks.isDiscussInsteadOfMute()) {
                                                 try {
                                                     if (dialogId < 0) {
                                                         TLRPC.Chat ngDiscussChat = getMessagesController().getChat(-dialogId);
@@ -2888,7 +2888,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 if (!canShowHiddenArchive) {
                                     canShowHiddenArchive = true;
                                     // NimarkoGram (CG parity): disableVibration suppresses the archive-reveal tap.
-                                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                         try {
                                             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                                         } catch (Exception ignored) {}
@@ -3111,7 +3111,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         // NimarkoGram (CG parity): allow right-swipe inside the Archive folder to
                         // unarchive a dialog when unarchiveOnSwipe is on. Without the flag the cell
                         // stays non-slidable, matching upstream Telegram behaviour.
-                        if (app.nimarkogram.messenger.NimarkoConfig.unarchiveOnSwipe
+                        if (app.nimarkogram.messenger.AppConfig.unarchiveOnSwipe
                                 && !DialogObject.isFolderDialogId(dialogCell.getDialogId())) {
                             dialogCell.setSliding(true);
                             return makeMovementFlags(0, ItemTouchHelper.LEFT);
@@ -3496,8 +3496,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         // NimarkoGram (CG parity): when message-filters are on AND the "hide blocked"
         // sub-toggle is set, prime the blocked-peers list so first-render filtering works.
-        if (app.nimarkogram.messenger.NimarkoConfig.enableMsgFilters
-                && app.nimarkogram.messenger.NimarkoConfig.msgFiltersHideFromBlocked) {
+        if (app.nimarkogram.messenger.AppConfig.enableMsgFilters
+                && app.nimarkogram.messenger.AppConfig.msgFiltersHideFromBlocked) {
             getMessagesController().getBlockedPeers(false);
         }
 
@@ -3540,7 +3540,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // NimarkoGram: only honour the hasMainTabs argument when the user keeps the
             // main bottom tabs visible. With showMainTabs off the host doesn't host any
             // tabs bar, so we must not reserve room for one (mirrors CG L2811).
-            if (NimarkoConfig.showMainTabs) {
+            if (AppConfig.showMainTabs) {
                 hasMainTabs = arguments.getBoolean("hasMainTabs", false);
             } else {
                 hasMainTabs = false;
@@ -3976,7 +3976,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         ActionBarMenu menu = actionBar.createMenu();
         menu.setTranslationX(-dp(5));
-        boolean hideTopSearch = NimarkoConfig.showMainTabs && NimarkoConfig.showSearchInTabs && hasMainTabs;
+        boolean hideTopSearch = AppConfig.showMainTabs && AppConfig.showSearchInTabs && hasMainTabs;
         searchItem = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true, false);
         if (hideTopSearch) {
             searchItem.setVisibility(View.GONE);
@@ -4314,7 +4314,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 // R.string.AppName ("NimarkoGram") directly.
                 // NG: custom main-screen title overrides the app name when set.
                 SpannableStringBuilder ssb = new SpannableStringBuilder(
-                        app.nimarkogram.messenger.NimarkoConfig.resolveMainTitle(getString(R.string.AppName)));
+                        app.nimarkogram.messenger.AppConfig.resolveMainTitle(getString(R.string.AppName)));
                 actionBarDefaultTitle = ssb;
                 // NG: explicit gilroy=true so the initial chat-list title renders in Gilroy
                 // ExtraBold (weight 800), same as the per-folder titles set via the swipe/
@@ -4513,7 +4513,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     // OFF we snap-reset to the default title to clear any stale folder name
                     // from a previous toggle.
                     if (actionBar != null) {
-                        if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader) {
+                        if (app.nimarkogram.messenger.AppConfig.folderNameInHeader) {
                             // NG: in TAB_TYPE_ICON mode tab.title is empty — fall back to the
                             // default title to avoid passing "" to setTitleAnimatedX which
                             // later crashes holiday-drawable getTextBounds().
@@ -4577,7 +4577,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 @Override
                 public int getTabCounter(int tabId) {
                     // NimarkoGram: tabsNoUnread global suppresses ALL folder badges.
-                    if (initialDialogsType == DIALOGS_TYPE_FORWARD || app.nimarkogram.messenger.NimarkoConfig.tabsNoUnread) {
+                    if (initialDialogsType == DIALOGS_TYPE_FORWARD || app.nimarkogram.messenger.AppConfig.tabsNoUnread) {
                         return 0;
                     }
                     int raw;
@@ -4592,7 +4592,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     }
                     // Per-folder badge mode: NUMBER -> raw, DOT/HIDDEN -> 0 (caller renders
                     // a dot separately via NimarkoFoldersHelper.shouldShowDot if needed).
-                    return app.nimarkogram.messenger.utils.folders.NimarkoFoldersHelper.filterTabCounter(tabId, raw);
+                    return app.nimarkogram.messenger.utils.folders.FoldersHelper.filterTabCounter(tabId, raw);
                 }
 
                 @Override
@@ -5250,7 +5250,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                                 canShowHiddenArchive = canShowInternal;
                                 if (viewPage.archivePullViewState == ARCHIVE_ITEM_STATE_HIDDEN) {
                                     // NimarkoGram (CG parity): disableVibration suppresses the archive-reveal tap.
-                                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                                         try {
                                             viewPage.listView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                                         } catch (Exception ignored) {}
@@ -6128,8 +6128,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
 
         if (filterTabsView != null) {
-            if (NimarkoFoldersHelper.moveFoldersToBottom()) {
-                NimarkoFoldersHelper.setupFilterTabs(
+            if (FoldersHelper.moveFoldersToBottom()) {
+                FoldersHelper.setupFilterTabs(
                         getContext(),
                         contentView,
                         getFilterTabsView(),
@@ -6821,7 +6821,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         return folderId == 0
                 && communityId == 0
                 && initialDialogsType == DIALOGS_TYPE_DEFAULT
-                && app.nimarkogram.messenger.NimarkoConfig.hideSearchBar
+                && app.nimarkogram.messenger.AppConfig.hideSearchBar
                 && searchString == null;
     }
 
@@ -8017,7 +8017,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 for (int a = 0, N = filters.size(); a < N; a++) {
                     if (filters.get(a).isDefault()) {
                         // NimarkoGram: tabsHideAllChats removes the "All Chats" folder tab.
-                        if (!app.nimarkogram.messenger.NimarkoConfig.tabsHideAllChats) {
+                        if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
                             // NimarkoGram: pass emoticon for CG-parity folder-tab icon rendering.
                             filterTabsView.addTab(a, 0, LocaleController.getString(R.string.FilterAllChats), null, false, true, filters.get(a).locked, filters.get(a).emoticon);
                         }
@@ -8076,7 +8076,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                     FilterTabsView.Tab coldStartTab = filterTabsView.findTabById(viewPages[0].selectedType);
                     if (coldStartTab != null) {
                         CharSequence desiredTitle;
-                        if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader && !coldStartTab.isDefault) {
+                        if (app.nimarkogram.messenger.AppConfig.folderNameInHeader && !coldStartTab.isDefault) {
                             // NG: TAB_TYPE_ICON forces title="" — prefer realTitle (CG-parity),
                             // then fall back to title, then the cached default.
                             if (coldStartTab.realTitle != null && coldStartTab.realTitle.length() > 0) {
@@ -8138,7 +8138,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 if (actionBar != null && actionBarDefaultTitle != null) {
                     CharSequence current = actionBar.getTitle();
                     if (current == null || !actionBarDefaultTitle.toString().contentEquals(current)) {
-                        if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader) {
+                        if (app.nimarkogram.messenger.AppConfig.folderNameInHeader) {
                             // Bug-3 fix: 250ms crossfade felt sluggish on restore; CG/Telegram default is near-instant.
                             actionBar.setTitleAnimatedX(actionBarDefaultTitle, statusDrawable, false, 80, true);
                         } else {
@@ -10229,17 +10229,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             };
             if (getParentActivity() != null
-                    && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+                    && app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper
                             .shouldRequireBiometrics(_ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId, currentAccount)
-                    && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt
+                    && !app.nimarkogram.messenger.security.AppBiometricPrompt
                             .isRecentlyVerified(currentAccount, _ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId)) {
                 final int _ngAcc = currentAccount;
-                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(
+                app.nimarkogram.messenger.security.AppBiometricPrompt.promptForChat(
                         getParentActivity(),
                         _ngAcc,
                         _ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId,
                         () -> {
-                            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(_ngAcc, _ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId);
+                            app.nimarkogram.messenger.security.AppBiometricPrompt.markVerified(_ngAcc, _ngPreviewUserId, _ngPreviewChatId, _ngPreviewEncId);
                             _ngDoPresentPreview.run();
                         },
                         null
@@ -10263,13 +10263,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             floatingButton3.setButtonVisible(isVisible, animated);
         }
 
-        NimarkoFoldersHelper.updateFoldersOffset(this, onlySelect);
+        FoldersHelper.updateFoldersOffset(this, onlySelect);
 
         if (floatingButtonStories != null) {
             // NG: when the user disabled stories via NimarkoConfig.hideStories the
             // stories-camera floating button must stay hidden even if the geometric
             // isVisible gate would normally show it (e.g. on the main chat list).
-            boolean storiesFabVisible = isVisible && !app.nimarkogram.messenger.NimarkoConfig.hideStories;
+            boolean storiesFabVisible = isVisible && !app.nimarkogram.messenger.AppConfig.hideStories;
             floatingButtonStories.setButtonVisible(storiesFabVisible, animated);
         }
     }
@@ -10280,7 +10280,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void updateFloatingButtonOffset() {
-        float floatingButtonsOffset = NimarkoFoldersHelper.getFloatingButtonsOffset(filterTabsView);
+        float floatingButtonsOffset = FoldersHelper.getFloatingButtonsOffset(filterTabsView);
 
         final float top = -navigationBarHeight - additionFloatingButtonOffset - getBottomFolderOffset() - additionalFloatingTranslation;
         final float baseTranslationY = top
@@ -10290,7 +10290,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             floatingButton3.setTranslationY(baseTranslationY - floatingButtonsOffset);
         }
 
-        NimarkoFoldersHelper.updateFoldersOffset(this, onlySelect);
+        FoldersHelper.updateFoldersOffset(this, onlySelect);
 
         if (floatingButtonStories != null) {
             floatingButtonStories.setTranslationY(baseTranslationY - dp(52) - floatingButtonsOffset);
@@ -10300,11 +10300,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    public boolean storiesEnabled = !app.nimarkogram.messenger.NimarkoConfig.hideStories;
+    public boolean storiesEnabled = !app.nimarkogram.messenger.AppConfig.hideStories;
     private void updateStoriesPosting() {
         // NimarkoGram: hideStories forces the stories row off regardless of
         // server-side capability.
-        final boolean storiesEnabled = !app.nimarkogram.messenger.NimarkoConfig.hideStories
+        final boolean storiesEnabled = !app.nimarkogram.messenger.AppConfig.hideStories
                 && getMessagesController().storiesEnabled();
         if (this.storiesEnabled != storiesEnabled) {
             updateFloatingButtonOffset();
@@ -10327,11 +10327,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
-    private boolean lastArchivePrivacyHidden = NimarkoConfig.hideArchiveFromChatsList;
+    private boolean lastArchivePrivacyHidden = AppConfig.hideArchiveFromChatsList;
 
     private void refreshArchivePrivacyLayout() {
-        if (viewPages == null || lastArchivePrivacyHidden == NimarkoConfig.hideArchiveFromChatsList) return;
-        lastArchivePrivacyHidden = NimarkoConfig.hideArchiveFromChatsList;
+        if (viewPages == null || lastArchivePrivacyHidden == AppConfig.hideArchiveFromChatsList) return;
+        lastArchivePrivacyHidden = AppConfig.hideArchiveFromChatsList;
         for (ViewPage page : viewPages) {
             if (page == null || page.listView == null || page.dialogsAdapter == null) continue;
             if (page.pullForegroundDrawable == null && supportsArchivePull()) {
@@ -10358,7 +10358,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (fragmentView != null) fragmentView.requestLayout();
     }
     private boolean supportsArchivePull() {
-        return !NimarkoConfig.hideArchiveFromChatsList
+        return !AppConfig.hideArchiveFromChatsList
                 && !onlySelect
                 && initialDialogsType == DIALOGS_TYPE_DEFAULT
                 && communityId == 0
@@ -10378,12 +10378,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean openHiddenArchiveFromSearch() {
-        if (!NimarkoConfig.hideArchiveFromChatsList
+        if (!AppConfig.hideArchiveFromChatsList
                 || isArchive()
                 || initialDialogsType == DIALOGS_TYPE_FORWARD) {
             return false;
         }
-        NimarkoChatMenuInjector.openArchivedChats(this);
+        ChatMenuInjector.openArchivedChats(this);
         return true;
     }
 
@@ -10968,8 +10968,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         // prompt when askPasscodeBeforeDelete is enabled. Mirrors CG DialogsActivity
                         // line ~9371 (getChatsPasswordHelper().askPasscodeBeforeDelete()).
                         if (getParentActivity() != null
-                                && app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper.askPasscodeBeforeDelete()) {
-                            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(
+                                && app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper.askPasscodeBeforeDelete()) {
+                            app.nimarkogram.messenger.security.AppBiometricPrompt.prompt(
                                     getParentActivity(),
                                     currentAccount,
                                     () -> showDialog(builder.create()),
@@ -12416,7 +12416,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (actionBar != null && actionBarDefaultTitle != null && filterTabsView != null && viewPages != null && viewPages[0] != null) {
                 FilterTabsView.Tab currentTab = filterTabsView.findTabById(viewPages[0].selectedType);
                 if (currentTab != null) {
-                    if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader && !currentTab.isDefault) {
+                    if (app.nimarkogram.messenger.AppConfig.folderNameInHeader && !currentTab.isDefault) {
                         // NG: TAB_TYPE_ICON yields empty currentTab.title — prefer
                         // realTitle (CG-parity), then fall back to title, then default.
                         CharSequence newTitle;
@@ -12439,10 +12439,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // DialogsActivity on tablet/split-layout). Respect folderNameInHeader on non-default tabs.
             if (!onlySelect && folderId == 0 && communityId == 0 && actionBar != null) {
                 actionBarDefaultTitle = new SpannableStringBuilder(
-                        app.nimarkogram.messenger.NimarkoConfig.resolveMainTitle(getString(R.string.AppName)));
+                        app.nimarkogram.messenger.AppConfig.resolveMainTitle(getString(R.string.AppName)));
                 FilterTabsView.Tab currentTab = (filterTabsView != null && viewPages != null && viewPages[0] != null)
                         ? filterTabsView.findTabById(viewPages[0].selectedType) : null;
-                if (app.nimarkogram.messenger.NimarkoConfig.folderNameInHeader && currentTab != null && !currentTab.isDefault) {
+                if (app.nimarkogram.messenger.AppConfig.folderNameInHeader && currentTab != null && !currentTab.isDefault) {
                     CharSequence newTitle;
                     if (currentTab.realTitle != null && currentTab.realTitle.length() > 0) {
                         newTitle = currentTab.realTitle;
@@ -14453,7 +14453,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // NimarkoGram: springAnimation == SPRING_CLASSIC skips the spring animator and
         // animates the slide-back via the classic translation progress instead.
         if (isSlideBackTransition && slideBackTransitionAnimator == null
-                && app.nimarkogram.messenger.NimarkoConfig.springAnimation == app.nimarkogram.messenger.NimarkoConfig.SPRING_CLASSIC) {
+                && app.nimarkogram.messenger.AppConfig.springAnimation == app.nimarkogram.messenger.AppConfig.SPRING_CLASSIC) {
             setSlideTransitionProgress(progress);
         }
     }
@@ -14647,7 +14647,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // NimarkoGram: hideStories forces the stories row off. Don't early-return —
         // we must still run the flip-to-hidden path so a previously-visible cell
         // collapses when the toggle is flipped on at runtime.
-        final boolean hideStories = app.nimarkogram.messenger.NimarkoConfig.hideStories;
+        final boolean hideStories = app.nimarkogram.messenger.AppConfig.hideStories;
         boolean onlySelfStories = !hideStories && !isArchive() && getStoriesController().hasOnlySelfStories();
         boolean newVisibility;
         if (hideStories || communityId != 0) {
@@ -15538,12 +15538,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         extras.add(R.drawable.msg_arrow_back, getString(R.string.Back), io::closeSwipeback);
         extras.addGap();
         extras.setOnDismiss(io::dismiss);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectArchived(extras, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCalls(extras, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectScanQR(extras, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectCreateChannel(extras, this);
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectGifts(extras, currentAccount, getContext());
-        app.nimarkogram.messenger.utils.chats.NimarkoChatMenuInjector.injectProxySettings(extras, this);
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectArchived(extras, this);
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectCalls(extras, this);
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectScanQR(extras, this);
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectCreateChannel(extras, this);
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectGifts(extras, currentAccount, getContext());
+        app.nimarkogram.messenger.utils.chats.ChatMenuInjector.injectProxySettings(extras, this);
         io.add(R.drawable.ic_ab_other, getString(R.string.NM_Menu_More), () -> io.openSwipeback(extras));
 
         final Activity activity = getParentActivity();
@@ -15640,7 +15640,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         io.add(R.drawable.outline_saved_24, getString(R.string.SavedMessages), () -> {
             // NG: honour the custom-chat-for-saved-messages setting (CG parity).
             Bundle args = new Bundle();
-            long savedId = app.nimarkogram.messenger.utils.chats.NimarkoChatHelper2
+            long savedId = app.nimarkogram.messenger.utils.chats.ChatHelper2
                     .getCustomChatID(UserConfig.getInstance(currentAccount).getClientUserId());
             if (savedId > 0) {
                 args.putLong("user_id", savedId);
@@ -16309,7 +16309,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     // rebuildAllFragmentViews clears views but does NOT re-run field initializers,
     // so any code path that read this captured value (blur3_InvalidateBlur,
     // onFragmentCreate offsets) used the wrong value until app restart.
-    private boolean foldersAtBottom() { return NimarkoConfig.foldersAtBottom; }
+    private boolean foldersAtBottom() { return AppConfig.foldersAtBottom; }
 
     private int getBottomFolderMargin() {
         if (commentView != null && chatInputViewsContainer != null) {
@@ -16591,7 +16591,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             avatarView.setScaleX(0.833f);
             avatarView.setScaleY(0.833f);
         }
-        avatarView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(32));
+        avatarView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
         avatarView.getImageReceiver().setCurrentAccount(account);
         avatarView.setForUserOrChat(user, avatarDrawable);
         avatarContainer.addView(avatarView, LayoutHelper.createLinear(32, 32, Gravity.CENTER, 1, 1, 1, 1));

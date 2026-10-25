@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 1.3.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -43,8 +45,8 @@ public abstract class BaseCell extends ViewGroup implements SizeNotifierFrameLay
             if (checkingForLongPress && getParent() != null && currentPressCount == pressCount) {
                 checkingForLongPress = false;
                 if (onLongPress()) {
-                    
-                    if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+
+                    if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                         try {
                             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                         } catch (Exception ignore) {}
@@ -66,8 +68,8 @@ public abstract class BaseCell extends ViewGroup implements SizeNotifierFrameLay
         super(context);
         setWillNotDraw(false);
         setFocusable(true);
-        
-        setHapticFeedbackEnabled(!app.nimarkogram.messenger.NimarkoConfig.disableVibration);
+
+        setHapticFeedbackEnabled(!app.nimarkogram.messenger.AppConfig.disableVibration);
     }
 
     public static void setDrawableBounds(Drawable drawable, int x, int y) {

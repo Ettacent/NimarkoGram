@@ -38,7 +38,7 @@ import androidx.annotation.StringRes;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.DocumentObject;
@@ -368,9 +368,9 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
         final Resources resources = getContext().getResources();
         final int replacementIcon = tabAnimation.getReplacementIcon();
-        if (replacementIcon != 0 && resources instanceof NimarkoIconResources
-                && ((NimarkoIconResources) resources).hasReplacement(replacementIcon)) {
-            final long generation = ((NimarkoIconResources) resources).getReplacementGeneration();
+        if (replacementIcon != 0 && resources instanceof IconResources
+                && ((IconResources) resources).hasReplacement(replacementIcon)) {
+            final long generation = ((IconResources) resources).getReplacementGeneration();
             final int densityDpi = resources.getDisplayMetrics().densityDpi;
             if (lastIconReplacement != replacementIcon || lastIconReplacementResources != resources
                     || lastIconReplacementGeneration != generation
@@ -541,7 +541,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
     public static GlassTabView createAttachTab(Context context, Theme.ResourcesProvider resourcesProvider) {
         GlassTabView tab = new GlassTabView(context);
-        
+
         tab.setClickable(false);
         tab.setFocusable(false);
         tab.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -585,7 +585,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     public static GlassTabView createStaticTab(Context context, Theme.ResourcesProvider resourcesProvider,
                                                @DrawableRes int iconRes, @StringRes int stringRes) {
         return createStaticTab(context, resourcesProvider, iconRes, stringRes,
-                app.nimarkogram.messenger.NimarkoConfig.showMainTabsTitle);
+                app.nimarkogram.messenger.AppConfig.showMainTabsTitle);
     }
 
     public static GlassTabView createStaticTab(Context context, Theme.ResourcesProvider resourcesProvider,
@@ -633,7 +633,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
             if (visible) {
                 backupImageView.setLayoutParams(LayoutHelper.createFrame(22, 22, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 5, 0, 0));
             } else {
-                
+
                 backupImageView.setLayoutParams(LayoutHelper.createFrame(29, 29, Gravity.CENTER, 0, 0, 0, 0));
             }
         }
@@ -717,9 +717,9 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         Resources resources = getContext().getResources();
-        if (tabAnimation != null && (packIconDrawable != null || (resources instanceof NimarkoIconResources
+        if (tabAnimation != null && (packIconDrawable != null || (resources instanceof IconResources
                 && tabAnimation.getReplacementIcon() != 0
-                && ((NimarkoIconResources) resources).hasReplacement(tabAnimation.getReplacementIcon())))) {
+                && ((IconResources) resources).hasReplacement(tabAnimation.getReplacementIcon())))) {
             checkPlayAnimation(false);
         }
     }

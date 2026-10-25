@@ -2706,7 +2706,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             if (!photosEnabled && !videosEnabled && checkCanRemoveRestrictionsByBoosts()) {
                 return;
             }
-            if (app.nimarkogram.messenger.NimarkoConfig.cameraType != app.nimarkogram.messenger.NimarkoConfig.CAMERA_SYSTEM) {
+            if (app.nimarkogram.messenger.AppConfig.cameraType != app.nimarkogram.messenger.AppConfig.CAMERA_SYSTEM) {
                 if (currentAttachLayout != null && currentAttachLayout != photoLayout) {
                     showLayout(photoLayout);
                 }
@@ -2949,7 +2949,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                     if (!photosEnabled && !videosEnabled && checkCanRemoveRestrictionsByBoosts()) {
                         return;
                     }
-                    if (app.nimarkogram.messenger.NimarkoConfig.cameraType != app.nimarkogram.messenger.NimarkoConfig.CAMERA_SYSTEM) {
+                    if (app.nimarkogram.messenger.AppConfig.cameraType != app.nimarkogram.messenger.AppConfig.CAMERA_SYSTEM) {
                         if (currentAttachLayout != null && currentAttachLayout != photoLayout) {
                             showLayout(photoLayout);
                         }
@@ -4242,7 +4242,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             messageSendPreview.show();
 
             // NimarkoGram: gate haptic on disableVibration.
-            if (!app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (!app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                 } catch (Exception ignored) {}
@@ -4989,7 +4989,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             int width = Math.max(nextAttachLayout.getWidth(), currentAttachLayout.getWidth());
             if (nextAttachLayout instanceof ChatAttachAlertPhotoLayoutPreview) {
                 nextAttachLayout.setTranslationX(width);
-                if (currentAttachLayout instanceof ChatAttachAlertPhotoLayout && !app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera) {
+                if (currentAttachLayout instanceof ChatAttachAlertPhotoLayout && !app.nimarkogram.messenger.AppConfig.disableAttachCamera) {
                     ChatAttachAlertPhotoLayout photoLayout = (ChatAttachAlertPhotoLayout) currentAttachLayout;
                     if (photoLayout.cameraView != null) {
                         photoLayout.cameraView.setVisibility(View.INVISIBLE);
@@ -4997,7 +4997,7 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 }
             } else {
                 currentAttachLayout.setTranslationX(-width);
-                if (nextAttachLayout == photoLayout && !app.nimarkogram.messenger.NimarkoConfig.disableAttachCamera) {
+                if (nextAttachLayout == photoLayout && !app.nimarkogram.messenger.AppConfig.disableAttachCamera) {
                     ChatAttachAlertPhotoLayout photoLayout = (ChatAttachAlertPhotoLayout) nextAttachLayout;
                     if (photoLayout.cameraView != null) {
                         photoLayout.cameraView.setVisibility(View.VISIBLE);

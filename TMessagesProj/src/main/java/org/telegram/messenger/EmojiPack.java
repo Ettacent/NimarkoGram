@@ -1,11 +1,19 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 
+import java.io.EOFException;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -51,33 +59,29 @@ public final class EmojiPack {
     private final byte[][] rootMaps = new byte[ROOT_CACHE_SIZE][];
     private long age;
 
-    private static final class Holder {
-        static final EmojiPack INSTANCE = open();
-        private static EmojiPack open() {
+    private static volatile EmojiPack instance;
+
+    public static EmojiPack getInstance() {
+        EmojiPack current = instance;
+        if (current == null) {
+            synchronized (EmojiPack.class) {
+                current = instance;
+                if (current == null) {
             try {
-                return new EmojiPack();
+                        instance = current = new EmojiPack();
             } catch (IOException e) {
                 throw new IllegalStateException("Unable to open emoji.pack", e);
             }
         }
     }
 
-    public static EmojiPack getInstance() {
-        return Holder.INSTANCE;
+        }
+        return current;
     }
 
     private EmojiPack() throws IOException {
         // The mapping remains valid after closing the descriptors.
-        try (AssetFileDescriptor afd = ApplicationLoader.applicationContext
-                .getAssets().openFd(ASSET_NAME);
-             FileInputStream stream = afd.createInputStream()) {
-            long length = afd.getLength();
-            if (length < HEADER_SIZE || length > Integer.MAX_VALUE) {
-                throw new IOException("Invalid emoji pack length: " + length);
-            }
-            buffer = stream.getChannel().map(FileChannel.MapMode.READ_ONLY,
-                    afd.getStartOffset(), length);
-        }
+        buffer = mapAsset();
         buffer.order(ByteOrder.LITTLE_ENDIAN);
         if (buffer.getInt(0) != 0x334B5045 || (u16(4) != 2 && u16(4) != 3) || u16(6) != ENTRY_SIZE
                 || buffer.getInt(8) != SIDE || buffer.getInt(12) != SIDE
@@ -95,6 +99,71 @@ public final class EmojiPack {
         options.inScaled = false;
         options.inPreferredConfig = Bitmap.Config.ARGB_8888;
         options.inPremultiplied = true;
+    }
+
+    private static MappedByteBuffer mapAsset() throws IOException {
+        try (AssetFileDescriptor afd = ApplicationLoader.applicationContext.getAssets().openFd(ASSET_NAME);
+             FileInputStream stream = afd.createInputStream()) {
+            long length = afd.getLength();
+            if (length < HEADER_SIZE || length > Integer.MAX_VALUE) {
+                throw new IOException("Invalid emoji pack length: " + length);
+            }
+            return stream.getChannel().map(FileChannel.MapMode.READ_ONLY, afd.getStartOffset(), length);
+        } catch (FileNotFoundException descriptorFailure) {
+            try {
+                return mapStreamAsset();
+            } catch (IOException failure) {
+                failure.addSuppressed(descriptorFailure);
+                throw failure;
+            }
+        }
+    }
+
+    private static MappedByteBuffer mapStreamAsset() throws IOException {
+        try (InputStream input = ApplicationLoader.applicationContext.getAssets().open(ASSET_NAME)) {
+            byte[] header = new byte[HEADER_SIZE];
+            int read = 0;
+            while (read < header.length) {
+                int count = input.read(header, read, header.length - read);
+                if (count <= 0) {
+                    throw new EOFException("Truncated emoji pack header");
+                }
+                read += count;
+            }
+            ByteBuffer metadata = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN);
+            int length = metadata.getInt(24);
+            if (metadata.getInt(0) != 0x334B5045 || length < HEADER_SIZE) {
+                throw new IOException("Invalid emoji pack header");
+            }
+            File cache = ApplicationLoader.applicationContext.getCacheDir();
+            if (cache == null) {
+                throw new IOException("Emoji pack cache is unavailable");
+            }
+            File temporary = File.createTempFile("emoji-pack-", ".tmp", cache);
+            try {
+                try (FileOutputStream output = new FileOutputStream(temporary)) {
+                    output.write(header);
+                    byte[] block = new byte[32768];
+                    int remaining = length - HEADER_SIZE;
+                    while (remaining > 0) {
+                        int count = input.read(block, 0, Math.min(block.length, remaining));
+                        if (count <= 0) {
+                            throw new EOFException("Truncated emoji pack");
+                        }
+                        output.write(block, 0, count);
+                        remaining -= count;
+                    }
+                    if (input.read() != -1) {
+                        throw new IOException("Unexpected emoji pack data");
+                    }
+                }
+                try (FileInputStream stream = new FileInputStream(temporary)) {
+                    return stream.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, length);
+                }
+            } finally {
+                temporary.delete();
+            }
+        }
     }
 
     private int u16(int offset) {

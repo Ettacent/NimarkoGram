@@ -47,7 +47,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.LocaleController;
@@ -428,7 +428,7 @@ public class SessionCell extends FrameLayout {
 
     private static void setReplacementIconSize(CombinedDrawable drawable, int iconId) {
         Resources resources = ApplicationLoader.applicationContext.getResources();
-        if (!(resources instanceof NimarkoIconResources) || !((NimarkoIconResources) resources).hasReplacement(iconId)) {
+        if (!(resources instanceof IconResources) || !((IconResources) resources).hasReplacement(iconId)) {
             return;
         }
         int maxSize = Math.max(1, (int) Math.min(24f * resources.getDisplayMetrics().density,

@@ -102,7 +102,7 @@ public class DialogCellTags {
 
         if (!(controller.folderTags && account.getUserConfig().isPremium())) {
             final boolean wasEmpty = tags.isEmpty();
-            tags.clear();
+            clear();
             return !wasEmpty;
         }
 
@@ -141,9 +141,11 @@ public class DialogCellTags {
 
             if (filter == null) {
                 changed = true;
+                tag.text.detach();
                 tags.remove(i);
                 i--;
             } else if (filter.color != tag.colorId || filter.name != null && tag.text != null && filter.name.length() != tag.text.getText().length()) {
+                tag.text.detach();
                 tags.set(i, Tag.fromFilter(parentView, currentAccount, filter));
                 changed = true;
             }
@@ -167,6 +169,9 @@ public class DialogCellTags {
 
         filters.clear();
 
+        if (changed) {
+            clearMoreTags();
+        }
         return changed;
     }
 
@@ -176,6 +181,19 @@ public class DialogCellTags {
 
     public void clear() {
 
+        for (int i = 0; i < tags.size(); ++i) {
+            tags.get(i).text.detach();
+        }
+        tags.clear();
+        filters.clear();
+        clearMoreTags();
+    }
+
+    private void clearMoreTags() {
+        if (moreTags != null) {
+            moreTags.text.detach();
+            moreTags = null;
+        }
     }
 
     public void draw(Canvas canvas, int width) {
@@ -204,6 +222,7 @@ public class DialogCellTags {
         if (i < tags.size()) {
             final int count = tags.size() - i;
             if (moreTags == null || moreTags.filterId != count) {
+                clearMoreTags();
                 moreTags = Tag.asMore(parentView, count);
             }
             if (LocaleController.isRTL) {
@@ -214,6 +233,8 @@ public class DialogCellTags {
                 moreTags.draw(canvas);
                 canvas.translate(moreTags.width + dp(4), 0);
             }
+        } else {
+            clearMoreTags();
         }
 
         canvas.restore();

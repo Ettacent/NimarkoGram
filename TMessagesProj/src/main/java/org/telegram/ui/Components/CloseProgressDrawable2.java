@@ -36,7 +36,7 @@ import org.telegram.messenger.AndroidUtilities;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class CloseProgressDrawable2 extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -49,7 +49,6 @@ public class CloseProgressDrawable2 extends Drawable {
     private boolean animating;
     private int side;
     private int globalColorAlpha = 255;
-    private int currentColor;
 
     public CloseProgressDrawable2() {
         this(2);
@@ -80,11 +79,8 @@ public class CloseProgressDrawable2 extends Drawable {
     }
 
     private void setColor(int value) {
-        if (currentColor != value) {
             globalColorAlpha = Color.alpha(value);
-            value = ColorUtils.setAlphaComponent(value, 255);
-            paint.setColor(value);
-        }
+        paint.setColor(ColorUtils.setAlphaComponent(value, 255));
     }
 
     public void setSide(int value) {
@@ -94,8 +90,8 @@ public class CloseProgressDrawable2 extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         long newTime = SystemClock.uptimeMillis();
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        NimarkoIconResources.PreparedIcon close = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_close_white);
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        IconResources.PreparedIcon close = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_close_white);
         setColor(getCurrentColor());
         if (lastFrameTime != 0) {
             long dt = Math.max(0L, newTime - lastFrameTime);
@@ -112,6 +108,7 @@ public class CloseProgressDrawable2 extends Drawable {
 
         if (globalColorAlpha == 255 || getBounds() == null || getBounds().isEmpty()) {
             canvas.save();
+            paint.setAlpha(globalColorAlpha);
         } else {
             canvas.saveLayerAlpha(getBounds().left, getBounds().top, getBounds().right, getBounds().bottom, globalColorAlpha, Canvas.ALL_SAVE_FLAG);
         }
@@ -175,12 +172,14 @@ public class CloseProgressDrawable2 extends Drawable {
         int cx = getBounds().centerX();
         int cy = getBounds().centerY();
         rect.set(cx - side, cy - side, cx + side, cy + side);
+        paint.setAlpha(globalColorAlpha);
         canvas.drawArc(rect, (angle < 360 ? 0 : angle - 360) - 45, (angle < 360 ? angle : 720 - angle), false, paint);
 
+        paint.setAlpha(255);
         lastFrameTime = newTime;
     }
 
-    private void drawPackArm(Canvas canvas, NimarkoIconResources.PreparedIcon close, float size,
+    private void drawPackArm(Canvas canvas, IconResources.PreparedIcon close, float size,
             float scaleX, float scaleY, float translationX, float x1, float y1, float x2, float y2) {
         if (scaleX <= 0 || scaleY <= 0) return;
         canvas.save();

@@ -93,9 +93,9 @@ public class LocaleController {
                     }
                     lang = lang.toLowerCase();
 
-                    if (app.nimarkogram.messenger.NimarkoConfig.showSeconds) {
+                    if (app.nimarkogram.messenger.AppConfig.showSeconds) {
                         formatterDay = createFormatter(lang.toLowerCase().equals("ar") || lang.toLowerCase().equals("ko") ? locale : Locale.US, is24HourFormat ? "HH:mm:ss" : "h:mm:ss a", is24HourFormat ? "HH:mm:ss" : "h:mm:ss a");
-                    } else if (app.nimarkogram.messenger.NimarkoConfig.oldTimeStyle) {
+                    } else if (app.nimarkogram.messenger.AppConfig.oldTimeStyle) {
 
                         formatterDay = createFormatter(Locale.US, is24HourFormat ? "HH:mm" : "h:mm a", is24HourFormat ? "HH:mm" : "h:mm a");
                     } else {
@@ -793,7 +793,7 @@ public class LocaleController {
         if (countryCode.length() != 2 || countryCode.equals("YL")) return null;
 
         if (countryCode.equals("FT")) {
-            return "\uD83C\uDFF4\u200D\u2620\uFE0F";
+            return "\uD83D\uDC8E";
         } else if (countryCode.equals("XG")) {
             return "\uD83D\uDEF0";
         } else if (countryCode.equals("XV")){
@@ -2273,7 +2273,7 @@ public class LocaleController {
 
     public static String appendChatWeekday(String formatted, long dateMs) {
         try {
-            if (formatted == null || !app.nimarkogram.messenger.NimarkoConfig.weekdayNearDate) {
+            if (formatted == null || !app.nimarkogram.messenger.AppConfig.weekdayNearDate) {
                 return formatted;
             }
             Locale locale = getInstance().currentLocale == null ? Locale.getDefault() : getInstance().currentLocale;
@@ -3042,7 +3042,7 @@ public class LocaleController {
     }
 
     public static String formatShortNumber(int number, int[] rounded) {
-        if (app.nimarkogram.messenger.NimarkoConfig.noRounding) {
+        if (app.nimarkogram.messenger.AppConfig.noRounding) {
             if (rounded != null) {
                 rounded[0] = number;
             }

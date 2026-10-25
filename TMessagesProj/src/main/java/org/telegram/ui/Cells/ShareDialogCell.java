@@ -124,7 +124,7 @@ public class ShareDialogCell extends FrameLayout implements NotificationCenter.N
         currentType = type;
 
         imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(56));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(56));
         if (type == TYPE_CREATE) {
             addView(imageView, LayoutHelper.createFrame(48, 48, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 0, 7, 0, 0));
         } else {
@@ -241,7 +241,7 @@ public class ShareDialogCell extends FrameLayout implements NotificationCenter.N
                 }
                 imageView.setForUserOrChat(user, avatarDrawable);
             }
-            imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(56));
+            imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(56));
         } else {
             user = null;
             premiumBlocked = false;
@@ -266,7 +266,7 @@ public class ShareDialogCell extends FrameLayout implements NotificationCenter.N
                 avatarDrawable.setInfo(currentAccount, chat);
                 imageView.setForUserOrChat(chat, avatarDrawable);
             }
-            imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(56, chat != null && (chat.forum || chat.monoforum)));
+            imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(56, chat != null && (chat.forum || chat.monoforum)));
         }
         currentDialog = uid;
         checkBox.setChecked(checked, false);

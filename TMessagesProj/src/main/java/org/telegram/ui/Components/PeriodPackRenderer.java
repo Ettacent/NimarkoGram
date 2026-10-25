@@ -6,8 +6,8 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 
 public final class PeriodPackRenderer {
     private final MediaActionDrawable.PackIconRenderer renderer =
@@ -17,24 +17,24 @@ public final class PeriodPackRenderer {
     private final RectF fillBounds = new RectF();
 
     public int selection() {
-        NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        if (icons == null) return NimarkoConfig.ICON_REPLACE_NONE;
+        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        if (icons == null) return AppConfig.ICON_REPLACE_NONE;
         int selection = icons.selection;
-        return selection == NimarkoConfig.ICON_REPLACE_SOLAR
-                || selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS
-                || selection == NimarkoConfig.ICON_REPLACE_PLUMPY
-                ? selection : NimarkoConfig.ICON_REPLACE_NONE;
+        return selection == AppConfig.ICON_REPLACE_SOLAR
+                || selection == AppConfig.ICON_REPLACE_LIQUID_GLASS
+                || selection == AppConfig.ICON_REPLACE_PLUMPY
+                ? selection : AppConfig.ICON_REPLACE_NONE;
     }
 
     public void drawArc(Canvas canvas, RectF bounds, float start, float sweep,
                         Paint foreground, int selection) {
-        if (selection == NimarkoConfig.ICON_REPLACE_NONE || foreground.getXfermode() != null) {
+        if (selection == AppConfig.ICON_REPLACE_NONE || foreground.getXfermode() != null) {
             canvas.drawArc(bounds, start, sweep, false, foreground);
             return;
         }
         contourPaint.set(foreground);
-        float weight = selection == NimarkoConfig.ICON_REPLACE_SOLAR ? 0.82f : 1.2f;
-        if (selection == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        float weight = selection == AppConfig.ICON_REPLACE_SOLAR ? 0.82f : 1.2f;
+        if (selection == AppConfig.ICON_REPLACE_PLUMPY) {
             contourPaint.setStrokeWidth(foreground.getStrokeWidth() * 1.35f);
             contourPaint.setAlpha(Math.round(foreground.getAlpha() * (Math.abs(sweep) > 90f ? 0.4f : 1f)));
             canvas.drawArc(bounds, start, sweep, false, contourPaint);
@@ -46,18 +46,18 @@ public final class PeriodPackRenderer {
 
     public void drawCircle(Canvas canvas, float cx, float cy, float radius,
                            Paint foreground, int selection) {
-        if (foreground.getXfermode() != null || selection == NimarkoConfig.ICON_REPLACE_NONE) {
+        if (foreground.getXfermode() != null || selection == AppConfig.ICON_REPLACE_NONE) {
             canvas.drawCircle(cx, cy, radius, foreground);
             return;
         }
-        if (selection == NimarkoConfig.ICON_REPLACE_SOLAR
-                || selection == NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        if (selection == AppConfig.ICON_REPLACE_SOLAR
+                || selection == AppConfig.ICON_REPLACE_PLUMPY) {
             canvas.drawCircle(cx, cy, radius, foreground);
             detailPaint.set(foreground);
             detailPaint.setShader(null);
             detailPaint.setColor(0xffffffff);
             detailPaint.setAlpha(Math.round(foreground.getAlpha() * 0.2f));
-            if (selection == NimarkoConfig.ICON_REPLACE_SOLAR) {
+            if (selection == AppConfig.ICON_REPLACE_SOLAR) {
                 detailPaint.setStyle(Paint.Style.STROKE);
                 detailPaint.setStrokeWidth(radius * 0.09f);
                 canvas.drawCircle(cx, cy, radius * 0.84f, detailPaint);
@@ -68,7 +68,7 @@ public final class PeriodPackRenderer {
             }
             return;
         }
-        if (selection != NimarkoConfig.ICON_REPLACE_LIQUID_GLASS) {
+        if (selection != AppConfig.ICON_REPLACE_LIQUID_GLASS) {
             canvas.drawCircle(cx, cy, radius, foreground);
             return;
         }

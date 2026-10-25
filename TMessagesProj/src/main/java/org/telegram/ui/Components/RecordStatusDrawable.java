@@ -10,7 +10,7 @@
 
 package org.telegram.ui.Components;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
@@ -55,8 +55,8 @@ public class RecordStatusDrawable extends StatusDrawable {
     }
 
     private void update() {
-        long newTime = NimarkoUiAnimationClock.now();
-        int epoch = NimarkoUiAnimationClock.epoch();
+        long newTime = UiAnimationClock.now();
+        int epoch = UiAnimationClock.epoch();
         long dt = epoch == visualEpoch ? Math.max(0L, newTime - lastUpdateTime) : 0L;
         visualEpoch = epoch;
         lastUpdateTime = newTime;
@@ -72,8 +72,8 @@ public class RecordStatusDrawable extends StatusDrawable {
     }
 
     public void start() {
-        lastUpdateTime = NimarkoUiAnimationClock.now();
-        visualEpoch = NimarkoUiAnimationClock.epoch();
+        lastUpdateTime = UiAnimationClock.now();
+        visualEpoch = UiAnimationClock.epoch();
         started = true;
         invalidateSelf();
     }
@@ -89,8 +89,8 @@ public class RecordStatusDrawable extends StatusDrawable {
             paint.setStrokeWidth(AndroidUtilities.dp(2));
         }
         canvas.save();
-        
-        if (app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride) {
+
+        if (app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride) {
             float centerX = getBounds().centerX() - AndroidUtilities.dp(8);
             float centerY = getIntrinsicHeight() / 2f + AndroidUtilities.dp(isChat ? 1 : 2);
             canvas.translate(centerX, centerY);
@@ -132,8 +132,8 @@ public class RecordStatusDrawable extends StatusDrawable {
 
     @Override
     public int getIntrinsicWidth() {
-        
-        return AndroidUtilities.dp(app.nimarkogram.messenger.NimarkoConfig.centerChatTitle && useCenteredOverride ? 14 : 18);
+
+        return AndroidUtilities.dp(app.nimarkogram.messenger.AppConfig.centerChatTitle && useCenteredOverride ? 14 : 18);
     }
 
     @Override

@@ -36,13 +36,13 @@ import org.telegram.ui.LaunchActivity;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
-import app.nimarkogram.messenger.preferences.helpers.NimarkoAlertDialogSwitchers;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.preferences.helpers.AlertDialogSwitchers;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
-public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesActivity {
+public class AppearancePreferencesActivity extends UniversalPreferencesActivity {
 
     private static final int PAGE_OVERVIEW = 0;
     private static final int PAGE_NAVIGATION = 1;
@@ -143,8 +143,8 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     private void rememberIconResources(Resources resources) {
         boundIconResources = resources;
         boundIconConfiguration = new Configuration(resources.getConfiguration());
-        boundIconGeneration = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : Long.MIN_VALUE;
+        boundIconGeneration = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : Long.MIN_VALUE;
     }
 
     @Override public void onResume() {
@@ -155,9 +155,9 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     @Override public boolean onIconPackResourcesChanged() {
         if (fragmentView == null || actionBar == null || listView == null || listView.adapter == null) return false;
         Resources resources = fragmentView.getResources();
-        if (!(resources instanceof NimarkoIconResources) || boundIconConfiguration == null
+        if (!(resources instanceof IconResources) || boundIconConfiguration == null
                 || !boundIconConfiguration.equals(resources.getConfiguration())) return false;
-        long generation = ((NimarkoIconResources) resources).getReplacementGeneration();
+        long generation = ((IconResources) resources).getReplacementGeneration();
         if (resources != boundIconResources || generation != boundIconGeneration) {
             actionBar.setBackButtonDrawable(resources.getDrawable(R.drawable.ic_ab_back).mutate());
             listView.adapter.update(false);
@@ -233,7 +233,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(asSettingsValue(oneUISwitchesRow, IconBackgroundColors.GREEN,
                 R.drawable.msg_hybrid, getString(R.string.NM_SwitchStyle), getSwitchStyleValueText()));
         items.add(SettingsHelper.asSwitchCG(disableDividersRow, getString(R.string.AP_DisableDividers))
-                .setChecked(NimarkoConfig.disableDividers)
+                .setChecked(AppConfig.disableDividers)
         );
     }
 
@@ -241,13 +241,13 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(asSettingsValue(customTitleRow, IconBackgroundColors.ORANGE,
                 R.drawable.msg_jobtitle, getString(R.string.NM_CustomTitle), getCustomTitleValueText()));
         items.add(SettingsHelper.asSwitchCG(centerTitleRow, getString(R.string.AP_CenterTitle))
-                .setChecked(NimarkoConfig.centerTitle)
+                .setChecked(AppConfig.centerTitle)
         );
         items.add(SettingsHelper.asSwitchCG(hideSearchBar, getString(R.string.AP_HideSearchBar))
-                .setChecked(NimarkoConfig.hideSearchBar)
+                .setChecked(AppConfig.hideSearchBar)
         );
         items.add(SettingsHelper.asSwitchCG(hideStatusRow, getString(R.string.NM_HideActionBarStatus))
-                .setChecked(NimarkoConfig.hideActionBarStatus));
+                .setChecked(AppConfig.hideActionBarStatus));
     }
 
     private void fillChat(ArrayList<UItem> items) {
@@ -259,29 +259,29 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(SettingsHelper.asSwitchCG(iosStyleComposerRow,
                         getString(R.string.NM_IOSStyleComposer),
                         getString(R.string.NM_IOSStyleComposer_Desc))
-                .setChecked(NimarkoConfig.iosStyleComposer));
+                .setChecked(AppConfig.iosStyleComposer));
         items.add(SettingsHelper.asSwitchCG(hideBubbleTailRow,
                         getString(R.string.NM_HideBubbleTail),
                         getString(R.string.NM_HideBubbleTail_Desc))
-                .setChecked(NimarkoConfig.hideBubbleTail));
+                .setChecked(AppConfig.hideBubbleTail));
         items.add(SettingsHelper.asSwitchCG(centerChatTitleRow,
                         getString(R.string.NM_CenterTitleInChat))
-                .setChecked(NimarkoConfig.centerChatTitle));
+                .setChecked(AppConfig.centerChatTitle));
         items.add(SettingsHelper.asSwitchCG(unreadBadgeRow,
                         getString(R.string.NM_UnreadBadgeOnBackButton),
                         getString(R.string.NM_UnreadBadgeOnBackButton_Desc))
-                .setChecked(NimarkoConfig.unreadBadgeOnBackButton));
+                .setChecked(AppConfig.unreadBadgeOnBackButton));
         items.add(SettingsHelper.asSwitchCG(customWallpapersRow,
                         getString(R.string.NM_CustomWallpapers),
                         getString(R.string.NM_CustomWallpapers_Desc))
-                .setChecked(NimarkoConfig.customWallpapers));
+                .setChecked(AppConfig.customWallpapers));
         items.add(SettingsHelper.asSwitchCG(hideMuteButtonRow,
                         getString(R.string.NM_HideMuteUnmuteButton))
-                .setChecked(NimarkoConfig.hideMuteUnmuteButton));
+                .setChecked(AppConfig.hideMuteUnmuteButton));
         items.add(SettingsHelper.asSwitchCG(weekdayNearDateRow,
                         getString(R.string.NM_WeekdayNearDate),
                         getString(R.string.NM_WeekdayNearDate_Desc))
-                .setChecked(NimarkoConfig.weekdayNearDate));
+                .setChecked(AppConfig.weekdayNearDate));
     }
 
     private void fillEffects(ArrayList<UItem> items) {
@@ -289,30 +289,30 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             items.add(SettingsHelper.asSwitchCG(enhancedGlassBlurRow,
                             getString(R.string.NM_EnhancedGlassBlur),
                             getString(R.string.NM_EnhancedGlassBlur_Desc))
-                    .setChecked(NimarkoConfig.enhancedGlassBlur));
+                    .setChecked(AppConfig.enhancedGlassBlur));
         }
         if (Build.VERSION.SDK_INT >= 31) {
             items.add(SettingsHelper.asSwitchCG(motionBlurRow,
                             getString(R.string.NM_MotionBlur),
                             getString(R.string.NM_MotionBlur_Desc))
-                    .setChecked(NimarkoConfig.motionBlur));
+                    .setChecked(AppConfig.motionBlur));
         }
         items.add(SettingsHelper.asSwitchCG(forceBlurRow, getString(R.string.NM_ForceBlur))
-                .setChecked(NimarkoConfig.forceBlur));
+                .setChecked(AppConfig.forceBlur));
         items.add(SettingsHelper.asSwitchCG(glareOnElementsRow,
                         getString(R.string.AP_GlareOnElements),
                         getString(R.string.AP_GlareOnElementsInfo))
-                .setChecked(NimarkoConfig.glareOnElements)
+                .setChecked(AppConfig.glareOnElements)
         );
         items.add(SettingsHelper.asSwitchCG(mediaGlowRow,
                         getString(R.string.NM_MediaGlow),
                         getString(R.string.NM_MediaGlow_Desc))
-                .setChecked(NimarkoConfig.mediaGlow)
+                .setChecked(AppConfig.mediaGlow)
         );
         items.add(SettingsHelper.asSwitchCG(snowflakesRow, getString(R.string.NM_SnowInHeader))
-                .setChecked(NimarkoConfig.drawSnowInActionBar));
+                .setChecked(AppConfig.drawSnowInActionBar));
         items.add(SettingsHelper.asSwitchCG(chatSnowflakesRow, getString(R.string.NM_SnowflakesInChat))
-                .setChecked(NimarkoConfig.drawSnowInChat));
+                .setChecked(AppConfig.drawSnowInChat));
     }
 
     private void fillAvatarsAndStickers(ArrayList<UItem> items) {
@@ -323,18 +323,18 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         items.add(SettingsHelper.asSwitchCG(forumAvatarsRow,
                         getString(R.string.NM_ForumAvatarsLikeChats),
                         getString(R.string.NM_ForumAvatarsLikeChats_Desc))
-                .setChecked(NimarkoConfig.forumAvatarsLikeChats)
+                .setChecked(AppConfig.forumAvatarsLikeChats)
         );
         items.add(SettingsHelper.asSwitchCG(onlineIndicatorRow,
                         getString(R.string.NM_OnlineIndicatorInGroups),
                         getString(R.string.NM_OnlineIndicatorInGroups_Desc))
-                .setChecked(NimarkoConfig.onlineIndicatorInGroups));
+                .setChecked(AppConfig.onlineIndicatorInGroups));
         if (stickerSizeCell == null) {
             stickerSizeCell = new StickerSizeCell(getContext(), this);
         }
         items.add(UItem.asCustom(stickerSizePreviewRow, stickerSizeCell));
         items.add(SettingsHelper.asSwitchCG(hideStickerTimeRow, getString(R.string.NM_TimeOnStick))
-                .setChecked(NimarkoConfig.hideStickerTime));
+                .setChecked(AppConfig.hideStickerTime));
         items.add(UItem.asShadow(null));
     }
 
@@ -357,8 +357,8 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             if (getActionBar() != null) {
                 getActionBar().prepareCenterTitleAnimation();
             }
-            NimarkoConfig.toggleCenterTitle();
-            updateCheckState(view, NimarkoConfig.centerTitle);
+            AppConfig.toggleCenterTitle();
+            updateCheckState(view, AppConfig.centerTitle);
             if (getActionBar() != null) {
                 getActionBar().requestLayout();
             }
@@ -368,13 +368,13 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             }
             return;
         } else  if (item.id == hideSearchBar) {
-            NimarkoConfig.toggleHideSearchBar();
-            updateCheckState(view, NimarkoConfig.hideSearchBar);
+            AppConfig.toggleHideSearchBar();
+            updateCheckState(view, AppConfig.hideSearchBar);
 
             getNotificationCenter().postNotificationName(NotificationCenter.cgUpdateSearchFiledVisibility);
         } else if (item.id == snowflakesRow) {
-            NimarkoConfig.toggleDrawSnowInActionBar();
-            updateCheckState(view, NimarkoConfig.drawSnowInActionBar);
+            AppConfig.toggleDrawSnowInActionBar();
+            updateCheckState(view, AppConfig.drawSnowInActionBar);
 
             showRestartBulletin();
         } else if (item.id == iconPackRow) {
@@ -385,8 +385,8 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
             opts.add("One UI");
             opts.add("MD3");
             PopupHelper.show(opts, getString(R.string.NM_SwitchStyle),
-                    NimarkoConfig.switchStyle, getContext(), i -> {
-                        NimarkoConfig.setSwitchStyle(i);
+                    AppConfig.switchStyle, getContext(), i -> {
+                        AppConfig.setSwitchStyle(i);
                         SettingsHelper.updateButtonValue(view, getSwitchStyleValueText());
 
                         if (listView != null) {
@@ -400,65 +400,65 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
                         showRestartBulletin();
                     });
         } else if (item.id == disableDividersRow) {
-            NimarkoConfig.toggleDisableDividers();
-            item.checked = NimarkoConfig.disableDividers;
-            updateCheckState(view, NimarkoConfig.disableDividers);
+            AppConfig.toggleDisableDividers();
+            item.checked = AppConfig.disableDividers;
+            updateCheckState(view, AppConfig.disableDividers);
 
             Theme.applyCommonTheme();
             updateItemsAfterToggle();
 
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == glareOnElementsRow) {
-            NimarkoConfig.toggleGlareOnElements();
-            updateCheckState(view, NimarkoConfig.glareOnElements);
+            AppConfig.toggleGlareOnElements();
+            updateCheckState(view, AppConfig.glareOnElements);
 
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == mediaGlowRow) {
-            NimarkoConfig.toggleMediaGlow();
-            item.checked = NimarkoConfig.mediaGlow;
-            updateCheckState(view, NimarkoConfig.mediaGlow);
+            AppConfig.toggleMediaGlow();
+            item.checked = AppConfig.mediaGlow;
+            updateCheckState(view, AppConfig.mediaGlow);
             updateItemsAfterToggle();   // show/hide strength/blur/transition rows
         } else if (item.id == forumAvatarsRow) {
-            NimarkoConfig.toggleForumAvatarsLikeChats();
-            updateCheckState(view, NimarkoConfig.forumAvatarsLikeChats);
+            AppConfig.toggleForumAvatarsLikeChats();
+            updateCheckState(view, AppConfig.forumAvatarsLikeChats);
 
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == forceBlurRow) {
-            NimarkoConfig.toggleForceBlur();
-            updateCheckState(view, NimarkoConfig.forceBlur);
+            AppConfig.toggleForceBlur();
+            updateCheckState(view, AppConfig.forceBlur);
             showRestartBulletin();
         } else if (item.id == enhancedGlassBlurRow) {
-            NimarkoConfig.toggleEnhancedGlassBlur();
-            updateCheckState(view, NimarkoConfig.enhancedGlassBlur);
+            AppConfig.toggleEnhancedGlassBlur();
+            updateCheckState(view, AppConfig.enhancedGlassBlur);
             Theme.applyCommonTheme();
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == motionBlurRow) {
-            NimarkoConfig.toggleMotionBlur();
-            updateCheckState(view, NimarkoConfig.motionBlur);
+            AppConfig.toggleMotionBlur();
+            updateCheckState(view, AppConfig.motionBlur);
         } else if (item.id == hideStatusRow) {
-            NimarkoConfig.toggleHideActionBarStatus();
-            updateCheckState(view, NimarkoConfig.hideActionBarStatus);
+            AppConfig.toggleHideActionBarStatus();
+            updateCheckState(view, AppConfig.hideActionBarStatus);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == iosStyleComposerRow) {
-            NimarkoConfig.toggleIosStyleComposer();
-            updateCheckState(view, NimarkoConfig.iosStyleComposer);
+            AppConfig.toggleIosStyleComposer();
+            updateCheckState(view, AppConfig.iosStyleComposer);
 
             if (getParentLayout() != null) {
                 getParentLayout().rebuildAllFragmentViews(false, false);
             }
         } else if (item.id == hideBubbleTailRow) {
-            NimarkoConfig.toggleHideBubbleTail();
-            updateCheckState(view, NimarkoConfig.hideBubbleTail);
+            AppConfig.toggleHideBubbleTail();
+            updateCheckState(view, AppConfig.hideBubbleTail);
 
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.nmUpdateBubbleShape);
         } else if (item.id == onlineIndicatorRow) {
-            NimarkoConfig.toggleOnlineIndicatorInGroups();
-            updateCheckState(view, NimarkoConfig.onlineIndicatorInGroups);
+            AppConfig.toggleOnlineIndicatorInGroups();
+            updateCheckState(view, AppConfig.onlineIndicatorInGroups);
 
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.nmUpdateOnlineIndicator);
         } else if (item.id == hideStickerTimeRow) {
-            NimarkoConfig.toggleHideStickerTime();
-            updateCheckState(view, NimarkoConfig.hideStickerTime);
+            AppConfig.toggleHideStickerTime();
+            updateCheckState(view, AppConfig.hideStickerTime);
 
             if (stickerSizeCell != null) stickerSizeCell.refreshPreview();
         } else if (item.id == customTitleRow) {
@@ -470,27 +470,27 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         } else if (item.id == messagesAndProfilesRow) {
             presentFragment(new MessagesAndProfilesPreferencesActivity());
         } else if (item.id == messageSizeRow) {
-            NimarkoAlertDialogSwitchers.showMessageSize(this);
+            AlertDialogSwitchers.showMessageSize(this);
         } else if (item.id == centerChatTitleRow) {
-            NimarkoConfig.toggleCenterChatTitle();
-            updateCheckState(view, NimarkoConfig.centerChatTitle);
+            AppConfig.toggleCenterChatTitle();
+            updateCheckState(view, AppConfig.centerChatTitle);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == unreadBadgeRow) {
-            NimarkoConfig.toggleUnreadBadgeOnBackButton();
-            updateCheckState(view, NimarkoConfig.unreadBadgeOnBackButton);
+            AppConfig.toggleUnreadBadgeOnBackButton();
+            updateCheckState(view, AppConfig.unreadBadgeOnBackButton);
         } else if (item.id == customWallpapersRow) {
-            NimarkoConfig.toggleCustomWallpapers();
-            updateCheckState(view, NimarkoConfig.customWallpapers);
+            AppConfig.toggleCustomWallpapers();
+            updateCheckState(view, AppConfig.customWallpapers);
         } else if (item.id == chatSnowflakesRow) {
-            NimarkoConfig.toggleDrawSnowInChat();
-            updateCheckState(view, NimarkoConfig.drawSnowInChat);
+            AppConfig.toggleDrawSnowInChat();
+            updateCheckState(view, AppConfig.drawSnowInChat);
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         } else if (item.id == hideMuteButtonRow) {
-            NimarkoConfig.toggleHideMuteUnmuteButton();
-            updateCheckState(view, NimarkoConfig.hideMuteUnmuteButton);
+            AppConfig.toggleHideMuteUnmuteButton();
+            updateCheckState(view, AppConfig.hideMuteUnmuteButton);
         } else if (item.id == weekdayNearDateRow) {
-            NimarkoConfig.toggleWeekdayNearDate();
-            updateCheckState(view, NimarkoConfig.weekdayNearDate);
+            AppConfig.toggleWeekdayNearDate();
+            updateCheckState(view, AppConfig.weekdayNearDate);
         }
     }
 
@@ -501,32 +501,32 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
     }
 
     private String getIconPackValueText()  {
-        return switch (NimarkoConfig.iconReplacement) {
-            case NimarkoConfig.ICON_REPLACE_SOLAR -> getString(R.string.NM_IconPack_SolarTitle);
-            case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS -> getString(R.string.NM_IconPack_LiquidTitle);
-            case NimarkoConfig.ICON_REPLACE_PLUMPY -> getString(R.string.NM_IconPack_PlumpyTitle);
+        return switch (AppConfig.iconReplacement) {
+            case AppConfig.ICON_REPLACE_SOLAR -> getString(R.string.NM_IconPack_SolarTitle);
+            case AppConfig.ICON_REPLACE_LIQUID_GLASS -> getString(R.string.NM_IconPack_LiquidTitle);
+            case AppConfig.ICON_REPLACE_PLUMPY -> getString(R.string.NM_IconPack_PlumpyTitle);
             default -> getString(R.string.Default);
         };
     }
 
     private String getSwitchStyleValueText() {
-        return switch (NimarkoConfig.switchStyle) {
-            case NimarkoConfig.SWITCH_STYLE_ONEUI -> "One UI";
-            case NimarkoConfig.SWITCH_STYLE_MD3 -> "MD3";
+        return switch (AppConfig.switchStyle) {
+            case AppConfig.SWITCH_STYLE_ONEUI -> "One UI";
+            case AppConfig.SWITCH_STYLE_MD3 -> "MD3";
             default -> getString(R.string.Default);
         };
     }
 
     private String getCustomTitleValueText() {
-        return NimarkoConfig.customTitleEnabled && !NimarkoConfig.customTitleText.trim().isEmpty()
-                ? NimarkoConfig.customTitleText : getString(R.string.Default);
+        return AppConfig.customTitleEnabled && !AppConfig.customTitleText.trim().isEmpty()
+                ? AppConfig.customTitleText : getString(R.string.Default);
     }
 
     private void showCustomTitleDialog(View view) {
         Context ctx = getContext();
         if (ctx == null) return;
         EditText input = new EditText(ctx);
-        input.setText(NimarkoConfig.customTitleText);
+        input.setText(AppConfig.customTitleText);
         input.setHint(getString(R.string.AppName));
         input.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
         input.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
@@ -539,7 +539,7 @@ public class AppearancePreferencesActivity extends NimarkoUniversalPreferencesAc
         b.setView(container);
         b.setPositiveButton(getString(R.string.OK), (d, w) -> {
             String t = input.getText().toString().trim();
-            NimarkoConfig.setCustomTitle(!t.isEmpty(), t);
+            AppConfig.setCustomTitle(!t.isEmpty(), t);
             SettingsHelper.updateButtonValue(view, getCustomTitleValueText());
             if (getParentLayout() != null) getParentLayout().rebuildAllFragmentViews(false, false);
         });

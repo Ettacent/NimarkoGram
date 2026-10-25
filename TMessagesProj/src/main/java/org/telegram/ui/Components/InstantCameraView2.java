@@ -604,8 +604,8 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        boolean centered = app.nimarkogram.messenger.NimarkoConfig.centerCameraControlButtons;
-        boolean right = !centered && app.nimarkogram.messenger.NimarkoConfig.cameraControlButtonsRight;
+        boolean centered = app.nimarkogram.messenger.AppConfig.centerCameraControlButtons;
+        boolean right = !centered && app.nimarkogram.messenger.AppConfig.cameraControlButtonsRight;
         LayoutParams buttons = (LayoutParams) buttonsLayout.getLayoutParams();
         buttons.gravity = Gravity.BOTTOM | (centered ? Gravity.CENTER_HORIZONTAL
                 : right ? Gravity.RIGHT : Gravity.LEFT);

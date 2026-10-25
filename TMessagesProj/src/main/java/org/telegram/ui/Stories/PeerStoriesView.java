@@ -20,10 +20,12 @@ import android.app.Dialog;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
+import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
@@ -7755,6 +7757,8 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             // to the actual capsule and interpolate back to Telegram's normal
             // keyboard-open position instead.
             editField.setTranslationY(lerp(compactFieldTranslation, 0f, progressToKeyboard));
+            chatActivityEnterView.setStoryControlsPosition(
+                    sharedResources.rect2.centerY() - chatActivityEnterView.getY(), progressToKeyboard);
             float radius = dp(50) / 2f;
             AndroidUtilities.lerp(sharedResources.rect2, sharedResources.rect1, progressToKeyboard, sharedResources.finalRect);
             if (inputFieldBackground != null) {
@@ -8264,6 +8268,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         public Drawable repostDrawable;
         public Drawable likeDrawable;
         public Drawable likeDrawableFilled;
+        public final boolean crossfadeLike;
         public Drawable optionsDrawable;
         public Drawable pipDrawable;
         public Drawable deleteDrawable;
@@ -8276,7 +8281,17 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             likeDrawable = ContextCompat.getDrawable(context, R.drawable.media_like);
             repostDrawable = ContextCompat.getDrawable(context, R.drawable.media_repost);
             likeDrawableFilled = ContextCompat.getDrawable(context, R.drawable.media_like_active);
-            likeDrawableFilled.setColorFilter(new PorterDuffColorFilter(0xFFFF2E38, PorterDuff.Mode.MULTIPLY));
+            Resources resources = context.getResources();
+            crossfadeLike = resources instanceof app.nimarkogram.messenger.icons.IconResources
+                    && (((app.nimarkogram.messenger.icons.IconResources) resources).hasReplacement(R.drawable.media_like)
+                    || ((app.nimarkogram.messenger.icons.IconResources) resources).hasReplacement(R.drawable.media_like_active));
+            int selection = resources instanceof app.nimarkogram.messenger.icons.IconResources
+                    ? ((app.nimarkogram.messenger.icons.IconResources) resources).getAppliedSelection()
+                    : app.nimarkogram.messenger.AppConfig.ICON_REPLACE_NONE;
+            if (selection == app.nimarkogram.messenger.AppConfig.ICON_REPLACE_LIQUID_GLASS) {
+                likeDrawableFilled = ContextCompat.getDrawable(context, R.drawable.ng_story_like_active_liquid);
+            }
+            likeDrawableFilled.setColorFilter(createLikeColorFilter(selection));
             optionsDrawable = ContextCompat.getDrawable(context, R.drawable.media_more);
             pipDrawable = ContextCompat.getDrawable(context, R.drawable.menu_stream_pip);
             deleteDrawable = ContextCompat.getDrawable(context, R.drawable.msg_delete);
@@ -8302,6 +8317,17 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             imageBackgroundDrawable = new ColorDrawable(ColorUtils.blendARGB(Color.BLACK, Color.WHITE, 0.1f));
         }
 
+        private static ColorFilter createLikeColorFilter(int selection) {
+            if (selection == app.nimarkogram.messenger.AppConfig.ICON_REPLACE_PLUMPY) {
+                return new ColorMatrixColorFilter(new float[]{
+                        1, 0, 0, 0, 0,
+                        0, 46f / 255f, 0, 0, 0,
+                        0, 0, 56f / 255f, 0, 0,
+                        0, 0, 0, 255f / 89f, 0
+                });
+            }
+            return new PorterDuffColorFilter(0xFFFF2E38, PorterDuff.Mode.MULTIPLY);
+        }
         public void setIconMuted(boolean muted, boolean animated) {
             if (!animated) {
                 muteDrawable.setCurrentFrame(muted ? 20 : 0, false);

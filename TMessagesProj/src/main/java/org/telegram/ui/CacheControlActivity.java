@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -11,6 +13,7 @@ package org.telegram.ui;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.formatString;
 
+import static org.telegram.messenger.LocaleController.getString;
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
@@ -1598,7 +1601,38 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             progressDialog.showDelayed(500);
             MessagesController.getInstance(currentAccount).clearQueryTime();
             if (fullReset) {
-                getMessagesStorage().fullReset();
+                final int cleanupAccount = currentAccount;
+                final java.lang.ref.WeakReference<CacheControlActivity> ui = new java.lang.ref.WeakReference<>(this);
+                getMessagesStorage().fullReset(result -> {
+                    CacheControlActivity owner = ui.get();
+                    if (owner == null || owner.isFinished || !result.isCurrent() || owner.currentAccount != cleanupAccount
+                            || owner.getParentActivity() == null || owner.getParentActivity().isFinishing()
+                            || owner.getParentActivity().isDestroyed()) {
+                        return;
+                    }
+                    if (owner.progressDialog != null) {
+                        owner.progressDialog.dismiss();
+                        owner.progressDialog = null;
+                    }
+                    if (result.error != null && !owner.isPaused() && owner.getParentActivity() != null && !owner.getParentActivity().isFinishing()) {
+                        owner.showDialog(new AlertDialog.Builder(owner.getParentActivity())
+                                .setTitle(getString(R.string.AppName))
+                                .setMessage(getString(R.string.ErrorOccurred))
+                                .setPositiveButton(getString(R.string.Retry), (d, which) -> {
+                                    CacheControlActivity retryOwner = ui.get();
+                                    if (retryOwner != null && !retryOwner.isFinished && !retryOwner.isPaused()
+                                            && retryOwner.currentAccount == cleanupAccount && retryOwner.getParentActivity() != null
+                                            && !retryOwner.getParentActivity().isFinishing() && !retryOwner.getParentActivity().isDestroyed()
+                                            && result.retry()) {
+                                        retryOwner.progressDialog = new AlertDialog(retryOwner.getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+                                        retryOwner.progressDialog.setCanCancel(false);
+                                        retryOwner.progressDialog.showDelayed(500);
+                                    }
+                                })
+                                .setNegativeButton(getString(R.string.Cancel), null)
+                                .create());
+                    }
+                });
             } else {
                 getMessagesStorage().clearLocalDatabase();
             }

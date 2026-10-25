@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -1790,7 +1792,7 @@ public class PrivacyControlActivity extends BaseFragment implements Notification
                         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                             oldAvatarView.measure(MeasureSpec.makeMeasureSpec(dp(30), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(30), MeasureSpec.EXACTLY));
-                            oldAvatarView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(60));
+                            oldAvatarView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(60));
                         }
 
                         @Override

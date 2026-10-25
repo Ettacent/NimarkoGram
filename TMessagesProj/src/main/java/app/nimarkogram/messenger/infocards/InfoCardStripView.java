@@ -28,7 +28,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -759,7 +759,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         });
         animator.start();
-        NimarkoUiAnimationClock.track(animator);
+        UiAnimationClock.track(animator);
     }
 
     private void animateSnapBack(final int incomingIdx) {
@@ -792,7 +792,7 @@ public class InfoCardStripView extends FrameLayout implements NotificationCenter
             }
         });
         animator.start();
-        NimarkoUiAnimationClock.track(animator);
+        UiAnimationClock.track(animator);
     }
 
     private boolean reconcilePendingActiveCard() {

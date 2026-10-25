@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -195,8 +197,8 @@ public class FragmentFloatingButton extends FrameLayout implements FactorAnimato
     public static final int SIZE = 48;
 
     private static int rightMarginAlignedWithSearchButton(int defaultMargin) {
-        if (app.nimarkogram.messenger.NimarkoConfig.showMainTabs
-                && app.nimarkogram.messenger.NimarkoConfig.showSearchInTabs) {
+        if (app.nimarkogram.messenger.AppConfig.showMainTabs
+                && app.nimarkogram.messenger.AppConfig.showSearchInTabs) {
             return 14;
         }
         return defaultMargin;

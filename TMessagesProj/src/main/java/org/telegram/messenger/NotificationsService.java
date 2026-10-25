@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 1.3.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -94,6 +96,6 @@ public class NotificationsService extends Service {
     private boolean allowResidentNotification() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && Build.VERSION.SDK_INT < 35
-                && app.nimarkogram.messenger.NimarkoConfig.residentNotification;
+                && app.nimarkogram.messenger.AppConfig.residentNotification;
     }
 }

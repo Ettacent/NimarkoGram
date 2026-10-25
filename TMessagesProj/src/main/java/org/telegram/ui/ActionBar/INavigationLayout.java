@@ -266,9 +266,9 @@ public interface INavigationLayout {
         // chat or the archive folder. shouldRequireBiometrics* are no-ops if
         // the user hasn't turned the flag on, so the fast path is unaffected.
         if (fragment instanceof ChatActivity
-                && (app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                    || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
-                    || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
+                && (app.nimarkogram.messenger.AppConfig.askBiometricsToOpenChat
+                    || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenSavedMessages
+                    || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenEncrypted)) {
             Bundle args = fragment.getArguments();
             if (args == null) {
                 return false;
@@ -276,15 +276,15 @@ public interface INavigationLayout {
             long userID = args.getLong("user_id");
             long chatID = args.getLong("chat_id");
             int encID = args.getInt("enc_id");
-            boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+            boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper
                     .shouldRequireBiometrics(userID, chatID, encID, fragment.getCurrentAccount());
             if (requiresBiometrics && getParentActivity() == null) return false;
             if (requiresBiometrics
-                    && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
+                    && !app.nimarkogram.messenger.security.AppBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
                 final int acc = fragment.getCurrentAccount();
-                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
+                app.nimarkogram.messenger.security.AppBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                         () -> {
-                            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
+                            app.nimarkogram.messenger.security.AppBiometricPrompt.markVerified(acc, userID, chatID, encID);
                             presentFragment(new NavigationParams(fragment));
                         });
                 return true;
@@ -293,7 +293,7 @@ public interface INavigationLayout {
         }
 
         if (fragment instanceof DialogsActivity
-                && app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenArchive) {
+                && app.nimarkogram.messenger.AppConfig.askBiometricsToOpenArchive) {
             Bundle args = fragment.getArguments();
             if (args == null) {
                 return presentFragment(new NavigationParams(fragment));
@@ -302,11 +302,11 @@ public interface INavigationLayout {
             if (folderId == 1) {
                 if (getParentActivity() == null) return false;
                 final int archiveAccount = fragment.getCurrentAccount();
-                if (app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isArchiveRecentlyVerified(archiveAccount)) {
+                if (app.nimarkogram.messenger.security.AppBiometricPrompt.isArchiveRecentlyVerified(archiveAccount)) {
                     return presentFragment(new NavigationParams(fragment));
                 }
-                app.nimarkogram.messenger.security.NimarkoBiometricPrompt.prompt(getParentActivity(), archiveAccount, () -> {
-                    app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markArchiveVerified(archiveAccount);
+                app.nimarkogram.messenger.security.AppBiometricPrompt.prompt(getParentActivity(), archiveAccount, () -> {
+                    app.nimarkogram.messenger.security.AppBiometricPrompt.markArchiveVerified(archiveAccount);
                     presentFragment(new NavigationParams(fragment));
                 }, null);
                 return true;
@@ -338,9 +338,9 @@ public interface INavigationLayout {
         if (!(fragment instanceof ChatActivity) || check) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
         }
-        if (!(app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
+        if (!(app.nimarkogram.messenger.AppConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenSavedMessages
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenEncrypted)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
         }
         Bundle args = fragment.getArguments();
@@ -350,15 +350,15 @@ public interface INavigationLayout {
         long userID = args.getLong("user_id");
         long chatID = args.getLong("chat_id");
         int encID = args.getInt("enc_id");
-        boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+        boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper
                 .shouldRequireBiometrics(userID, chatID, encID, fragment.getCurrentAccount());
         if (requiresBiometrics && getParentActivity() == null) return false;
         if (requiresBiometrics
-                && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
+                && !app.nimarkogram.messenger.security.AppBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
             final int acc = fragment.getCurrentAccount();
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
+            app.nimarkogram.messenger.security.AppBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                     () -> {
-                        app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
+                        app.nimarkogram.messenger.security.AppBiometricPrompt.markVerified(acc, userID, chatID, encID);
                         presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview));
                     });
             return true;
@@ -375,9 +375,9 @@ public interface INavigationLayout {
         if (!(fragment instanceof ChatActivity)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
         }
-        if (!(app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenChat
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenSavedMessages
-                || app.nimarkogram.messenger.NimarkoConfig.askBiometricsToOpenEncrypted)) {
+        if (!(app.nimarkogram.messenger.AppConfig.askBiometricsToOpenChat
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenSavedMessages
+                || app.nimarkogram.messenger.AppConfig.askBiometricsToOpenEncrypted)) {
             return presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
         }
         Bundle args = fragment.getArguments();
@@ -387,15 +387,15 @@ public interface INavigationLayout {
         long userID = args.getLong("user_id");
         long chatID = args.getLong("chat_id");
         int encID = args.getInt("enc_id");
-        boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.NimarkoChatsPasswordHelper
+        boolean requiresBiometrics = app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper
                 .shouldRequireBiometrics(userID, chatID, encID, fragment.getCurrentAccount());
         if (requiresBiometrics && getParentActivity() == null) return false;
         if (requiresBiometrics
-                && !app.nimarkogram.messenger.security.NimarkoBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
+                && !app.nimarkogram.messenger.security.AppBiometricPrompt.isRecentlyVerified(fragment.getCurrentAccount(), userID, chatID, encID)) {
             final int acc = fragment.getCurrentAccount();
-            app.nimarkogram.messenger.security.NimarkoBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
+            app.nimarkogram.messenger.security.AppBiometricPrompt.promptForChat(getParentActivity(), acc, userID, chatID, encID,
                     () -> {
-                        app.nimarkogram.messenger.security.NimarkoBiometricPrompt.markVerified(acc, userID, chatID, encID);
+                        app.nimarkogram.messenger.security.AppBiometricPrompt.markVerified(acc, userID, chatID, encID);
                         presentFragment(new NavigationParams(fragment).setRemoveLast(removeLast).setNoAnimation(forceWithoutAnimation).setCheckPresentFromDelegate(check).setPreview(preview).setMenuView(menuView));
                     });
             return true;

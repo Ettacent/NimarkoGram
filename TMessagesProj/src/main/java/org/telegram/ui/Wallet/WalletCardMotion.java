@@ -84,6 +84,7 @@ final class WalletCardMotion implements SensorEventListener {
         else if (rotation == Surface.ROTATION_270) { axisX = SensorManager.AXIS_MINUS_Y; axisY = SensorManager.AXIS_X; }
         SensorManager.remapCoordinateSystem(matrix, axisX, axisY, remapped);
         SensorManager.getOrientation(remapped, orientation);
+        if (Float.isNaN(orientation[1]) || Float.isNaN(orientation[2])) return;
         if (!calibrated) {
             basePitch = orientation[1]; baseRoll = orientation[2]; calibrated = true;
         }

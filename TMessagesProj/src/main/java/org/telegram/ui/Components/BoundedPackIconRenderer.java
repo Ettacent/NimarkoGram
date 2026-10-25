@@ -9,10 +9,10 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 
 public final class BoundedPackIconRenderer {
-    private NimarkoIconResources.PreparedIcon icon;
+    private IconResources.PreparedIcon icon;
     private boolean ready;
     private final Rect ink = new Rect();
     private final RectF target = new RectF();
@@ -24,9 +24,9 @@ public final class BoundedPackIconRenderer {
         tintPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
     }
 
-    public boolean prepare(NimarkoIconResources.NavigationIcons batch, int id) {
+    public boolean prepare(IconResources.NavigationIcons batch, int id) {
         ready = false;
-        final NimarkoIconResources.PreparedIcon next = batch == null ? null : batch.getIcon(id);
+        final IconResources.PreparedIcon next = batch == null ? null : batch.getIcon(id);
         if (next == null || next.bitmap == null || next.bitmap.isRecycled()) return false;
         if (icon != next) {
             final int width = next.bitmap.getWidth(), height = next.bitmap.getHeight();

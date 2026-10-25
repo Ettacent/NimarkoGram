@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -227,7 +229,7 @@ public class ProfileActivity2 extends BaseFragment implements
         actionBar.setAddToContainer(false);
         actionBar.setClipContent(true);
         actionBar.setBackgroundColor(Color.TRANSPARENT);
-        actionBar.setOccupyStatusBar(isMain || !AndroidUtilities.isTablet() && !inBubbleMode);
+        actionBar.setOccupyStatusBar(isMain || parentLayout != null && parentLayout.isSheet() || !AndroidUtilities.isTablet() && !inBubbleMode);
 
         actionBar.setBackButtonDrawable(new BackDrawable(false));
         final ActionBarMenu menu = actionBar.createMenu();

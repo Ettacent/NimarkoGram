@@ -175,6 +175,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import java.util.Set;
+import java.util.WeakHashMap;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
@@ -1601,7 +1603,7 @@ public class EmojiView extends FrameLayout implements
         this.allowAnimatedEmoji = needAnimatedEmoji;
         // NimarkoGram: local premium emoji — unlock the premium custom-emoji
         // picker for non-premium accounts (they get smuggled on send).
-        if (app.nimarkogram.messenger.utils.NimarkoLocalEmoji.canUse(currentAccount)) {
+        if (app.nimarkogram.messenger.utils.LocalEmoji.canUse(currentAccount)) {
             this.allowEmojisForNonPremium = true;
         }
         this.resourcesProvider = resourcesProvider;
@@ -2415,7 +2417,7 @@ public class EmojiView extends FrameLayout implements
             stickerSearchHeader.setVisibility(View.GONE);
             stickerSearchHeader.setOnBackClickListener(v -> stickersSearchGridAdapter.resetSelectedPackId());
             stickersContainer.addView(stickerSearchHeader, new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, searchFieldHeight));
-            
+
             stickersTab = new DraggableScrollSlidingTabStrip(context, resourcesProvider) {
                 @Override
                 protected void updatePosition() {
@@ -2705,7 +2707,7 @@ public class EmojiView extends FrameLayout implements
                     backspacePressed = false;
                     if (!backspaceOnce) {
                         // NimarkoGram: gate haptic feedback on "Disable vibration".
-                        if (delegate != null && delegate.onBackspace() && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+                        if (delegate != null && delegate.onBackspace() && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                             try {
                                 backspaceButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                             } catch (Exception ignore) {}
@@ -2716,7 +2718,7 @@ public class EmojiView extends FrameLayout implements
                 return true;
             }
         };
-        backspaceButton.setHapticFeedbackEnabled(!app.nimarkogram.messenger.NimarkoConfig.disableVibration);
+        backspaceButton.setHapticFeedbackEnabled(!app.nimarkogram.messenger.AppConfig.disableVibration);
         backspaceButton.setImageResource(R.drawable.smiles_tab_clear);
         backspaceButton.setColorFilter(new PorterDuffColorFilter(glassDesign ? getGlassIconColor(0.6f) : getThemedColor(Theme.key_chat_emojiPanelBackspace), PorterDuff.Mode.MULTIPLY));
         backspaceButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -5658,7 +5660,7 @@ public class EmojiView extends FrameLayout implements
                 return;
             }
             // NimarkoGram: gate haptic feedback on "Disable vibration".
-            if (delegate != null && delegate.onBackspace() && !app.nimarkogram.messenger.NimarkoConfig.disableVibration) {
+            if (delegate != null && delegate.onBackspace() && !app.nimarkogram.messenger.AppConfig.disableVibration) {
                 try {
                     backspaceButton.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                 } catch (Exception ignore) {}
@@ -6067,9 +6069,7 @@ public class EmojiView extends FrameLayout implements
             mediaBanTooltip.setTextColor(getThemedColor(Theme.key_chat_gifSaveHintText));
         }
         if (gifSearchAdapter != null) {
-            gifSearchAdapter.progressEmptyView.imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_emojiPanelEmptyText), PorterDuff.Mode.MULTIPLY));
-            gifSearchAdapter.progressEmptyView.textView.setTextColor(getThemedColor(Theme.key_chat_emojiPanelEmptyText));
-            gifSearchAdapter.progressEmptyView.progressView.setProgressColor(getThemedColor(Theme.key_progressCircle));
+            gifSearchAdapter.updateEmptyViewColors();
         }
         animatedEmojiTextColorFilter = new PorterDuffColorFilter(getThemedColor(Theme.key_featuredStickers_addButton), PorterDuff.Mode.SRC_IN);
 
@@ -8072,8 +8072,64 @@ public class EmojiView extends FrameLayout implements
         }
     }
 
+    private class FoundPacksRows {
+        private final Context context;
+        private final Utilities.Callback2<ArrayList<UItem>, UniversalAdapter> fillItems;
+        private final Utilities.Callback5<UItem, View, Integer, Float, Float> onClick;
+        private final Set<FoundEmojiPacksRecyclerView> views = Collections.newSetFromMap(new WeakHashMap<>());
+
+        FoundPacksRows(Context context, Utilities.Callback2<ArrayList<UItem>, UniversalAdapter> fillItems,
+                       Utilities.Callback5<UItem, View, Integer, Float, Float> onClick) {
+            this.context = context;
+            this.fillItems = fillItems;
+            this.onClick = onClick;
+        }
+
+        FoundEmojiPacksRecyclerView createView() {
+            FoundEmojiPacksRecyclerView view = new FoundEmojiPacksRecyclerView(context, currentAccount, -1,
+                    false, fillItems, onClick, null, resourcesProvider, -1, LinearLayoutManager.HORIZONTAL);
+            view.setPadding(dp(10), 0, dp(10), dp(5));
+            view.setClipToPadding(false);
+            view.adapter.setApplyBackground(false);
+            view.setNestedScrollingEnabled(false);
+            view.setDrawSelection(false);
+            view.setOnTouchListener((v, event) -> {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    ignorePagerScroll = true;
+                } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    ignorePagerScroll = false;
+                }
+                return false;
+            });
+            views.add(view);
+            return view;
+        }
+
+        void update() {
+            for (FoundEmojiPacksRecyclerView view : new ArrayList<>(views)) {
+                view.adapter.update(false);
+            }
+        }
+
+        void clearSelection(View except) {
+            for (FoundEmojiPacksRecyclerView list : new ArrayList<>(views)) {
+                for (int i = 0; i < list.getChildCount(); i++) {
+                    View child = list.getChildAt(i);
+                    if (child != except && child instanceof FoundStickerPackCell) {
+                        ((FoundStickerPackCell) child).setSelected(false, true);
+                    }
+                }
+            }
+        }
+
+        void scrollOnSelect(View view) {
+            if (view != null && view.getParent() instanceof FoundEmojiPacksRecyclerView) {
+                ((FoundEmojiPacksRecyclerView) view.getParent()).scrollOnSelect(view);
+            }
+        }
+    }
     private class EmojiSearchAdapter extends RecyclerListView.SelectionAdapter {
-        private FoundEmojiPacksRecyclerView foundPacksListView;
+        private final FoundPacksRows foundPackRows;
         private long selectedPackId;
         private TLRPC.StickerSet selectedPackStickerSet;
         private ArrayList<TLRPC.Document> selectedPackStickers;
@@ -8095,26 +8151,7 @@ public class EmojiView extends FrameLayout implements
         private static final int VIEW_TYPE_BUTTON_SPACE = 5;
 
         public EmojiSearchAdapter(Context context) {
-            foundPacksListView = new FoundEmojiPacksRecyclerView(context, currentAccount, -1,
-                    false, this::foundPackListFillItems, this::foundPackListOnClickItem,
-                    null, resourcesProvider, -1, LinearLayoutManager.HORIZONTAL) {
-            };
-            foundPacksListView.setPadding(dp(10), 0, dp(10), dp(5));
-            foundPacksListView.setClipToPadding(false);
-            foundPacksListView.adapter.setApplyBackground(false);
-            foundPacksListView.setNestedScrollingEnabled(false);
-            foundPacksListView.setDrawSelection(false);
-            foundPacksListView.setOnTouchListener(new OnTouchListener() {
-                @Override
-                public boolean onTouch(View v, MotionEvent event) {
-                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                        ignorePagerScroll = true;
-                    } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                        ignorePagerScroll = false;
-                    }
-                    return false;
-                }
-            });
+            foundPackRows = new FoundPacksRows(context, this::foundPackListFillItems, this::foundPackListOnClickItem);
         }
 
         private void foundPackListOnClickItem(UItem item, View view, int p, float a, float b) {
@@ -8142,13 +8179,7 @@ public class EmojiView extends FrameLayout implements
                 }
             }
 
-            for (int i = 0, N = foundPacksListView.getChildCount(); i < N; i++) {
-                final FoundStickerPackCell cell = (FoundStickerPackCell) foundPacksListView.getChildAt(i);
-                if (cell == view) {
-                    continue;
-                }
-                cell.setSelected(false, true);
-            }
+            foundPackRows.clearSelection(view);
 
             if (selectedPackId != 0 && selectedPackStickers.size() < selectedPackStickerSet.count) {
                 TLRPC.TL_messages_stickerSet messagesStickerSet = MediaDataController.getInstance(currentAccount)
@@ -8166,15 +8197,12 @@ public class EmojiView extends FrameLayout implements
 
             emojiSearchField.hideKeyboard();
             if (selectedPackId != 0) {
-                foundPacksListView.scrollOnSelect(view);
+                foundPackRows.scrollOnSelect(view);
             }
         }
 
         public void resetSelectedPackId() {
-            for (int i = 0, N = foundPacksListView.getChildCount(); i < N; i++) {
-                final FoundStickerPackCell cell = (FoundStickerPackCell) foundPacksListView.getChildAt(i);
-                cell.setSelected(false, true);
-            }
+            foundPackRows.clearSelection(null);
             selectedPackId = 0;
             animatorSearchEmojiPackSelected.setValue(false, true);
             notifyDataSetChanged();
@@ -8231,7 +8259,7 @@ public class EmojiView extends FrameLayout implements
             View view;
             switch (viewType) {
                 case VIEW_TYPE_PACKS:
-                    view = foundPacksListView;
+                    view = foundPackRows.createView();
                     view.setLayoutParams(new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, dp(79)));
                     break;
                 case VIEW_TYPE_EMOJI:
@@ -8740,7 +8768,7 @@ public class EmojiView extends FrameLayout implements
 
         @Override
         public void notifyDataSetChanged() {
-            foundPacksListView.adapter.update(false);
+            foundPackRows.update();
             super.notifyDataSetChanged();
         }
     }
@@ -8817,7 +8845,8 @@ public class EmojiView extends FrameLayout implements
 
         private final Context context;
         private final boolean withRecent;
-        private final GifProgressEmptyView progressEmptyView;
+        private final Set<GifProgressEmptyView> progressEmptyViews = Collections.newSetFromMap(new WeakHashMap<>());
+        private boolean emptyLoadingState;
         private final int maxRecentRowsCount;
 
         private int reqId;
@@ -8853,7 +8882,21 @@ public class EmojiView extends FrameLayout implements
             this.context = context;
             this.withRecent = withRecent;
             this.maxRecentRowsCount = maxRecentRowsCount;
-            this.progressEmptyView = withRecent ? null : new GifProgressEmptyView(context);
+        }
+
+        private void setEmptyLoadingState(boolean loading) {
+            emptyLoadingState = loading;
+            for (GifProgressEmptyView view : new ArrayList<>(progressEmptyViews)) {
+                view.setLoadingState(loading);
+            }
+        }
+
+        private void updateEmptyViewColors() {
+            for (GifProgressEmptyView view : new ArrayList<>(progressEmptyViews)) {
+                view.imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_emojiPanelEmptyText), PorterDuff.Mode.MULTIPLY));
+                view.textView.setTextColor(getThemedColor(Theme.key_chat_emojiPanelEmptyText));
+                view.progressView.setProgressColor(getThemedColor(Theme.key_progressCircle));
+            }
         }
 
         @Override
@@ -8903,7 +8946,10 @@ public class EmojiView extends FrameLayout implements
                     break;
                 case 3:
                 default:
-                    view = progressEmptyView;
+                    GifProgressEmptyView empty = new GifProgressEmptyView(context);
+                    empty.setLoadingState(emptyLoadingState);
+                    progressEmptyViews.add(empty);
+                    view = empty;
                     view.setLayoutParams(new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                     break;
             }
@@ -9040,9 +9086,7 @@ public class EmojiView extends FrameLayout implements
                 reqId = 0;
             }
             lastSearchIsEmoji = false;
-            if (progressEmptyView != null) {
-                progressEmptyView.setLoadingState(false);
-            }
+            setEmptyLoadingState(false);
             if (searchRunnable != null) {
                 AndroidUtilities.cancelRunOnUIThread(searchRunnable);
             }
@@ -9094,9 +9138,7 @@ public class EmojiView extends FrameLayout implements
             lastSearchImageString = query;
             lastSearchIsEmoji = isEmoji;
 
-            if (progressEmptyView != null) {
-                progressEmptyView.setLoadingState(isEmoji);
-            }
+            setEmptyLoadingState(isEmoji);
 
             TLObject object = MessagesController.getInstance(currentAccount).getUserOrChat(MessagesController.getInstance(currentAccount).gifSearchBot);
             if (!(object instanceof TLRPC.User)) {
@@ -9438,7 +9480,7 @@ public class EmojiView extends FrameLayout implements
     }
 
     private class StickersSearchGridAdapter extends RecyclerListView.SelectionAdapter {
-        private FoundEmojiPacksRecyclerView foundPacksListView;
+        private final FoundPacksRows foundPackRows;
         private long selectedPackId;
         private TLRPC.StickerSet selectedPackStickerSet;
         private ArrayList<TLRPC.Document> selectedPackStickers;
@@ -9800,26 +9842,7 @@ public class EmojiView extends FrameLayout implements
 
         public StickersSearchGridAdapter(Context context) {
             this.context = context;
-            foundPacksListView = new FoundEmojiPacksRecyclerView(context, currentAccount, -1,
-                    false, this::foundPackListFillItems, this::foundPackListOnClickItem,
-                    null, resourcesProvider, -1, LinearLayoutManager.HORIZONTAL) {
-            };
-            foundPacksListView.setPadding(dp(10), 0, dp(10), dp(5));
-            foundPacksListView.setClipToPadding(false);
-            foundPacksListView.adapter.setApplyBackground(false);
-            foundPacksListView.setNestedScrollingEnabled(false);
-            foundPacksListView.setDrawSelection(false);
-            foundPacksListView.setOnTouchListener(new OnTouchListener() {
-                @Override
-                public boolean onTouch(View v, MotionEvent event) {
-                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                        ignorePagerScroll = true;
-                    } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                        ignorePagerScroll = false;
-                    }
-                    return false;
-                }
-            });
+            foundPackRows = new FoundPacksRows(context, this::foundPackListFillItems, this::foundPackListOnClickItem);
         }
 
         private void foundPackListOnClickItem(UItem item, View view, int p, float a, float b) {
@@ -9847,13 +9870,7 @@ public class EmojiView extends FrameLayout implements
                 }
             }
 
-            for (int i = 0, N = foundPacksListView.getChildCount(); i < N; i++) {
-                final FoundStickerPackCell cell = (FoundStickerPackCell) foundPacksListView.getChildAt(i);
-                if (cell == view) {
-                    continue;
-                }
-                cell.setSelected(false, true);
-            }
+            foundPackRows.clearSelection(view);
 
             if (selectedPackId != 0 && selectedPackStickers.size() < selectedPackStickerSet.count) {
                 TLRPC.TL_messages_stickerSet messagesStickerSet = MediaDataController.getInstance(currentAccount)
@@ -9872,15 +9889,12 @@ public class EmojiView extends FrameLayout implements
 
             stickersSearchField.hideKeyboard();
             if (selectedPackId != 0) {
-                foundPacksListView.scrollOnSelect(view);
+                foundPackRows.scrollOnSelect(view);
             }
         }
 
         public void resetSelectedPackId() {
-            for (int i = 0, N = foundPacksListView.getChildCount(); i < N; i++) {
-                final FoundStickerPackCell cell = (FoundStickerPackCell) foundPacksListView.getChildAt(i);
-                cell.setSelected(false, true);
-            }
+            foundPackRows.clearSelection(null);
             selectedPackId = 0;
             animatorSearchStickerPackSelected.setValue(false, true);
             notifyDataSetChanged();
@@ -10053,7 +10067,7 @@ public class EmojiView extends FrameLayout implements
                     view.setLayoutParams(new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                     break;
                 case 7:
-                    view = foundPacksListView;
+                    view = foundPackRows.createView();
                     view.setLayoutParams(new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, dp(79)));
                     break;
                 case VIEW_TYPE_BUTTON_SPACE:
@@ -10178,7 +10192,7 @@ public class EmojiView extends FrameLayout implements
             int startRow = 0;
             final int localCount = localPacks.size() + localPacksByName.size();
 
-            foundPacksListView.adapter.update(false);
+            foundPackRows.update();
 
             if (selectedPackId != 0) {
                 ArrayList<TLRPC.Document> documents = selectedPackStickers;

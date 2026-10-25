@@ -205,7 +205,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     }
 
     private void updateStories(boolean animated, boolean asUpdate) {
-        if (app.nimarkogram.messenger.NimarkoConfig.hideStories) return;
+        if (app.nimarkogram.messenger.AppConfig.hideStories) return;
         if (isTopic) {
             return;
         }
@@ -907,13 +907,13 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private final Path forumSegmentPath = new Path();
 
     private float ringCornerRadius(RectF oval, boolean isForum) {
-        if (app.nimarkogram.messenger.NimarkoConfig.avatarCorners >= app.nimarkogram.messenger.NimarkoConfig.AVATAR_CORNERS_MAX) {
+        if (app.nimarkogram.messenger.AppConfig.avatarCorners >= app.nimarkogram.messenger.AppConfig.AVATAR_CORNERS_MAX) {
             return -1;
         }
         float ringDp = oval.width() / org.telegram.messenger.AndroidUtilities.density;
         int r = isForum
-                ? app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(ringDp, true)
-                : app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(ringDp, false);
+                ? app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(ringDp, true)
+                : app.nimarkogram.messenger.AppConfig.getAvatarCorners(ringDp, false);
         if (r >= oval.width() / 2f) {
             return -1; // behaves like a circle anyway
         }

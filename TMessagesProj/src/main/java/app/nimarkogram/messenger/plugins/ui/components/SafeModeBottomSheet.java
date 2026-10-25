@@ -19,12 +19,12 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.StickerImageView;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.plugins.PluginsController;
 
 import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
 public class SafeModeBottomSheet extends BottomSheet {
-    
+
     @Override
     public void setLastVisible(boolean z) {
         super.setLastVisible(z);
@@ -38,15 +38,15 @@ public class SafeModeBottomSheet extends BottomSheet {
         LinearLayout linearLayout = new LinearLayout(parentActivity);
         linearLayout.setOrientation(LinearLayout.VERTICAL);
         frameLayout.addView(linearLayout);
-        
+
         StickerImageView stickerImageView = new StickerImageView(parentActivity, this.currentAccount);
-        
+
         stickerImageView.setStickerPackName("UtyaDuck");
-        stickerImageView.setStickerNum(34);   
+        stickerImageView.setStickerNum(34);
         stickerImageView.getImageReceiver().setAutoRepeat(1);
         stickerImageView.getImageReceiver().setAutoRepeatCount(0);
         linearLayout.addView(stickerImageView, LayoutHelper.createLinear(144, 144, Gravity.CENTER_HORIZONTAL, 0, 16, 0, 0));
-        
+
         TextView textView = new TextView(parentActivity);
         textView.setGravity(Gravity.CENTER_HORIZONTAL);
         textView.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
@@ -54,7 +54,7 @@ public class SafeModeBottomSheet extends BottomSheet {
         textView.setTypeface(AndroidUtilities.bold());
         textView.setText(LocaleController.getString(R.string.PluginsSafeMode));
         linearLayout.addView(textView, LayoutHelper.createFrame(-1, -2.0f, Gravity.TOP | Gravity.LEFT, 40.0f, 20.0f, 40.0f, 0.0f));
-        
+
         TextView textView2 = new TextView(parentActivity);
         textView2.setGravity(Gravity.CENTER_HORIZONTAL);
         textView2.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_REGULAR));
@@ -62,7 +62,7 @@ public class SafeModeBottomSheet extends BottomSheet {
         textView2.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteGrayText));
         textView2.setText(PluginCrashReports.safeModeExplanation());
         linearLayout.addView(textView2, LayoutHelper.createFrame(-1, -2.0f, Gravity.TOP | Gravity.LEFT, 21.0f, 8.0f, 21.0f, 0.0f));
-        
+
         ButtonWithCounterView buttonWithCounterView = new ButtonWithCounterView(parentActivity, true, this.resourcesProvider);
         buttonWithCounterView.setText(LocaleController.getString(R.string.NM_ExitSafeMode), false);
         buttonWithCounterView.setOnClickListener(this::lambda$new$0);
@@ -72,7 +72,7 @@ public class SafeModeBottomSheet extends BottomSheet {
 
     private                 void lambda$new$0(View view) {
         dismiss();
-        NimarkoConfig.setPluginsSafeMode(false);
+        AppConfig.setPluginsSafeMode(false);
         PluginsController.getInstance().restart();
     }
 }

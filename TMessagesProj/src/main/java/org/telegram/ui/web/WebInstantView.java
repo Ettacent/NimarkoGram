@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.web;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -361,7 +363,7 @@ public class WebInstantView {
         };
         container.addView(webViewContainer);
 
-        final WebView webView = new WebView(context);
+        final WebView webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context));
         final WebSettings settings = webView.getSettings();
         settings.setAllowContentAccess(false);
         settings.setDatabaseEnabled(false);

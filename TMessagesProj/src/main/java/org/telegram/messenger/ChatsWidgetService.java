@@ -1,10 +1,10 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
-import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapShader;
@@ -52,38 +52,39 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     private LongSparseArray<MessageObject> messageObjects = new LongSparseArray<>();
     private boolean deleted;
 
+    private WidgetAccountBinding binding;
     public ChatsRemoteViewsFactory(Context context, Intent intent) {
         mContext = context;
-        Theme.createDialogsResources(context);
         appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
-        SharedPreferences preferences = context.getSharedPreferences("shortcut_widget", Activity.MODE_PRIVATE);
-        int accountId = preferences.getInt("account" + appWidgetId, -1);
-        if (accountId >= 0) {
-            accountInstance = AccountInstance.getInstance(accountId);
-        }
-        deleted = preferences.getBoolean("deleted" + appWidgetId, false) || accountInstance == null;
+        binding = new WidgetAccountBinding(context, intent);
     }
 
     public void onCreate() {
         ApplicationLoader.postInitApplication();
+        Theme.createDialogsResources(mContext);
+        binding.initialize();
+        accountInstance = binding.account();
+        deleted = !binding.active();
     }
 
     public void onDestroy() {
 
+        binding.close();
     }
 
-    public int getCount() {
-        if (deleted) {
+    public synchronized int getCount() {
+        if (deleted || !binding.active()) {
             return 1;
         }
         return dids.size() + 1;
     }
 
-    public RemoteViews getViewAt(int position) {
-        if (deleted) {
-            RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_deleted);
-            rv.setTextViewText(R.id.widget_deleted_text, LocaleController.getString(R.string.WidgetLoggedOff));
-            return rv;
+    public synchronized RemoteViews getViewAt(int position) {
+        if (position < 0) {
+            return loggedOffView();
+        }
+        if (deleted || !binding.active()) {
+            return loggedOffView();
         } else if (position >= dids.size()) {
             RemoteViews rv = new RemoteViews(mContext.getPackageName(), R.layout.widget_edititem);
             rv.setTextViewText(R.id.widget_edititem_text, LocaleController.getString(R.string.TapToEditWidget));
@@ -94,7 +95,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
             Intent fillInIntent = new Intent();
             fillInIntent.putExtras(extras);
             rv.setOnClickFillInIntent(R.id.widget_edititem, fillInIntent);
-            return rv;
+            return binding.active() ? rv : loggedOffView();
         }
         Long id = dids.get(position);
         String name = "";
@@ -143,7 +144,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
         try {
             Bitmap bitmap = null;
             if (photoPath != null) {
-                File path = FileLoader.getInstance(UserConfig.selectedAccount).getPathToAttach(photoPath, true);
+                File path = FileLoader.getInstance(accountInstance.getCurrentAccount()).getPathToAttach(photoPath, true);
                 bitmap = BitmapFactory.decodeFile(path.toString());
             }
 
@@ -207,7 +208,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
                 } else {
                     messageString = message.messageText;
                     if (messageString != null && messageString.toString().contains("$")) {
-                        messageString = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(messageString.toString());
+                        messageString = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(messageString.toString());
                     }
                 }
                 textColor = mContext.getResources().getColor(R.color.widget_action_text);
@@ -226,7 +227,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
                     if (message.caption != null) {
                         String mess = message.caption.toString();
                         if (mess.contains("$")) {
-                            mess = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(mess);
+                            mess = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(mess);
                         }
                         if (mess.length() > 150) {
                             mess = mess.substring(0, 150);
@@ -269,7 +270,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
                         } else {
                             innerMessage = message.messageText.toString();
                             if (innerMessage.contains("$")) {
-                                innerMessage = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(innerMessage);
+                                innerMessage = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(innerMessage);
                             }
                         }
                         innerMessage = innerMessage.replace('\n', ' ');
@@ -282,7 +283,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
                     } else if (message.messageOwner.message != null) {
                         String mess = message.messageOwner.message;
                         if (mess.contains("$")) {
-                            mess = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(mess);
+                            mess = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(mess);
                         }
                         if (mess.length() > 150) {
                             mess = mess.substring(0, 150);
@@ -328,7 +329,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
                         } else {
                             messageString = message.messageText;
                             if (messageString != null && messageString.toString().contains("$")) {
-                                messageString = app.nimarkogram.messenger.utils.NimarkoLatexHelper.cleanForPreview(messageString.toString());
+                                messageString = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(messageString.toString());
                             }
                             AndroidUtilities.highlightText(messageString, message.highlightedWords, null);
                         }
@@ -379,7 +380,13 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
 
         rv.setViewVisibility(R.id.shortcut_widget_item_divider, position == getCount() ? View.GONE : View.VISIBLE);
 
-        return rv;
+        return binding.active() ? rv : loggedOffView();
+    }
+
+    private RemoteViews loggedOffView() {
+        RemoteViews view = new RemoteViews(mContext.getPackageName(), R.layout.widget_deleted);
+        view.setTextViewText(R.id.widget_deleted_text, LocaleController.getString(R.string.WidgetLoggedOff));
+        return view;
     }
 
     public RemoteViews getLoadingView() {
@@ -387,7 +394,7 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
     }
 
     public int getViewTypeCount() {
-        return 2;
+        return 3;
     }
 
     public long getItemId(int position) {
@@ -398,19 +405,31 @@ class ChatsRemoteViewsFactory implements RemoteViewsService.RemoteViewsFactory {
         return true;
     }
 
-    public void onDataSetChanged() {
+    public synchronized void onDataSetChanged() {
         dids.clear();
+        dialogs.clear();
         messageObjects.clear();
-        if (accountInstance == null || !accountInstance.getUserConfig().isClientActivated()) {
+        deleted = !binding.active();
+        if (deleted) {
             return;
         }
+        ArrayList<Long> loadedDids = new ArrayList<>();
+        LongSparseArray<TLRPC.Dialog> loadedDialogs = new LongSparseArray<>();
         ArrayList<TLRPC.User> users = new ArrayList<>();
         ArrayList<TLRPC.Chat> chats = new ArrayList<>();
         LongSparseArray<TLRPC.Message> messages = new LongSparseArray<>();
-        accountInstance.getMessagesStorage().getWidgetDialogs(appWidgetId, 0, dids, dialogs, messages, users, chats);
+        boolean loaded = accountInstance.getMessagesStorage().getWidgetDialogsChecked(appWidgetId, EditWidgetActivity.TYPE_CHATS, loadedDids, loadedDialogs, messages, users, chats);
+        if (!loaded || !binding.commitOnUiThread(() -> {
         accountInstance.getMessagesController().putUsers(users, true);
         accountInstance.getMessagesController().putChats(chats, true);
-        messageObjects.clear();
+        })) {
+            dids.clear();
+            dialogs.clear();
+            deleted = !binding.active();
+            return;
+        }
+        dids = loadedDids;
+        dialogs = loadedDialogs;
         for (int a = 0, N = messages.size(); a < N; a++) {
             MessageObject messageObject = new MessageObject(accountInstance.getCurrentAccount(), messages.valueAt(a), (LongSparseArray<TLRPC.User>) null, null, false, true);
             messageObjects.put(messages.keyAt(a), messageObject);

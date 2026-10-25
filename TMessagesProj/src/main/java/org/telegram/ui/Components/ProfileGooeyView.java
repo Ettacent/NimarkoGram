@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -28,12 +30,13 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.math.MathUtils;
 
+import app.nimarkogram.messenger.utils.MotionBlurEffect;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.NotchInfoUtils;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 
-public class ProfileGooeyView extends FrameLayout {
+public class ProfileGooeyView extends FrameLayout implements MotionBlurEffect.OutputBoundsParent {
     private static final float AVATAR_SIZE_DP = 100;
     private static final float BLACK_KING_BAR = 32;
 
@@ -137,6 +140,16 @@ public class ProfileGooeyView extends FrameLayout {
             super.draw(c);
             c.restore();
         }, canvas);
+    }
+
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        int motionClip = enabled ? -1 : MotionBlurEffect.clipOutput(canvas, child);
+        try {
+            return super.drawChild(canvas, child, drawingTime);
+        } finally {
+            if (motionClip != -1) canvas.restoreToCount(motionClip);
+        }
     }
 
     private final class CPUImpl implements Impl {

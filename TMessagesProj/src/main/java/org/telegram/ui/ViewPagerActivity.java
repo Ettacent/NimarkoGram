@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -265,7 +267,10 @@ public abstract class ViewPagerActivity extends BaseFragment {
         for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
             final FragmentState state = fragmentsArr.valueAt(a);
             if (state != null && state.fragment.fragmentView != null) {
-                arrayList.addAll(state.fragment.getThemeDescriptions());
+                ArrayList<ThemeDescription> descriptions = state.fragment.getThemeDescriptions();
+                if (descriptions != null) {
+                    arrayList.addAll(descriptions);
+                }
             }
         }
 

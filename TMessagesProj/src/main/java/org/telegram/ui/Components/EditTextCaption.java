@@ -107,7 +107,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                if (!app.nimarkogram.messenger.NimarkoConfig.nimarkoTextAnim
+                if (!app.nimarkogram.messenger.AppConfig.nimarkoTextAnim
                         || !org.telegram.messenger.SharedConfig.animationsEnabled()) {
                     deletingScrolledText = false;
                     deletionScrollDelta = 0;
@@ -963,7 +963,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
     @Override
     protected void onDraw(Canvas canvas) {
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.beforeEditorDraw(this);
+        app.nimarkogram.messenger.textanim.TextAnim.beforeEditorDraw(this);
         try {
             final int saveCount = canvas.save();
             try {
@@ -999,7 +999,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             final int animationSaveCount = canvas.save();
             try {
                 canvas.translate(0, getTextDrawingOffsetY());
-                app.nimarkogram.messenger.textanim.NimarkoTextAnim.afterEditorDraw(this, canvas);
+                app.nimarkogram.messenger.textanim.TextAnim.afterEditorDraw(this, canvas);
             } finally {
                 canvas.restoreToCount(animationSaveCount);
                 deletingScrolledText = false;
@@ -1012,7 +1012,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     protected void onFocusChanged(
             boolean focused, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(focused, direction, previouslyFocusedRect);
-        app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(
+        app.nimarkogram.messenger.textanim.TextAnim.onEditorFocusChanged(
                 this, focused);
     }
 
@@ -1028,7 +1028,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         try {
             return super.onTouchEvent(event);
         } finally {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorTouch(this);
+            app.nimarkogram.messenger.textanim.TextAnim.onEditorTouch(this);
         }
     }
 
@@ -1040,7 +1040,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         deletionScrollAnimator = null;
         deletionScrollOffset = 0f;
         try {
-            app.nimarkogram.messenger.textanim.NimarkoTextAnim.onEditorFocusChanged(
+            app.nimarkogram.messenger.textanim.TextAnim.onEditorFocusChanged(
                     this, false);
         } finally {
             super.onDetachedFromWindow();

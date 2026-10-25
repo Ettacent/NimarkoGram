@@ -68,6 +68,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Objects;
 
 public class ReactionsLayoutInBubble {
@@ -166,6 +167,9 @@ public class ReactionsLayoutInBubble {
     }
 
     public void setMessage(MessageObject messageObject, boolean isSmall, boolean isTag, Theme.ResourcesProvider resourcesProvider) {
+        if (messageObject != null && currentAccount != messageObject.currentAccount) {
+            resetForAccount(messageObject.currentAccount);
+        }
         final boolean sameMessage = this.messageObject != null && messageObject != null
                 && this.messageObject.currentAccount == messageObject.currentAccount
                 && this.messageObject.getDialogId() == messageObject.getDialogId()
@@ -341,6 +345,36 @@ public class ReactionsLayoutInBubble {
             oldButtons.get(i).detach();
         }
         isEmpty = reactionButtons.isEmpty();
+    }
+
+    private void resetForAccount(int account) {
+        if (longPressRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+            longPressRunnable = null;
+        }
+        if (lastSelectedButton != null) lastSelectedButton.bounce.setPressed(false);
+        lastSelectedButton = null;
+        pressed = false;
+        HashSet<ReactionButton> retired = new HashSet<>(reactionButtons);
+        retired.addAll(outButtons);
+        retired.addAll(lastDrawingReactionButtons.values());
+        retired.addAll(lastDrawingReactionButtonsTmp.values());
+        for (ReactionButton button : retired) button.detach();
+        reactionButtons.clear();
+        outButtons.clear();
+        lastDrawingReactionButtons.clear();
+        lastDrawingReactionButtonsTmp.clear();
+        for (ImageReceiver receiver : animatedReactions.values()) receiver.onDetachedFromWindow();
+        animatedReactions.clear();
+        wasDrawn = false;
+        animateMove = animateWidth = animateHeight = false;
+        lastDrawnX = lastDrawnY = fromX = fromY = 0;
+        lastDrawnWidth = lastDrawTotalHeight = animateFromTotalHeight = 0;
+        fromWidth = 0;
+        scrimViewReaction = null;
+        scrimProgress = 0f;
+        scrimDirection = false;
+        currentAccount = account;
     }
 
     private final ArrayList<Integer> reactionLineWidths = new ArrayList<>();
@@ -891,6 +925,7 @@ public class ReactionsLayoutInBubble {
         }
 
         public ReactionButton(ReactionButton reuseFrom, int currentAccount, View parentView, TLRPC.ReactionCount reactionCount, boolean isSmall, boolean isTag, Theme.ResourcesProvider resourcesProvider) {
+            if (reuseFrom != null && reuseFrom.currentAccount != currentAccount) reuseFrom = null;
             this.currentAccount = currentAccount;
             this.parentView = parentView;
             this.bounce = new ButtonBounce(parentView);
@@ -901,6 +936,7 @@ public class ReactionsLayoutInBubble {
             }
             if (imageReceiver == null) {
                 imageReceiver = new ImageReceiver();
+                imageReceiver.setCurrentAccount(currentAccount);
                 imageReceiver.setCrossfadeOnReady(true);
             }
             if (counterDrawable == null) {
@@ -1443,6 +1479,7 @@ public class ReactionsLayoutInBubble {
 
                         SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon, Theme.key_windowBackgroundGray, 1.0f);
                         previewImageReceiver = new ImageReceiver(parent);
+                        previewImageReceiver.setCurrentAccount(currentAccount);
                         previewImageReceiver.setLayerNum(7);
                         previewImageReceiver.onAttachedToWindow();
                         previewImageReceiver.setRoundRadius(dp(14));
@@ -1665,6 +1702,7 @@ public class ReactionsLayoutInBubble {
     public void animateReaction(VisibleReaction reaction) {
         if (reaction.documentId == 0 && animatedReactions.get(reaction) == null) {
             ImageReceiver imageReceiver = new ImageReceiver();
+            imageReceiver.setCurrentAccount(currentAccount);
             imageReceiver.setParentView(parentView);
             imageReceiver.setUniqKeyPrefix(Integer.toString(animationUniq++));
             TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(reaction.emojicon);

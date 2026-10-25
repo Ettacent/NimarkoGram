@@ -11,7 +11,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.view.View;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.BoundedPackIconRenderer;
 public class PaintDoneView extends View {
@@ -57,7 +57,7 @@ public class PaintDoneView extends View {
     }
     private boolean drawPackGlyphs(Canvas canvas) {
         if (paint.getXfermode() != null || progress < 0f || progress > 1f) return false;
-        final NimarkoIconResources.NavigationIcons batch = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons batch = IconResources.activeNavigationIcons();
         if (!packCheck.prepare(batch, R.drawable.ic_ab_done)
                 || !packAdd.prepare(batch, R.drawable.msg_add)) return false;
         final float x1 = dp(lerp(-6.7f, -7, progress)), y1 = dp(lerp(.71f, 0, progress));

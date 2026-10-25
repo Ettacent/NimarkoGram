@@ -7,8 +7,8 @@ import android.content.res.Resources;
 
 import org.telegram.messenger.web.R;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 
 final class SmsIconPackResources {
     private SmsIconPackResources() {}
@@ -18,12 +18,12 @@ final class SmsIconPackResources {
             return source;
         }
         Resources resources = context.getResources();
-        if (!(resources instanceof NimarkoIconResources)) {
+        if (!(resources instanceof IconResources)) {
             return source;
         }
-        int selection = ((NimarkoIconResources) resources).getAppliedSelection();
-        boolean liquid = selection == NimarkoConfig.ICON_REPLACE_LIQUID_GLASS;
-        if (!liquid && selection != NimarkoConfig.ICON_REPLACE_PLUMPY) {
+        int selection = ((IconResources) resources).getAppliedSelection();
+        boolean liquid = selection == AppConfig.ICON_REPLACE_LIQUID_GLASS;
+        if (!liquid && selection != AppConfig.ICON_REPLACE_PLUMPY) {
             return source;
         }
         if (source == R.drawable.large_sms_code) {

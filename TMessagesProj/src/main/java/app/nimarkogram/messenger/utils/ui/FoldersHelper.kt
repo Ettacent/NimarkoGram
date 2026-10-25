@@ -1,6 +1,5 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
 package app.nimarkogram.messenger.utils.ui
 
 import android.content.Context
@@ -8,7 +7,7 @@ import android.graphics.RectF
 import android.os.Build
 import android.view.ViewGroup
 import androidx.annotation.RequiresApi
-import app.nimarkogram.messenger.utils.folders.NimarkoFoldersHelper
+import app.nimarkogram.messenger.utils.folders.FoldersHelper
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.Components.FilterTabsView
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory
@@ -59,21 +58,22 @@ object FoldersHelper {
 
     }
 
+
     fun getFolderColor(folderId: Int, defaultColor: Int): Int =
-        NimarkoFoldersHelper.getFolderColor(folderId, defaultColor)
+        FoldersHelper.getFolderColor(folderId, defaultColor)
 
     fun setFolderColor(folderId: Int, color: Int) =
-        NimarkoFoldersHelper.setFolderColor(folderId, color)
+        FoldersHelper.setFolderColor(folderId, color)
 
     fun getFolderBadgeMode(folderId: Int): Int =
-        NimarkoFoldersHelper.getFolderBadgeMode(folderId)
+        FoldersHelper.getFolderBadgeMode(folderId)
 
     fun setFolderBadgeMode(folderId: Int, mode: Int) =
-        NimarkoFoldersHelper.setFolderBadgeMode(folderId, mode)
+        FoldersHelper.setFolderBadgeMode(folderId, mode)
 
     fun nextFolderId(accountNum: Int, currentId: Int, direction: Int): Int =
-        NimarkoFoldersHelper.nextFolderId(accountNum, currentId, direction)
+        FoldersHelper.nextFolderId(accountNum, currentId, direction)
 
     fun shouldShowDot(folderId: Int, rawCount: Int): Boolean =
-        NimarkoFoldersHelper.shouldShowDot(folderId, rawCount)
+        FoldersHelper.shouldShowDot(folderId, rawCount)
 }

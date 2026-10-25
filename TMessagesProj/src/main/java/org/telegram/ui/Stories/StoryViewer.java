@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Stories;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -1762,7 +1762,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
 
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 final OnBackInvokedDispatcher dispatcher = windowView.findOnBackInvokedDispatcher();
                 if (dispatcher != null) {
@@ -2408,11 +2408,11 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void acquireBannerOverlay() {
-        if (bannerOverlayPaused || !app.nimarkogram.messenger.banners.NimarkoBannerConfig.enabled) {
+        if (bannerOverlayPaused || !app.nimarkogram.messenger.banners.BannerConfig.enabled) {
             return;
         }
         try {
-            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayOpen(this);
+            app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onOverlayOpen(this);
             bannerOverlayPaused = true;
         } catch (Throwable ignored) {
         }
@@ -2424,7 +2424,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         }
         bannerOverlayPaused = false;
         try {
-            app.nimarkogram.messenger.banners.NimarkoBannerRenderer.getInstance().onOverlayClose(this);
+            app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onOverlayClose(this);
         } catch (Throwable ignored) {
         }
     }
@@ -3402,7 +3402,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             fragment.getLayoutContainer().addView(windowView);
         } else {
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
         }
 
         if (pipLiveView != null) {

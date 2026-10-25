@@ -67,6 +67,12 @@ public class CreateBotAlert {
         BulletinFactory bulletinFactory,
         boolean inWebApp
     ) {
+        if (!AndroidUtilities.isActivityRunning(AndroidUtilities.findActivity(context))) {
+            if (onCreated != null) {
+                onCreated.run(null);
+            }
+            return;
+        }
         if (!bot.bot_can_manage_bots) {
             if (bulletinFactory == null) {
                 final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();

@@ -55,13 +55,13 @@ import java.util.ArrayList;
 
 public class ExternalActionActivity extends Activity implements INavigationLayout.INavigationLayoutDelegate {
 
-    private app.nimarkogram.messenger.icons.NimarkoActivityIconResources nmIconResources;
+    private app.nimarkogram.messenger.icons.ActivityIconResources nmIconResources;
 
     @Override
     public synchronized Resources getResources() {
         Resources base = super.getResources();
         if (nmIconResources == null) {
-            nmIconResources = new app.nimarkogram.messenger.icons.NimarkoActivityIconResources();
+            nmIconResources = new app.nimarkogram.messenger.icons.ActivityIconResources();
         }
         return nmIconResources.getResources(base);
     }

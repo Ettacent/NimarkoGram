@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -16,6 +17,9 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.TLObject;
+import org.telegram.tgnet.RequestDelegate;
+import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.messenger.UserConfig;
 
 import java.io.IOException;
@@ -26,11 +30,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 
 public abstract class BaseTranslator {
 
@@ -39,6 +45,65 @@ public abstract class BaseTranslator {
     protected String token;
     protected int account;
 
+    protected TranslationTask translationTask;
+
+    public static final class TranslationTask {
+        private final int account;
+        private final long owner;
+        private boolean cancelled;
+        private ConnectionsManager requestManager;
+        private int requestId;
+
+        public TranslationTask(int account) {
+            this(account, UserConfig.getInstance(account).getClientUserId());
+        }
+
+        public TranslationTask(int account, long owner) {
+            this.account = account;
+            this.owner = owner;
+        }
+
+        public synchronized void cancel() {
+            cancelled = true;
+            if (requestManager != null && requestId != 0) {
+                requestManager.cancelRequest(requestId, true);
+            }
+            clearRequest();
+        }
+
+        synchronized void checkActive() {
+            if (cancelled || owner == 0 || !UserConfig.getInstance(account).isClientActivated()
+                    || UserConfig.getInstance(account).getClientUserId() != owner) {
+                cancel();
+                throw new CancellationException("Translation owner is no longer active");
+            }
+        }
+
+        boolean await(CountDownLatch latch, long timeout, TimeUnit unit) throws InterruptedException {
+            long deadline = System.nanoTime() + unit.toNanos(timeout);
+            while (true) {
+                checkActive();
+                long remaining = deadline - System.nanoTime();
+                if (remaining <= 0) return false;
+                if (latch.await(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(100)), TimeUnit.NANOSECONDS)) {
+                    checkActive();
+                    return true;
+                }
+            }
+        }
+
+        synchronized void sendRequest(TLObject request, RequestDelegate callback) {
+            checkActive();
+            requestManager = ConnectionsManager.getInstance(account);
+            requestId = requestManager.sendRequestSync(request, callback, null, null, 0,
+                    ConnectionsManager.DEFAULT_DATACENTER_ID, ConnectionsManager.ConnectionTypeGeneric, true);
+        }
+
+        synchronized void clearRequest() {
+            requestId = 0;
+            requestManager = null;
+        }
+    }
     protected abstract Result singleTranslate(Object query, String tl) throws Exception;
 
     protected ArrayList<Result> multiTranslate(ArrayList<Object> translations, String tl) throws Exception {
@@ -52,7 +117,7 @@ public abstract class BaseTranslator {
                 @Override
                 public void run() {
                     if (exception.get() == null) {
-                        
+
                         for (int k = 0; k < 4 * 60; k++) {
                             try {
                                 results.set(j, preProcessTranslation(translations.get(j), tl));
@@ -109,7 +174,7 @@ public abstract class BaseTranslator {
     protected Result preProcessTranslation(Object query, String toLang) throws Exception {
         Pair<Object, String> key = new Pair<>(query, toLang);
         final Result cacheRes;
-        
+
         synchronized (cache) {
             cacheRes = cache.get(key);
         }
@@ -134,21 +199,40 @@ public abstract class BaseTranslator {
     }
 
     public void startTask(ArrayList<Object> translations, String toLang, Translator.MultiTranslateCallBack translateCallBack, String token, int account) {
+        startTask(translations, toLang, translateCallBack, token, account, new TranslationTask(account));
+    }
+
+    public void startTask(ArrayList<Object> translations, String toLang, Translator.MultiTranslateCallBack translateCallBack, String token, int account, TranslationTask task) {
+        if (task == null || task.account != account) throw new IllegalArgumentException("Translation account mismatch");
         new Thread() {
             @Override
             public void run() {
                 try {
                     final ArrayList<Result> results;
-                    
+
                     synchronized (BaseTranslator.this) {
+                        task.checkActive();
                         BaseTranslator.this.account = account;
                         BaseTranslator.this.token = token;
+                        BaseTranslator.this.translationTask = task;
                         results = multiTranslate(translations, toLang);
+                        task.checkActive();
                     }
-                    AndroidUtilities.runOnUIThread(() -> translateCallBack.onSuccess(null, results));
+                    AndroidUtilities.runOnUIThread(() -> {
+                        try {
+                            task.checkActive();
+                        } catch (CancellationException e) {
+                            translateCallBack.onSuccess(e, null);
+                            return;
+                        }
+                        translateCallBack.onSuccess(null, results);
+                    });
                 } catch (Exception e) {
+                    task.cancel();
+                    if (!(e instanceof CancellationException)) {
                     e.printStackTrace();
                     FileLog.e(e, false);
+                    }
                     AndroidUtilities.runOnUIThread(() -> translateCallBack.onSuccess(e, null));
                 }
             }
@@ -180,11 +264,11 @@ public abstract class BaseTranslator {
     }
 
     public String getCurrentTargetLanguage() {
-        return getTargetLanguage(NimarkoConfig.translationTarget);
+        return getTargetLanguage(AppConfig.translationTarget);
     }
 
     public String getCurrentTargetKeyboardLanguage() {
-        return getTargetLanguage(NimarkoConfig.translationKeyboardTarget);
+        return getTargetLanguage(AppConfig.translationKeyboardTarget);
     }
 
     public static class Http429Exception extends IOException {

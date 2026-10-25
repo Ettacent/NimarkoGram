@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3.drawable.color.impl;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -23,7 +25,7 @@ public class BlurredBackgroundProviderImpl {
         if (!LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)) {
             return 0.76f;
         }
-        if (!app.nimarkogram.messenger.NimarkoConfig.enhancedGlassBlur
+        if (!app.nimarkogram.messenger.AppConfig.enhancedGlassBlur
                 || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
                 || !SharedConfig.chatBlurEnabled()) {
             return 0.85f;

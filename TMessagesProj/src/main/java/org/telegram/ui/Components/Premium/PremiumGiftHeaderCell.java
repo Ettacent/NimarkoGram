@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import android.content.Context;
@@ -37,7 +39,7 @@ public class PremiumGiftHeaderCell extends LinearLayout {
 
         avatarDrawable = new AvatarDrawable();
         avatarImageView = new BackupImageView(context);
-        avatarImageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(100));
+        avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(100));
         addView(avatarImageView, LayoutHelper.createLinear(100, 100, Gravity.CENTER_HORIZONTAL, 0, 28, 0, 0));
 
         titleView = new TextView(context);

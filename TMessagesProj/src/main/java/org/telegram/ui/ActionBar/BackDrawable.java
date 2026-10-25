@@ -39,7 +39,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 public class BackDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -151,7 +151,7 @@ public class BackDrawable extends Drawable {
         updateRotation(SystemClock.uptimeMillis());
         if (currentRotation != finalRotation) invalidateSelf();
         final int tint = ColorUtils.blendARGB(color, rotatedColor, currentRotation);
-        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
+        final IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
         if (icons != null && icons.close != null && !icons.close.isRecycled()
                 && (alwaysClose || icons.back != null && !icons.back.isRecycled())) {
             int packAlpha = (alpha * Color.alpha(tint) + 127) / 255;

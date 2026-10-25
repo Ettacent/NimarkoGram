@@ -12,7 +12,7 @@
 package app.nimarkogram.messenger.preferences;
 
 import android.content.res.AssetFileDescriptor;
-import app.nimarkogram.messenger.notifications.NimarkoInAppNotifications;
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import java.io.IOException;
 import org.telegram.messenger.UserConfig;
 import static org.telegram.messenger.LocaleController.getString;
@@ -56,12 +56,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.utils.NimarkoConfigBackup;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.utils.ConfigBackup;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.preferences.helpers.SettingsHelper;
 
-public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActivity {
+public class GeneralPreferencesActivity extends UniversalPreferencesActivity {
 
     @Override
     public org.telegram.ui.Components.AnimatedLinearLayout getInAppNotificationPanel() {
@@ -243,11 +243,11 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 R.drawable.msg_speed, getString(R.string.EP_NavigationAnimation), getSpringValue()));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             items.add(SettingsHelper.asSwitchCG(predictiveBackRow, getString(R.string.NM_PredictiveBackAnimation))
-                    .setChecked(NimarkoConfig.predictiveBack)
+                    .setChecked(AppConfig.predictiveBack)
             );
         }
         items.add(SettingsHelper.asSwitchCG(useSystemEmojiRow, getString(R.string.AP_SystemEmoji))
-                .setChecked(NimarkoConfig.systemEmoji)
+                .setChecked(AppConfig.systemEmoji)
         );
         items.add(asSettingsValue(tabledModeRow, IconBackgroundColors.CYAN,
                 R.drawable.msg_screencast_off, getString(R.string.AP_Tablet_Mode), getTabletModeValue()));
@@ -257,8 +257,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         items.add(UItem.asHeader(getString(R.string.InAppNotifications)));
         items.add(SettingsHelper.asSwitchCG(inAppNotificationsRow,
                 getString(R.string.NM_InAppNotifications), getString(R.string.NM_InAppNotificationsDesc))
-                .setChecked(NimarkoConfig.inAppNotifications));
-        if (NimarkoConfig.inAppNotifications) {
+                .setChecked(AppConfig.inAppNotifications));
+        if (AppConfig.inAppNotifications) {
             items.add(asSettingsValue(inAppNotificationsPreviewRow, IconBackgroundColors.BLUE,
                     R.drawable.msg_played, getString(R.string.NM_InAppNotificationsPreview), ""));
         }
@@ -267,19 +267,19 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         items.add(SettingsHelper.asSwitchCG(silenceNonContactsRow,
                         getString(R.string.NM_SilenceNonContacts),
                         getString(R.string.NM_SilenceNonContacts_Desc))
-                .setChecked(NimarkoConfig.silenceNonContacts)
+                .setChecked(AppConfig.silenceNonContacts)
         );
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             items.add(SettingsHelper.asSwitchCG(residentNotificationRow, getString(R.string.NM_ResidentNotification))
-                    .setChecked(NimarkoConfig.residentNotification)
+                    .setChecked(AppConfig.residentNotification)
             );
         }
         items.add(SettingsHelper.asSwitchCG(notificationReactionsRow,
                         getString(R.string.NM_NotificationReactions),
                         getString(R.string.NM_NotificationReactions_Desc))
-                .setChecked(NimarkoConfig.notificationReactions)
+                .setChecked(AppConfig.notificationReactions)
         );
-        if (NimarkoConfig.notificationReactions) {
+        if (AppConfig.notificationReactions) {
             if (notificationReactionCell == null) {
                 notificationReactionCell = new NotificationReactionCell(getContext());
             }
@@ -291,7 +291,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         items.add(SettingsHelper.asSwitchCG(hideStoriesRow,
                         getString(R.string.NM_HideStories),
                         getString(R.string.NM_HideStories_Desc))
-                .setChecked(NimarkoConfig.hideStories)
+                .setChecked(AppConfig.hideStories)
         );
         items.add(asSettingsLink(archiveStoriesRow, IconBackgroundColors.ORANGE,
                 R.drawable.msg_archive_stories, getString(R.string.NM_ArchiveStories),
@@ -303,10 +303,10 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 R.drawable.msg_filled_data_received,
                 getString(R.string.EP_DownloadSpeedBoost), getDownloadSpeedBoostText()));
         items.add(SettingsHelper.asSwitchCG(uploadSpeedBoostRow, getString(R.string.NM_GE_UploadSpeedBoost))
-                .setChecked(NimarkoConfig.uploadSpeedBoost)
+                .setChecked(AppConfig.uploadSpeedBoost)
         );
         items.add(SettingsHelper.asSwitchCG(slowNetworkMode, getString(R.string.EP_SlowNetworkMode))
-                .setChecked(NimarkoConfig.slowNetworkMode)
+                .setChecked(AppConfig.slowNetworkMode)
         );
     }
 
@@ -314,7 +314,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         items.add(SettingsHelper.asSwitchCG(localPremiumEmojisRow,
                         getString(R.string.NM_GEN_LocalPremiumEmoji),
                         getString(R.string.NM_GEN_LocalPremiumEmoji_Desc))
-                .setChecked(NimarkoConfig.localPremiumEmojis)
+                .setChecked(AppConfig.localPremiumEmojis)
         );
     }
 
@@ -345,16 +345,16 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             ArrayList<Integer> configValues = new ArrayList<>();
 
             configStringKeys.add(getString(R.string.EP_NavigationAnimationSpring));
-            configValues.add(NimarkoConfig.SPRING_SPRING);
+            configValues.add(AppConfig.SPRING_SPRING);
 
             configStringKeys.add(getString(R.string.EP_NavigationAnimationBezier));
-            configValues.add(NimarkoConfig.SPRING_CLASSIC);
+            configValues.add(AppConfig.SPRING_CLASSIC);
 
             configStringKeys.add(getString(R.string.NimarkoNavigationAnimationMaterial));
-            configValues.add(NimarkoConfig.SPRING_MATERIAL);
+            configValues.add(AppConfig.SPRING_MATERIAL);
 
-            PopupHelper.show(configStringKeys, getString(R.string.EP_NavigationAnimation), configValues.indexOf(NimarkoConfig.springAnimation), getContext(), i -> {
-                NimarkoConfig.setSpringAnimation(configValues.get(i));
+            PopupHelper.show(configStringKeys, getString(R.string.EP_NavigationAnimation), configValues.indexOf(AppConfig.springAnimation), getContext(), i -> {
+                AppConfig.setSpringAnimation(configValues.get(i));
                 SettingsHelper.updateButtonValue(view, getSpringValue());
 
                 listView.adapter.update(true);
@@ -362,46 +362,46 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 showRestartBulletin();
             });
         } else if (item.id == predictiveBackRow) {
-            NimarkoConfig.togglePredictiveBack();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.predictiveBack);
+            AppConfig.togglePredictiveBack();
+            SettingsHelper.updateCheckState(view, AppConfig.predictiveBack);
             showRestartBulletin();
         } else if (item.id == inAppNotificationsRow) {
-            NimarkoConfig.toggleInAppNotifications();
-            item.checked = NimarkoConfig.inAppNotifications;
-            SettingsHelper.updateCheckState(view, NimarkoConfig.inAppNotifications);
-            NimarkoInAppNotifications.dismiss();
+            AppConfig.toggleInAppNotifications();
+            item.checked = AppConfig.inAppNotifications;
+            SettingsHelper.updateCheckState(view, AppConfig.inAppNotifications);
+            InAppNotifications.dismiss();
             updateItemsAfterToggle();
         } else if (item.id == inAppNotificationsPreviewRow) {
-            NimarkoInAppNotifications.preview();
+            InAppNotifications.preview();
         } else if (item.id == silenceNonContactsRow) {
-            NimarkoConfig.toggleSilenceNonContacts();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.silenceNonContacts);
+            AppConfig.toggleSilenceNonContacts();
+            SettingsHelper.updateCheckState(view, AppConfig.silenceNonContacts);
         } else if (item.id == residentNotificationRow) {
-            NimarkoConfig.toggleResidentNotification();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.residentNotification);
+            AppConfig.toggleResidentNotification();
+            SettingsHelper.updateCheckState(view, AppConfig.residentNotification);
 
             ApplicationLoader.applicationContext.stopService(new Intent(ApplicationLoader.applicationContext, NotificationsService.class));
             ApplicationLoader.startPushService();
 
             showRestartBulletin();
         } else if (item.id == notificationReactionsRow) {
-            NimarkoConfig.toggleNotificationReactions();
-            item.checked = NimarkoConfig.notificationReactions;
-            SettingsHelper.updateCheckState(view, NimarkoConfig.notificationReactions);
+            AppConfig.toggleNotificationReactions();
+            item.checked = AppConfig.notificationReactions;
+            SettingsHelper.updateCheckState(view, AppConfig.notificationReactions);
 
             updateItemsAfterToggle();
         } else if (item.id == notificationReactionEmojiRow) {
             showNotificationReactionDialog(view);
         } else if (item.id == hideStoriesRow) {
-            NimarkoConfig.toggleHideStories();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.hideStories);
+            AppConfig.toggleHideStories();
+            SettingsHelper.updateCheckState(view, AppConfig.hideStories);
 
             showRestartBulletin();
         } else if (item.id == archiveStoriesRow) {
             showStoriesArchiveConfigurator();
         } else if (item.id == useSystemEmojiRow) {
-            NimarkoConfig.toggleSystemEmoji();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.systemEmoji);
+            AppConfig.toggleSystemEmoji();
+            SettingsHelper.updateCheckState(view, AppConfig.systemEmoji);
 
 
             showRestartBulletin();
@@ -419,31 +419,31 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
             ArrayList<Integer> configValues = new ArrayList<>();
 
             configStringKeys.add(getString(R.string.LiteBatteryDisabled));
-            configValues.add(NimarkoConfig.DL_BOOST_NONE);
+            configValues.add(AppConfig.DL_BOOST_NONE);
 
             configStringKeys.add(getString(R.string.LiteBatteryEnabled));
-            configValues.add(NimarkoConfig.DL_BOOST_AVERAGE);
+            configValues.add(AppConfig.DL_BOOST_AVERAGE);
 
             configStringKeys.add(getString(R.string.EP_DownloadSpeedBoostExtreme));
-            configValues.add(NimarkoConfig.DL_BOOST_EXTREME);
+            configValues.add(AppConfig.DL_BOOST_EXTREME);
 
-            PopupHelper.show(configStringKeys, getString(R.string.EP_DownloadSpeedBoost), configValues.indexOf(NimarkoConfig.downloadSpeedBoost), getContext(), i -> {
-                NimarkoConfig.setDownloadSpeedBoost(configValues.get(i));
+            PopupHelper.show(configStringKeys, getString(R.string.EP_DownloadSpeedBoost), configValues.indexOf(AppConfig.downloadSpeedBoost), getContext(), i -> {
+                AppConfig.setDownloadSpeedBoost(configValues.get(i));
                 SettingsHelper.updateButtonValue(view, getDownloadSpeedBoostText());
             });
         } else if (item.id == uploadSpeedBoostRow) {
-            NimarkoConfig.toggleUploadSpeedBoost();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.uploadSpeedBoost);
+            AppConfig.toggleUploadSpeedBoost();
+            SettingsHelper.updateCheckState(view, AppConfig.uploadSpeedBoost);
 
             showRestartBulletin();
         } else if (item.id == slowNetworkMode) {
-            NimarkoConfig.toggleSlowNetworkMode();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.slowNetworkMode);
+            AppConfig.toggleSlowNetworkMode();
+            SettingsHelper.updateCheckState(view, AppConfig.slowNetworkMode);
 
             showRestartBulletin();
         } else if (item.id == localPremiumEmojisRow) {
-            NimarkoConfig.toggleLocalPremiumEmojis();
-            SettingsHelper.updateCheckState(view, NimarkoConfig.localPremiumEmojis);
+            AppConfig.toggleLocalPremiumEmojis();
+            SettingsHelper.updateCheckState(view, AppConfig.localPremiumEmojis);
         } else if (item.id == exportConfigRow) {
             exportConfig();
         } else if (item.id == importConfigRow) {
@@ -457,18 +457,18 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
     }
 
     private String getSpringValue()  {
-        return switch (NimarkoConfig.springAnimation) {
-            case NimarkoConfig.SPRING_CLASSIC -> getString(R.string.EP_NavigationAnimationBezier);
-            case NimarkoConfig.SPRING_MATERIAL -> getString(R.string.NimarkoNavigationAnimationMaterial);
+        return switch (AppConfig.springAnimation) {
+            case AppConfig.SPRING_CLASSIC -> getString(R.string.EP_NavigationAnimationBezier);
+            case AppConfig.SPRING_MATERIAL -> getString(R.string.NimarkoNavigationAnimationMaterial);
             default -> getString(R.string.EP_NavigationAnimationSpring);
         };
     }
 
     private String getDownloadSpeedBoostText()  {
-        return switch (NimarkoConfig.downloadSpeedBoost) {
-            case NimarkoConfig.DL_BOOST_NONE -> getString(R.string.LiteBatteryDisabled);
-            case NimarkoConfig.DL_BOOST_AVERAGE -> getString(R.string.LiteBatteryEnabled);
-            case NimarkoConfig.DL_BOOST_EXTREME -> getString(R.string.EP_DownloadSpeedBoostExtreme);
+        return switch (AppConfig.downloadSpeedBoost) {
+            case AppConfig.DL_BOOST_NONE -> getString(R.string.LiteBatteryDisabled);
+            case AppConfig.DL_BOOST_AVERAGE -> getString(R.string.LiteBatteryEnabled);
+            case AppConfig.DL_BOOST_EXTREME -> getString(R.string.EP_DownloadSpeedBoostExtreme);
             default -> getString(R.string.LiteBatteryDisabled);
         };
     }
@@ -478,24 +478,24 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         ArrayList<Integer> configValues = new ArrayList<>();
 
         configStringKeys.add(getString(R.string.QualityAuto));
-        configValues.add(NimarkoConfig.TABLET_AUTO);
+        configValues.add(AppConfig.TABLET_AUTO);
 
         configStringKeys.add(getString(R.string.LiteBatteryEnabled));
-        configValues.add(NimarkoConfig.TABLET_ENABLE);
+        configValues.add(AppConfig.TABLET_ENABLE);
 
         configStringKeys.add(getString(R.string.LiteBatteryDisabled));
-        configValues.add(NimarkoConfig.TABLET_DISABLE);
+        configValues.add(AppConfig.TABLET_DISABLE);
 
-        PopupHelper.show(configStringKeys, getString(R.string.AP_Tablet_Mode), configValues.indexOf(NimarkoConfig.tabletMode), getContext(), i -> {
-            NimarkoConfig.setTabletMode(configValues.get(i));
+        PopupHelper.show(configStringKeys, getString(R.string.AP_Tablet_Mode), configValues.indexOf(AppConfig.tabletMode), getContext(), i -> {
+            AppConfig.setTabletMode(configValues.get(i));
             if (runnable != null) runnable.run();
         });
     }
 
     private String getTabletModeValue()  {
-        return switch (NimarkoConfig.tabletMode) {
-            case NimarkoConfig.TABLET_ENABLE -> getString(R.string.LiteBatteryEnabled);
-            case NimarkoConfig.TABLET_DISABLE -> getString(R.string.LiteBatteryDisabled);
+        return switch (AppConfig.tabletMode) {
+            case AppConfig.TABLET_ENABLE -> getString(R.string.LiteBatteryEnabled);
+            case AppConfig.TABLET_DISABLE -> getString(R.string.LiteBatteryDisabled);
             default -> getString(R.string.QualityAuto);
         };
     }
@@ -509,15 +509,15 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
         prefTitle.add(getString(R.string.FilterContacts));
         prefIcon.add(R.drawable.msg_contacts);
-        prefCheck.add(NimarkoConfig.archiveStoriesFromUsers);
+        prefCheck.add(AppConfig.archiveStoriesFromUsers);
         prefDivider.add(false);
-        clickListener.add(NimarkoConfig::toggleArchiveStoriesFromUsers);
+        clickListener.add(AppConfig::toggleArchiveStoriesFromUsers);
 
         prefTitle.add(getString(R.string.FilterChannels));
         prefIcon.add(R.drawable.msg_channel);
-        prefCheck.add(NimarkoConfig.archiveStoriesFromChannels);
+        prefCheck.add(AppConfig.archiveStoriesFromChannels);
         prefDivider.add(false);
-        clickListener.add(NimarkoConfig::toggleArchiveStoriesFromChannels);
+        clickListener.add(AppConfig::toggleArchiveStoriesFromChannels);
 
         PopupHelper.showSwitchAlert(
                 getString(R.string.NM_ArchiveStories),
@@ -556,8 +556,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     schedulePremiumReactionBulletin();
                     return;
                 }
-                NimarkoConfig.setNotificationReaction(currentAccount, "animated_" + documentId);
-                NimarkoConfig.setNotificationReactionEmoji(currentAccount, document != null ? MessageObject.getEmoji(document) : null);
+                AppConfig.setNotificationReaction(currentAccount, "animated_" + documentId);
+                AppConfig.setNotificationReactionEmoji(currentAccount, document != null ? MessageObject.getEmoji(document) : null);
                 if (notificationReactionCell != null) notificationReactionCell.update(true);
                 if (popup[0] != null) {
                     selectReactionDialog = null;
@@ -567,8 +567,8 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
 
             @Override
             protected void onReactionClick(ImageViewEmoji emoji, ReactionsLayoutInBubble.VisibleReaction reaction) {
-                NimarkoConfig.setNotificationReaction(currentAccount, reaction.emojicon);
-                NimarkoConfig.setNotificationReactionEmoji(currentAccount, reaction.emojicon);
+                AppConfig.setNotificationReaction(currentAccount, reaction.emojicon);
+                AppConfig.setNotificationReactionEmoji(currentAccount, reaction.emojicon);
                 if (notificationReactionCell != null) notificationReactionCell.update(true);
                 if (popup[0] != null) {
                     selectReactionDialog = null;
@@ -576,7 +576,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                 }
             }
         };
-        String selectedReaction = NimarkoConfig.getNotificationReaction(currentAccount);
+        String selectedReaction = AppConfig.getNotificationReaction(currentAccount);
         if (selectedReaction != null && selectedReaction.startsWith("animated_")) {
             try {
                 popupLayout.setSelected(Long.parseLong(selectedReaction.substring(9)));
@@ -653,7 +653,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         Uri uri = data.getData();
         if (requestCode == REQ_EXPORT_CONFIG) {
             try (OutputStream os = parentActivity.getContentResolver().openOutputStream(uri)) {
-                os.write(NimarkoConfigBackup.exportJson().getBytes(StandardCharsets.UTF_8));
+                os.write(ConfigBackup.exportJson().getBytes(StandardCharsets.UTF_8));
                 os.flush();
                 Toast.makeText(context, getString(R.string.NM_Config_Exported), Toast.LENGTH_SHORT).show();
             } catch (Throwable t) {
@@ -680,7 +680,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
                     total += n;
                 }
                 String json = new String(bos.toByteArray(), StandardCharsets.UTF_8);
-                if (NimarkoConfigBackup.looksLikeBackup(json) && NimarkoConfigBackup.importJson(json)) {
+                if (ConfigBackup.looksLikeBackup(json) && ConfigBackup.importJson(json)) {
                     showRestartBulletin();
                 } else {
                     Toast.makeText(context, getString(R.string.NM_Config_ImportEmpty), Toast.LENGTH_SHORT).show();
@@ -708,7 +708,7 @@ public class GeneralPreferencesActivity extends NimarkoUniversalPreferencesActiv
         }
 
         void update(boolean animated) {
-            String r = NimarkoConfig.getNotificationReaction(currentAccount);
+            String r = AppConfig.getNotificationReaction(currentAccount);
             if (r == null || r.isEmpty()) {
                 r = getMediaDataController().getDoubleTapReaction();
             }

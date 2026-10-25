@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -210,7 +212,7 @@ public class WebviewActivity extends BaseFragment {
         }
 
         AndroidUtilities.checkAndroidTheme(context, true);
-        webView = new WebView(context);
+        webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context));
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
 

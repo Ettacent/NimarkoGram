@@ -56,6 +56,8 @@ import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
 import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AnimatedTextView;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
+import app.nimarkogram.messenger.icons.IconResources;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.ItemOptions;
@@ -1037,6 +1039,9 @@ public class WebActionBar extends FrameLayout {
 
     public class ForwardDrawable extends Drawable {
 
+        private final BoundedPackIconRenderer forwardRenderer = new BoundedPackIconRenderer();
+        private final BoundedPackIconRenderer collapseRenderer = new BoundedPackIconRenderer();
+        private int alpha = 255;
         private final Path path = new Path();
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); {
             paint.setStyle(Paint.Style.STROKE);
@@ -1058,6 +1063,24 @@ public class WebActionBar extends FrameLayout {
             final float cx = getBounds().centerX(), cy = getBounds().centerY();
             final float w = getBounds().width(), aw = w * 0.57f;
 
+            IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+            boolean forwardReady = forwardRenderer.prepare(icons, R.drawable.ic_ab_back);
+            boolean collapseReady = collapseRenderer.prepare(icons, R.drawable.arrow_more);
+            if (forwardReady && collapseReady) {
+                int save = canvas.save();
+                if (alpha != 255) canvas.saveLayerAlpha(getBounds().left, getBounds().top,
+                        getBounds().right, getBounds().bottom, alpha);
+                canvas.translate(cx, cy - w * 0.10f * state);
+                canvas.rotate(90f * state);
+                canvas.save();
+                canvas.rotate(180f);
+                forwardRenderer.draw(canvas, paint, 0, 0, aw + dp(2), w * .54f + dp(2), 1f - state, false);
+                canvas.restore();
+                canvas.rotate(-90f);
+                collapseRenderer.draw(canvas, paint, 0, 0, w * .54f + dp(2), w * .27f + dp(2), state, false);
+                canvas.restoreToCount(save);
+                return;
+            }
             path.rewind();
             path.moveTo(cx - lerp(aw / 2f, -aw / 2f, state), cy);
             path.lineTo(cx + aw / 2f, cy);
@@ -1065,12 +1088,14 @@ public class WebActionBar extends FrameLayout {
             path.lineTo(cx + aw / 2f, cy);
             path.lineTo(cx + aw / 2f - w * .27f, cy + w * .54f / 2f);
 
-            canvas.save();
+            int save = canvas.save();
+            if (alpha != 255) canvas.saveLayerAlpha(getBounds().left, getBounds().top,
+                    getBounds().right, getBounds().bottom, alpha);
             paint.setStrokeWidth(dp(2));
             canvas.translate(0, -w * 0.10f * state);
             canvas.rotate(90 * state, cx, cy);
             canvas.drawPath(path, paint);
-            canvas.restore();
+            canvas.restoreToCount(save);
         }
 
         public void setColor(int color) {
@@ -1081,11 +1106,20 @@ public class WebActionBar extends FrameLayout {
         @Override
         public void setAlpha(int alpha) {
 
+            this.alpha = Math.max(0, Math.min(255, alpha));
+            invalidateSelf();
+        }
+
+        @Override
+        public int getAlpha() {
+            return alpha;
         }
 
         @Override
         public void setColorFilter(@Nullable ColorFilter colorFilter) {
 
+            paint.setColorFilter(colorFilter);
+            invalidateSelf();
         }
 
         @Override

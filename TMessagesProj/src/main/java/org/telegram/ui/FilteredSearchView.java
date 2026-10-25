@@ -94,7 +94,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.icons.IconResources;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
@@ -327,6 +327,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
                 return super.drawChild(canvas, child, drawingTime);
             }
         };
+        recyclerListView.setRoundedPressFeedback(true);
         recyclerListView.setOnItemClickListener((view, position) -> {
             if (view instanceof SharedDocumentCell) {
                 FilteredSearchView.this.onItemClick(position, view, ((SharedDocumentCell) view).getMessage(), 0);
@@ -485,8 +486,8 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
         final Context context = ApplicationLoader.applicationContext;
         final Resources resources = context.getResources();
         final int density = resources.getDisplayMetrics().densityDpi;
-        final long generation = resources instanceof NimarkoIconResources
-                ? ((NimarkoIconResources) resources).getReplacementGeneration() : -1L;
+        final long generation = resources instanceof IconResources
+                ? ((IconResources) resources).getReplacementGeneration() : -1L;
         final boolean dark = Theme.isCurrentThemeDark();
         if (arrowResources != resources || arrowGeneration != generation || arrowDensity != density || arrowDark != dark) {
             arrowSpan = new SpannableStringBuilder[3];
@@ -1605,7 +1606,7 @@ public class FilteredSearchView extends FrameLayout implements NotificationCente
     }
 
     int lastAccount;
-    
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -51,7 +53,7 @@ public class AccountSelectCell extends FrameLayout {
         avatarDrawable.setTextSize(dp(12));
 
         imageView = new BackupImageView(context);
-        imageView.setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(36));
+        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(36));
         addView(imageView, LayoutHelper.createFrame(36, 36, Gravity.LEFT | Gravity.TOP, 10, 10, 0, 0));
 
         textView = new SimpleTextView(context);

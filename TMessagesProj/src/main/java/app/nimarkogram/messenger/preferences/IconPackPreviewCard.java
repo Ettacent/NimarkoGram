@@ -36,7 +36,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 
 import java.util.ArrayList;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.icons.icon_replaces.BaseIconReplace;
 import app.nimarkogram.messenger.icons.icon_replaces.LiquidGlassFullReplace;
 import app.nimarkogram.messenger.icons.icon_replaces.PlumpyFullReplace;
@@ -409,12 +409,12 @@ public final class IconPackPreviewCard extends LinearLayout {
         } else {
             themeBindings.add(() -> {
                 int tint = onSendBackground
-                        ? MonetHelper.ensureReadableForeground(MonetHelper.getOnPrimaryColor(Color.WHITE), color(tintKey))
+                        ? MonetHelper.ensureReadableIconForeground(MonetHelper.getOnPrimaryColor(Color.WHITE), color(tintKey))
                         : color(tintKey);
                 if (packSample && replacement != null && stockId == R.drawable.ic_send) {
                     int surface = ColorUtils.blendARGB(color(Theme.key_chat_messagePanelBackground),
                             color(Theme.key_chat_messagePanelSend), 0.12f);
-                    tint = MonetHelper.ensureReadableForeground(tint, surface);
+                    tint = MonetHelper.ensureReadableIconForeground(tint, surface);
                 }
                 ownedDrawable.setColorFilter(new PorterDuffColorFilter(tint, PorterDuff.Mode.SRC_IN));
             });
@@ -520,13 +520,13 @@ public final class IconPackPreviewCard extends LinearLayout {
 
     private static BaseIconReplace replacementFor(int value) {
         switch (value) {
-            case NimarkoConfig.ICON_REPLACE_SOLAR:
+            case AppConfig.ICON_REPLACE_SOLAR:
                 return new SolarIconReplace();
-            case NimarkoConfig.ICON_REPLACE_LIQUID_GLASS:
+            case AppConfig.ICON_REPLACE_LIQUID_GLASS:
                 return new LiquidGlassFullReplace();
-            case NimarkoConfig.ICON_REPLACE_PLUMPY:
+            case AppConfig.ICON_REPLACE_PLUMPY:
                 return new PlumpyFullReplace();
-            case NimarkoConfig.ICON_REPLACE_NONE:
+            case AppConfig.ICON_REPLACE_NONE:
             default:
                 return null;
         }

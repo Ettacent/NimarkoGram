@@ -24,7 +24,7 @@ import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.DialogsActivity;
 
-import app.nimarkogram.messenger.security.NimarkoBiometricPrompt;
+import app.nimarkogram.messenger.security.AppBiometricPrompt;
 import app.nimarkogram.messenger.utils.LockedChats;
 
 public class LockedChatsPreferencesActivity extends BasePreferencesActivity implements NotificationCenter.NotificationCenterDelegate {
@@ -170,7 +170,7 @@ public class LockedChatsPreferencesActivity extends BasePreferencesActivity impl
                 showAuthenticationRequired();
                 return;
             }
-            NimarkoBiometricPrompt.prompt(getParentActivity(), account, () -> {
+            AppBiometricPrompt.prompt(getParentActivity(), account, () -> {
                 if (!LockedChats.setLocked(account, ownerUid, did, false)) return;
                 if (listView != null && listView.adapter != null) listView.adapter.update(true);
             }, this::showAuthenticationRequired);

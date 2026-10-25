@@ -2,13 +2,13 @@
 
 package app.nimarkogram.messenger.wsbypass.voip;
 
-import app.nimarkogram.messenger.wsbypass.NimarkoVpnDetector;
+import app.nimarkogram.messenger.wsbypass.VpnDetector;
 import org.telegram.messenger.UserConfig;
 import android.content.SharedPreferences;
 
 import java.net.InetAddress;
 
-import app.nimarkogram.messenger.wsbypass.NimarkoWsBypassConfig;
+import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 
 import app.nimarkogram.messenger.wsbypass.RelayRegion;
 public final class VoipBypassConfig {
@@ -70,13 +70,13 @@ public final class VoipBypassConfig {
 
     public static boolean isDataBypassEnabled() {
         synchronized (RELAY_STATE_LOCK) {
-            return NimarkoWsBypassConfig.enabled;
+            return WsBypassConfig.enabled;
         }
     }
 
     public static boolean isSuspendOnVpnEnabled() {
         synchronized (RELAY_STATE_LOCK) {
-            return NimarkoWsBypassConfig.suspendOnVpn;
+            return WsBypassConfig.suspendOnVpn;
         }
     }
 
@@ -94,14 +94,14 @@ public final class VoipBypassConfig {
 
     public static boolean isVoipRelayRequiredFresh() {
         synchronized (RELAY_STATE_LOCK) {
-            return NimarkoWsBypassConfig.enabled
+            return WsBypassConfig.enabled
                     && isVoipBypassEnabledLocked()
                     && !vpnSuspendsRelayLocked(true);
         }
     }
 
     private static boolean isVoipBypassEnabledLocked() {
-        SharedPreferences p = NimarkoWsBypassConfig.prefs();
+        SharedPreferences p = WsBypassConfig.prefs();
         if (!p.getBoolean(KEY_VOIP_BYPASS_CONFIGURED, false)) {
             p.edit()
                     .putBoolean(KEY_VOIP_BYPASS_CONFIGURED, true)
@@ -114,7 +114,7 @@ public final class VoipBypassConfig {
 
     public static void setVoipBypassEnabled(boolean v) {
         mutateRelayState(() -> {
-            SharedPreferences preferences = NimarkoWsBypassConfig.prefs();
+            SharedPreferences preferences = WsBypassConfig.prefs();
             boolean changed = !preferences.getBoolean(KEY_VOIP_BYPASS_CONFIGURED, false)
                     || preferences.getBoolean(KEY_VOIP_BYPASS_ENABLED, true) != v;
             preferences.edit()
@@ -154,20 +154,20 @@ public final class VoipBypassConfig {
     }
 
     private static boolean relayRequiredLocked() {
-        return NimarkoWsBypassConfig.enabled
+        return WsBypassConfig.enabled
                 && isVoipBypassEnabledLocked()
                 && !vpnSuspendsRelayLocked(false);
     }
 
     private static boolean dataBypassRequiredLocked(boolean freshVpnState) {
-        return NimarkoWsBypassConfig.enabled && !vpnSuspendsRelayLocked(freshVpnState);
+        return WsBypassConfig.enabled && !vpnSuspendsRelayLocked(freshVpnState);
     }
 
     private static boolean vpnSuspendsRelayLocked(boolean freshVpnState) {
-        if (!NimarkoWsBypassConfig.suspendOnVpn) return false;
+        if (!WsBypassConfig.suspendOnVpn) return false;
         return freshVpnState
-                ? NimarkoVpnDetector.isVpnActiveFresh()
-                : NimarkoVpnDetector.isVpnActive();
+                ? VpnDetector.isVpnActiveFresh()
+                : VpnDetector.isVpnActive();
     }
 
     private static final String[] TELEGRAM_REFLECTOR_CIDRS = {
@@ -184,7 +184,7 @@ public final class VoipBypassConfig {
             long base = ipv4ToLong(cidrs[i].substring(0, slash));
             int prefix = Integer.parseInt(cidrs[i].substring(slash + 1));
             long mask = prefix == 0 ? 0L : (0xFFFFFFFFL << (32 - prefix)) & 0xFFFFFFFFL;
-            out[i][0] = base & mask;   
+            out[i][0] = base & mask;
             out[i][1] = mask;
         }
         return out;

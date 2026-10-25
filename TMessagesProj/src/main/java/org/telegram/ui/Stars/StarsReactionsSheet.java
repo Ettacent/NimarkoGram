@@ -50,7 +50,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import com.google.zxing.common.detector.MathUtils;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -224,7 +224,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                     }
                 }
             }
-            peer = sendAs; 
+            peer = sendAs;
         } else {
             peer = StarsController.getInstance(currentAccount).getPaidReactionsDialogId(messageObject);
         }
@@ -1289,7 +1289,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 lerp(sliderCircleRect.left, sliderCircleRect.right, roundedValue),
                 lerp(sliderCircleRect.left + dp(9), sliderCircleRect.right - dp(9), roundedValue),
                 Math.min(Utilities.clamp01(roundedValue / slide), Utilities.clamp01((1f - roundedValue) / slide))
-            ); 
+            );
             final float textWidth = Math.max(counterSubText.getCurrentWidth() + dp(20), counterText.getCurrentWidth() + dp(24 + 26));
             final float textHeight = dp(44);
             final float left = Utilities.clamp(pointerX - textWidth / 2f, sliderInnerRect.right - textWidth - dp(4), sliderInnerRect.left + dp(4));
@@ -1427,7 +1427,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
             } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
                 if (!tracking && event.getPointerId(0) == pointerId && MathUtils.distance(lastX, lastY, event.getX(), event.getY()) < AndroidUtilities.touchSlop && System.currentTimeMillis() - pressTime <= ViewConfiguration.getTapTimeout() * 1.5f) {
                     if (!onTapCustom(event.getX(), event.getY())) {
-                        
+
                         float newProgress = Utilities.clamp01((event.getX() - sliderInnerRect.left) / (float) sliderInnerRect.width());
                         if (currentTop > 0 && Math.abs(getProgress((int) currentTop) - newProgress) < 0.035f) {
                             newProgress = Utilities.clamp01(getProgress((int) currentTop));
@@ -1589,17 +1589,17 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         private long lastTime = -1;
         private int lastClockEpoch = -1;
         private long particleTime() {
-            return lastTime >= 0 && (NimarkoUiAnimationClock.isPaused()
-                    || NimarkoUiAnimationClock.epoch() != lastClockEpoch)
-                    ? lastTime : NimarkoUiAnimationClock.now();
+            return lastTime >= 0 && (UiAnimationClock.isPaused()
+                    || UiAnimationClock.epoch() != lastClockEpoch)
+                    ? lastTime : UiAnimationClock.now();
         }
         public boolean process() {
-            if (!LiteMode.isEnabled(LiteMode.FLAG_PARTICLES) || NimarkoUiAnimationClock.isPaused()) {
+            if (!LiteMode.isEnabled(LiteMode.FLAG_PARTICLES) || UiAnimationClock.isPaused()) {
                 return false;
             }
 
-            final long now = NimarkoUiAnimationClock.now();
-            final int clockEpoch = NimarkoUiAnimationClock.epoch();
+            final long now = UiAnimationClock.now();
+            final int clockEpoch = UiAnimationClock.epoch();
             if (lastTime >= 0 && (clockEpoch != lastClockEpoch || now - lastTime > 250L)) {
                 final long elapsed = Math.max(0L, now - lastTime);
                 for (int i = 0; i < particles.size(); ++i) {
@@ -1662,7 +1662,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         static boolean isValidPoint(PointF[][] grid, int width, int height, float cellsize,
                                     int gwidth, int gheight,
                                     PointF p, float radius) {
-             
+
             final int gp = dp(15) / 2;
             if ((p.x < gp) || (p.x >= (width - gp)) || (p.y < gp) || (p.y >= (height - gp)))
                 return false;
@@ -1691,11 +1691,11 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
 
         private static ArrayList<PointF> poissonDiskSampling(float radius, int width, int height, int k) {
             int N = 2;
-             
+
             ArrayList<PointF> points = new ArrayList<PointF>();
-             
+
             ArrayList<PointF> active = new ArrayList<PointF>();
-             
+
             PointF p0 = new PointF(
                 lerp(0, width, Utilities.fastRandom.nextFloat()),
                 lerp(0, height, Utilities.fastRandom.nextFloat())
@@ -1758,7 +1758,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
             final int particlesCount = Math.min(visibleCount, particles.size());
             final boolean useBatchRender = batchParticlesBuffer != null;
             if (useBatchRender) {
-                
+
                 final int batchCount = Math.min(batchParticlesBuffer.vertexCount, particlesCount);
                 final float bWidth = b.getWidth();
                 final float bHeight = b.getHeight();
@@ -1932,7 +1932,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         }
 
         public void setSenders(ArrayList<SenderData> senders) {
-            
+
             for (int i = 0; i < this.senders.size(); ++i) {
                 Sender sender = this.senders.get(i);
                 SenderData senderData = null;

@@ -604,7 +604,7 @@ public class AvatarDrawable extends Drawable {
             } else {
                 // NG avatar-corners: letter avatars follow the global setting so they
                 // match photo avatars (a circle at max, rounded-square below it).
-                int avc = app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size, true);
+                int avc = app.nimarkogram.messenger.AppConfig.getAvatarCorners(size, true);
                 AndroidUtilities.rectTmp.set(0, 0, size, size);
                 canvas.drawRoundRect(AndroidUtilities.rectTmp, avc, avc, backgroundPaint);
             }
@@ -789,7 +789,7 @@ public class AvatarDrawable extends Drawable {
         final float progress = Math.max(0f, Math.min(1f, archivedAvatarProgress));
         final float inset = size * (1f - progress) / 2f;
         final float radius = (roundRadius > 0 ? roundRadius
-                : app.nimarkogram.messenger.NimarkoConfig.getAvatarCorners(size, true)) * progress;
+                : app.nimarkogram.messenger.AppConfig.getAvatarCorners(size, true)) * progress;
         AndroidUtilities.rectTmp.set(inset, inset, size - inset, size - inset);
         canvas.drawRoundRect(AndroidUtilities.rectTmp, radius, radius, backgroundPaint);
     }

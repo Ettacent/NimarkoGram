@@ -430,8 +430,8 @@ public class CameraController implements MediaRecorder.OnInfoListener {
         if (sessionObject == null) {
             return false;
         }
-        if (sessionObject instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-            return ((app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) sessionObject)
+        if (sessionObject instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
+            return ((app.nimarkogram.messenger.camera.CameraXSurfaceSession) sessionObject)
                     .takePicture(path, callback);
         } else if (sessionObject instanceof CameraSession) {
             CameraSession session = (CameraSession) sessionObject;
@@ -448,9 +448,9 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                         BitmapFactory.Options options = new BitmapFactory.Options();
                         options.inJustDecodeBounds = true;
                         BitmapFactory.decodeByteArray(data, 0, data.length, options);
-                        
+
                         options.inJustDecodeBounds = false;
-                        
+
                         options.inPurgeable = true;
                         bitmap = BitmapFactory.decodeByteArray(data, 0, data.length, options);
                     } catch (Throwable e) {
@@ -685,8 +685,8 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                 ((CameraSession) request.session).stopVideoRecording();
             } else if (request.session instanceof Camera2Session) {
                 ((Camera2Session) request.session).setRecordingVideo(false);
-            } else if (request.session instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-                ((app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) request.session).enableTorch(false);
+            } else if (request.session instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
+                ((app.nimarkogram.messenger.camera.CameraXSurfaceSession) request.session).enableTorch(false);
             }
         } catch (Exception e) {
             FileLog.e(e);
@@ -798,9 +798,9 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                     } else if (sessionObject instanceof Camera2Session) {
                         Camera2Session session = (Camera2Session) sessionObject;
                         session.setRecordingVideo(true);
-                    } else if (sessionObject instanceof app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) {
-                        app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession session =
-                                (app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) sessionObject;
+                    } else if (sessionObject instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
+                        app.nimarkogram.messenger.camera.CameraXSurfaceSession session =
+                                (app.nimarkogram.messenger.camera.CameraXSurfaceSession) sessionObject;
                         session.enableTorch(Camera.Parameters.FLASH_MODE_ON.equals(
                                 session.getCurrentFlashMode()));
                     }

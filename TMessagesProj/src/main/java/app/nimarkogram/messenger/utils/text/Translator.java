@@ -1,3 +1,4 @@
+
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -23,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Locale;
 
-import app.nimarkogram.messenger.NimarkoConfig;
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.preferences.helpers.PopupHelper;
 import app.nimarkogram.messenger.utils.ResourcesUtils;
 
@@ -50,12 +51,12 @@ public class Translator {
         targetLanguages.add(0, "app");
         names.add(0, getString(R.string.Default));
 
-        String currentTarget = isKeyboard ? NimarkoConfig.translationKeyboardTarget : NimarkoConfig.translationTarget;
+        String currentTarget = isKeyboard ? AppConfig.translationKeyboardTarget : AppConfig.translationTarget;
         PopupHelper.show(names, getString(R.string.TranslationTarget), targetLanguages.indexOf(currentTarget), context, i -> {
             if (isKeyboard) {
-                NimarkoConfig.setTranslationKeyboardTarget(targetLanguages.get(i));
+                AppConfig.setTranslationKeyboardTarget(targetLanguages.get(i));
             } else {
-                NimarkoConfig.setTranslationTarget(targetLanguages.get(i));
+                AppConfig.setTranslationTarget(targetLanguages.get(i));
             }
             callback.run();
         });
@@ -67,6 +68,10 @@ public class Translator {
 
     public static String translate(Object query, boolean isKeyboard, int account, TranslateCallBack translateCallBack) {
         return translate(new ArrayList<>(Collections.singletonList(query)), isKeyboard, account, singleTranslateCallback(translateCallBack));
+    }
+
+    public static String translate(Object query, boolean isKeyboard, int account, BaseTranslator.TranslationTask task, TranslateCallBack translateCallBack) {
+        return translate(new ArrayList<>(Collections.singletonList(query)), isKeyboard, account, task, singleTranslateCallback(translateCallBack));
     }
 
     private static MultiTranslateCallBack singleTranslateCallback(TranslateCallBack callBack) {
@@ -84,13 +89,17 @@ public class Translator {
     }
 
     public static String translate(ArrayList<Object> translations, boolean isKeyboard, int account, MultiTranslateCallBack translateCallBack) {
+        return translate(translations, isKeyboard, account, new BaseTranslator.TranslationTask(account), translateCallBack);
+    }
+
+    public static String translate(ArrayList<Object> translations, boolean isKeyboard, int account, BaseTranslator.TranslationTask task, MultiTranslateCallBack translateCallBack) {
         BaseTranslator translator = getCurrentTranslator();
         String language = isKeyboard ? translator.getCurrentTargetKeyboardLanguage() : translator.getCurrentTargetLanguage();
         String token = Utilities.generateRandomString();
         if (!translator.supportLanguage(language)) {
             translateCallBack.onSuccess(new UnsupportedTargetLanguageException(), null);
         } else {
-            translator.startTask(translations, language, translateCallBack, token, account);
+            translator.startTask(translations, language, translateCallBack, token, account, task);
         }
         return token;
     }

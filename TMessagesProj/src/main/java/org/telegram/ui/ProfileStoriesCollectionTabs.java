@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -152,6 +154,9 @@ public class ProfileStoriesCollectionTabs extends BlurredFrameLayout implements 
         super.onAttachedToWindow();
         NotificationCenter.getInstance(collections.currentAccount)
             .addObserver(this, NotificationCenter.storyAlbumsCollectionsUpdate);
+        if (visibilityValue == collections.collections.isEmpty() || adapter.canCreateNewAlbum != collections.canCreateNewAlbum()) {
+            onCollectionsUpdate();
+        }
     }
 
     @Override
@@ -166,6 +171,11 @@ public class ProfileStoriesCollectionTabs extends BlurredFrameLayout implements 
         if (id == NotificationCenter.storyAlbumsCollectionsUpdate) {
             if ((Long) args[0] != collections.dialogId) return;
 
+            onCollectionsUpdate();
+        }
+    }
+
+    private void onCollectionsUpdate() {
             final int tabId = tabsView != null ? tabsView.getCurrentTabId() : 0;
 
             adapter.canCreateNewAlbum = collections.canCreateNewAlbum();
@@ -185,7 +195,6 @@ public class ProfileStoriesCollectionTabs extends BlurredFrameLayout implements 
                 }
             }
         }
-    }
 
 
     public void selectTabWithId(int albumId, float progress) {

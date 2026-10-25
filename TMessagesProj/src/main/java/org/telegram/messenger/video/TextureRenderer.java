@@ -1906,6 +1906,9 @@ public class TextureRenderer {
     }
 
     public void release() {
+        if (filterShaders != null) {
+            filterShaders.releaseEnhanceBuffers();
+        }
         for (RetainedRoundFrame retained : roundFrames.values()) {
             retained.release();
         }

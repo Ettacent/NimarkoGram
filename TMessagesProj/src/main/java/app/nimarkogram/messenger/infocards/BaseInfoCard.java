@@ -53,7 +53,7 @@ import org.telegram.ui.LaunchActivity;
 import java.util.Locale;
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
 
-import app.nimarkogram.messenger.utils.NimarkoUiAnimationClock;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public abstract class BaseInfoCard extends FrameLayout {
 
     protected final Theme.ResourcesProvider resourcesProvider;
@@ -490,7 +490,7 @@ public abstract class BaseInfoCard extends FrameLayout {
     void resumeWarmValue() {
         validateWarmResumeIdentity();
         if (!warmResumePending) return;
-        if (NimarkoUiAnimationClock.isPaused()) return;
+        if (UiAnimationClock.isPaused()) return;
         warmResumePending = false;
         applyDeferredCarouselIcon();
         deferredCarouselText = false;

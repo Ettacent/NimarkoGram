@@ -94,17 +94,12 @@ public final class GLProgramCache {
             int format = input.readInt(), size = input.readInt();
             if (size <= 0 || size > MAX_BINARY_SIZE) throw new IllegalStateException("Invalid binary length");
             int[] count = new int[1];
-            GLES30.glGetIntegerv(GLES30.GL_NUM_PROGRAM_BINARY_FORMATS, count, 0);
-            int[] formats = new int[count[0]];
-            GLES30.glGetIntegerv(GLES30.GL_PROGRAM_BINARY_FORMATS, formats, 0);
-            boolean supported = false;
-            for (int candidate : formats) supported |= candidate == format;
-            if (!supported) throw new IllegalStateException("Unsupported binary format");
             byte[] data = new byte[size];
             input.readFully(data);
             if (input.read() != -1) throw new IllegalStateException("Invalid binary size");
             ByteBuffer binary = ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());
             binary.put(data).position(0);
+            while (GLES30.glGetError() != GLES30.GL_NO_ERROR) ;
             GLES30.glProgramBinary(program, format, binary, size);
             int error = GLES30.glGetError();
             GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, count, 0);

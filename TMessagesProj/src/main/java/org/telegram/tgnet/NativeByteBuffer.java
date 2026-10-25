@@ -597,6 +597,8 @@ public class NativeByteBuffer extends AbstractSerializedData {
     }
 
     public NativeByteBuffer readByteBuffer(boolean exception) {
+        NativeByteBuffer result = null;
+        boolean complete = false;
         try {
             int sl = 1;
             int l = getIntFromByte(buffer.get());
@@ -605,22 +607,23 @@ public class NativeByteBuffer extends AbstractSerializedData {
                 sl = 4;
             }
 
-            if (l > remaining() || l < 0) {
+            int padding = (4 - ((l + sl) & 3)) & 3;
+            if (l < 0 || l > remaining() || padding > remaining() - l) {
                 throw new RuntimeException("byte array size too big");
             }
 
-            NativeByteBuffer b = new NativeByteBuffer(l);
+            result = new NativeByteBuffer(l);
             int old = buffer.limit();
+            try {
             buffer.limit(buffer.position() + l);
-            b.buffer.put(buffer);
+                result.buffer.put(buffer);
+            } finally {
             buffer.limit(old);
-            b.buffer.position(0);
-            int i = sl;
-            while ((l + i) % 4 != 0) {
-                buffer.get();
-                i++;
             }
-            return b;
+            result.buffer.position(0);
+            buffer.position(buffer.position() + padding);
+            complete = true;
+            return result;
         } catch (Exception e) {
             if (exception) {
                 throw new RuntimeException("read byte array error", e);
@@ -629,6 +632,10 @@ public class NativeByteBuffer extends AbstractSerializedData {
                     FileLog.e("read byte array error");
                     FileLog.e(e);
                 }
+            }
+        } finally {
+            if (!complete && result != null) {
+                result.reuse();
             }
         }
         return null;

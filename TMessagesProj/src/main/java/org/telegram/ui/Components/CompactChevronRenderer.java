@@ -14,8 +14,8 @@ import android.graphics.RectF;
 
 import org.telegram.messenger.R;
 
-import app.nimarkogram.messenger.NimarkoConfig;
-import app.nimarkogram.messenger.icons.NimarkoIconResources;
+import app.nimarkogram.messenger.AppConfig;
+import app.nimarkogram.messenger.icons.IconResources;
 
 public final class CompactChevronRenderer {
     public static final int DOWN = 0;
@@ -40,9 +40,9 @@ public final class CompactChevronRenderer {
         if (nativePath.isEmpty() || foreground.getXfermode() != null) {
             return false;
         }
-        final NimarkoIconResources.NavigationIcons icons = NimarkoIconResources.activeNavigationIcons();
-        final NimarkoIconResources.PreparedIcon icon = icons == null
-                || icons.selection == NimarkoConfig.ICON_REPLACE_NONE
+        final IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        final IconResources.PreparedIcon icon = icons == null
+                || icons.selection == AppConfig.ICON_REPLACE_NONE
                 ? null : icons.getIcon(R.drawable.arrow_more);
         final Bitmap bitmap = icon == null ? null : icon.bitmap;
         if (bitmap != measuredBitmap) {

@@ -71,31 +71,49 @@ public class Text {
 
     private boolean drawAnimatedEmojis;
     private View parentView;
+    private View.OnAttachStateChangeListener emojiAttachListener;
     private AnimatedEmojiSpan.EmojiGroupedSpans animatedEmojis;
     private int animatedEmojisCacheType = AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES;
     private ColorFilter animatedEmojisColorFilter;
     private int animatedEmojisColorFilterColor;
     public Text supportAnimatedEmojis(View view) {
+        if (parentView == view && emojiAttachListener != null) {
+            return this;
+        }
+        detach();
         drawAnimatedEmojis = true;
         parentView = view;
-        if (view.isAttachedToWindow()) {
-            animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, view, animatedEmojis, layout);
-        }
-        view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+        emojiAttachListener = new View.OnAttachStateChangeListener() {
             @Override
             public void onViewAttachedToWindow(@NonNull View v) {
-                animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, view, animatedEmojis, layout);
+                if (parentView == v && emojiAttachListener == this) {
+                    animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, v, animatedEmojis, layout);
+                }
             }
             @Override
             public void onViewDetachedFromWindow(@NonNull View v) {
-                AnimatedEmojiSpan.release(view, animatedEmojis);
+                if (parentView == v && emojiAttachListener == this) {
+                    AnimatedEmojiSpan.release(v, animatedEmojis);
+                    animatedEmojis = null;
+                }
             }
-        });
+        };
+        view.addOnAttachStateChangeListener(emojiAttachListener);
+        if (view.isAttachedToWindow()) {
+            animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, view, animatedEmojis, layout);
+        }
         return this;
     }
 
     public void detach() {
+        if (parentView != null && emojiAttachListener != null) {
+            parentView.removeOnAttachStateChangeListener(emojiAttachListener);
+        }
+        emojiAttachListener = null;
         AnimatedEmojiSpan.release(parentView, animatedEmojis);
+        animatedEmojis = null;
+        parentView = null;
+        drawAnimatedEmojis = false;
     }
 
     public Text setEmojiCacheType(int cacheType) {
@@ -103,7 +121,10 @@ public class Text {
             animatedEmojisCacheType = cacheType;
             if (drawAnimatedEmojis) {
                 AnimatedEmojiSpan.release(parentView, animatedEmojis);
+                animatedEmojis = null;
+                if (parentView != null && parentView.isAttachedToWindow()) {
                 animatedEmojis = AnimatedEmojiSpan.update(animatedEmojisCacheType, parentView, animatedEmojis, layout);
+                }
             }
         }
         return this;

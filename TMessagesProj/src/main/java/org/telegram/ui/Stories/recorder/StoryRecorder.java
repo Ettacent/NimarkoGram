@@ -2,7 +2,7 @@
 
 package org.telegram.ui.Stories.recorder;
 
-import app.nimarkogram.messenger.utils.NimarkoAppMotionBlur;
+import app.nimarkogram.messenger.utils.AppMotionBlur;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.ilerp;
@@ -511,7 +511,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -579,7 +579,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -647,7 +647,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -713,7 +713,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -780,7 +780,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
         if (windowManager != null && windowView != null && windowView.getParent() == null) {
             AndroidUtilities.setPreferredMaxRefreshRate(windowManager, windowView, windowLayoutParams);
             windowManager.addView(windowView, windowLayoutParams);
-            NimarkoAppMotionBlur.attachRoot(windowView);
+            AppMotionBlur.attachRoot(windowView);
             setupBackDispatcher();
         }
 
@@ -3897,9 +3897,9 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
             }
             final Object photoSession = cameraView.getCameraSessionObject();
             final boolean cameraXPhoto = photoSession instanceof
-                    app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession;
+                    app.nimarkogram.messenger.camera.CameraXSurfaceSession;
             final boolean cameraXWithoutImageCapture = cameraXPhoto
-                    && !((app.nimarkogram.messenger.camera.NimarkoCameraXSurfaceSession) photoSession)
+                    && !((app.nimarkogram.messenger.camera.CameraXSurfaceSession) photoSession)
                     .canTakePicture();
             final boolean requiresTextureCapture = cameraView.isDual()
                     || collageLayoutView.hasLayout() || cameraXWithoutImageCapture;
@@ -4101,7 +4101,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
 
         private void applyCameraXStoryPhotoQuality(StoryEntry entry) {
             int configuredShortSide =
-                    app.nimarkogram.messenger.NimarkoConfig.cameraResolution;
+                    app.nimarkogram.messenger.AppConfig.cameraResolution;
             if (entry == null || configuredShortSide < 1440
                     || Math.min(entry.width, entry.height) < 1440) {
                 return;
@@ -7136,7 +7136,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
             }
             updateActionBarButtons(true);
         });
-        if (app.nimarkogram.messenger.NimarkoConfig.useDualCamera
+        if (app.nimarkogram.messenger.AppConfig.useDualCamera
                 && cameraView.dualAvailable()) {
             cameraView.enableDualWhenReady();
         }
@@ -7589,7 +7589,7 @@ public class StoryRecorder implements NotificationCenter.NotificationCenterDeleg
 
     private boolean getCameraFace() {
         // NimarkoGram: optionally force the rear camera on first launch.
-        if (app.nimarkogram.messenger.NimarkoConfig.rearCam) {
+        if (app.nimarkogram.messenger.AppConfig.rearCam) {
             return false;
         }
         return MessagesController.getGlobalMainSettings().getBoolean("stories_camera", false);

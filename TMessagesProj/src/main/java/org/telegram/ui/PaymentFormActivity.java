@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -511,7 +513,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
     private void setDelegate(PaymentFormActivityDelegate paymentFormActivityDelegate) {
         delegate = paymentFormActivityDelegate;
     }
-    
+
     public void setResourcesProvider(Theme.ResourcesProvider provider) {
         resourcesProvider = provider;
     }
@@ -1210,7 +1212,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                 doneItem.setEnabled(false);
                 doneItem.getContentView().setVisibility(View.INVISIBLE);
                 AndroidUtilities.checkAndroidTheme(context, true);
-                webView = new WebView(context) {
+                webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context)) {
                     @Override
                     public boolean onTouchEvent(MotionEvent event) {
                         ((ViewGroup) fragmentView).requestDisallowInterceptTouchEvent(true);
@@ -1668,7 +1670,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
                                         int month = Utilities.parseInt(args[0]);
                                         int year = Utilities.parseInt(args[1]) + 2000;
                                         Calendar rightNow = Calendar.getInstance();
-                                        
+
                                         boolean bypass = UserConfig.getInstance(currentAccount).getClientPhone().startsWith("7") || country != null && country.code.equals("7");
                                         int currentYear = bypass ? 2022 : rightNow.get(Calendar.YEAR);
                                         int currentMonth = bypass ? 1 : rightNow.get(Calendar.MONTH) + 1;
@@ -2496,7 +2498,7 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
 
                 AndroidUtilities.checkAndroidTheme(context, true);
                 try {
-                    webView = new WebView(context) {
+                    webView = new WebView(org.telegram.ui.web.WebViewContext.wrap(context)) {
                         @Override
                         public boolean onTouchEvent(MotionEvent event) {
                             getParent().requestDisallowInterceptTouchEvent(true);

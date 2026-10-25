@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.ui.CacheControlActivity.TYPE_DOCUMENTS;
@@ -103,11 +105,11 @@ public class CachedMediaLayout extends FrameLayout implements NestedSizeNotifier
 
         int CacheTabChats;
         allPages[PAGE_TYPE_CHATS] = new Page(LocaleController.getString(R.string.FilterChats), PAGE_TYPE_CHATS, new DialogsAdapter());
-        
+
         allPages[PAGE_TYPE_MEDIA] = new Page(LocaleController.getString(R.string.MediaTab), PAGE_TYPE_MEDIA, new MediaAdapter(false));
         allPages[PAGE_TYPE_DOCUMENTS] = new Page(LocaleController.getString(R.string.SharedFilesTab2), PAGE_TYPE_DOCUMENTS, new DocumentsAdapter());
         allPages[PAGE_TYPE_MUSIC] = new Page(LocaleController.getString(R.string.Music), PAGE_TYPE_MUSIC, new MusicAdapter());
-        
+
         for (int i = 0; i < allPages.length; i++) {
             if (allPages[i] == null) {
                 continue;
@@ -156,7 +158,7 @@ public class CachedMediaLayout extends FrameLayout implements NestedSizeNotifier
                     public void onItemClick(View view, int position) {
                         BaseAdapter adapter = (BaseAdapter) recyclerListView.getAdapter();
                         ItemInner itemInner = adapter.itemInners.get(position);
-                        
+
                         if (view instanceof SharedPhotoVideoCell2) {
                             boolean isStory = ((MediaAdapter) adapter).isStories;
                             if (isStory) {
@@ -341,7 +343,7 @@ public class CachedMediaLayout extends FrameLayout implements NestedSizeNotifier
                     MediaController.getInstance().playMessage(fileInfo.messageObject);
                 }
             } else {
-                
+
                 MediaController.getInstance().playMessage(fileInfo.messageObject);
             }
         }
@@ -366,7 +368,7 @@ public class CachedMediaLayout extends FrameLayout implements NestedSizeNotifier
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        
+
         super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(heightMeasureSpec), MeasureSpec.EXACTLY));
     }
 
@@ -550,7 +552,7 @@ public class CachedMediaLayout extends FrameLayout implements NestedSizeNotifier
                         title = DialogObject.setDialogPhotoTitle(userCell.getImageView(), object);
                     }
                     userCell.dialogFileEntities = dialogFileEntities;
-                    userCell.getImageView().setRoundRadius(app.nimarkogram.messenger.NimarkoConfig.getAvatarCornersForChat(38, object instanceof TLRPC.Chat && ((TLRPC.Chat) object).forum));
+                    userCell.getImageView().setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCornersForChat(38, object instanceof TLRPC.Chat && ((TLRPC.Chat) object).forum));
                     userCell.setTextAndValue(title, AndroidUtilities.formatFileSize(dialogFileEntities.totalSize), position < getItemCount() - 1);
                     userCell.setChecked(cacheModel.isSelected(dialogFileEntities.dialogId), animated);
                     break;
