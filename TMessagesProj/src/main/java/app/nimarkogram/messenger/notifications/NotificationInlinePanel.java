@@ -236,9 +236,12 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
             return true;
         }
         int top = 0;
-        View bar = fragment.getActionBar();
+        View bar = fragment.getSimpleActionBar() != null
+                ? fragment.getSimpleActionBar() : fragment.getActionBar();
         if (bar != null && bar.isShown()) {
-            if (bar.getParent() != null && bar.getParent() == root.getParent()) {
+            if (bar.getParent() == root) {
+                top = Math.max(0, Math.round(bar.getY() + bar.getHeight()));
+            } else if (bar.getParent() != null && bar.getParent() == root.getParent()) {
                 top = Math.max(0, Math.round(bar.getY() + bar.getHeight() - root.getY()));
             } else {
             bar.getLocationOnScreen(location);

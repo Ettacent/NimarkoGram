@@ -570,6 +570,9 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
 
                 @Override
                 protected void dispatchDraw(Canvas canvas) {
+                    if (this != windowView || storiesViewPager == null) {
+                        return;
+                    }
                     float blackoutAlpha = getBlackoutAlpha();
                     canvas.drawColor(ColorUtils.setAlphaComponent(Color.BLACK, (int) (255 * blackoutAlpha)));
 
@@ -869,6 +872,9 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
 
                 @Override
                 public boolean dispatchTouchEvent(MotionEvent ev) {
+                    if (this != windowView || storiesViewPager == null) {
+                        return false;
+                    }
                     boolean swipeToReplyCancelled = false;
                     PeerStoriesView peerStoriesView = storiesViewPager.getCurrentPeerView();
                     if (peerStoriesView != null && peerStoriesView.checkTextSelectionEvent(ev)) {
@@ -1174,6 +1180,10 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
 
                 @Override
                 protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                    if (this != containerView || windowView == null || storiesViewPager == null) {
+                        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
+                        return;
+                    }
                     int heightWithKeyboard = MeasureSpec.getSize(heightMeasureSpec);
                     if (!ATTACH_TO_FRAGMENT || ATTACHED_FRAGMENT_IS_EDGE_TO_EDGE) {
                         setKeyboardHeightFromParent(measureKeyboardHeight());
@@ -1197,6 +1207,9 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
 
                 @Override
                 protected void dispatchDraw(Canvas canvas) {
+                    if (this != containerView || windowView == null || storiesViewPager == null) {
+                        return;
+                    }
                     PeerStoriesView peerStoriesView = storiesViewPager.getCurrentPeerView();
                     float pivotY = 0;
                     if (selfStoryViewsView != null && peerStoriesView != null) {
@@ -2703,6 +2716,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                     final WindowManager closingWindowManager = windowManager;
                     final boolean closingAttachedToFragment = ATTACH_TO_FRAGMENT;
                     final StoriesViewPager closingPager = storiesViewPager;
+                    if (closingWindow != null) closingWindow.setVisibility(View.GONE);
                     release();
                     if (windowView == closingWindow) windowView = null;
                     if (storiesViewPager == closingPager) storiesViewPager = null;
