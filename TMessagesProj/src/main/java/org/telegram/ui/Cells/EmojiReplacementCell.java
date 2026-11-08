@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -22,6 +24,7 @@ import org.telegram.messenger.Emoji;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -85,7 +88,7 @@ public class EmojiReplacementCell extends FrameLayout {
         Drawable background = getBackground();
         if (background != null) {
             background.setAlpha(230);
-            background.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_stickersHintPanel), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.drawableColorFilter(this, background, Theme.key_chat_stickersHintPanel, resourcesProvider, PorterDuff.Mode.MULTIPLY);
         }
     }
 

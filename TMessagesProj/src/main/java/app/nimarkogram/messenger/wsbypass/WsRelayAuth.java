@@ -206,6 +206,7 @@ public final class WsRelayAuth {
             Long previousDeadline = authDeadlineMs.get();
             authDeadlineMs.set(SystemClock.elapsedRealtime() + AUTH_FLOW_BUDGET_MS);
             try {
+                final InlineAuth.EnablePredicate freshPermit = freshWorkPermit(permit);
                 long now = nowSeconds(account);
                 Credential old = memoryOrDisk(account);
                 if (old != null && old.uid != ownerUid) old = null;
@@ -221,8 +222,8 @@ public final class WsRelayAuth {
                     InlineAuth.Backend backend = backendFor(uid);
                     if (!isAuthAllowed()) break;
                     String token = InlineAuth.ensureToken(
-                            acc, uid, lock, backend, permit);
-                    if (token == null || !permit.isEnabled()) continue;
+                            acc, uid, lock, backend, freshPermit);
+                    if (token == null || !freshPermit.isEnabled()) continue;
                     Credential fresh = fetchCredential(token, status);
                     if (fresh == null && status[0] == 401) {
                         final String rejectedToken = token;
@@ -237,27 +238,29 @@ public final class WsRelayAuth {
                         }) || !tokenInvalidated.get()) {
                             continue;
                         }
-                        token = authRemainingMs() > 0 && permit.isEnabled()
+                        token = authRemainingMs() > 0 && freshPermit.isEnabled()
                                 ? InlineAuth.ensureToken(
-                                        acc, uid, lock, backend, permit) : null;
+                                        acc, uid, lock, backend, freshPermit) : null;
                         if (token != null) fresh = fetchCredential(token, status);
                     }
-                    if (fresh != null && fresh.uid == uid) {
+                    if (fresh != null && fresh.uid == uid && usable(fresh, nowSeconds(acc))) {
                         final Credential credential = fresh;
                         final AtomicBoolean committed =
                                 new AtomicBoolean(false);
-                        if (permit.runIfEnabled(() -> {
-                            if (uidOf(acc) == credential.uid) {
+                        if (freshPermit.runIfEnabled(() -> {
+                            if (uidOf(acc) == credential.uid && usable(credential, nowSeconds(acc))) {
                                 cached.put(acc, credential);
                                 saveCredentialToDisk(acc, credential);
                                 committed.set(true);
                             }
-                        }) && committed.get() && uidOf(acc) == credential.uid) return credential;
+                        }) && committed.get() && freshPermit.isEnabled()
+                                && uidOf(acc) == credential.uid
+                                && usable(credential, nowSeconds(acc))) return credential;
                         cached.remove(acc, credential);
                     }
                 }
                 return permit.isEnabled() && uidOf(account) == ownerUid
-                        && usable(old, now) ? old : null;
+                        && usable(old, nowSeconds(account)) ? old : null;
             } finally {
                 if (previousDeadline == null) authDeadlineMs.remove();
                 else authDeadlineMs.set(previousDeadline);
@@ -321,17 +324,23 @@ public final class WsRelayAuth {
         if (!isAuthAllowed()) return reg;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/kws/register?user_id=" + uid);
             con = (HttpURLConnection) url.openConnection();
             if (!registerConnection(con, generation)) return reg;
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
-            if (con.getResponseCode() != 200) return reg;
-            JSONObject o = new JSONObject(readBody(con));
+            checkAuthDeadline();
+            int rc = con.getResponseCode();
+            checkAuthDeadline();
+            if (rc != 200) return reg;
+            JSONObject o = readJson(con);
             reg.code = o.getString("code");
             reg.botUsername = o.getString("bot_username");
+            checkAuthDeadline();
             reg.ok = true;
         } catch (Throwable t) {
             Log.e(TAG, "register failed: " + t);
@@ -346,6 +355,7 @@ public final class WsRelayAuth {
         if (!isAuthAllowed() || authRemainingMs() <= 0) return InlineAuth.GIVE_UP;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/kws/poll?user_id=" + uid
                     + "&code=" + URLEncoder.encode(code, "UTF-8"));
             con = (HttpURLConnection) url.openConnection();
@@ -353,18 +363,22 @@ public final class WsRelayAuth {
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
+            checkAuthDeadline();
             int rc = con.getResponseCode();
+            checkAuthDeadline();
             if (rc == 200) {
-                JSONObject o = new JSONObject(readBody(con));
+                JSONObject o = readJson(con);
                 String token = o.optString("token", "");
+                checkAuthDeadline();
                 return token.isEmpty() ? null : token;
             }
             if (rc == 202) return null;
             return InlineAuth.GIVE_UP;
         } catch (Throwable t) {
             Log.e(TAG, "poll failed: " + t);
-            return null;
+            return authRemainingMs() <= 0 ? InlineAuth.GIVE_UP : null;
         } finally {
             if (con != null) { activeConnections.remove(con); con.disconnect(); }
         }
@@ -376,6 +390,7 @@ public final class WsRelayAuth {
         if (!isAuthAllowed()) return null;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/kws/credential");
             con = (HttpURLConnection) url.openConnection();
             if (!registerConnection(con, generation)) return null;
@@ -384,16 +399,20 @@ public final class WsRelayAuth {
             con.setRequestProperty("Content-Type", "application/json");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
+            checkAuthDeadline();
             int rc = con.getResponseCode();
             if (outStatus != null) outStatus[0] = rc;
+            checkAuthDeadline();
             if (rc != 200) { Log.e(TAG, "fetchCredential http " + rc); return null; }
-            JSONObject o = new JSONObject(readBody(con));
+            JSONObject o = readJson(con);
             long expiry = o.getLong("expiry");
             long uid = o.getLong("uid");
             byte[] hmac = hexToBytes(o.getString("hmac"));
             if (uid <= 0 || expiry <= 0
                     || hmac == null || hmac.length != 32) return null;
+            checkAuthDeadline();
             return new Credential(expiry, uid, hmac);
         } catch (Throwable t) {
             Log.e(TAG, "fetchCredential failed: " + t);
@@ -403,17 +422,55 @@ public final class WsRelayAuth {
         }
     }
 
+    private static InlineAuth.EnablePredicate freshWorkPermit(
+            final InlineAuth.EnablePredicate lifetimePermit) {
+        final Long deadline = authDeadlineMs.get();
+        return new InlineAuth.EnablePredicate() {
+            @Override public boolean isEnabled() {
+                return lifetimePermit.isEnabled()
+                        && (deadline == null || SystemClock.elapsedRealtime() < deadline);
+            }
+            @Override public boolean runIfEnabled(Runnable action) {
+                synchronized (authGenerationLock) {
+                    if (!isEnabled()) return false;
+                    action.run();
+                    return true;
+                }
+            }
+        };
+    }
+
+    private static void checkAuthDeadline() throws SocketTimeoutException {
+        Long deadline = authDeadlineMs.get();
+        if (deadline != null && SystemClock.elapsedRealtime() >= deadline) {
+            throw new SocketTimeoutException("relay auth deadline exceeded");
+        }
+    }
+
+    private static JSONObject readJson(HttpURLConnection con) throws Exception {
+        String body = readBody(con);
+        checkAuthDeadline();
+        JSONObject result = new JSONObject(body);
+        checkAuthDeadline();
+        return result;
+    }
     private static String readBody(HttpURLConnection con) throws Exception {
+        checkAuthDeadline();
         StringBuilder sb = new StringBuilder();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                if (sb.length() + line.length() > MAX_RESPONSE_CHARS) {
+            while (true) {
+                checkAuthDeadline();
+                int c = r.read();
+                checkAuthDeadline();
+                if (c == -1) break;
+                if (c == '\r' || c == '\n') continue;
+                if (sb.length() >= MAX_RESPONSE_CHARS) {
                     throw new IOException("auth response too large");
                 }
-                sb.append(line);
+                sb.append((char) c);
             }
         }
+        checkAuthDeadline();
         return sb.toString();
     }
 

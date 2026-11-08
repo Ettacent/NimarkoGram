@@ -1,0 +1,16 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+:root { --vw-ground:#161616; --office-ink:#eeeeee; --office-paper:#161616; --office-accent:#8ab4f8; --office-find:#8ab4f833; --office-find-active:#8ab4f855; }
+html, body, html.vw-night body { background:var(--vw-ground); }
+body { padding-bottom:var(--office-bottom,0px); }
+html.vw-night .pg { background:var(--office-paper); }
+#pages > .pg, html.vw-night #pages > .pg:last-child { box-shadow:none; }
+.vw-status, html.vw-night .vw-status { background:var(--vw-ground); color:var(--office-ink); }
+html.office-protected .textLayer, html.office-protected .textLayer *, html.office-protected .vw-gap {
+  user-select:none !important; -webkit-user-select:none !important; -webkit-touch-callout:none !important;
+}
+html.office-protected .textLayer { pointer-events:none; }
+::highlight(vw-find) { background-color:var(--office-find); }
+::highlight(vw-find-active) { background-color:var(--office-find-active); color:transparent; text-decoration:underline; text-decoration-color:var(--office-accent); }
+.textLayer ::selection { background:var(--office-find); }
+@media print { #pages { display:none !important; } }

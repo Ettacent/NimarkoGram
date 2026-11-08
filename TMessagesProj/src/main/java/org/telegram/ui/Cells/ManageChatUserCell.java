@@ -10,6 +10,7 @@
 
 package org.telegram.ui.Cells;
 
+import org.telegram.messenger.FileLog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
@@ -34,12 +35,13 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Stories.StoriesUtilities;
 
-public class ManageChatUserCell extends FrameLayout {
+public class ManageChatUserCell extends FrameLayout implements Theme.Colorable {
 
     private final BackupImageView avatarImageView;
     private final SimpleTextView nameTextView;
@@ -107,7 +109,7 @@ public class ManageChatUserCell extends FrameLayout {
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : 7 + avatarPadding, 8, LocaleController.isRTL ? 7 + avatarPadding : 0, 0));
 
         nameTextView = new SimpleTextView(context);
-        nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(nameTextView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         nameTextView.setTextSize(17);
         nameTextView.setTypeface(AndroidUtilities.bold());
         nameTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
@@ -122,9 +124,9 @@ public class ManageChatUserCell extends FrameLayout {
         if (needOption) {
             optionsButton = new ImageView(context);
             optionsButton.setFocusable(false);
-            optionsButton.setBackgroundDrawable(Theme.createSelectorDrawable(Theme.getColor(Theme.key_stickers_menuSelector, resourcesProvider)));
+            ThemeBind.selectorBackground(optionsButton, Theme.createSelectorDrawable(Theme.getColor(Theme.key_stickers_menuSelector, resourcesProvider)), null, ThemeBind.of(Theme.key_stickers_menuSelector), resourcesProvider);
             optionsButton.setImageResource(R.drawable.ic_ab_other);
-            optionsButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_stickers_menu, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.colorFilter(optionsButton, Theme.key_stickers_menu, resourcesProvider, PorterDuff.Mode.MULTIPLY);
             optionsButton.setScaleType(ImageView.ScaleType.CENTER);
             addView(optionsButton, LayoutHelper.createFrame(60, 64, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP));
             optionsButton.setOnClickListener(v -> delegate.onOptionsButtonCheck(ManageChatUserCell.this, true));
@@ -153,7 +155,7 @@ public class ManageChatUserCell extends FrameLayout {
         customImageView = new ImageView(getContext());
         customImageView.setImageResource(resId);
         customImageView.setScaleType(ImageView.ScaleType.CENTER);
-        customImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_voipgroup_mutedIconUnscrolled, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+        ThemeBind.colorFilter(customImageView, Theme.key_voipgroup_mutedIconUnscrolled, resourcesProvider, PorterDuff.Mode.MULTIPLY);
         addView(customImageView, LayoutHelper.createFrame(52, 64, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP));
     }
 
@@ -204,11 +206,34 @@ public class ManageChatUserCell extends FrameLayout {
         return 0;
     }
 
-    public void setStatusColors(int color, int onlineColor) {
+    private boolean customStatusColors;
+
+    private void refreshStatusColors() {
+        if (customStatusColors) {
+            return;
+        }
+        final int color = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
+        final int onlineColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText, resourcesProvider);
+        if (color == statusColor && onlineColor == statusOnlineColor) {
+            return;
+        }
+        if (statusTextView != null) {
+            final int current = statusTextView.getTextColor();
+            if (current == statusColor) {
+                statusTextView.setTextColor(color);
+            } else if (current == statusOnlineColor) {
+                statusTextView.setTextColor(onlineColor);
+            }
+        }
         statusColor = color;
         statusOnlineColor = onlineColor;
     }
 
+    public void setStatusColors(int color, int onlineColor) {
+        customStatusColors = true;
+        statusColor = color;
+        statusOnlineColor = onlineColor;
+    }
     public void setIsAdmin(boolean value) {
         isAdmin = value;
     }
@@ -222,6 +247,7 @@ public class ManageChatUserCell extends FrameLayout {
     }
 
     public void setNameColor(int color) {
+        ThemeBind.clear(nameTextView);
         nameTextView.setTextColor(color);
     }
 
@@ -402,6 +428,14 @@ public class ManageChatUserCell extends FrameLayout {
                 Theme.dividerExtraPaint.setColor(Theme.getColor(dividerColor, resourcesProvider));
             }
             canvas.drawLine(LocaleController.isRTL ? 0 : AndroidUtilities.dp(68), getMeasuredHeight() - 1, getMeasuredWidth() - (LocaleController.isRTL ? AndroidUtilities.dp(68) : 0), getMeasuredHeight() - 1, dividerColor >= 0 ? Theme.dividerExtraPaint : Theme.dividerPaint);
+        }
+    }
+    @Override
+    public void updateColors() {
+        try {
+            refreshStatusColors();
+        } catch (Exception e) {
+            FileLog.e(e);
         }
     }
 }

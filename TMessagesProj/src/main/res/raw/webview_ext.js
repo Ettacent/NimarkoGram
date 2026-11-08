@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Telegram-Android browser extension
  *
@@ -230,7 +232,7 @@ setTimeout(function () {
         if (site_name) {
             window.TelegramWebviewProxy.postEvent('siteName', site_name);
         } else {
-            window.TelegramWebviewProxy.postEvent('siteNameEmpty');
+            window.TelegramWebviewProxy.postEvent('siteNameEmpty', '');
         }
     }
     if (window.__tg__listenColors) {

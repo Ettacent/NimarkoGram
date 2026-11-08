@@ -1,0 +1,68 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "slide-pull-client-43mS9T70.js",
+      "sha256": "e435db2d2cac4a33cb91617bdf41b6dd6280658cf9e07cb0bb646145476d93a8",
+      "replacements": [
+        {
+          "before": ", J += t, J += f;\n\t\t\t\tcontinue;\n",
+          "after": ";\n                if (m) {\n                    const record = officePptxMathRecord(e, l, J, H - l.math.ascent, Zi);\n                    if (record) m({text: record.text,\n                        inShapeX: J - n, inShapeY: (H - l.math.ascent) - r,\n                        w: l.math.width, h: l.math.ascent + l.math.descent,\n                        fontSize: l.sizePx, font: l.font,\n                        shapeX: n, shapeY: r, shapeW: i, shapeH: a, rotation: c, officeMath: true});\n                }\n                void 0, J += t, J += f;\n\t\t\t\tcontinue;\n",
+          "count": 1
+        },
+        {
+          "before": "text: e.text,\n\t\tinShapeX: e.x - ",
+          "after": "...e.officeMath ? {officeMath: true} : {}, text: e.text,\n\t\tinShapeX: e.x - ",
+          "count": 1
+        },
+        {
+          "before": ";\n\t\t\treturn;\n\t\t}\n\t\tlet u = c.siz",
+          "after": "; const officeMath = officePptxMathRecord(e, c, r - n.thickness / 2, i, Zi); if (officeMath) o.push(officeMath);\n\t\t\treturn;\n\t\t}\n\t\tlet u = c.siz",
+          "count": 1
+        },
+        {
+          "before": "import { officeReadingNormalize,",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Match only canonical, renderer-supported OMML kinds; never walk metadata.\nfunction officePptxMathText(nodes) {\n    const stack = [nodes], chunks = [];\n    let visits = 0, chars = 0;\n    const limit = () => { throw Object.assign(Error('Office math search text limit'), {code: 'ooxml-search-limit'}); };\n    const push = (...parts) => {\n        if (stack.length + parts.length > 65536) limit();\n        for (let i = parts.length - 1; i >= 0; i--) stack.push(parts[i]);\n    };\n    const joined = (lists, separator) => {\n        if (!Array.isArray(lists)) return;\n        if (stack.length + lists.length * 2 > 65536) limit();\n        for (let i = lists.length - 1; i >= 0; i--) { if (i < lists.length - 1) push(separator); push(lists[i]); }\n    };\n    while (stack.length) {\n        if (++visits > 65536) limit();\n        const item = stack.pop();\n        if (typeof item === 'string') {\n            if (chars + item.length > 1048576) limit();\n            chunks.push(item); chars += item.length; continue;\n        }\n        if (Array.isArray(item)) {\n            if (stack.length + item.length > 65536) limit();\n            for (let i = item.length - 1; i >= 0; i--) stack.push(item[i]);\n            continue;\n        }\n        if (!item || typeof item !== 'object') continue;\n        switch (item.kind) {\n            case 'run': push(typeof item.text === 'string' && ['+','-','−','=','±','×','÷'].includes(item.text) ? ' ' + item.text + ' ' : item.text); break;\n            case 'fraction': push(item.num, '/', item.den); break;\n            case 'sup': push(item.base, '^', item.sup); break;\n            case 'sub': push(item.base, '_', item.sub); break;\n            case 'subSup': push(item.base, '_', item.sub, '^', item.sup); break;\n            case 'nary': push(item.op, item.sub, item.sup, item.body); break;\n            case 'delimiter': push(item.endChar); joined(item.items, ','); push(item.begChar); break;\n            case 'radical': push(item.index, '√', item.radicand); break;\n            case 'limit': push(item.base, item.lower, item.upper); break;\n            case 'array':\n                if (Array.isArray(item.rows)) {\n                    if (item.rows.length > 65536) limit();\n                    for (let i = item.rows.length - 1; i >= 0; i--) { if (i < item.rows.length - 1) push(' '); joined(item.rows[i], ' '); }\n                }\n                break;\n            case 'groupChr': case 'accent': push(item.char, item.base); break;\n            case 'bar': case 'box': case 'borderBox': push(item.base); break;\n            case 'func': push(item.name, '(', item.arg, ')'); break;\n            case 'group': push(item.items); break;\n            case 'phant': if (item.show) push(item.base); break;\n            case 'sPre': push(item.sub, item.sup, item.base); break;\n        }\n    }\n    return chunks.join('').replace(/[ \\t]{2,}/g, ' ');\n}\nfunction officePptxMathInk(context, color) {\n    if (!(context.globalAlpha > 0) || color === 'transparent') return false;\n    if (typeof color !== 'string') return true;\n    return !/^rgba\\([^)]*,\\s*0(?:\\.0*)?\\s*\\)$/i.test(color) && !/^#[\\da-f]{6}00$/i.test(color);\n}\nfunction officePptxMathRecord(context, style, x, y, cache) {\n    const math = style.math;\n    if (!math || !(math.width > 0) || !(math.ascent + math.descent > 0) || !officePptxMathInk(context, style.color)) return null;\n    const cached = !math.unavailable && cache.has(math.nodes);\n    const text = cached ? officePptxMathText(math.nodes) : math.fallbackText;\n    if (typeof text !== 'string' || !text.length) return null;\n    return {text, x, y, w: math.width, h: math.ascent + math.descent, fontSize: style.sizePx, font: style.font, officeMath: true};\n}\n\nimport { officeReadingNormalize,",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "assets/render-worker-CyUrUidp.js",
+      "sha256": "91133bc9916e02f4a8c4db4ea3567a941a542e9ae44cebf4c58fe3042cfc1f71",
+      "replacements": [
+        {
+          "before": ",ie+=t,ie+=f;continue}e.font=l.f",
+          "after": ";\n                if (m) {\n                    const record = officePptxMathRecord(e, l, ie, H-l.math.ascent, SJ);\n                    if (record) m({text: record.text,\n                        inShapeX: ie - n, inShapeY: (H-l.math.ascent) - r,\n                        w: l.math.width, h: l.math.ascent + l.math.descent,\n                        fontSize: l.sizePx, font: l.font,\n                        shapeX: n, shapeY: r, shapeW: i, shapeH: a, rotation: c, officeMath: true});\n                }\n                void 0,ie+=t,ie+=f;continue}e.font=l.f",
+          "count": 1
+        },
+        {
+          "before": "text:e.text,inShapeX:e.x-r,inSha",
+          "after": "...e.officeMath ? {officeMath: true} : {}, text:e.text,inShapeX:e.x-r,inSha",
+          "count": 1
+        },
+        {
+          "before": ";return}let u=c.sizePx;s||o.push",
+          "after": "; const officeMath = officePptxMathRecord(e, c, r-n.thickness/2, i, SJ); if (officeMath) o.push(officeMath);return}let u=c.sizePx;s||o.push",
+          "count": 1
+        },
+        {
+          "before": "// Modifications Copyright (C) 2",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Match only canonical, renderer-supported OMML kinds; never walk metadata.\nfunction officePptxMathText(nodes) {\n    const stack = [nodes], chunks = [];\n    let visits = 0, chars = 0;\n    const limit = () => { throw Object.assign(Error('Office math search text limit'), {code: 'ooxml-search-limit'}); };\n    const push = (...parts) => {\n        if (stack.length + parts.length > 65536) limit();\n        for (let i = parts.length - 1; i >= 0; i--) stack.push(parts[i]);\n    };\n    const joined = (lists, separator) => {\n        if (!Array.isArray(lists)) return;\n        if (stack.length + lists.length * 2 > 65536) limit();\n        for (let i = lists.length - 1; i >= 0; i--) { if (i < lists.length - 1) push(separator); push(lists[i]); }\n    };\n    while (stack.length) {\n        if (++visits > 65536) limit();\n        const item = stack.pop();\n        if (typeof item === 'string') {\n            if (chars + item.length > 1048576) limit();\n            chunks.push(item); chars += item.length; continue;\n        }\n        if (Array.isArray(item)) {\n            if (stack.length + item.length > 65536) limit();\n            for (let i = item.length - 1; i >= 0; i--) stack.push(item[i]);\n            continue;\n        }\n        if (!item || typeof item !== 'object') continue;\n        switch (item.kind) {\n            case 'run': push(typeof item.text === 'string' && ['+','-','−','=','±','×','÷'].includes(item.text) ? ' ' + item.text + ' ' : item.text); break;\n            case 'fraction': push(item.num, '/', item.den); break;\n            case 'sup': push(item.base, '^', item.sup); break;\n            case 'sub': push(item.base, '_', item.sub); break;\n            case 'subSup': push(item.base, '_', item.sub, '^', item.sup); break;\n            case 'nary': push(item.op, item.sub, item.sup, item.body); break;\n            case 'delimiter': push(item.endChar); joined(item.items, ','); push(item.begChar); break;\n            case 'radical': push(item.index, '√', item.radicand); break;\n            case 'limit': push(item.base, item.lower, item.upper); break;\n            case 'array':\n                if (Array.isArray(item.rows)) {\n                    if (item.rows.length > 65536) limit();\n                    for (let i = item.rows.length - 1; i >= 0; i--) { if (i < item.rows.length - 1) push(' '); joined(item.rows[i], ' '); }\n                }\n                break;\n            case 'groupChr': case 'accent': push(item.char, item.base); break;\n            case 'bar': case 'box': case 'borderBox': push(item.base); break;\n            case 'func': push(item.name, '(', item.arg, ')'); break;\n            case 'group': push(item.items); break;\n            case 'phant': if (item.show) push(item.base); break;\n            case 'sPre': push(item.sub, item.sup, item.base); break;\n        }\n    }\n    return chunks.join('').replace(/[ \\t]{2,}/g, ' ');\n}\nfunction officePptxMathInk(context, color) {\n    if (!(context.globalAlpha > 0) || color === 'transparent') return false;\n    if (typeof color !== 'string') return true;\n    return !/^rgba\\([^)]*,\\s*0(?:\\.0*)?\\s*\\)$/i.test(color) && !/^#[\\da-f]{6}00$/i.test(color);\n}\nfunction officePptxMathRecord(context, style, x, y, cache) {\n    const math = style.math;\n    if (!math || !(math.width > 0) || !(math.ascent + math.descent > 0) || !officePptxMathInk(context, style.color)) return null;\n    const cached = !math.unavailable && cache.has(math.nodes);\n    const text = cached ? officePptxMathText(math.nodes) : math.fallbackText;\n    if (typeof text !== 'string' || !text.length) return null;\n    return {text, x, y, w: math.width, h: math.ascent + math.descent, fontSize: style.sizePx, font: style.font, officeMath: true};\n}\n\n// Modifications Copyright (C) 2",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "pptx-CLyebeF_.js",
+      "sha256": "77917e747f00a9416b1d6deccc69cb0b6598d1ac97640f29583caa634c160d1b",
+      "replacements": [
+        {
+          "before": "let i = a(e.font), { x: o, width",
+          "after": "if (e.officeMath) {\n                const start = Math.max(0, Math.min(r.start, e.text.length)), end = Math.max(start, Math.min(r.end, e.text.length));\n                if (end <= start || !(e.w > 0) || !(e.h > 0)) continue;\n                const frame = d(e), box = l.createElement('div');\n                if (active) box.setAttribute('data-office-find-active', '');\n                box.setAttribute('data-office-find-math', '');\n                box.style.cssText = 'position:absolute;left:' + O(e.inShapeX, frame.w) + ';top:' + O(e.inShapeY, frame.h)\n                    + ';width:' + O(e.w, frame.w) + ';height:' + O(e.h, frame.h) + ';background:' + n + ';pointer-events:none;';\n                frame.div.appendChild(box); continue;\n            }\n            let i = a(e.font), { x: o, width",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

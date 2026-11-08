@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Canvas;
@@ -181,7 +183,7 @@ public class VectorAvatarThumbDrawable extends Drawable implements AnimatedEmoji
         }
         parents.add(parent);
         if (sizeStickerMarkup != null) {
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.groupStickersDidLoad);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.groupStickersDidLoad);
         }
     }
 

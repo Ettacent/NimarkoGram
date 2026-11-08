@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Bitmap;
@@ -108,6 +110,7 @@ public class MotionBackgroundDrawable extends Drawable {
 
     private float indeterminateSpeedScale = 1f;
     private boolean isIndeterminateAnimation;
+    private WeakReference<Object> loadingAnimationOwner;
     private int bitmapWidth = 60;
     private int bitmapHeight = 80;
 
@@ -654,6 +657,9 @@ public class MotionBackgroundDrawable extends Drawable {
     }
 
     public void updateAnimation() {
+        if (loadingAnimationOwner != null && loadingAnimationOwner.get() == null) {
+            stopLoadingAnimation();
+        }
         long newTime = SystemClock.uptimeMillis();
         long elapsed = lastUpdateTime == 0 ? 16 : newTime - lastUpdateTime;
         lastUpdateTime = newTime;
@@ -824,6 +830,58 @@ public class MotionBackgroundDrawable extends Drawable {
 
     public boolean isIndeterminateAnimation() {
         return isIndeterminateAnimation;
+    }
+
+    public void updateLoadingAnimation(Object owner) {
+        if (owner == null) {
+            return;
+        }
+        if (loadingAnimationOwner == null || loadingAnimationOwner.get() != owner) {
+            loadingAnimationOwner = new WeakReference<>(owner);
+        }
+        updateAnimation();
+        if (!isIndeterminateAnimation) {
+            float progress = animationProgressProvider != null || ignoreInterpolator
+                    ? posAnimationProgress : interpolator.getInterpolation(posAnimationProgress);
+            if (rotatingPreview) {
+                progress = progress <= 0.25f ? progress / 0.25f
+                        : progress <= 0.5f ? (progress - 0.25f) / 0.25f
+                        : progress <= 0.75f ? (progress - 0.5f) / 0.25f
+                        : (progress - 0.75f) / 0.25f;
+            }
+            if (rotationBack && posAnimationProgress < 1f) {
+                progress = 1f - progress;
+            }
+            posAnimationProgress = (phase + 1f - progress) / 8f;
+            posAnimationProgress -= (float) Math.floor(posAnimationProgress);
+            rotatingPreview = rotationBack = ignoreInterpolator = false;
+            isIndeterminateAnimation = true;
+            invalidateParent();
+        }
+        indeterminateSpeedScale = 1.5f;
+    }
+
+    public void releaseLoadingAnimation(Object owner) {
+        if (owner == null || loadingAnimationOwner == null || loadingAnimationOwner.get() != owner) {
+            return;
+        }
+        updateAnimation();
+        stopLoadingAnimation();
+    }
+
+    private void stopLoadingAnimation() {
+        loadingAnimationOwner = null;
+        if (isIndeterminateAnimation) {
+            float cyclePhase = posAnimationProgress * 8f;
+            phase = (int) cyclePhase % 8;
+            posAnimationProgress = 1f - (cyclePhase - (int) cyclePhase);
+            ignoreInterpolator = true;
+            rotatingPreview = rotationBack = false;
+            isIndeterminateAnimation = false;
+            indeterminateSpeedScale = 1f;
+            generateNextGradient();
+            invalidateParent();
+        }
     }
 
     public void setIndeterminateAnimation(boolean isIndeterminateAnimation) {

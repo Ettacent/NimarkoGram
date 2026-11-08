@@ -42,11 +42,17 @@ android {
     // Keep the application and native library modules on the same installed
     // toolchain. A mismatched/missing NDK made AGP package unstripped JNI
     // libraries and silently inflated standalone APKs.
-    ndkVersion "26.3.11579264"
+    ndkVersion = "26.3.11579264"
 
     defaultConfig.applicationId = APP_PACKAGE
 
     sourceSets.main.jniLibs.srcDirs = ['../TMessagesProj/jni/']
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 
     lintOptions {
         disable 'MissingTranslation'
@@ -58,7 +64,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
 
-        coreLibraryDesugaringEnabled true
+        coreLibraryDesugaringEnabled = true
     }
 
     androidResources {
@@ -98,7 +104,7 @@ android {
 
 
             minifyEnabled false
-            multiDexEnabled true
+            multiDexEnabled = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
         }
@@ -118,8 +124,8 @@ android {
             // -PngCompactStandalone enables an isolated, measurable experiment
             // with app-level R8 and resource shrinking; it is never implicit.
             minifyEnabled nimarkoCompactStandalone
-            shrinkResources nimarkoCompactStandalone
-            multiDexEnabled true
+            shrinkResources = nimarkoCompactStandalone
+            multiDexEnabled = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), '../TMessagesProj/proguard-rules.pro'
             ndk.debugSymbolLevel = 'FULL'
         }
@@ -185,13 +191,13 @@ android {
         targetSdkVersion 36
         versionName APP_VERSION_NAME
 
-        multiDexEnabled true
+        multiDexEnabled = true
 
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
 
         externalNativeBuild {
             cmake {
-                version '3.22.1'
+                version = '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
                 targets 'tmessages.49'
             }
@@ -201,10 +207,10 @@ android {
     buildFeatures {
         buildConfig = true
     }
-    namespace 'org.telegram.messenger.web'
+    namespace = 'org.telegram.messenger.web'
 
     lintOptions {
-        checkReleaseBuilds false
+        checkReleaseBuilds = false
     }
 }
 

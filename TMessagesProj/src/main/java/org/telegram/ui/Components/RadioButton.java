@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -95,6 +97,10 @@ public class RadioButton extends View {
 
     public int getColor() {
         return color;
+    }
+
+    public int getCheckedColor() {
+        return checkedColor;
     }
 
     public void setColor(int color1, int color2) {

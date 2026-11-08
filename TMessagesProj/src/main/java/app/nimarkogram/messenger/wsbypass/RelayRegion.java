@@ -16,7 +16,7 @@ import org.telegram.tgnet.ConnectionsManager;
 
 public final class RelayRegion {
 
-    public static final boolean ASIA_RELAY_ENABLED = false;
+    public static final boolean ASIA_RELAY_ENABLED = true;
     private static final Set<String> ASIA_COUNTRIES = new HashSet<>(Arrays.asList(
             "CN", "HK", "MO", "TW", "JP", "KR", "KP", "MN",
             "SG", "MY", "ID", "PH", "VN", "TH", "KH", "LA", "MM", "BN", "TL",
@@ -47,7 +47,7 @@ public final class RelayRegion {
         if (activated && knownDc) {
             return dc == DC_SINGAPORE;
         }
-        
+
         if (!activated && dc == DC_SINGAPORE) {
             return true;
         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -10,6 +12,7 @@ package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import org.telegram.messenger.FileLog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -21,10 +24,12 @@ import android.widget.FrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.RadialProgressView;
 
-public class ChatLoadingCell extends FrameLayout {
+public class ChatLoadingCell extends FrameLayout implements Theme.Colorable {
 
     private FrameLayout frameLayout;
     private RadialProgressView progressBar;
@@ -53,7 +58,7 @@ public class ChatLoadingCell extends FrameLayout {
 
         progressBar = new RadialProgressView(context, resourcesProvider);
         progressBar.setSize(dp(28));
-        progressBar.setProgressColor(getThemedColor(Theme.key_chat_serviceText));
+        progressBar.setProgressColor(getThemedColor(Theme.isCompactMode(resourcesProvider) ? Theme.key_chat_compact_progress : Theme.key_chat_serviceText));
         frameLayout.addView(progressBar, LayoutHelper.createFrame(32, 32, Gravity.CENTER));
     }
 
@@ -99,5 +104,14 @@ public class ChatLoadingCell extends FrameLayout {
     private Paint getThemedPaint(String paintKey) {
         Paint paint = resourcesProvider != null ? resourcesProvider.getPaint(paintKey) : null;
         return paint != null ? paint : Theme.getThemePaint(paintKey);
+    }
+    @Override
+    public void updateColors() {
+        try {
+            progressBar.setProgressColor(getThemedColor(Theme.isCompactMode(resourcesProvider) ? Theme.key_chat_compact_progress : Theme.key_chat_serviceText));
+            invalidate();
+        } catch (Exception e) {
+            FileLog.e(e);
+}
     }
 }

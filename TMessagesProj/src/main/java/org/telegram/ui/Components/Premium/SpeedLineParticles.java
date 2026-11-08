@@ -90,6 +90,7 @@ public class SpeedLineParticles {
         }
 
         public void onDraw(Canvas canvas) {
+            updateColors();
             long time = sampleTime();
             if (resetPending && !wasPaused) {
                 resetPositions();

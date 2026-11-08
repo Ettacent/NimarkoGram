@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts;
 
 import static org.telegram.messenger.LocaleController.formatPluralStringComma;
@@ -382,7 +384,7 @@ public class BoostViaGiftsBottomSheet extends BottomSheetWithRecyclerListView im
         containerView.addView(actionBtn, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, BOTTOM_HEIGHT_DP, Gravity.BOTTOM, 0, 0, 0, 0));
         loadOptions();
 
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starGiveawayOptionsLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.starGiveawayOptionsLoaded);
     }
 
     @Override

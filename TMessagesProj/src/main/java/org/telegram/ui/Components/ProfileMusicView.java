@@ -9,6 +9,7 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.ui.ActionBar.Theme.multAlpha;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -17,8 +18,8 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.RenderNode;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -26,9 +27,11 @@ import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
 
+import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
 
+import androidx.annotation.Nullable;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.LocaleController;
@@ -40,7 +43,13 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.ProfileActivity;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+
+import app.nimarkogram.messenger.utils.UiAnimationClock;
+
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 
 public class ProfileMusicView extends View {
 
@@ -49,11 +58,280 @@ public class ProfileMusicView extends View {
     private ProfileMusicView trailingView;
     private ProfileMusicView leadingView;
 
+    private CharSequence authorText, titleText;
+    private Text outgoingAuthor, outgoingTitle;
+    private float textProgress = 1f, outgoingTextAlpha;
+    private long textStartedAt;
+    private boolean contentPresented;
+    private final Rect profileContentVisibleRect = new Rect();
+    private int profileContentCaptureDepth;
+    private float contentDrawWidth;
+    private ProfileRowAnimation profileRowAnimation;
     public void setTrailingView(ProfileMusicView view) {
+        if (trailingView == view) return;
+        resetProfileAnimations();
+        if (trailingView != null) trailingView.leadingView = null;
         trailingView = view;
+        if (view != null) {
+            view.setProfileAnimationContext(null, null);
         view.leadingView = this;
+        }
+        invalidateContentWidth();
+    }
+
+    public void setProfileAnimationContext(LongSupplier identity, BooleanSupplier visible) {
+        if (leadingView != null) {
+            leadingView.setProfileAnimationContext(identity, visible);
+            return;
+        }
+        if (profileRowAnimation != null) {
+            profileRowAnimation.stopObserving();
+            profileRowAnimation.reset();
+        }
+        profileRowAnimation = identity == null || visible == null ? null : new ProfileRowAnimation(identity, visible);
+        if (profileRowAnimation != null) profileRowAnimation.observe();
+        invalidateContentWidth();
+    }
+
+    public void resetProfileAnimations() {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (row != null) row.reset();
+    }
+
+    public void beginProfileContentCapture() {
+        if (leadingView != null) leadingView.beginProfileContentCapture();
+        else profileContentCaptureDepth++;
+    }
+
+    public void endProfileContentCapture() {
+        if (leadingView != null) leadingView.endProfileContentCapture();
+        else if (profileContentCaptureDepth > 0) profileContentCaptureDepth--;
+    }
+
+    private boolean isProfileContentCapture() {
+        return (leadingView == null ? profileContentCaptureDepth : leadingView.profileContentCaptureDepth) > 0;
+    }
+
+    private ProfileRowAnimation getProfileRowAnimation() {
+        return leadingView == null ? profileRowAnimation : leadingView.profileRowAnimation;
+    }
+
+    protected final boolean isProfileAnimationEnabled() {
+        return getProfileRowAnimation() != null;
+    }
+
+    protected final boolean canAnimateProfileContent() {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        return row != null && row.checkContext() && isProfilePillVisible() && (contentPresented || outgoingAuthor != null);
+    }
+
+    protected final void clearProfileContentPresentation() {
+        contentPresented = false;
+    }
+
+    private void markProfileContentPresented(Canvas canvas) {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (!isProfileContentCapture() && canvas.isHardwareAccelerated() && isHardwareAccelerated()
+                && hasWindowFocus() && isProfilePillVisible() && currentHeight >= dp(21)
+                && getWidth() > 0 && getHeight() > 0 && row != null && row.identityKnown
+                && row.lastIdentity == row.identity.getAsLong() && row.epoch == UiAnimationClock.epoch()
+                && row.isAllowed() && getLocalVisibleRect(profileContentVisibleRect) && isProfileTextVisible(canvas, rect)) {
+            contentPresented = true;
+        }
+    }
+
+    protected boolean isProfileTextVisible(Canvas canvas, RectF bounds) {
+        float left = bounds.left + dp(8) + dp(16.6f);
+        float right = Math.min(bounds.right - dp(8), left + author.getWidth() + title.getWidth());
+        return textProgress > 0f && left < right
+                && isProfileTextAreaVisible(canvas, left, bounds.top, right, bounds.bottom);
+    }
+
+    protected final boolean isProfileTextAreaVisible(Canvas canvas, float left, float top, float right, float bottom) {
+        return left < profileContentVisibleRect.right && right > profileContentVisibleRect.left
+                && top < profileContentVisibleRect.bottom && bottom > profileContentVisibleRect.top
+                && !canvas.quickReject(left, top, right, bottom, Canvas.EdgeType.AA);
+    }
+
+    private boolean isProfilePillVisible() {
+        if (!isAttachedToWindow() || !isShown() || getWindowVisibility() != VISIBLE || currentHeight <= 0) return false;
+        for (View view = this; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    protected void finishProfileContentAnimation() {
+        outgoingAuthor = outgoingTitle = null;
+        textProgress = 1f;
+        outgoingTextAlpha = 0f;
+        contentPresented = false;
+    }
+
+    private void sampleText(long now) {
+        if (outgoingAuthor == null) return;
+        textProgress = replacementProgress(now, textStartedAt);
+        if (textProgress >= 1f) {
+            outgoingAuthor = outgoingTitle = null;
+            outgoingTextAlpha = 0f;
+        }
+    }
+
+    private static float replacementProgress(long now, long startedAt) {
+        return CubicBezierInterpolator.EASE_OUT_QUINT.getInterpolation(Math.max(0f, Math.min(1f, (now - startedAt) / 240f)));
+    }
+
+    private class ProfileRowAnimation implements ViewTreeObserver.OnPreDrawListener {
+        final LongSupplier identity;
+        final BooleanSupplier visible;
+        final PillWidths widths = new PillWidths();
+        ViewTreeObserver observer;
+        boolean dirty = true, identityKnown, contextAllowed, wasLeadingVisible, wasTrailingVisible;
+        long lastIdentity, widthStartedAt;
+        int epoch = UiAnimationClock.epoch();
+        float viewportWidth;
+
+        ProfileRowAnimation(LongSupplier identity, BooleanSupplier visible) {
+            this.identity = identity;
+            this.visible = visible;
+        }
+
+        void observe() {
+            if (observer == null && isAttachedToWindow()) {
+                observer = getViewTreeObserver();
+                observer.addOnPreDrawListener(this);
+            }
+        }
+
+        void stopObserving() {
+            if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
+            observer = null;
+        }
+
+        void reset() {
+            finishProfileContentAnimation();
+            snapVerticalPosition();
+            if (trailingView != null) {
+                trailingView.finishProfileContentAnimation();
+                trailingView.snapVerticalPosition();
+            }
+            widths.initialized = false;
+            widths.animating = false;
+            dirty = true;
+            invalidateContentWidth();
+        }
+
+        boolean checkContext() {
+            long id = identity.getAsLong();
+            int currentEpoch = UiAnimationClock.epoch();
+            boolean changed = !identityKnown || id != lastIdentity || epoch != currentEpoch;
+            identityKnown = true;
+            lastIdentity = id;
+            epoch = currentEpoch;
+            boolean allowed = isAllowed();
+            if (changed || !allowed && (contextAllowed || contentPresented || outgoingAuthor != null || widths.animating
+                    || trailingView != null && (trailingView.contentPresented || trailingView.outgoingAuthor != null))) reset();
+            contextAllowed = allowed;
+            return allowed;
+        }
+
+        boolean isAllowed() {
+            return !UiAnimationClock.isPaused() && SharedConfig.animationsEnabled()
+                    && (Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled() : AndroidUtilities.getAnimatorDurationScale() > 0f)
+                    && visible.getAsBoolean();
+        }
+
+        @Override
+        public boolean onPreDraw() {
+            boolean allowed = checkContext();
+            long now = UiAnimationClock.now();
+            boolean changed = dirty || widths.animating || outgoingAuthor != null
+                    || trailingView != null && trailingView.outgoingAuthor != null;
+            if (!allowed) {
+                if (animateGeometry) snapVerticalPosition();
+                if (trailingView != null && trailingView.animateGeometry) trailingView.snapVerticalPosition();
+            }
+            updateVerticalPosition();
+            if (trailingView != null) trailingView.updateVerticalPosition();
+            boolean leadingVisible = isProfilePillVisible();
+            boolean trailingVisible = trailingView != null && trailingView.isProfilePillVisible();
+            if (!wasLeadingVisible && !wasTrailingVisible) widths.initialized = false;
+            if (leadingVisible != wasLeadingVisible || trailingVisible != wasTrailingVisible) dirty = true;
+            wasLeadingVisible = leadingVisible;
+            wasTrailingVisible = trailingVisible;
+            if (!leadingVisible) finishProfileContentAnimation();
+            if (trailingView != null && !trailingVisible) trailingView.finishProfileContentAnimation();
+            sampleText(now);
+            if (trailingView != null) trailingView.sampleText(now);
+            widths.sample(replacementProgress(now, widthStartedAt));
+            float newViewportWidth = leadingVisible ? getWidth() : trailingVisible ? trailingView.getWidth() : getWidth();
+            if (viewportWidth != newViewportWidth) dirty = true;
+            viewportWidth = newViewportWidth;
+            changed |= dirty;
+            if (dirty) {
+                float max = Math.max(0f, viewportWidth - dp(24));
+                float gap = leadingVisible && trailingVisible ? Math.min(dp(6), max) : 0f;
+                float trailingWidth = trailingVisible ? trailingView.getBoundedPillWidth(leadingVisible ? (max - gap) / 2f : max) : 0f;
+                float leadingWidth = leadingVisible ? getBoundedPillWidth(Math.max(0f, max - trailingWidth - gap)) : 0f;
+                if (!leadingVisible && !trailingVisible) widths.initialized = false;
+                if (widths.retarget(leadingWidth, trailingWidth, gap, max, allowed && (leadingVisible || trailingVisible))) {
+                    widthStartedAt = now;
+                }
+                dirty = false;
+            }
+            if (changed) {
         invalidate();
-        view.invalidate();
+                if (trailingView != null) trailingView.invalidate();
+            }
+            if (widths.animating || outgoingAuthor != null || trailingView != null && trailingView.outgoingAuthor != null) {
+                postInvalidateOnAnimation();
+                if (trailingView != null) trailingView.postInvalidateOnAnimation();
+            }
+            return true;
+        }
+    }
+
+    private static class PillWidths {
+        float leading, trailing, gap, fromLeading, fromTrailing, fromGap, toLeading, toTrailing, toGap;
+        boolean initialized, animating;
+
+        void sample(float progress) {
+            if (!animating) return;
+            leading = lerp(fromLeading, toLeading, progress);
+            trailing = lerp(fromTrailing, toTrailing, progress);
+            gap = lerp(fromGap, toGap, progress);
+            if (progress >= 1f) animating = false;
+        }
+
+        boolean retarget(float newLeading, float newTrailing, float newGap, float max, boolean animated) {
+            float total = leading + trailing + gap;
+            boolean bounded = total > max && total > 0f;
+            if (bounded) {
+                float scale = max / total;
+                leading *= scale;
+                trailing *= scale;
+                gap *= scale;
+            }
+            if (!bounded && initialized && toLeading == newLeading && toTrailing == newTrailing && toGap == newGap && animated) return false;
+            fromLeading = leading;
+            fromTrailing = trailing;
+            fromGap = gap;
+            toLeading = newLeading;
+            toTrailing = newTrailing;
+            toGap = newGap;
+            animating = animated && initialized && (leading != toLeading || trailing != toTrailing || gap != toGap);
+            initialized = true;
+            if (!animating) {
+                leading = toLeading;
+                trailing = toTrailing;
+                gap = toGap;
+            }
+            return true;
+        }
+
+        float left(float viewportWidth, boolean isTrailing) {
+            return (viewportWidth - leading - trailing - gap) / 2f + (isTrailing ? leading + gap : 0f);
+        }
     }
     private final Paint arrowPaint = new Paint();
     private final Path arrowPath = new Path();
@@ -72,7 +350,6 @@ public class ProfileMusicView extends View {
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path clipPath = new Path();
 
-    private final Path clipAvatarPath = new Path();
     private final ButtonBounce bounce = new ButtonBounce(this);
     public ProfileMusicView(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -233,35 +510,39 @@ public class ProfileMusicView extends View {
     }
 
     public void setText(CharSequence author, CharSequence title) {
+        author = author == null ? "" : author;
+        title = title == null ? "" : title;
+        if (TextUtils.equals(authorText, author) && TextUtils.equals(titleText, title)) return;
+        boolean animated = canAnimateProfileContent();
+        long now = UiAnimationClock.now();
+        float oldAlpha = outgoingTextAlpha * (1f - textProgress);
+        if (animated && outgoingAuthor != null && (!contentPresented || oldAlpha > textProgress)) {
+            outgoingTextAlpha = oldAlpha;
+        } else {
+            outgoingAuthor = animated ? this.author : null;
+            outgoingTitle = animated ? this.title : null;
+            outgoingTextAlpha = animated ? textProgress : 0f;
+        }
+        textProgress = animated ? 0f : 1f;
+        textStartedAt = now;
+        authorText = author.toString();
+        titleText = title.toString();
         this.author = Text.ui(author, 11, AndroidUtilities.bold());
         this.title = Text.ui(title, 11);
 
+        clearProfileContentPresentation();
         setContentDescription(getString(R.string.AccDescrProfileMusic) + " " + author + " — " + title);
+        invalidateContentWidth();
     }
 
-    private ProfileActivity.AvatarImageView avatarView;
-    private boolean ignoreRect = false;
-    private RenderNode renderNode;
-    private float renderNodeScale;
-    private float renderNodeTranslateY;
+    @Nullable
+    private BlurredBackgroundDrawable glass;
+    private float glassRadius;
 
-    public void drawingBlur(boolean drawing) {
-        if (trailingView != null) trailingView.drawingBlur(drawing);
-        if (ignoreRect != drawing || renderNode != null) {
-            ignoreRect = drawing;
-            renderNode = null;
-            avatarView = null;
-            invalidate();
-        }
-    }
-
-    public void drawingBlur(RenderNode renderNode, ProfileActivity.AvatarImageView avatarView, float scale, float dy) {
-        if (trailingView != null) trailingView.drawingBlur(renderNode, avatarView, scale, dy);
-        this.ignoreRect = false;
-        this.renderNode = renderNode;
-        this.avatarView = avatarView;
-        this.renderNodeScale = scale;
-        this.renderNodeTranslateY = dy;
+    public void setGlassFactory(@Nullable BlurredBackgroundDrawableViewFactory factory) {
+        if (trailingView != null) trailingView.setGlassFactory(factory);
+        glass = factory != null ? factory.create(this, ProfileButtonsGlass.NO_COLORS) : null;
+        glassRadius = 0;
         invalidate();
     }
 
@@ -277,6 +558,7 @@ public class ProfileMusicView extends View {
     public void setAlpha(float alpha) {
         super.setAlpha(alpha);
         if (trailingView != null) trailingView.setAlpha(alpha);
+        if (alpha <= 0f) resetProfileAnimations();
     }
 
     protected boolean isOnProfilePhoto() {
@@ -298,7 +580,63 @@ public class ProfileMusicView extends View {
             currentHeight = newHeight;
             setTranslationY(y - dp(12));
         }
-        invalidate();
+        invalidateContentWidth();
+    }
+
+    private void snapVerticalPosition() {
+        animateGeometry = false;
+        animatedPositionY.force(targetPositionY);
+        animatedHeight.force(targetHeight);
+        currentHeight = targetHeight;
+        setTranslationY(targetPositionY - dp(12));
+    }
+
+    private void updateVerticalPosition() {
+        final float positionY = animateGeometry ? animatedPositionY.set(targetPositionY) : targetPositionY;
+        currentHeight = animateGeometry ? animatedHeight.set(targetHeight) : targetHeight;
+        setTranslationY(positionY - dp(12));
+        if (animateGeometry && Math.abs(currentHeight - targetHeight) < 0.1f
+                && Math.abs(positionY - targetPositionY) < 0.1f) animateGeometry = false;
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (row != null) {
+            row.dirty = true;
+            row.observe();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (row != null) {
+            row.reset();
+            if (leadingView == null) row.stopObserving();
+        }
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (getProfileRowAnimation() == null) return;
+        if (visibility != VISIBLE) finishProfileContentAnimation();
+        invalidateContentWidth();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility != VISIBLE) resetProfileAnimations();
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        invalidateContentWidth();
     }
 
     @Override
@@ -323,10 +661,14 @@ public class ProfileMusicView extends View {
     }
 
     protected float getContentWidth(float maxWidth) {
+        return fitMusicText(author, title, maxWidth);
+    }
+
+    private float fitMusicText(Text author, Text title, float maxWidth) {
         final float textWidth = Math.max(0, maxWidth - dp(16) - dp(16.6f) - dp(8));
-        this.author.ellipsize(textWidth / 2f);
-        this.title.ellipsize(Math.max(0, textWidth - this.author.getWidth()));
-        return dp(16.6f) + this.author.getWidth() + this.title.getWidth() + dp(8);
+        author.ellipsize(textWidth / 2f);
+        title.ellipsize(Math.max(0, textWidth - author.getWidth()));
+        return dp(16.6f) + author.getWidth() + title.getWidth() + dp(8);
     }
 
     protected void drawContent(Canvas canvas, float alpha) {
@@ -337,10 +679,21 @@ public class ProfileMusicView extends View {
         icon.draw(canvas);
 
         canvas.translate(dp(16.6f), 0);
-        this.author.draw(canvas, 0, cy, textColor, alpha);
+        if (outgoingAuthor != null) {
+            fitMusicText(outgoingAuthor, outgoingTitle, contentDrawWidth + dp(16));
+            canvas.save();
+            outgoingAuthor.draw(canvas, 0, cy, textColor, alpha * outgoingTextAlpha * (1f - textProgress));
+            canvas.translate(outgoingAuthor.getWidth(), 0);
+            outgoingTitle.draw(canvas, 0, cy, textColor, 0.85f * alpha * outgoingTextAlpha * (1f - textProgress));
+            canvas.restore();
+        }
+        canvas.save();
+        this.author.draw(canvas, 0, cy, textColor, alpha * textProgress);
         canvas.translate(this.author.getWidth(), 0);
-        this.title.draw(canvas, 0, cy, textColor, 0.85f * alpha);
-        canvas.translate(this.title.getWidth(), 0);
+        this.title.draw(canvas, 0, cy, textColor, 0.85f * alpha * textProgress);
+        canvas.restore();
+        canvas.translate(isProfileAnimationEnabled() ? Math.max(0f, contentDrawWidth - dp(16.6f) - dp(8))
+                : this.author.getWidth() + this.title.getWidth(), 0);
 
         arrowPaint.setStrokeWidth(dpf2(1.16f));
         canvas.translate(dpf2(4.8f), cy);
@@ -356,6 +709,8 @@ public class ProfileMusicView extends View {
     }
 
     protected void invalidateContentWidth() {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (row != null) row.dirty = true;
         invalidate();
         if (leadingView != null) leadingView.invalidate();
         if (trailingView != null) trailingView.invalidate();
@@ -365,29 +720,44 @@ public class ProfileMusicView extends View {
         return dp(16) + getContentWidth(maxWidth);
     }
 
+    private float getBoundedPillWidth(float maxWidth) {
+        return Math.max(0f, Math.min(maxWidth, dp(16) + getTargetContentWidth(maxWidth)));
+    }
+
+    protected float getTargetContentWidth(float maxWidth) {
+        return getContentWidth(maxWidth);
+    }
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
         if (this.author == null || this.title == null) return;
 
-        final float positionY = animateGeometry ? animatedPositionY.set(targetPositionY) : targetPositionY;
-        currentHeight = animateGeometry ? animatedHeight.set(targetHeight) : targetHeight;
-        setTranslationY(positionY - dp(12));
-        if (animateGeometry && Math.abs(currentHeight - targetHeight) < 0.1f
-                && Math.abs(positionY - targetPositionY) < 0.1f) {
-            animateGeometry = false;
-        }
+        final boolean capturing = isProfileContentCapture() || !canvas.isHardwareAccelerated();
+        final float oldLeft = rect.left, oldTop = rect.top, oldRight = rect.right, oldBottom = rect.bottom;
+        final float oldContentDrawWidth = contentDrawWidth;
+        try {
+        ProfileRowAnimation row = getProfileRowAnimation();
+        if (row == null && !capturing) updateVerticalPosition();
         final float alpha = Utilities.clamp01(currentHeight / dp(21));
         final float bannerT = Utilities.clamp01(bannerProgress);
         final float profileT = 1f - bannerT;
         final float scale = bounce.getScale(0.02f);
-        if (alpha <= 0) return;
+        if (alpha <= 0) {
+            if (glass != null) {
+                glass.setAlpha(0);
+            }
+            return;
+        }
 
         final int padding = dp(12);
         final int maxWidth = getWidth() - padding * 2;
 
         float containerWidth;
         float left;
-        if (hasVisibleCompanion()) {
+        if (row != null && row.widths.initialized) {
+            containerWidth = leadingView != null ? row.widths.trailing : row.widths.leading;
+            left = row.widths.left(row.viewportWidth, leadingView != null);
+            getContentWidth(containerWidth);
+        } else if (hasVisibleCompanion()) {
             ProfileMusicView leading = leadingView != null ? leadingView : this;
             ProfileMusicView trailing = trailingView != null ? trailingView : this;
             float trailingWidth = trailing.getPillWidth(maxWidth / 2f);
@@ -400,10 +770,21 @@ public class ProfileMusicView extends View {
             left = (getWidth() - containerWidth) / 2f;
         }
 
+        contentDrawWidth = Math.max(0f, containerWidth - dp(16));
         rect.set(left, dp(10), left + containerWidth, dp(10) + dp(17) * alpha);
         canvas.save();
         canvas.scale(scale, scale, rect.centerX(), getHeight() / 2f);
 
+        if (glass != null) {
+            final float radius = rect.height() / 2f;
+            if (glassRadius != radius) {
+                glassRadius = radius;
+                glass.setRadius(radius);
+            }
+            glass.setBounds((int) rect.left, (int) rect.top, (int) Math.ceil(rect.right), (int) Math.ceil(rect.bottom));
+            glass.setAlpha((int) (0xFF * alpha));
+            glass.draw(canvas);
+        } else {
         final boolean withShadows = SharedConfig.shadowsInSections && isButtonColorLight() && parentExpanded < 0.5f;
         final float bgAlpha = hasColorById ? 0.1f : 1f;
         if (withShadows && SharedConfig.shadowsInSections) {
@@ -437,7 +818,8 @@ public class ProfileMusicView extends View {
             shaderPaint.setAlpha((int) (0xFF * alpha * profileT));
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, shaderPaint);
         }
-        if (bannerT > 0f) {
+        }
+        if (glass == null && bannerT > 0f) {
             bannerBackgroundPaint.setAlpha((int) (40f * alpha * bannerT));
             canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, bannerBackgroundPaint);
         }
@@ -447,39 +829,18 @@ public class ProfileMusicView extends View {
 
         canvas.save();
         canvas.clipPath(clipPath);
-        if (profileT > 0f && !ignoreRect && renderNode != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && renderNode.hasDisplayList() && canvas.isHardwareAccelerated()) {
-            int restoreCount = profileT >= 0.999f
-                    ? canvas.save()
-                    : canvas.saveLayerAlpha(rect, Math.round(255 * profileT));
-            if (avatarView != null && avatarView.getParent() instanceof View) {
-                View v = (View) avatarView.getParent();
-                float vl = v.getX() - getX();
-                float vt = v.getY() - getTranslationY();
-                float vw = v.getWidth() * v.getScaleX();
-                float vh = v.getHeight() * v.getScaleY();
-
-                clipAvatarPath.rewind();
-                clipAvatarPath.addRoundRect(
-                    vl,
-                    vt,
-                    vl + vw,
-                    vt + vh,
-                    avatarView.getRoundRadiusForExpand() * v.getScaleX(),
-                    avatarView.getRoundRadiusForExpand() * v.getScaleY(),
-                    Path.Direction.CCW
-                );
-                canvas.clipPath(clipAvatarPath);
-            }
-            canvas.translate(0f, renderNodeTranslateY);
-            canvas.scale(renderNodeScale, renderNodeScale);
-            canvas.drawRenderNode(renderNode);
-            canvas.restoreToCount(restoreCount);
-        }
 
         canvas.translate(rect.left + dp(8), 0);
         drawContent(canvas, alpha);
         canvas.restore();
 
         canvas.restore();
+        if (!capturing) markProfileContentPresented(canvas);
+        } finally {
+            if (capturing) {
+                rect.set(oldLeft, oldTop, oldRight, oldBottom);
+                contentDrawWidth = oldContentDrawWidth;
+            }
+        }
     }
 }

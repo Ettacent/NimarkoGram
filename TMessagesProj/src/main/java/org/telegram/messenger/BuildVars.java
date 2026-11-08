@@ -42,6 +42,7 @@ public class BuildVars {
 
     public static boolean SUPPORTS_PASSKEYS = Build.VERSION.SDK_INT >= 28;
 
+    public static boolean SUPPORTS_FPNV = true;
     static {
         if (ApplicationLoader.applicationContext != null) {
             SharedPreferences sharedPreferences = ApplicationLoader.applicationContext.getSharedPreferences("systemConfig", Context.MODE_PRIVATE);

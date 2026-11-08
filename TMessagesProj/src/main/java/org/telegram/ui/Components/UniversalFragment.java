@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.LocaleController.formatPluralString;
@@ -18,6 +20,7 @@ import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Business.QuickRepliesController;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.DialogsActivity;
@@ -29,6 +32,7 @@ public abstract class UniversalFragment extends BaseFragment {
 
     public UniversalRecyclerView listView;
 
+    protected FrameLayout contentView;
     public void setMD3(boolean enabled) {
     }
 
@@ -46,19 +50,26 @@ public abstract class UniversalFragment extends BaseFragment {
 
     @Override
     public View createView(Context context) {
-        actionBar.setBackButtonDrawable(new BackDrawable(false));
-        actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(getTitle());
-        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
+        final ActionBar.ActionBarMenuOnItemClick onItemClick = new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
                     finishFragment();
                 }
             }
-        });
+        };
+        if (simpleActionBar != null) {
+            simpleActionBar.setBackButtonDrawable(new BackDrawable(false));
+            simpleActionBar.setTitle(getTitle());
+            simpleActionBar.setActionBarMenuOnItemClick(onItemClick);
+        } else {
+            actionBar.setBackButtonDrawable(new BackDrawable(false));
+            actionBar.setAllowOverlayTitle(true);
+            actionBar.setTitle(getTitle());
+            actionBar.setActionBarMenuOnItemClick(onItemClick);
+        }
 
-        FrameLayout contentView = new SizeNotifierFrameLayout(context) {
+        contentView = new SizeNotifierFrameLayout(context) {
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 super.onMeasure(
@@ -67,7 +78,9 @@ public abstract class UniversalFragment extends BaseFragment {
                 );
             }
         };
-        contentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+        if (!useSimpleActionBar()) {
+            ThemeBind.backgroundColor(contentView, Theme.key_windowBackgroundGray);
+        }
 
         listView = new UniversalRecyclerView(this, this::fillItemsInternal, this::onClick, this::onLongClick) {
             @Override
@@ -84,8 +97,10 @@ public abstract class UniversalFragment extends BaseFragment {
 
         listView.setSections(true);
         listView.adapter.setApplyBackground(false);
+        if (actionBar != null && !useSimpleActionBar()) {
         actionBar.setAdaptiveBackground(listView);
 
+        }
         return fragmentView = contentView;
     }
 

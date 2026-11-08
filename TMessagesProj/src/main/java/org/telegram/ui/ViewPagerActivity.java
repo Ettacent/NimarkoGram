@@ -22,13 +22,17 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.SimpleActionBar;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.ViewPagerFixed;
 
 import java.util.ArrayList;
 
+import org.telegram.messenger.FileLog;
+import java.util.HashSet;
 public abstract class ViewPagerActivity extends BaseFragment {
     protected final SparseArray<FragmentState> fragmentsArr = new SparseArray<>();
 
@@ -106,6 +110,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
                 }
 
                 fragment.setParentLayout(getParentLayout());
+                fragment.setSimpleMenuOverlayHost(ViewPagerActivity.this);
                 if (fragment.getFragmentView() == null) {
                     fragment.performCreateView(context);
                     fragment.setTitleOverlayText(titleOverlay, titleOverlayId, titleOverlayAction);
@@ -116,11 +121,13 @@ public abstract class ViewPagerActivity extends BaseFragment {
                 final View fragmentView = fragment.getFragmentView();
                 final ActionBar fragmentActionBar = fragment.getActionBar();
                 final boolean separateActionBar = fragmentActionBar != null && fragmentActionBar.shouldAddToContainer();
+                final View notificationPanel = fragment.getExistingInAppNotificationPanel();
+                final boolean hasSiblingNotificationPanel = notificationPanel != null && notificationPanel.getParent() == container;
                 final boolean alreadyBound = fragmentView.getParent() == container
-                        && container.getChildCount() == (separateActionBar ? 2 : 1)
+                        && container.getChildCount() == (separateActionBar ? 2 : 1) + (hasSiblingNotificationPanel ? 1 : 0)
                         && (!separateActionBar || fragmentActionBar.getParent() == container);
                 if (!fragment.hasOwnBackground() && fragmentView.getBackground() == null) {
-                    fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    ThemeBind.backgroundColor(fragmentView, Theme.key_windowBackgroundWhite);
                 }
 
                 if (!alreadyBound) {
@@ -249,15 +256,60 @@ public abstract class ViewPagerActivity extends BaseFragment {
     }
 
     @Override
+    public boolean hasSheetAboveMenu() {
+        final BaseFragment fragment = getCurrentVisibleFragment();
+        return super.hasSheetAboveMenu() || fragment != null && fragment.hasSheetAboveMenu();
+    }
+
+    @Override
     public boolean onBackPressed(boolean invoked) {
         if (hasShownSheet()) {
             if (invoked) closeSheet();
             return false;
         }
         final BaseFragment fragment = getCurrentVisibleFragment();
+        if (fragment != null && fragment.hasSheetAboveMenu()) {
+            fragment.onBackPressed(invoked);
+            return false;
+        }
+        if (handleMenuOverlayBack(invoked) || fragment != null && fragment.handleMenuOverlayBack(invoked)) {
+            return false;
+        }
+        final SimpleActionBar simpleActionBar = fragment != null ? fragment.getSimpleActionBar() : null;
+        if (simpleActionBar != null && simpleActionBar.hasBackAction()) {
+            if (invoked) simpleActionBar.onBackPressed();
+            return false;
+        }
         if (fragment != null && !fragment.onBackPressed(invoked))
             return false;
         return super.onBackPressed(invoked);
+    }
+
+
+    @Override
+    public void onThemeColorsChanged() {
+        super.onThemeColorsChanged();
+        for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
+            final FragmentState state = fragmentsArr.valueAt(a);
+            if (state != null && state.fragment.fragmentView != null) {
+                try {
+                    state.fragment.onThemeColorsChanged();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void addThemeColorKeys(HashSet<Integer> keys) {
+        super.addThemeColorKeys(keys);
+        for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
+            final FragmentState state = fragmentsArr.valueAt(a);
+            if (state != null && state.fragment.fragmentView != null) {
+                state.fragment.addThemeColorKeys(keys);
+            }
+        }
     }
 
     @Override

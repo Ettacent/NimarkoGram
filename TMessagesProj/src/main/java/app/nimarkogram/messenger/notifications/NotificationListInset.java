@@ -22,6 +22,10 @@ public final class NotificationListInset {
     }
 
     public boolean apply(int height, int anchor, float visibility) {
+        return apply(height, anchor, visibility, 0);
+    }
+
+    public boolean apply(int height, int anchor, float visibility, int leadingContentReservation) {
         if (list.getPaddingTop() != writtenTop) {
             applied = 0;
             anchorLayout = null;
@@ -29,7 +33,7 @@ public final class NotificationListInset {
         int base = list.getPaddingTop() - applied;
         int margin = list.getLayoutParams() instanceof ViewGroup.MarginLayoutParams
                 ? ((ViewGroup.MarginLayoutParams) list.getLayoutParams()).topMargin : 0;
-        int next = Math.max(0, height) + Math.round(Math.max(0, anchor - margin - base)
+        int next = Math.max(0, height) + Math.round(Math.max(0, anchor - margin - base - Math.max(0, leadingContentReservation))
                 * Math.max(0f, Math.min(1f, visibility)));
         if (next > 0 && !active) {
             originalClip = list.getClipToPadding();

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.poll.buttons;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -130,12 +132,21 @@ public class PollButtonDrawable extends Drawable implements DownloadController.F
             imageReceiver.clearImage();
         }
 
+        if (isVideo) {
         radialProgress.setColors(
-            isVideo ? 0 : Theme.getColor(Theme.key_chat_mediaLoaderPhoto),
-            isVideo ? 0 : Theme.getColor(Theme.key_chat_mediaLoaderPhotoSelected),
+                0,
+                0,
             Theme.getColor(Theme.key_chat_mediaLoaderPhotoIcon),
             Theme.getColor(Theme.key_chat_mediaLoaderPhotoIconSelected));
 
+        } else {
+            radialProgress.setColors(
+                Theme.getColor(Theme.key_chat_mediaLoaderPhoto),
+                Theme.getColor(Theme.key_chat_mediaLoaderPhotoSelected),
+                Theme.getColor(Theme.key_chat_mediaLoaderPhotoIcon),
+                Theme.getColor(Theme.key_chat_mediaLoaderPhotoIconSelected));
+            radialProgress.setColorKeys(Theme.key_chat_mediaLoaderPhoto, Theme.key_chat_mediaLoaderPhotoSelected, Theme.key_chat_mediaLoaderPhotoIcon, Theme.key_chat_mediaLoaderPhotoIconSelected);
+        }
         if (!TextUtils.equals(attachFileNameOld, attachFileName)) {
             if (!TextUtils.isEmpty(attachFileNameOld)) {
                 DownloadController.getInstance(currentAccount).removeLoadingFileObserver(this);

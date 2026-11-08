@@ -100,6 +100,7 @@ import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_iv;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Adapters.DialogsAdapter;
 import org.telegram.ui.AvatarSpan;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
@@ -158,6 +159,7 @@ import java.util.Stack;
 
 import me.vkryl.android.animator.BoolAnimator;
 
+import java.util.HashSet;
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
 import app.nimarkogram.messenger.utils.UiAnimationClock;
@@ -393,6 +395,49 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
     @Override
     public void updateColors() {
+        try {
+            if (!isAttachedToWindow() || currentDialogId == 0 && customDialog == null) {
+                return;
+            }
+            update(0);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_chats_nameArchived);
+        colors.add(Theme.key_chats_message_threeLines);
+        colors.add(Theme.key_chats_message);
+        colors.add(Theme.key_chats_attachMessage);
+        colors.add(Theme.key_chats_name);
+        colors.add(Theme.key_chats_draft);
+        colors.add(Theme.key_chats_actionMessage);
+        colors.add(Theme.key_chats_nameMessage);
+        colors.add(Theme.key_windowBackgroundWhiteGrayText);
+        colors.add(Theme.key_windowBackgroundWhite);
+        colors.add(Theme.key_checkboxCheck);
+        colors.add(Theme.key_chats_archivePinBackground);
+        colors.add(Theme.key_chats_archiveBackground);
+        colors.add(Theme.key_dialogSwipeRemove);
+        colors.add(Theme.key_chats_pinnedOverlay);
+        colors.add(Theme.key_chats_secretName);
+        colors.add(Theme.key_chats_nameMessageArchived_threeLines);
+        colors.add(Theme.key_chats_nameMessage_threeLines);
+        colors.add(Theme.key_chats_nameMessageArchived);
+        colors.add(Theme.key_chats_messageArchived);
+        colors.add(Theme.key_chats_verifiedBackground);
+        colors.add(Theme.key_featuredStickers_addButton);
+        colors.add(Theme.key_featuredStickers_buttonText);
+        colors.add(Theme.key_chats_unreadCounterMuted);
+        colors.add(Theme.key_chats_unreadCounter);
+        colors.add(Theme.key_premiumGradient1);
+        colors.add(Theme.key_premiumGradient2);
+        colors.add(Theme.key_chats_onlineCircle);
+        colors.add(Theme.key_topics_unreadCounterMuted);
+        colors.add(Theme.key_topics_unreadCounter);
+        colors.add(Theme.key_chats_unreadCounterText);
     }
 
     private CommunityArrowDrawable communityArrowDrawable;
@@ -1108,6 +1153,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             thumbImage[i].onAttachedToWindow();
         }
         resetPinnedArchiveState();
+        rebuildDeferredProfilePreviewLayout();
         animatedEmojiStack = AnimatedEmojiSpan.update(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, this, animatedEmojiStack, messageLayout);
         animatedEmojiStack2 = AnimatedEmojiSpan.update(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, this, animatedEmojiStack2, messageNameLayout);
         animatedEmojiStack3 = AnimatedEmojiSpan.update(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, this, animatedEmojiStack3, buttonLayout);
@@ -1119,6 +1165,30 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             botVerification.attach();
         }
         invalidateBadgeDrawables();
+    }
+
+    private void rebuildDeferredProfilePreviewLayout() {
+        if (!updateLayout || isDialogCell || isTopic || isTransitionSupport || customDialog != null || !boundSearchMessage
+                || currentDialogId >= 0 || !(getParent() instanceof ProfileChannelCell)
+                || ((ProfileChannelCell) getParent()).dialogCell != this
+                || messageId != (message == null ? 0 : message.getId())
+                || message != null && (message.currentAccount != currentAccount || message.getDialogId() != currentDialogId)
+                || getWidth() <= 0 || getHeight() <= 0
+                || getWidth() != getMeasuredWidth() || getHeight() != getMeasuredHeight()) {
+            return;
+        }
+        try {
+            buildLayout();
+            if (messageLayout == null || previewAccount != currentAccount || previewDialogId != currentDialogId
+                    || previewMessageId != (message == null ? 0 : message.getId())) {
+                return;
+            }
+            lastSize = getMeasuredHeight() + getMeasuredWidth() << 16;
+            updateLayout = false;
+            invalidateProfilePreview();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     public void resetPinnedArchiveState() {
@@ -6904,6 +6974,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         }
     }
 
+    void invalidateProfilePreview() {
+        if (!isDialogCell && !isTopic && boundSearchMessage) {
+            super.invalidate();
+        } else {
+            invalidate();
+        }
+    }
     @Override
     public void invalidate() {
         if (StoryViewer.animationInProgress) {

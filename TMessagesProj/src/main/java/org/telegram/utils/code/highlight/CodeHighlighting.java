@@ -366,6 +366,21 @@ public class CodeHighlighting {
                                 }));
     }
 
+    public static void highlightMasked(
+            Spannable text, String masked, String language, Runnable whenDone) {
+        if (text == null || masked == null || masked.length() != text.length()) return;
+        String normalized = PrismaHighlightingService.normalizeLanguage(language);
+        if (normalized.isEmpty() || masked.isEmpty()) return;
+        SERVICE.request(
+                masked,
+                normalized,
+                answer ->
+                        AndroidUtilities.runOnUIThread(
+                                () -> {
+                                    apply(text, 0, text.length(), answer.tokens);
+                                    if (whenDone != null) whenDone.run();
+                                }));
+    }
     public static void prepare() {
         SERVICE.prepare();
     }

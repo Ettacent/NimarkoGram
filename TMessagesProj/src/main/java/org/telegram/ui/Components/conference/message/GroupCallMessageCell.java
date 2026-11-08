@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.conference.message;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -261,7 +263,7 @@ public class GroupCallMessageCell extends ViewGroup
         if (animatedReactionDrawable != null) {
             animatedReactionDrawable.addView(this);
         }
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
+        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
         if (groupCallMessage != null) {
             groupCallMessage.subscribeToStateUpdates(onMessageStateUpdateListener);
         }

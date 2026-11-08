@@ -1359,14 +1359,6 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         }
         int framesPerUpdates = shouldLimitFps ? 2 : 1;
         int result = generateCacheNative.getFrame(generateCacheFramePointer, bitmap, true);
-        if (result == -5) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            return getNextFrame(bitmap);
-        }
         if (result < 0) {
             return -1;
         }

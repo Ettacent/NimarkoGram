@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import android.app.Service;
@@ -104,7 +106,11 @@ public class StoryUploadingService extends Service implements NotificationCenter
         }
         currentProgress = 0;
         builder.setProgress(100, Math.round(100 * currentProgress), false);
+        try {
         startForeground(33, builder.build());
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
         try {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).notify(33, builder.build());
         } catch (Throwable e) {
@@ -112,4 +118,12 @@ public class StoryUploadingService extends Service implements NotificationCenter
         }
         return Service.START_NOT_STICKY;
     }
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        FileLog.d("StoryUploadingService timeout, type = " + fgsType);
+        try {
+            stopForeground(true);
+        } catch (Throwable ignore) {}
+        stopSelf();
+}
 }

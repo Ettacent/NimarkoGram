@@ -5,6 +5,7 @@ package app.nimarkogram.messenger.diagnostics;
 import android.app.ActivityManager;
 import android.app.Application;
 import android.content.Context;
+import android.content.res.Resources;
 import android.os.Build;
 import android.os.Process;
 import android.os.SystemClock;
@@ -12,6 +13,7 @@ import android.system.Os;
 
 import androidx.annotation.DoNotInline;
 
+import org.telegram.messenger.ApplicationLoader;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -471,8 +473,10 @@ public final class NativeCrashDiagnostics {
     }
 
     private static String mappingId(Context context) {
-        int id = context.getResources().getIdentifier("com.google.firebase.crashlytics.mapping_file_id", "string", context.getPackageName());
-        return id == 0 ? "unavailable" : context.getResources().getString(id);
+        Resources resources = ApplicationLoader.rawResources();
+        if (resources == null) resources = context.getResources();
+        int id = resources.getIdentifier("com.google.firebase.crashlytics.mapping_file_id", "string", context.getPackageName());
+        return id == 0 ? "unavailable" : resources.getString(id);
     }
 
     private static String hex(long value) { return "0x" + Long.toHexString(value); }

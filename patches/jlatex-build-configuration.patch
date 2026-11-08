@@ -1,0 +1,24 @@
+diff --git a/jlatexmath/build.gradle b/jlatexmath/build.gradle
+--- a/jlatexmath/build.gradle
++++ b/jlatexmath/build.gradle
+@@ -1,8 +1,10 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ apply plugin: 'com.android.library'
+ 
+ android {
+ 
+-    namespace 'ru.noties.jlatexmath.android'
++    namespace = 'ru.noties.jlatexmath.android'
+     compileSdk 36
+     buildToolsVersion '36.0.0'
+ 
+@@ -16,7 +18,7 @@
+     }
+ 
+     lintOptions {
+-        abortOnError false
++        abortOnError = false
+     }
+ }
+ 

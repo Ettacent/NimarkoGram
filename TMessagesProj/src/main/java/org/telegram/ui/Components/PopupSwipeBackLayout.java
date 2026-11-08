@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -24,7 +26,6 @@ import androidx.core.view.GestureDetectorCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
-import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.ActionBarMenuSlider;
 import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.Theme;
@@ -56,8 +57,10 @@ public class PopupSwipeBackLayout extends FrameLayout {
     private float overrideForegroundHeight;
     private ValueAnimator foregroundAnimator;
 
+    private ValueAnimator pageAnimator;
+    private int transitionGeneration;
     private int currentForegroundIndex = -1;
-    private AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
+    private AnimationNotificationsLocker notificationsLocker;
     Theme.ResourcesProvider resourcesProvider;
 
     private int lastHeightReported = -1;
@@ -121,15 +124,40 @@ public class PopupSwipeBackLayout extends FrameLayout {
         onSwipeBackProgressListeners.add(onSwipeBackProgressListener);
     }
 
+    public void removeOnSwipeBackProgressListener(OnSwipeBackProgressListener listener) {
+        onSwipeBackProgressListeners.remove(listener);
+    }
+
+    private boolean foregroundOnGlass;
+
+    public void setForegroundOnGlass(boolean onGlass) {
+        if (foregroundOnGlass != onGlass) {
+            foregroundOnGlass = onGlass;
+            invalidate();
+        }
+    }
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
         int i = indexOfChild(child);
+        if (foregroundOnGlass) {
+            final float alpha = i == 0 ? 1f - Math.min(1f, transitionProgress * 2f) : Math.max(0f, transitionProgress * 2f - 1f);
+            if (alpha <= 0) {
+                return false;
+            }
+            if (alpha >= 1) {
+                return super.drawChild(canvas, child, drawingTime);
+            }
+            final int s = canvas.saveLayerAlpha(child.getX(), child.getY(), child.getX() + child.getWidth(), child.getY() + child.getHeight(), (int) (0xFF * alpha));
+            final boolean b = super.drawChild(canvas, child, drawingTime);
+            canvas.restoreToCount(s);
+            return b;
+        }
         int s = canvas.save();
         if (i == 0 && !drawForegroundBackground
                 && currentForegroundIndex > 0
                 && currentForegroundIndex < getChildCount()
                 && transitionProgress > 0f) {
-             
+
             View foregroundView = getChildAt(currentForegroundIndex);
             float foregroundEdge = Math.max(0f,
                     Math.min(getWidth(), foregroundView.getX()));
@@ -171,6 +199,10 @@ public class PopupSwipeBackLayout extends FrameLayout {
         }
 
         View backgroundView = getChildAt(0);
+        if (backgroundView == null) {
+            invalidate();
+            return;
+        }
         View foregroundView = null;
         if (currentForegroundIndex >= 0 && currentForegroundIndex < getChildCount()) {
             foregroundView = getChildAt(currentForegroundIndex);
@@ -195,7 +227,15 @@ public class PopupSwipeBackLayout extends FrameLayout {
             return;
         }
 
+        if (!(getParent() instanceof ActionBarPopupWindow.ActionBarPopupWindowLayout)) {
+            invalidate();
+            return;
+        }
         ActionBarPopupWindow.ActionBarPopupWindowLayout p = (ActionBarPopupWindow.ActionBarPopupWindowLayout) getParent();
+        if (p.getMeasuredWidth() == 0 || p.getMeasuredHeight() == 0) {
+            invalidate();
+            return;
+        }
         float w = fW + (tW - fW) * transitionProgress;
         float h = fH + (tH - fH) * transitionProgress;
         w += p.getPaddingLeft() + p.getPaddingRight();
@@ -281,35 +321,45 @@ public class PopupSwipeBackLayout extends FrameLayout {
     private void animateToState(float f, float flingVal) {
         ValueAnimator val = ValueAnimator.ofFloat(transitionProgress, f).setDuration((long) (DURATION * Math.max(0.5f, Math.abs(transitionProgress - f) - Math.min(0.2f, flingVal))));
         val.setInterpolator(CubicBezierInterpolator.DEFAULT);
-        int selectedAccount = UserConfig.selectedAccount;
-        notificationsLocker.lock();
+        final int generation = ++transitionGeneration;
+        final AnimationNotificationsLocker locker = new AnimationNotificationsLocker();
         val.addUpdateListener(animation -> {
+            if (pageAnimator != animation) return;
             transitionProgress = (float) animation.getAnimatedValue();
             invalidateTransforms();
         });
         val.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationStart(Animator animation) {
+                if (pageAnimator != animation) return;
                 isAnimationInProgress = true;
                 toProgress = f;
             }
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                notificationsLocker.unlock();
+                if (pageAnimator != animation) return;
+                pageAnimator = null;
+                notificationsLocker = null;
                 transitionProgress = f;
                 if (f <= 0) {
                     currentForegroundIndex = -1;
                 }
+                isAnimationInProgress = foregroundAnimator != null;
                 invalidateTransforms();
-                isAnimationInProgress = false;
+                locker.unlock();
 
-                if (onForegroundOpen != null && Math.abs(f - 1f) < .01f) {
+                if (transitionGeneration == generation && onForegroundOpen != null && Math.abs(f - 1f) < .01f) {
                     onForegroundOpen.run();
                 }
             }
         });
-        val.start();
+        pageAnimator = val;
+        notificationsLocker = locker;
+        isAnimationInProgress = true;
+        toProgress = f;
+        locker.lock();
+        if (pageAnimator == val) val.start();
     }
 
     private Runnable onForegroundOpen;
@@ -336,17 +386,36 @@ public class PopupSwipeBackLayout extends FrameLayout {
     }
 
     public void closeForeground(boolean animated) {
-        if (isAnimationInProgress) {
+        if (!animated) {
+            ++transitionGeneration;
+            final ValueAnimator page = pageAnimator;
+            pageAnimator = null;
+            final AnimationNotificationsLocker locker = notificationsLocker;
+            notificationsLocker = null;
+            if (page != null) {
+                page.removeAllUpdateListeners();
+                page.removeAllListeners();
+                page.cancel();
+            }
+            cancelForegroundAnimator();
+            currentForegroundIndex = -1;
+            toProgress = -1;
+            transitionProgress = 0;
+            overrideForegroundHeight = 0;
+            isAnimationInProgress = false;
+            clearFlags();
+            lastHeightReported = -1;
+            invalidateTransforms();
+            if (locker != null) locker.unlock();
             return;
         }
-        if (!animated) {
-            currentForegroundIndex = -1;
-            transitionProgress = 0;
-            invalidateTransforms();
-            return;
-        } else {
+        if (isAnimationInProgress) return;
             animateToState(0, 0);
         }
+    @Override
+    protected void onDetachedFromWindow() {
+        closeForeground(false);
+        super.onDetachedFromWindow();
     }
 
     public boolean stickToRight;
@@ -477,10 +546,7 @@ public class PopupSwipeBackLayout extends FrameLayout {
         if (currentForegroundIndex < 0 || currentForegroundIndex >= getChildCount()) {
             return;
         }
-        if (foregroundAnimator != null) {
-            foregroundAnimator.cancel();
-            foregroundAnimator = null;
-        }
+        cancelForegroundAnimator();
         if (animated) {
             View fg = getChildAt(currentForegroundIndex);
             float fromH = overrideForegroundHeight != 0 ? overrideForegroundHeight : fg.getMeasuredHeight();
@@ -489,6 +555,7 @@ public class PopupSwipeBackLayout extends FrameLayout {
             ValueAnimator animator = ValueAnimator.ofFloat(fromH, toH).setDuration(240);
             animator.setInterpolator(Easings.easeInOutQuad);
             animator.addUpdateListener(animation -> {
+                if (foregroundAnimator != animation) return;
                 overrideForegroundHeight = (float) animation.getAnimatedValue();
                 invalidateTransforms();
             });
@@ -496,16 +563,28 @@ public class PopupSwipeBackLayout extends FrameLayout {
             animator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    isAnimationInProgress = false;
+                    if (foregroundAnimator != animation) return;
                     foregroundAnimator = null;
+                    isAnimationInProgress = pageAnimator != null;
                 }
             });
-            animator.start();
             foregroundAnimator = animator;
+            animator.start();
         } else {
             overrideForegroundHeight = height;
             invalidateTransforms();
         }
+    }
+
+    private void cancelForegroundAnimator() {
+        final ValueAnimator animator = foregroundAnimator;
+        foregroundAnimator = null;
+        if (animator != null) {
+            animator.removeAllUpdateListeners();
+            animator.removeAllListeners();
+            animator.cancel();
+        }
+        isAnimationInProgress = pageAnimator != null;
     }
 
     public void setForegroundColor(int color) {

@@ -26,6 +26,7 @@ import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.DialogRadioCell;
 import org.telegram.ui.Cells.NotificationsCheckCell;
@@ -122,6 +123,22 @@ public abstract class BasePreferencesActivity extends BaseFragment {
         return frameLayout;
     }
 
+    @Override
+    public ArrayList<ThemeDescription> getThemeDescriptions() {
+        ArrayList<ThemeDescription> descriptions = super.getThemeDescriptions();
+        if (descriptions == null) descriptions = new ArrayList<>();
+        descriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND,
+                null, null, null, null, Theme.key_windowBackgroundGray));
+        descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND,
+                null, null, null, null, Theme.key_actionBarDefault));
+        descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR,
+                null, null, null, null, Theme.key_actionBarDefaultTitle));
+        descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR,
+                null, null, null, null, Theme.key_actionBarDefaultIcon));
+        descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_SELECTORCOLOR,
+                null, null, null, null, Theme.key_actionBarDefaultSelector));
+        return descriptions;
+    }
     public abstract void fillItems(ArrayList<UItem> arrayList, UniversalAdapter universalAdapter);
 
     private void fillItemsWithDescriptions(ArrayList<UItem> items, UniversalAdapter adapter) {

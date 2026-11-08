@@ -44,7 +44,7 @@ public class FileLoadOperation {
     boolean streamPriority;
     long streamOffset;
 
-    public static volatile DispatchQueue filesQueue = new DispatchQueue("writeFileQueue");
+    public static volatile DispatchQueue2 filesQueue = new DispatchQueue2("writeFileQueue");
     public static ImmutableByteArrayOutputStream filesQueueByteBuffer;
     private boolean forceSmallChunk;
     private boolean useDownloadByteBudget;
@@ -60,6 +60,7 @@ public class FileLoadOperation {
     private Runnable fileWriteRunnable;
     public boolean isStory;
 
+    private boolean isVideoDocument;
     public volatile boolean caughtPremiumFloodWait;
     public void setStream(FileLoadOperationStream stream, boolean streamPriority, long streamOffset) {
         this.stream = stream;
@@ -319,6 +320,10 @@ public class FileLoadOperation {
         maxDownloadRequests = profile.maxRequests;
         maxDownloadRequestsBig = profile.maxRequests;
 
+        if (isStory) {
+            downloadChunkSizeBig = 1024 * 128;
+            maxDownloadRequestsBig = 8;
+        }
         maxCdnParts = (int) ((FileLoader.DEFAULT_MAX_FILE_SIZE_PREMIUM
                 + (long) cdnChunkCheckSize - 1L) / cdnChunkCheckSize);
     }
@@ -431,6 +436,7 @@ public class FileLoadOperation {
     }
 
     public FileLoadOperation(TLRPC.Document documentLocation, Object parent) {
+        isVideoDocument = MessageObject.isVideoDocument(documentLocation);
         paceDocumentRequests = documentLocation != null && !MessageObject.isAnyKindOfStickerOrEmoji(documentLocation) &&
                 !"application/x-tgwallpattern".equals(documentLocation.mime_type);
         updateParams();
@@ -463,6 +469,9 @@ public class FileLoadOperation {
                         preloadPrefixSize = documentLocation.attributes.get(a).preload_prefix_size;
                         break;
                     }
+                }
+                if (isStory && supportsPreloading && preloadPrefixSize <= 0) {
+                    preloadPrefixSize = 512 * 1024;
                 }
             }
             ungzip = "application/x-tgsticker".equals(documentLocation.mime_type) || "application/x-tgwallpattern".equals(documentLocation.mime_type);
@@ -832,6 +841,7 @@ public class FileLoadOperation {
             return;
         }
         paused = true;
+        speedStartTime = 0;
         Utilities.stageQueue.postRunnable(() -> {
             if (isStory) {
                 if (BuildVars.LOGS_ENABLED) {
@@ -1308,7 +1318,7 @@ public class FileLoadOperation {
                 boolean preloadedByPrefixSize = preloadPrefixSize > 0 && downloadedBytes >= preloadPrefixSize && canFinishPreload();
                 if (totalBytesCount != 0 && (videoPreloaded || downloadedBytes == totalBytesCount || preloadedByPrefixSize)) {
                     try {
-                        onFinishLoadingFile(false, FINISH_CODE_FILE_ALREADY_EXIST, true);
+                        onFinishLoadingFile(false, FINISH_CODE_FILE_ALREADY_EXIST, videoPreloaded || preloadedByPrefixSize);
                     } catch (Exception e) {
                         onFail(true, 0);
                     }
@@ -1403,11 +1413,9 @@ public class FileLoadOperation {
     private void cancelOnStage(boolean deleteFiles) {
         if (state != stateFinished && state != stateFailed && state != stateCanceled && state != stateCancelling) {
             state = stateCancelling;
-            cancelRequests(() -> {
-                if (state == stateCancelling) {
+            Utilities.stageQueue.cancelRunnable(pacedDownloadRequest);
+            cancelRequests(null);
                     onFail(false, 1);
-                }
-            });
         }
         if (deleteFiles) {
             if (cacheFileFinal != null) {
@@ -1494,7 +1502,7 @@ public class FileLoadOperation {
             }
             for (int i = 0; i < waitingDownloadSize.length; i++) {
                 int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
-                if (waitingDownloadSize[i] > 1024 * 1024)  {
+                if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                     int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                     ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
                 }
@@ -2315,11 +2323,14 @@ public class FileLoadOperation {
                     ConnectionsManager.getInstance(currentAccount).cancelRequest(info.requestToken, true);
                     info.cancelled = true;
                 }
+                if (!DownloadSpeedEstimator.isFast()) {
+                    waitingDownloadSize[info.connectionType >>> 16] += info.chunkSize;
+                }
             }
         }
         for (int i = 0; i < waitingDownloadSize.length; i++) {
             int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
-            if (waitingDownloadSize[i] > 512 * 1024 * 2)  {
+            if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                 int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                 ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
             }
@@ -2377,7 +2388,7 @@ public class FileLoadOperation {
     protected void startDownloadRequest(int useConnectionType) {
         Utilities.stageQueue.cancelRunnable(pacedDownloadRequest);
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
-            if (Utilities.stageQueue != null && Utilities.stageQueue.getHandler() != null && Thread.currentThread() != Utilities.stageQueue.getHandler().getLooper().getThread()) {
+            if (Utilities.stageQueue != null && Utilities.stageQueue.isReady() && Thread.currentThread() != Utilities.stageQueue) {
                 throw new RuntimeException("Wrong thread!!!");
             }
         }
@@ -2776,6 +2787,9 @@ public class FileLoadOperation {
                             }
                         }
                     }
+                        if (error == null && response != null) {
+                            measureSpeed(response.getObjectSize());
+                        }
                     processRequestResult(requestInfo, error);
                     }
                 } finally {
@@ -2857,5 +2871,37 @@ public class FileLoadOperation {
 
     public boolean isFinished() {
         return state == stateFinished;
+    }
+    private long speedStartTime, speedLastTime, speedBytes;
+    private int speedChunks;
+
+    private void measureSpeed(int bytes) {
+        long now = SystemClock.elapsedRealtime();
+        if (speedStartTime == 0 || now - speedLastTime > 2000) {
+            speedStartTime = now;
+            speedBytes = 0;
+            speedChunks = 0;
+        } else {
+            speedBytes += bytes;
+            speedChunks++;
+            if (speedChunks >= 2 && speedBytes >= 128 * 1024 && now - speedStartTime >= 500) {
+                DownloadSpeedEstimator.onSample(speedBytes * 8, now - speedStartTime);
+                speedStartTime = now;
+                speedBytes = 0;
+                speedChunks = 0;
+            }
+        }
+        speedLastTime = now;
+    }
+
+    public boolean hasStoryStartData() {
+        if (state == stateFinished) {
+            return true;
+        }
+        return isVideoDocument && downloadedBytes >= (preloadPrefixSize > 0 ? preloadPrefixSize : 1024 * 1024);
+    }
+
+    private int getMaxCancelledBytesPerConnection() {
+        return isStory && !DownloadSpeedEstimator.isFast() ? 256 * 1024 : 1024 * 1024;
     }
 }

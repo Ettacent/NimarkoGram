@@ -54,7 +54,7 @@ public class FileLog {
     private OutputStreamWriter streamWriter = null;
     private final FastDateFormat dateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss.SSS", Locale.US);
     private final FastDateFormat fileDateFormat = FastDateFormat.getInstance("dd_MM_yyyy_HH_mm_ss", Locale.US);
-    private volatile DispatchQueue logQueue = null;
+    private volatile DispatchQueue2 logQueue = null;
     private final Object initLock = new Object();
 
     private static final int MAX_PENDING_WRITES = 4096;
@@ -72,7 +72,7 @@ public class FileLog {
         boolean accepted = false;
         try {
             init();
-            DispatchQueue queue = logQueue;
+            DispatchQueue2 queue = logQueue;
             if (queue != null) {
                 accepted = queue.postRunnable(() -> {
                     try {
@@ -265,7 +265,7 @@ public class FileLog {
 
                 @Override
                 public boolean shouldSkipClass(Class<?> clazz) {
-                    return NativeByteBuffer.class.isAssignableFrom(clazz) || clazz.isInstance(DispatchQueue.class) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class);
+                    return NativeByteBuffer.class.isAssignableFrom(clazz) || DispatchQueue.class.isAssignableFrom(clazz) || DispatchQueue2.class.isAssignableFrom(clazz) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class);
                 }
             };
             gson = new GsonBuilder()
@@ -329,7 +329,7 @@ public class FileLog {
                         }
                         if (value != null) {
                             Class clazz = value.getClass();
-                            if (clazz.isInstance(DispatchQueue.class) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class)) {
+                            if (DispatchQueue.class.isAssignableFrom(clazz) || DispatchQueue2.class.isAssignableFrom(clazz) || clazz.isInstance(AnimatedFileDrawable.class) || clazz.isInstance(ColorStateList.class) || clazz.isInstance(Context.class)) {
                                 continue;
                             }
                         }
@@ -358,8 +358,9 @@ public class FileLog {
             boolean scheduled = false;
             try {
                 if (logQueue == null) {
-                    DispatchQueue queue = new DispatchQueue("logQueue", false);
-                    queue.start(this::openWriters);
+                    DispatchQueue2 queue = new DispatchQueue2("logQueue", false);
+                    queue.postRunnable(this::openWriters);
+                    queue.start();
                     logQueue = queue;
                     scheduled = true;
                 } else {
@@ -682,7 +683,7 @@ public class FileLog {
     public static void cleanupLogs() {
         FileLog logger = getInstance();
         logger.init();
-        DispatchQueue queue = logger.logQueue;
+        DispatchQueue2 queue = logger.logQueue;
         if (queue != null) {
             queue.postRunnable(logger::cleanupLogsInternal);
         }

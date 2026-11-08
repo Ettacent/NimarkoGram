@@ -357,10 +357,16 @@ public class AppearancePreferencesActivity extends UniversalPreferencesActivity 
             if (getActionBar() != null) {
                 getActionBar().prepareCenterTitleAnimation();
             }
+            if (getSimpleActionBar() != null) {
+                getSimpleActionBar().prepareCenterTitleAnimation();
+            }
             AppConfig.toggleCenterTitle();
             updateCheckState(view, AppConfig.centerTitle);
             if (getActionBar() != null) {
                 getActionBar().requestLayout();
+            }
+            if (getSimpleActionBar() != null) {
+                getSimpleActionBar().requestLayout();
             }
 
             if (getParentLayout() != null) {

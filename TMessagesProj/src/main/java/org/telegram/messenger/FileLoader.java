@@ -122,7 +122,7 @@ public class FileLoader extends BaseController {
         }
     }
 
-    public DispatchQueue getFileLoaderQueue() {
+    public DispatchQueue2 getFileLoaderQueue() {
         return fileLoaderQueue;
     }
 
@@ -206,7 +206,7 @@ public class FileLoader extends BaseController {
 
     public final static int PRELOAD_CACHE_TYPE = 11;
 
-    private volatile static DispatchQueue fileLoaderQueue = new DispatchQueue("fileUploadQueue");
+    private volatile static DispatchQueue2 fileLoaderQueue = new DispatchQueue2("fileUploadQueue");
     private final FilePathDatabase filePathDatabase;
 
     private final LinkedList<FileUploadOperation> uploadOperationQueue = new LinkedList<>();
@@ -845,8 +845,10 @@ public class FileLoader extends BaseController {
             FileLog.e(new RuntimeException("cant get hash from " + document));
             return null;
         }
+        LoadOperationUIObject operationUi = null;
         if (cacheType != 10 && !TextUtils.isEmpty(fileName) && !fileName.contains("" + Integer.MIN_VALUE)) {
-            loadOperationPathsUI.put(fileName, new LoadOperationUIObject());
+            operationUi = new LoadOperationUIObject();
+            loadOperationPathsUI.put(fileName, operationUi);
         }
 
         if (document != null && !isVideoStoryboardDocument(document) && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
@@ -859,6 +861,7 @@ public class FileLoader extends BaseController {
         priority = getPriorityValue(priority);
 
         if (operation != null) {
+            if (operationUi != null) operationUi.operation = operation;
             if (cacheType != 10 && operation.isPreloadVideoOperation()) {
                 operation.setIsPreloadVideoOperation(false);
             }
@@ -988,6 +991,7 @@ public class FileLoader extends BaseController {
         } else if (cacheType == ImageLoader.CACHE_TYPE_ENCRYPTED) {
             operation.setEncryptFile(true);
         }
+        if (operationUi != null) operationUi.operation = operation;
         operation.setPaths(currentAccount, fileName, loaderQueue, storeDir, tempDir, storeFileName);
         if (cacheType == 10) {
             operation.setIsPreloadVideoOperation(true);
@@ -1024,7 +1028,7 @@ public class FileLoader extends BaseController {
                 }
 
                 if (!operation.isPreloadVideoOperation()) {
-                    loadOperationPathsUI.remove(fileName);
+                    clearLoadingUi(fileName, operation);
                     if (delegate != null) {
                         delegate.fileDidLoaded(fileName, finalFile, parentObject, finalType);
                     }
@@ -1035,7 +1039,11 @@ public class FileLoader extends BaseController {
 
             @Override
             public void didFailedLoadingFile(FileLoadOperation operation, int reason) {
-                loadOperationPathsUI.remove(fileName);
+                if (reason == 1 && hasReplacementLoadingUi(fileName, operation)) {
+                    checkDownloadQueue(operation, operation.getQueue());
+                    return;
+                }
+                clearLoadingUi(fileName, operation);
                 checkDownloadQueue(operation, operation.getQueue());
                 if (delegate != null) {
                     delegate.fileDidFailedLoad(fileName, reason);
@@ -1228,7 +1236,8 @@ public class FileLoader extends BaseController {
     private void checkDownloadQueue(FileLoadOperation operation, FileLoaderPriorityQueue queue, long delay) {
         fileLoaderQueue.postRunnable(() -> {
             if (queue.remove(operation)) {
-                loadOperationPaths.remove(operation.getFileName());
+                loadOperationPaths.remove(operation.getFileName(), operation);
+                clearLoadingUi(operation.getFileName(), operation);
                 queue.checkLoadingOperations(operation.isStory);
             }
         }, delay);
@@ -1923,6 +1932,20 @@ public class FileLoader extends BaseController {
 
     private static class LoadOperationUIObject {
         Runnable loadInternalRunnable;
+        volatile FileLoadOperation operation;
+    }
+
+    private boolean hasReplacementLoadingUi(String fileName, FileLoadOperation operation) {
+        FileLoadOperation active = loadOperationPaths.get(fileName);
+        LoadOperationUIObject ui = loadOperationPathsUI.get(fileName);
+        return active != null && active != operation || ui != null && ui.operation != operation;
+    }
+
+    private void clearLoadingUi(String fileName, FileLoadOperation operation) {
+        LoadOperationUIObject ui = loadOperationPathsUI.get(fileName);
+        if (ui != null && ui.operation == operation) {
+            loadOperationPathsUI.remove(fileName, ui);
+        }
     }
 
     public static byte[] longToBytes(long x) {

@@ -38,11 +38,11 @@ public final class WsBypassConfig {
 
     private static boolean loadEnabledWithSentinel() {
         SharedPreferences p = prefs();
+        boolean value = p.getBoolean("enabled", false);
         if (!p.getBoolean("configured", false)) {
-            p.edit().putBoolean("configured", true).putBoolean("enabled", true).apply();
-            return true;
+            p.edit().putBoolean("configured", true).putBoolean("enabled", value).apply();
         }
-        return p.getBoolean("enabled", true);
+        return value;
     }
 
     public static void setEnabled(boolean v) {

@@ -1,0 +1,24 @@
+Office region tile cache
+
+office-tile-cache.js contains adapted portions of:
+  CollaboraOnline/online.mirror
+  commit 2608b882b757418d9af69af2c575a1a27e8025ba
+  browser/src/app/BitmapTileManager.ts
+  https://github.com/CollaboraOnline/online.mirror/blob/2608b882b757418d9af69af2c575a1a27e8025ba/browser/src/app/BitmapTileManager.ts
+
+Copyright the Collabora Online contributors.
+SPDX-License-Identifier: MPL-2.0
+Modifications Copyright (C) 2026 Ettacent.
+
+The adapted cache keeps decoded local DOCX region canvases rather than server
+tiles and compressed deltas. It replaces the screen-dependent bitmap-count
+heuristic with explicit byte and count limits, caller-supplied identity checks,
+and synchronous detachment/zeroing of evicted canvas backing stores.
+
+The source form of the adapted module is distributed as office-tile-cache.js.
+Preserve that source file, its copyright/license header, this notice, and the
+MPL 2.0 text in COLLABORA_MPL_LICENSE.txt with any integrated distribution.
+
+This candidate adds no ONLYOFFICE code and grants no rights to its code,
+branding, or other third-party material. Existing upstream copyrights and
+licenses remain applicable.

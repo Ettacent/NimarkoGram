@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -32,6 +34,7 @@ import java.util.ArrayList;
 
 import org.telegram.ui.iv.Latex;
 
+import java.util.HashSet;
 public class RichMathCell extends RichBlockCell
     implements Theme.Colorable, TextSelectionHelper.ArticleSelectableView {
 
@@ -103,12 +106,22 @@ public class RichMathCell extends RichBlockCell
         invalidate();
     }
 
+    private boolean imageFilterApplied;
     @Override
     public void updateColors() {
         selectionPaint.setColor(Theme.getColor(Theme.key_chat_inTextSelectionHighlight, resourcesProvider));
-        paintColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+        final int color = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+        if (!imageFilterApplied || color != paintColor) {
+            imageFilterApplied = true;
+            paintColor = color;
         image.setColorFilter(new PorterDuffColorFilter(paintColor, PorterDuff.Mode.SRC_IN));
+        }
         invalidate();
+    }
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_chat_inTextSelectionHighlight);
+        colors.add(Theme.key_windowBackgroundWhiteBlackText);
     }
 
     private boolean isScrollable() {

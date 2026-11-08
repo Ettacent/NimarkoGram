@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.Manifest;
@@ -25,6 +27,7 @@ import androidx.annotation.RequiresApi;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.StickerImageView;
 
@@ -76,8 +79,12 @@ public class FilesMigrationService extends Service {
                 });
             }
         }.start();
+        try {
         startForeground(301, notification);
 
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
         return super.onStartCommand(intent, flags, startId);
     }
 
@@ -246,7 +253,7 @@ public class FilesMigrationService extends Service {
 
             TextView title = new TextView(context);
             title.setGravity(Gravity.START);
-            title.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            ThemeBind.textColor(title, Theme.key_dialogTextBlack);
             title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
             title.setTypeface(AndroidUtilities.bold());
             title.setText(LocaleController.getString(R.string.MigrateOldFolderTitle));
@@ -255,7 +262,7 @@ public class FilesMigrationService extends Service {
             TextView description = new TextView(context);
             description.setGravity(Gravity.START);
             description.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-            description.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            ThemeBind.textColor(description, Theme.key_dialogTextBlack);
             description.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.MigrateOldFolderDescription)));
             linearLayout.addView(description, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 21, 15, 21, 16));
 
@@ -267,7 +274,7 @@ public class FilesMigrationService extends Service {
             buttonTextView.setTypeface(AndroidUtilities.bold());
             buttonTextView.setText(LocaleController.getString(R.string.MigrateOldFolderButton));
 
-            buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
+            ThemeBind.textColor(buttonTextView, Theme.key_featuredStickers_buttonText);
             buttonTextView.setBackground(Theme.AdaptiveRipple.filledRectByKey(Theme.key_featuredStickers_addButton, 6));
 
             linearLayout.addView(buttonTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, 0, 16, 15, 16, 16));
@@ -320,5 +327,13 @@ public class FilesMigrationService extends Service {
             super.dismiss();
             filesMigrationBottomSheet = null;
         }
+    }
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        FileLog.d("FilesMigrationService timeout, type = " + fgsType);
+        try {
+            stopForeground(true);
+        } catch (Throwable ignore) {}
+        stopSelf();
     }
 }

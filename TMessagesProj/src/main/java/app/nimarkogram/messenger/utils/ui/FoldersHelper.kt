@@ -21,10 +21,12 @@ object FoldersHelper {
         return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun getFloatingButtonsOffset(filterTabsView: FilterTabsView?) : Int {
         return 0
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setupFilterTabs(
         context: Context,
         contentView: ViewGroup,
@@ -38,7 +40,7 @@ object FoldersHelper {
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    @Suppress("FunctionName")
+    @Suppress("FunctionName", "UNUSED_PARAMETER")
     fun blur3_InvalidateBlur(
         dialogsActivity: DialogsActivity,
         iBlur3Capture: IBlur3Capture,
@@ -51,6 +53,7 @@ object FoldersHelper {
 
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun updateFoldersOffset(
         dialogsActivity: DialogsActivity,
         inForwardMode: Boolean,

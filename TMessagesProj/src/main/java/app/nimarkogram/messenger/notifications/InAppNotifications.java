@@ -344,13 +344,53 @@ public final class InAppNotifications {
 
     private InAppNotifications() {}
 
+    public static final class Content {
+        public final int messageId;
+        public final long randomId;
+        public final String title, text;
+        public final boolean preview;
+
+        public Content(int messageId, long randomId, String title, String text, boolean preview) {
+            this.messageId = messageId; this.randomId = randomId;
+            this.title = title; this.text = text; this.preview = preview;
+        }
+    }
     public static final class Delivery {
         private static final int COMPLETE = 1, CANCELED = 2, HANDLED = 4;
         private final AtomicInteger state = new AtomicInteger();
+        public final Boolean channelHint;
+        private volatile Content content;
+        private volatile boolean presented;
+        public boolean wasPresented() { return presented; }
+        public Delivery() { this(null); }
+        private final BooleanSupplier privacyCurrent;
+        public Delivery(Boolean channelHint) { this(channelHint, null); }
+        public Delivery(Boolean channelHint, BooleanSupplier privacyCurrent) {
+            this.channelHint = channelHint;
+            this.privacyCurrent = privacyCurrent;
+        }
+        public boolean canRetainPrivacy() { return privacyCurrent == null || privacyCurrent.getAsBoolean(); }
+        public Content getContent() { return content; }
+        public void setContent(Content value) {
+            content = value;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (isActive() && banner != null && banner.delivery == this) banner.refreshDeliveryContent();
+            });
+        }
         public boolean isActive() { return (state.get() & CANCELED) == 0; }
         public boolean isComplete() { return (state.get() & COMPLETE) != 0; }
         public boolean wasHandled() { return (state.get() & HANDLED) != 0; }
-        public void cancel() { state.getAndUpdate(value -> value | CANCELED); }
+        public void cancel() {
+            state.getAndUpdate(value -> value | CANCELED);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (banner != null && banner.delivery == this) {
+                    Banner old = banner; banner = null; remove(old);
+                }
+                if (retiringBanner != null && retiringBanner.delivery == this) {
+                    Banner old = retiringBanner; retiringBanner = null; remove(old);
+                }
+            });
+        }
         public boolean complete() { return complete(false); }
         public boolean complete(boolean handled) { return state.compareAndSet(0, COMPLETE | (handled ? HANDLED : 0)); }
     }
@@ -477,9 +517,28 @@ public final class InAppNotifications {
     }
 
     public static boolean canNotify(int account, long dialogId, long topicId) {
-        return !MessagesController.getInstance(account).isDialogMuted(dialogId, topicId);
+        return canNotify(account, dialogId, topicId, null);
+    }
+
+    public static boolean canNotify(int account, long dialogId, long topicId, Boolean channelHint) {
+        MessagesController controller = MessagesController.getInstance(account);
+        if (channelHint == null || !DialogObject.isChatDialog(dialogId) || controller.getChat(-dialogId) != null) {
+            return !controller.isDialogMuted(dialogId, topicId);
+        }
+        SharedPreferences p = MessagesController.getNotificationsSettings(account);
+        int mute = p.getInt("notify2_" + NotificationsController.getSharedPrefKey(dialogId, topicId), -1);
+        if (mute == -1 && topicId != 0) return canNotify(account, dialogId, 0, channelHint);
+        if (mute == -1) return NotificationsController.getInstance(account)
+                .isGlobalNotificationsEnabled(dialogId, channelHint, false, false);
+        return mute != 2 && (mute != 3 || p.getInt("notifyuntil_"
+                + NotificationsController.getSharedPrefKey(dialogId, topicId), 0)
+                < org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentTime());
     }
     public static boolean canPreview(int account, long dialogId, long topicId) {
+        return canPreview(account, dialogId, topicId, null);
+    }
+
+    public static boolean canPreview(int account, long dialogId, long topicId, Boolean channelHint) {
         if (DialogObject.isEncryptedDialog(dialogId)
                 || ChatsPasswordHelper.isChatLocked(account, dialogId)) return false;
         SharedPreferences p = MessagesController.getNotificationsSettings(account);
@@ -488,20 +547,19 @@ public final class InAppNotifications {
                         dialogId, topicId, true)) return false;
         TLRPC.Chat chat = dialogId < 0 ? MessagesController.getInstance(account).getChat(-dialogId) : null;
         if (dialogId < 0 && chat == null) return false;
-        String key = dialogId > 0 ? "EnablePreviewAll"
-                : ChatObject.isChannel(chat) && !chat.megagroup ? "EnablePreviewChannel" : "EnablePreviewGroup";
+        boolean channel = chat != null ? ChatObject.isChannel(chat) && !chat.megagroup : Boolean.TRUE.equals(channelHint);
+        String key = dialogId > 0 ? "EnablePreviewAll" : channel ? "EnablePreviewChannel" : "EnablePreviewGroup";
         return p.getBoolean(key, true);
     }
 
     public static boolean offer(int account, long owner, long loginSession, long dialogId, long topicId, int messageId, long randomId,
                              String title, String text, boolean preview, Delivery delivery, Consumer<Boolean> completion) {
+        final Boolean channelHint = delivery.channelHint;
+        if (delivery.getContent() == null) delivery.setContent(new Content(messageId, randomId, title, text, preview));
         if (!isAvailable() || !isCurrent(account, owner, loginSession)
-                || !canNotify(account, dialogId, topicId)
+                || !canNotify(account, dialogId, topicId, channelHint)
                 || !SharedConfig.showNotificationsForAllAccounts && account != UserConfig.selectedAccount) return false;
         final long session = generation;
-        final String key = messageId == 0 && randomId == 0 ? null
-                : account + ":" + owner + ":" + loginSession + ":" + dialogId + ":" + topicId
-                + ":" + (messageId != 0 ? "m" + messageId : "r" + randomId);
         final long deadline = SystemClock.elapsedRealtime() + 4000;
         Runnable present = new Runnable() {
             long archiveWaitStarted = -1;
@@ -512,14 +570,18 @@ public final class InAppNotifications {
                 boolean handled = false;
                 boolean deferred = false;
                 try {
-                    if (!delivery.isActive() || session != generation || !isCurrent(account, owner, loginSession)
-                            || !canNotify(account, dialogId, topicId) || !allowed(account, owner, dialogId, false)) return;
+                    if (!delivery.isActive() || !delivery.canRetainPrivacy() || session != generation || !isCurrent(account, owner, loginSession)
+                            || !canNotify(account, dialogId, topicId, channelHint) || !allowed(account, owner, dialogId, topicId, false)) return;
                     long now = SystemClock.elapsedRealtime();
                     if (archiveWaitStarted >= 0) {
                         archiveWaitDuration += Math.max(0, now - archiveWaitStarted);
                         archiveWaitStarted = -1;
                     }
                     if (now >= deadline + archiveWaitDuration) return;
+                    Content content = delivery.getContent();
+                    final String key = content.messageId == 0 && content.randomId == 0 ? null
+                            : account + ":" + owner + ":" + loginSession + ":" + dialogId + ":" + topicId
+                            + ":" + (content.messageId != 0 ? "m" + content.messageId : "r" + content.randomId);
                     RecentDelivery shown = recent.get(key);
                     if (shown != null && (shown.delivery.isActive() || shown.delivery.wasHandled()) && now - shown.shownAt < 120_000) {
                         handled = true;
@@ -538,12 +600,14 @@ public final class InAppNotifications {
                         AndroidUtilities.runOnUIThread(this, 32);
                         return;
                     }
-                    boolean contentPreview = preview && canPreview(account, dialogId, topicId);
-                    if (banner != null && banner.replaceMessage(account, owner, loginSession, dialogId, topicId, messageId,
-                            title, text, contentPreview, delivery)
-                            || show(new Banner(host.get(), account, owner, loginSession, dialogId, topicId, messageId,
-                            title, text, contentPreview, false, delivery))) {
+                    boolean contentPreview = content.preview && canPreview(account, dialogId, topicId, channelHint);
+                    if (banner != null && banner.replaceMessage(account, owner, loginSession, dialogId, topicId, content.messageId,
+                            content.title, content.text, contentPreview, delivery)
+                            || show(new Banner(host.get(), account, owner, loginSession, dialogId, topicId, content.messageId,
+                            content.title, content.text, contentPreview, false, delivery))) {
                         handled = true;
+                        delivery.presented = banner != null && banner.delivery == delivery;
+                        if (delivery.presented) banner.boundContent = content;
                         if (key != null) recent.put(key, new RecentDelivery(now, delivery));
                         while (recent.size() > 64) recent.remove(recent.keySet().iterator().next());
                     }
@@ -562,7 +626,7 @@ public final class InAppNotifications {
         LaunchActivity activity = host.get();
         int account = UserConfig.selectedAccount;
         long owner = UserConfig.getInstance(account).getClientUserId();
-        if (!allowed(account, owner, 0, true)) return;
+        if (!allowed(account, owner, 0, 0, true)) return;
         final long loginSession = session(account), hostGeneration = generation, request = ++previewRequest;
         final long deadline = SystemClock.elapsedRealtime() + 4000;
         final BaseFragment source = LaunchActivity.getLastFragmentIncludeMainTabs();
@@ -570,7 +634,7 @@ public final class InAppNotifications {
             @Override public void run() {
                 if (request != previewRequest || hostGeneration != generation || host.get() != activity
                         || UserConfig.selectedAccount != account || !isCurrent(account, owner, loginSession)
-                        || !allowed(account, owner, 0, true) || SystemClock.elapsedRealtime() >= deadline
+                        || !allowed(account, owner, 0, 0, true) || SystemClock.elapsedRealtime() >= deadline
                         || LaunchActivity.getLastFragmentIncludeMainTabs() != source) return;
                 if (presentationBusy()) {
                     AndroidUtilities.runOnUIThread(this, 32);
@@ -599,19 +663,19 @@ public final class InAppNotifications {
                 && ((DialogsActivity) fragment).isArchivePullGestureInProgress();
     }
 
-    private static boolean allowed(int account, long owner, long dialogId, boolean sample) {
+    private static boolean allowed(int account, long owner, long dialogId, long topicId, boolean sample) {
         LaunchActivity activity = host.get();
-        return focused && activity != null && activity.hasWindowFocus() && mayRemain(account, owner, dialogId, sample);
+        return focused && activity != null && activity.hasWindowFocus() && mayRemain(account, owner, dialogId, topicId, sample);
     }
 
-    private static boolean mayRemain(int account, long owner, long dialogId, boolean sample) {
+    private static boolean mayRemain(int account, long owner, long dialogId, long topicId, boolean sample) {
         LaunchActivity activity = host.get();
         if (!isHostVisible() || activity == null || activity.isFinishing() || activity.isDestroyed()
-                || !mayKeepContent(account, owner, dialogId, sample)) return false;
+                || !mayKeepContent(account, owner, dialogId, topicId, sample)) return false;
         return true;
     }
 
-    private static boolean mayKeepContent(int account, long owner, long dialogId, boolean sample) {
+    private static boolean mayKeepContent(int account, long owner, long dialogId, long topicId, boolean sample) {
         if (!UserConfig.isValidAccount(account)
                 || !UserConfig.getInstance(account).isClientActivated()
                 || UserConfig.getInstance(account).getClientUserId() != owner) return false;
@@ -625,17 +689,19 @@ public final class InAppNotifications {
         }
         BaseFragment fragment = LaunchActivity.getLastFragmentIncludeMainTabs();
         return !(fragment instanceof ChatActivity && fragment.getCurrentAccount() == account
-                && ((ChatActivity) fragment).getDialogId() == dialogId);
+                && ((ChatActivity) fragment).getDialogId() == dialogId
+                && (dialogId >= 0 || !MessagesController.getInstance(account).isForum(dialogId)
+                    || ((ChatActivity) fragment).getTopicId() == topicId));
     }
 
     private static boolean mayRetain(Banner value) {
         return value == null || AppConfig.inAppNotifications && !SharedConfig.appLocked
                 && !SharedConfig.isWaitingForPasscodeEnter && !AndroidUtilities.needShowPasscode()
-                && (value.delivery == null || value.delivery.isActive())
+                && (value.delivery == null || value.delivery.isActive() && value.delivery.canRetainPrivacy())
                 && isCurrent(value.account, value.owner, value.loginSession)
-                && mayKeepContent(value.account, value.owner, value.dialogId, value.sample)
-                && (value.sample || canNotify(value.account, value.dialogId, value.topicId))
-                && (value.sample || !value.preview || canPreview(value.account, value.dialogId, value.topicId));
+                && mayKeepContent(value.account, value.owner, value.dialogId, value.topicId, value.sample)
+                && (value.sample || canNotify(value.account, value.dialogId, value.topicId, value.delivery == null ? null : value.delivery.channelHint))
+                && (value.sample || !value.preview || canPreview(value.account, value.dialogId, value.topicId, value.delivery == null ? null : value.delivery.channelHint));
     }
 
     private static void pruneRetainedBanners() {
@@ -654,9 +720,9 @@ public final class InAppNotifications {
         LaunchActivity activity = host.get();
         AnimatedLinearLayout panel = resolvePanel(next);
         if (next.delivery != null && !next.delivery.isActive()
-                || !next.sample && !canNotify(next.account, next.dialogId, next.topicId)
+                || !next.sample && !canNotify(next.account, next.dialogId, next.topicId, next.delivery == null ? null : next.delivery.channelHint)
                 || activity == null || panel == null || !isCurrent(next.account, next.owner, next.loginSession)
-                || !allowed(next.account, next.owner, next.dialogId, next.sample)) return false;
+                || !allowed(next.account, next.owner, next.dialogId, next.topicId, next.sample)) return false;
         cancelResumeDismissal();
         resumeDismissPending = false;
         remove(retiringBanner);
@@ -689,9 +755,9 @@ public final class InAppNotifications {
         next.postOnAnimation(() -> {
             if (banner == next && !next.opening && !next.closing
                     && (next.delivery != null && !next.delivery.isActive()
-                    || !next.sample && !canNotify(next.account, next.dialogId, next.topicId)
+                    || !next.sample && !canNotify(next.account, next.dialogId, next.topicId, next.delivery == null ? null : next.delivery.channelHint)
                     || !isCurrent(next.account, next.owner, next.loginSession)
-                    || !allowed(next.account, next.owner, next.dialogId, next.sample))) {
+                    || !allowed(next.account, next.owner, next.dialogId, next.topicId, next.sample))) {
                 removeCurrent();
             }
         });
@@ -1039,6 +1105,7 @@ public final class InAppNotifications {
         final long owner, loginSession, dialogId, topicId;
         final boolean preview, sample;
         Delivery delivery;
+        Content boundContent;
         Slot slot;
         boolean moving;
         long expiresAt;
@@ -1115,15 +1182,16 @@ public final class InAppNotifications {
                     postDelayed(this, 250);
                     return;
                 }
-                if (delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, sample)
-                        || !sample && !canNotify(account, dialogId, topicId)
-                        || !sample && preview && !canPreview(account, dialogId, topicId)) {
+                if (delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, topicId, sample)
+                        || !sample && !canNotify(account, dialogId, topicId, delivery == null ? null : delivery.channelHint)
+                        || !sample && preview && !canPreview(account, dialogId, topicId, delivery == null ? null : delivery.channelHint)) {
 
                     removeCurrent();
                 } else if (focused && !touching && !contentGesture && !archivePullGestureInProgress()
                         && !navigationRunning(LaunchActivity.getLastFragmentIncludeMainTabs()) && SystemClock.elapsedRealtime() >= expiresAt) {
                     hide();
                 } else {
+                    refreshDeliveryContent();
                     refreshAvatar();
                     refreshTitleBadge();
                     followScreen();
@@ -1167,6 +1235,7 @@ public final class InAppNotifications {
             title = new NotificationTitleView(activity);
             title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             title.setIncludeFontPadding(false);
+            title.setMinimumHeight(dp(20));
             title.setMaxLines(1);
             title.setEllipsize(TextUtils.TruncateAt.END);
             title.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
@@ -1257,6 +1326,20 @@ public final class InAppNotifications {
             return view;
         }
 
+        void refreshDeliveryContent() {
+            Content content = delivery == null ? null : delivery.getContent();
+            if (content == null || content == boundContent || touching || opening || closing || banner != this) return;
+            if (!mayRetain(this)) {
+                removeCurrent();
+                return;
+            }
+            if (preview != content.preview) {
+                removeCurrent();
+                return;
+            }
+            if (replaceMessage(account, owner, loginSession, dialogId, topicId, content.messageId,
+                    content.title, content.text, content.preview, delivery)) boundContent = content;
+        }
         boolean sameConversation(int account, long owner, long loginSession, long dialogId, long topicId) {
             return this.account == account && this.owner == owner && this.loginSession == loginSession
                     && this.dialogId == dialogId && this.topicId == topicId;
@@ -1584,15 +1667,19 @@ public final class InAppNotifications {
         @Override protected void onMeasure(int w, int h) {
             int width = Math.min(dp(560), MeasureSpec.getSize(w));
             measuredAvailableHeight = availableHeight();
-            int titleHeight = Math.max(dp(20), title.getLineHeight());
-            setTextSlotHeight(title, titleHeight);
+            setTextSlotHeight(title, LayoutHelper.WRAP_CONTENT);
             setTextSlotHeight(body, LayoutHelper.WRAP_CONTENT);
+            int widthSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
+            int heightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            super.onMeasure(widthSpec, heightSpec);
+            int titleHeight = title.getMeasuredHeight();
             int bodyLimit = Math.max(dp(34), Math.min(dp(220), measuredAvailableHeight
                     - getPaddingTop() - getPaddingBottom() - titleHeight - dp(3)));
             int lines = Math.max(2, Math.min(8, bodyLimit / Math.max(1, expandedBody.getLineHeight())));
-            if (expandedBody.getMaxLines() != lines) expandedBody.setMaxLines(lines);
-            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED));
+            if (expandedBody.getMaxLines() != lines) {
+                expandedBody.setMaxLines(lines);
+                super.onMeasure(widthSpec, heightSpec);
+            }
             if (!closing && !opening || collapsedHeight <= 0) {
                 expandedHeight = Math.max(getMinimumHeight(), getPaddingTop() + getPaddingBottom()
                     + Math.max(avatar.getMeasuredHeight(), text.naturalHeight));
@@ -1793,7 +1880,7 @@ public final class InAppNotifications {
         void animateOpenChat() {
             if (closing || opening || banner != this) return;
             BaseFragment source = LaunchActivity.getLastFragmentIncludeMainTabs();
-            if (navigationRunning(source) || !allowed(account, owner, dialogId, sample)) return;
+            if (navigationRunning(source) || !allowed(account, owner, dialogId, topicId, sample)) return;
             if (!sample) {
                 final LaunchActivity activity = host.get();
                 final long hostGeneration = generation;
@@ -1837,13 +1924,19 @@ public final class InAppNotifications {
 
         void openChat() {
             if (banner != this) return;
-            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, sample)) {
+            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, topicId, sample)) {
                 removeCurrent(); return;
             }
             if (!sample && (navigationRequestCurrent == null || !navigationRequestCurrent.getAsBoolean())) {
                 pauseInteraction();
                 return;
             }
+            if (!sample && (!canNotify(account, dialogId, topicId, delivery == null ? null : delivery.channelHint)
+                    || preview && !canPreview(account, dialogId, topicId, delivery == null ? null : delivery.channelHint))) {
+                removeCurrent(); return;
+            }
+            Content latest = delivery == null ? null : delivery.getContent();
+            if (latest != null) messageId = latest.messageId;
             LaunchActivity activity = host.get();
             if (sample || activity == null) {
                 removeCurrent(); return;

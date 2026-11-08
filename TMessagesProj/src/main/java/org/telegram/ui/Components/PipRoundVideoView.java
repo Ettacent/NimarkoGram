@@ -341,7 +341,7 @@ public class PipRoundVideoView implements NotificationCenter.NotificationCenterD
         }
         parentActivity = activity;
         currentAccount = UserConfig.selectedAccount;
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         observerRegistered = true;
         instance = this;
         runShowHideAnimation(true);

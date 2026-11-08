@@ -12,13 +12,15 @@ final class RecordingControlsIconRenderer {
     private final MediaActionDrawable.PackIconRenderer renderer =
             new MediaActionDrawable.PackIconRenderer(true);
 
-    boolean drawLockPause(Canvas canvas, Paint foreground, float cx, float cy, float progress) {
+    private final BoundedPackIconRenderer pauseRenderer = new BoundedPackIconRenderer();
+
+    boolean drawLockPause(Canvas canvas, Paint foreground, float cx, float cy, float progress,
+                          float width, float height) {
         IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
         IconResources.PreparedIcon lock =
                 MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.msg_secret);
-        IconResources.PreparedIcon pause =
-                MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_pause);
-        if (lock == null || pause == null) {
+        boolean pauseReady = pauseRenderer.prepare(icons, R.drawable.ic_action_pause);
+        if (lock == null || !pauseReady) {
             return false;
         }
         float t = Math.max(0f, Math.min(1f, progress));
@@ -26,8 +28,7 @@ final class RecordingControlsIconRenderer {
         renderer.draw(canvas, lock, foreground, cx,
                 cy - AndroidUtilities.dpf2(4) * (1f - t),
                 AndroidUtilities.dpf2(24), alpha * (1f - t), 0);
-        renderer.draw(canvas, pause, foreground, cx, cy,
-                AndroidUtilities.dpf2(20), alpha * t, 0);
+        pauseRenderer.draw(canvas, foreground, cx, cy, width, height, t, false);
         return true;
     }
 }

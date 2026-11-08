@@ -6,12 +6,19 @@ import android.content.Context;
 import android.util.SparseArray;
 import android.view.View;
 
+import android.view.ViewGroup;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeDescription;
+import org.telegram.ui.Cells.HeaderCell;
+import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.SettingsActivity;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
@@ -22,7 +29,8 @@ import app.nimarkogram.messenger.infocards.InfoCardRegistry;
 import app.nimarkogram.messenger.infocards.InfoCardType;
 import app.nimarkogram.messenger.infocards.InfoCardsConfig;
 
-public class InfoCardsPreferencesActivity extends BasePreferencesActivity implements InfoCardRowView.Listener {
+public class InfoCardsPreferencesActivity extends BasePreferencesActivity
+        implements InfoCardRowView.Listener, NotificationCenter.NotificationCenterDelegate {
 
     private static final int ID_ENABLED            = 100;
     private static final int ID_INFINITE_SCROLL    = 101;
@@ -39,6 +47,60 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
 
     private final SparseArray<InfoCardRowView> rows = new SparseArray<>();
 
+    private final Runnable refreshOverlayColors = this::refreshOverlayColors;
+
+    @Override
+    public boolean onFragmentCreate() {
+        if (!super.onFragmentCreate()) return false;
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
+        return true;
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id != NotificationCenter.didSetNewTheme || fragmentView == null || Theme.isAnimatingColor()) return;
+        AndroidUtilities.cancelRunOnUIThread(refreshOverlayColors);
+        AndroidUtilities.runOnUIThread(refreshOverlayColors);
+    }
+
+    private void refreshOverlayColors() {
+        if (fragmentView == null || listView == null) return;
+        for (ThemeDescription description : getThemeDescriptions()) {
+            description.setColor(Theme.getColor(description.getCurrentKey(), getResourceProvider()), false, false);
+        }
+        actionBar.updateColors();
+        for (int i = 0; i < rows.size(); i++) rows.valueAt(i).updateColors();
+        refreshAttachedColors(listView);
+        listView.invalidate();
+    }
+
+    @Override
+    public ArrayList<ThemeDescription> getThemeDescriptions() {
+        ArrayList<ThemeDescription> descriptions = super.getThemeDescriptions();
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class},
+                new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{TextInfoPrivacyCell.class},
+                new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText4));
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class},
+                new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class},
+                new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class},
+                new String[]{"checkBox"}, null, null, null, Theme.key_switchTrack));
+        descriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCheckCell.class},
+                new String[]{"checkBox"}, null, null, null, Theme.key_switchTrackChecked));
+        return descriptions;
+    }
+
+    private static void refreshAttachedColors(View view) {
+        if (view instanceof Theme.Colorable && !(view instanceof InfoCardRowView)) {
+            ((Theme.Colorable) view).updateColors();
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) refreshAttachedColors(group.getChildAt(i));
+        }
+    }
     @Override
     public String getTitle() {
         return LocaleController.getString(R.string.NM_CARDS_Title);
@@ -54,6 +116,8 @@ public class InfoCardsPreferencesActivity extends BasePreferencesActivity implem
 
     @Override
     public void onFragmentDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
+        AndroidUtilities.cancelRunOnUIThread(refreshOverlayColors);
         rows.clear();
         super.onFragmentDestroy();
     }

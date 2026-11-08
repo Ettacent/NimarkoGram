@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.video;
 
 import android.graphics.Bitmap;
@@ -24,7 +26,7 @@ import org.telegram.ui.Components.VideoPlayer;
 //used for player in background thread
 public class VideoPlayerHolderBase {
 
-    public boolean paused;
+    public volatile boolean paused;
     public TLRPC.Document document;
     VideoPlayer videoPlayer;
     Runnable initRunnable;
@@ -95,14 +97,15 @@ public class VideoPlayerHolderBase {
     Runnable progressRunnable = new Runnable() {
         @Override
         public void run() {
-            if (videoPlayer != null) {
+            if (!released && videoPlayer != null) {
                 if (lastState == ExoPlayer.STATE_ENDED) {
                     progress = 1f;
                 } else {
                     currentPosition = videoPlayer.getCurrentPosition();
                     playerDuration = videoPlayer.getDuration();
                 }
-                if (lastState == ExoPlayer.STATE_READY || lastState == ExoPlayer.STATE_BUFFERING) {
+                if (!paused && videoPlayer.isPlaying()
+                        && (lastState == ExoPlayer.STATE_READY || lastState == ExoPlayer.STATE_BUFFERING)) {
                     dispatchQueue.cancelRunnable(progressRunnable);
                     dispatchQueue.postRunnable(progressRunnable, 16);
                 }
@@ -118,6 +121,7 @@ public class VideoPlayerHolderBase {
         this.currentAccount = currentAccount;
         this.contentUri = uri;
         paused = true;
+        dispatchQueue.cancelRunnable(progressRunnable);
         if (initRunnable != null) {
             dispatchQueue.cancelRunnable(initRunnable);
         }
@@ -154,7 +158,7 @@ public class VideoPlayerHolderBase {
                 FileLog.d("videoplayerholderbase.start(): preparePlayer new player uri=" + uri);
                 videoPlayer.preparePlayer(uri, "other");
                 videoPlayer.setWorkerQueue(dispatchQueue);
-                if (!paused) {
+                if (!this.paused) {
                     if (surface != null) {
                         videoPlayer.setSurface(surface);
                     } else if (surfaceView != null) {
@@ -175,7 +179,7 @@ public class VideoPlayerHolderBase {
                 }
             } else {
                 FileLog.d("videoplayerholderbase.start(): player already exist");
-                if (!paused) {
+                if (!this.paused) {
                     if (surface != null) {
                         videoPlayer.setSurface(surface);
                     } else if (surfaceView != null) {
@@ -200,6 +204,7 @@ public class VideoPlayerHolderBase {
             }
 
            // videoPlayer.setVolume(isInSilentMode ? 0 : 1f);
+            progressRunnable.run();
             AndroidUtilities.runOnUIThread(() -> initRunnable = null);
         });
     }
@@ -232,11 +237,13 @@ public class VideoPlayerHolderBase {
                 lastState = playbackState;
                 currentPosition = player.getCurrentPosition();
                 playerDuration = player.getDuration();
+                dispatchQueue.cancelRunnable(progressRunnable);
                 if (playbackState == ExoPlayer.STATE_READY || playbackState == ExoPlayer.STATE_BUFFERING) {
-                    dispatchQueue.cancelRunnable(progressRunnable);
+                    if (playWhenReady && !paused) {
                     dispatchQueue.postRunnable(progressRunnable);
+                    }
                 } else if (playbackState == ExoPlayer.STATE_ENDED) {
-                    if (needRepeat()) {
+                    if (playWhenReady && !paused && needRepeat()) {
                         progress = 0;
                         player.seekTo(0);
                         player.play();
@@ -393,11 +400,13 @@ public class VideoPlayerHolderBase {
             return;
         }
         paused = true;
+        dispatchQueue.cancelRunnable(progressRunnable);
         invalidateStubCapture();
         prepareStub();
         dispatchQueue.postRunnable(() -> {
             if (videoPlayer != null) {
                 videoPlayer.pause();
+                progressRunnable.run();
             }
         });
     }
@@ -484,6 +493,7 @@ public class VideoPlayerHolderBase {
                     pendingSeekTo = 0;
                 }
                 videoPlayer.setPlayWhenReady(true);
+                progressRunnable.run();
             }
         });
     }
@@ -512,6 +522,7 @@ public class VideoPlayerHolderBase {
                 }
                 videoPlayer.setPlaybackSpeed(speed);
                 videoPlayer.setPlayWhenReady(true);
+                progressRunnable.run();
             }
         });
     }
@@ -710,6 +721,7 @@ public class VideoPlayerHolderBase {
                 return;
             }
             videoPlayer.seekTo(position);
+            progressRunnable.run();
         });
     }
 
@@ -720,6 +732,7 @@ public class VideoPlayerHolderBase {
                 return;
             }
             videoPlayer.seekTo(position, fast, done);
+            progressRunnable.run();
         });
     }
 
@@ -760,6 +773,7 @@ public class VideoPlayerHolderBase {
             dispatchQueue.cancelRunnable(betterSeek);
             dispatchQueue.postRunnable(betterSeek, 300);
             videoPlayer.seekTo(lastSeek = position, true);
+            progressRunnable.run();
         }
     };
 

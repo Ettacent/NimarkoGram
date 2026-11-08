@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from bundled ng_globe_plumpy geometry (GPL v2 or later).
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillAlpha="0.35" android:pathData="M12,2A10,10 0,1 0,12,22A10,10 0,1 0,12,2Z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="6" android:endY="24">
+                <item android:offset="0" android:color="#FAFFFFFF"/>
+                <item android:offset="0.32" android:color="#E0FFFFFF"/>
+                <item android:offset="0.56" android:color="#8FFFFFFF"/>
+                <item android:offset="0.78" android:color="#B8FFFFFF"/>
+                <item android:offset="1" android:color="#F5FFFFFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.9"
+        android:strokeWidth="1.5" android:strokeLineCap="round"
+        android:pathData="M2.8,12H21.2M12,2.8C9.7,4.7 8.5,8.1 8.5,12C8.5,15.9 9.7,19.3 12,21.2M12,2.8C14.3,4.7 15.5,8.1 15.5,12C15.5,15.9 14.3,19.3 12,21.2"/>
+</vector>

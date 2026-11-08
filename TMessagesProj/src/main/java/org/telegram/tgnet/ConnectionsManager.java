@@ -16,6 +16,7 @@ import android.util.Base64;
 
 import androidx.annotation.Keep;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
@@ -91,6 +92,7 @@ public class ConnectionsManager extends BaseController {
 
     /** Client-side error used when a network response cannot be deserialized safely. */
     public final static int DownloadConnectionsCount = 8;
+    public final static int UploadConnectionsCountPremium = 8;
     public static final int ERROR_RESPONSE_DESERIALIZATION_FAILED = -1001;
     public static final String RESPONSE_DESERIALIZATION_FAILED = "RESPONSE_DESERIALIZATION_FAILED";
 
@@ -350,6 +352,27 @@ public class ConnectionsManager extends BaseController {
 
 
 
+    public static class RequestException extends RuntimeException {
+        public final int code;
+        public final String text;
+
+        public RequestException(TLRPC.TL_error error) {
+            super(error != null && error.text != null ? error.text : null);
+            if (error != null) {
+                this.code = error.code;
+                this.text = error.text;
+            } else {
+                this.code = 0;
+                this.text = "NULL";
+            }
+        }
+
+        @Nullable
+        @Override
+        public String getMessage() {
+            return text;
+        }
+    }
     public int sendRequestTypedAndProcessUpdates(TLMethod<TLRPC.Updates> method, Executor executor, Utilities.Callback2<TLRPC.Updates, TLRPC.TL_error> completionBlock) {
         return sendRequestTypedAndProcessUpdates(method, executor, completionBlock, DEFAULT_DATACENTER_ID, 0);
     }
@@ -400,9 +423,11 @@ public class ConnectionsManager extends BaseController {
 
     public int sendRequest(final TLObject object, final RequestDelegate onComplete, final RequestDelegateTimestamp onCompleteTimestamp, final QuickAckDelegate onQuickAck, final WriteToSocketDelegate onWriteToSocket, final int flags, final int datacenterId, final int connectionType, final boolean immediate) {
         final int requestToken = lastRequestToken.getAndIncrement();
-        Utilities.stageQueue.postRunnable(() -> {
+        if (!Utilities.stageQueue.postRunnable(() -> {
             sendRequestInternal(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
-        });
+        })) {
+            cancelManagedRequestCallback(onComplete);
+        }
         return requestToken;
     }
     private static void completeCancelledDialogsRequest(TLObject request, RequestDelegate callback) {
@@ -410,7 +435,74 @@ public class ConnectionsManager extends BaseController {
             TLRPC.TL_error error = new TLRPC.TL_error();
             error.code = -2000;
             error.text = "PLUGIN_REQUEST_CANCELLED";
-            Utilities.stageQueue.postRunnable(() -> callback.run(null, error));
+            if (!Utilities.stageQueue.postRunnable(() -> callback.run(null, error))) {
+                cancelManagedRequestCallback(callback);
+            }
+        } else {
+            cancelManagedRequestCallback(callback);
+        }
+    }
+
+    private interface ManagedResponseCallback {
+        void run(TLObject response, TLRPC.TL_error error,
+                app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer);
+    }
+
+    private static final class ManagedRequestDelegate implements RequestDelegate {
+        final ManagedResponseCallback callback;
+        final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner;
+
+        ManagedRequestDelegate(ManagedResponseCallback callback,
+                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner) {
+            this.callback = callback;
+            this.owner = owner;
+        }
+
+        @Override
+        public void run(TLObject response, TLRPC.TL_error error) {
+            callback.run(response, error, null);
+        }
+    }
+
+    private static void runManagedResponse(RequestDelegate callback, TLObject response,
+            TLRPC.TL_error error, app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer) {
+        if (callback instanceof ManagedRequestDelegate) {
+            ((ManagedRequestDelegate) callback).callback.run(response, error, producer);
+        } else if (callback instanceof app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) {
+            ((app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) callback)
+                    .runWithResponseLease(response, error, producer);
+        } else {
+            callback.run(response, error);
+        }
+    }
+
+    private static void runManagedResponseWithResources(RequestDelegate callback,
+            TLObject response, TLRPC.TL_error error) {
+        app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer = response == null
+                ? null : new app.nimarkogram.messenger.plugins.utils.ManagedResponseLease(response);
+        Throwable bodyFailure = null;
+        try {
+            runManagedResponse(callback, response, error, producer);
+        } catch (Throwable failure) {
+            bodyFailure = failure;
+            throw failure;
+        } finally {
+            if (producer != null) producer.release(bodyFailure);
+        }
+    }
+
+    private static app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate managedRequestOwner(RequestDelegate callback) {
+        if (callback instanceof ManagedRequestDelegate) {
+            return ((ManagedRequestDelegate) callback).owner;
+        }
+        return callback instanceof app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate
+                ? (app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) callback : null;
+    }
+
+    private static void cancelManagedRequestCallback(RequestDelegate callback) {
+        app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner = managedRequestOwner(callback);
+        if (owner != null) {
+            owner.cancel();
         }
     }
 
@@ -434,7 +526,8 @@ public class ConnectionsManager extends BaseController {
         final RequestDelegate userOnComplete = onCompleteIn;
         final String finalRequestName = requestName;
         final TLObject object = hookedObject;
-        final RequestDelegate onComplete = (userOnComplete == null) ? null : (response, error) -> {
+        final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner = managedRequestOwner(userOnComplete);
+        final ManagedResponseCallback postHookCallback = (userOnComplete == null) ? null : (response, error, producer) -> {
             try {
                 app.nimarkogram.messenger.plugins.hooks.PluginsHooks.PostRequestResult post =
                         app.nimarkogram.messenger.plugins.PluginsController.getInstance()
@@ -449,13 +542,17 @@ public class ConnectionsManager extends BaseController {
             } catch (Throwable t) {
                 FileLog.e("nimarko: post-request hook threw", t);
             }
-            userOnComplete.run(response, error);
+            runManagedResponse(userOnComplete, response, error, producer);
         };
+        final RequestDelegate onComplete = userOnComplete == null ? null
+                : releaseOwner == null ? (response, error) -> postHookCallback.run(response, error, null)
+                : new ManagedRequestDelegate(postHookCallback, releaseOwner);
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("send request " + object + " with token = " + requestToken);
         }
         NativeByteBuffer buffer = null;
         boolean submitted = false;
+        RequestCallbacks registeredCallbacks = null;
         try {
             buffer = new NativeByteBuffer(object.getObjectSize());
             object.serializeToStream(buffer);
@@ -466,7 +563,7 @@ public class ConnectionsManager extends BaseController {
                 startRequestTime = System.currentTimeMillis();
             }
             long finalStartRequestTime = startRequestTime;
-            listen(requestToken, (response, errorCode, errorText, networkType, timestamp, requestMsgId, dcId) -> {
+            registeredCallbacks = listen(requestToken, (response, errorCode, errorText, networkType, timestamp, requestMsgId, dcId) -> {
                 try {
                     TLObject resp = null;
                     TLRPC.TL_error error = null;
@@ -544,7 +641,11 @@ public class ConnectionsManager extends BaseController {
                     }
                     final TLObject finalResponse = resp;
                     final TLRPC.TL_error finalError = error;
-                    Utilities.stageQueue.postRunnable(() -> {
+                    if (!Utilities.stageQueue.postRunnable(() -> {
+                        if (onComplete != null && releaseOwner != null) {
+                            runManagedResponseWithResources(onComplete, finalResponse, finalError);
+                            return;
+                        }
                         if (onComplete != null) {
                             onComplete.run(finalResponse, finalError);
                         } else if (onCompleteTimestamp != null) {
@@ -556,11 +657,20 @@ public class ConnectionsManager extends BaseController {
                         if (finalResponse != null) {
                             finalResponse.freeResources();
                         }
-                    });
+                    })) {
+                        try {
+                            cancelManagedRequestCallback(onComplete);
+                        } finally {
+                            if (finalResponse != null) {
+                                finalResponse.freeResources();
+                            }
+                        }
+                    }
                 } catch (Exception e) {
+                    cancelManagedRequestCallback(onComplete);
                     FileLog.e(e);
                 }
-            }, onQuickAck, onWriteToSocket);
+            }, onQuickAck, onWriteToSocket, releaseOwner);
             int downloadSize = 0;
             if ((flags & RequestFlagDownloadByteBudget) != 0 && (connectionType & 0xffff) == ConnectionTypeDownload) {
                 if (object instanceof TLRPC.TL_upload_getFile) {
@@ -577,7 +687,10 @@ public class ConnectionsManager extends BaseController {
             FileLog.e(e);
         } finally {
             if (!submitted) {
-                requestCallbacks.remove(requestToken);
+                if (registeredCallbacks == null
+                        || requestCallbacks.remove(requestToken, registeredCallbacks)) {
+                    cancelManagedRequestCallback(onCompleteIn);
+                }
                 if (buffer != null) {
                     buffer.reuse();
                 }
@@ -590,17 +703,23 @@ public class ConnectionsManager extends BaseController {
         public final RequestDelegateInternal onComplete;
         public final QuickAckDelegate onQuickAck;
         public final WriteToSocketDelegate onWriteToSocket;
+        public final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner;
         public volatile Runnable onCancelled;
-        public RequestCallbacks(RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket) {
+        public RequestCallbacks(RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
+                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner) {
             this.onComplete = onComplete;
             this.onQuickAck = onQuickAck;
             this.onWriteToSocket = onWriteToSocket;
+            this.releaseOwner = releaseOwner;
         }
     }
 
-    private void listen(int requestToken, RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket) {
-        requestCallbacks.put(requestToken, new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket));
+    private RequestCallbacks listen(int requestToken, RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
+            app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner) {
+        RequestCallbacks callbacks = new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket, releaseOwner);
+        requestCallbacks.put(requestToken, callbacks);
 //        FileLog.d("{rc} listen(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
+        return callbacks;
     }
 
     private void listenCancel(int requestToken, Runnable onCancelled) {
@@ -616,19 +735,17 @@ public class ConnectionsManager extends BaseController {
     public static void onRequestClear(int currentAccount, int requestToken, boolean cancelled) {
         ConnectionsManager connectionsManager = getInstance(currentAccount);
         if (connectionsManager == null) return;
-        RequestCallbacks callbacks = connectionsManager.requestCallbacks.get(requestToken);
-        if (cancelled) {
+        RequestCallbacks callbacks = connectionsManager.requestCallbacks.remove(requestToken);
             if (callbacks != null) {
-                if (callbacks.onCancelled != null) {
+            try {
+                if (callbacks.releaseOwner != null) {
+                    callbacks.releaseOwner.cancel();
+                }
+            } finally {
+                if (cancelled && callbacks.onCancelled != null) {
                     callbacks.onCancelled.run();
                 }
-                connectionsManager.requestCallbacks.remove(requestToken);
-//                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
-            } else {
-//                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is not found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
             }
-        } else if (callbacks != null) {
-            connectionsManager.requestCallbacks.remove(requestToken);
 //            FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         }
     }
@@ -636,8 +753,7 @@ public class ConnectionsManager extends BaseController {
     public static void onRequestComplete(int currentAccount, int requestToken, long response, int errorCode, String errorText, int networkType, long timestamp, long requestMsgId, int dcId) {
         ConnectionsManager connectionsManager = getInstance(currentAccount);
         if (connectionsManager == null) return;
-        RequestCallbacks callbacks = connectionsManager.requestCallbacks.get(requestToken);
-        connectionsManager.requestCallbacks.remove(requestToken);
+        RequestCallbacks callbacks = connectionsManager.requestCallbacks.remove(requestToken);
         if (callbacks != null) {
             if (callbacks.onComplete != null) {
                 callbacks.onComplete.run(response, errorCode, errorText, networkType, timestamp, requestMsgId, dcId);
@@ -1161,7 +1277,7 @@ public class ConnectionsManager extends BaseController {
     public static native void native_discardConnection(int currentAccount, int datacenterId, int connectionType);
     public static native void native_failNotRunningRequest(int currentAccount, int token);
     public static native void native_receivedIntegrityCheckClassic(int currentAccount, int requestToken, String nonce, String token);
-    public static native void native_receivedCaptchaResult(int currentAccount, int[] requestTokens, String token);
+    public static native void native_receivedCaptchaResult(int currentAccount, int requestToken, int generation, String token);
     public static native boolean native_isGoodPrime(byte[] prime, int g);
 
 
@@ -1686,8 +1802,8 @@ public class ConnectionsManager extends BaseController {
     }
 
     @Keep
-    public static void onCaptchaCheck(final int currentAccount, final int requestToken, final String action, final String key_id) {
-        CaptchaController.request(currentAccount, requestToken, action, key_id);
+    public static void onCaptchaCheck(final int currentAccount, final int requestToken, final int generation, final String action, final String key_id) {
+        AndroidUtilities.runOnUIThread(() -> CaptchaController.request(currentAccount, requestToken, generation, action, key_id));
     }
     public static native byte[] nativeTestGenerateClientHello(String domain);
 }

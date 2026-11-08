@@ -1,0 +1,39 @@
+{
+  "version": "0.89.4",
+  "attribution": "Modifications Copyright (C) 2026 Ettacent",
+  "files": [
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "746b980506448052ccafab88e1d93e9509c9b8064367d9092f7cb3cd1da42750",
+      "replacements": [
+        {
+          "before": "\tsetScale(e) {\n\t\tthis._zoom.setScale(e);\n\t}",
+          "after": "\tsetScaleAt(scale, x, y) {\n\t\tconst host = this._scrollHost, unit = this._navigation.contentAtViewportY(y).unit;\n\t\tconst padding = this._viewport.horizontalPadding().left;\n\t\tconst beforeWidth = this._pageWidthPx(unit);\n\t\tconst beforeLeft = Math.max(padding, (host.clientWidth - beforeWidth) / 2);\n\t\tconst fraction = (host.scrollLeft + x - beforeLeft) / Math.max(1, beforeWidth);\n\t\tthis._zoom.pendingAnchor = {x, y};\n\t\tthis._zoom.setScale(scale);\n\t\tconst afterWidth = this._pageWidthPx(unit);\n\t\tconst afterLeft = Math.max(padding, (host.clientWidth - afterWidth) / 2);\n\t\thost.scrollLeft = Math.max(0, Math.min(host.scrollWidth - host.clientWidth, afterLeft + fraction * afterWidth - x));\n\t}\n\tsetScale(e) {\n\t\tthis._zoom.setScale(e);\n\t}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "pptx-CLyebeF_.js",
+      "sha256": "5bc4563c63c610b24a7b140ac15193359c0bbbb543a7f06b19f1d580043aa533",
+      "replacements": [
+        {
+          "before": "\tsetScale(e) {\n\t\tthis._zoom.setScale(e);\n\t}",
+          "after": "\tsetScaleAt(scale, x, y) {\n\t\tconst host = this._scrollHost, unit = this._navigation.contentAtViewportY(y).unit;\n\t\tconst padding = this._viewport.horizontalPadding().left;\n\t\tconst beforeWidth = this._slideWidthPx();\n\t\tconst beforeLeft = Math.max(padding, (host.clientWidth - beforeWidth) / 2);\n\t\tconst fraction = (host.scrollLeft + x - beforeLeft) / Math.max(1, beforeWidth);\n\t\tthis._zoom.pendingAnchor = {x, y};\n\t\tthis._zoom.setScale(scale);\n\t\tconst afterWidth = this._slideWidthPx();\n\t\tconst afterLeft = Math.max(padding, (host.clientWidth - afterWidth) / 2);\n\t\thost.scrollLeft = Math.max(0, Math.min(host.scrollWidth - host.clientWidth, afterLeft + fraction * afterWidth - x));\n\t}\n\tsetScale(e) {\n\t\tthis._zoom.setScale(e);\n\t}",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "06786125eb42f48974cbada8133685104fc30af5e698192634f8e5c80950a070",
+      "replacements": [
+        {
+          "before": "\tsetScale(e) {\n\t\tlet t = this.opts.zoomMin",
+          "after": "\tsetScaleAt(scale, x, y) {\n\t\tthis._pendingZoomAnchor = {x, y};\n\t\tthis.setScale(scale);\n\t}\n\tsetScale(e) {\n\t\tlet t = this.opts.zoomMin",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

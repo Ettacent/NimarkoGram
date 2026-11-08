@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.bots;
 
 import static org.telegram.messenger.AndroidUtilities.calcBitmapColor;
@@ -111,7 +113,7 @@ public class BotLocation {
             final TLRPC.User bot = MessagesController.getInstance(currentAccount).getUser(botId);
             final AlertDialog.Builder b = new AlertDialog.Builder(getActivity(), null);
             b.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.BotLocationPermissionRequest, UserObject.getUserName(bot), UserObject.getUserName(bot))));
-            b.setTopImage(new BotUserLocationDrawable(context, UserConfig.getInstance(currentAccount).getCurrentUser(), bot), Theme.getColor(Theme.key_dialogTopBackground));
+            b.setTopImage(new BotUserLocationDrawable(context, UserConfig.getInstance(currentAccount).getCurrentUser(), bot), Theme.getColor(Theme.key_dialogTopBackground)); b.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
             if (needToOpenSettings()) {
                 b.setPositiveButton(LocaleController.getString(R.string.BotLocationPermissionSettings), (di, w) -> {
                     try {
@@ -256,7 +258,7 @@ public class BotLocation {
             final TLRPC.User bot = MessagesController.getInstance(currentAccount).getUser(botId);
             final AlertDialog.Builder b = new AlertDialog.Builder(activity, null);
             b.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.BotLocationPermissionRequest, UserObject.getUserName(bot), UserObject.getUserName(bot))));
-            b.setTopImage(new BotUserLocationDrawable(context, UserConfig.getInstance(currentAccount).getCurrentUser(), bot), Theme.getColor(Theme.key_dialogTopBackground));
+            b.setTopImage(new BotUserLocationDrawable(context, UserConfig.getInstance(currentAccount).getCurrentUser(), bot), Theme.getColor(Theme.key_dialogTopBackground)); b.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
             if (!appHasPermission() && needToOpenSettings()) {
                 b.setPositiveButton(LocaleController.getString(R.string.BotLocationPermissionSettings), (di, w) -> {
                     try {
@@ -389,7 +391,7 @@ public class BotLocation {
                 try {
                     final Context finalContext = context;
                     AlertDialog.Builder builder = new AlertDialog.Builder(context);
-                    builder.setTopAnimation(R.raw.permission_request_location, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground));
+                    builder.setTopAnimation(R.raw.permission_request_location, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)); builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
                     builder.setMessage(getString(R.string.GpsDisabledAlertText));
                     builder.setPositiveButton(getString(R.string.Enable), (dialog, id) -> {
                         try {
@@ -474,6 +476,7 @@ public class BotLocation {
         private final Drawable locationDrawable;
         private final RectF rect = new RectF();
 
+        private int locationColor;
         public BotUserLocationDrawable(Context context, TLRPC.User user, TLRPC.User bot) {
 
             arrowPaint.setColor(0xFFFFFFFF);
@@ -484,7 +487,7 @@ public class BotLocation {
             whitePaint.setColor(0xFFFFFFFF);
 
             locationDrawable = context.getResources().getDrawable(R.drawable.filled_location).mutate();
-            locationDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogTopBackground), PorterDuff.Mode.SRC_IN));
+            locationDrawable.setColorFilter(new PorterDuffColorFilter(locationColor = Theme.getColor(Theme.key_dialogTopBackground), PorterDuff.Mode.SRC_IN));
 
             AvatarDrawable avatarDrawable = new AvatarDrawable();
             avatarDrawable.setInfo(user);
@@ -529,6 +532,10 @@ public class BotLocation {
             final float lcx = bounds.centerX() - width / 2f + dp(25 + 16), lcy = bounds.centerY() + dp(16);
             canvas.drawCircle(lcx, lcy, dp(14), bgPaint);
             canvas.drawCircle(lcx, lcy, dp(12), whitePaint);
+            final int locationThemeColor = Theme.getColor(Theme.key_dialogTopBackground);
+            if (locationThemeColor != locationColor) {
+                locationDrawable.setColorFilter(new PorterDuffColorFilter(locationColor = locationThemeColor, PorterDuff.Mode.SRC_IN));
+            }
             locationDrawable.setBounds((int) (lcx - dp(9)), (int) (lcy - dp(9)), (int) (lcx + dp(9)), (int) (lcy + dp(9)));
             locationDrawable.draw(canvas);
 

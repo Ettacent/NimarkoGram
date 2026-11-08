@@ -222,6 +222,7 @@ public class MediaDataController extends BaseController {
         ringtoneDataStore = new RingtoneDataStore(currentAccount);
 
         menuBotsUpdateDate = getMessagesController().getMainSettings().getInt("menuBotsUpdateDate", 0);
+        Utilities.globalQueue.postRunnable(() -> loadDoubleTapReaction(0));
     }
 
     private void loadRepliesOfDraftReplies(final ArrayList<TLRPC.Message> messages) {
@@ -269,7 +270,17 @@ public class MediaDataController extends BaseController {
     private List<TLRPC.TL_availableReaction> reactionsList = new ArrayList<>();
     private List<TLRPC.TL_availableReaction> enabledReactionsList = new ArrayList<>();
     private HashMap<String, TLRPC.TL_availableReaction> reactionsMap = new HashMap<>();
-    private String doubleTapReaction;
+    private static final class DoubleTapReactionPreference {
+        final String reaction;
+
+        DoubleTapReactionPreference(String reaction) {
+            this.reaction = reaction;
+        }
+    }
+
+    private final Object doubleTapReactionLock = new Object();
+    private volatile DoubleTapReactionPreference doubleTapReactionPreference;
+    private static final int DOUBLE_TAP_REACTION_MAX_ATTEMPTS = 3;
     private boolean isLoadingReactions;
     private int reactionsUpdateDate;
     private boolean reactionsCacheGenerated;
@@ -4069,7 +4080,7 @@ public class MediaDataController extends BaseController {
                     req.flags |= 1;
                 }
                 if (replyMessageId != 0) {
-                    if (dialogId == getUserConfig().getClientUserId() || getMessagesStorage().isMonoForum(queryWithDialog)) {
+                    if (dialogId == getUserConfig().getClientUserId() || getMessagesController().isMonoForum(queryWithDialog)) {
                         req.saved_peer_id = getMessagesController().getInputPeer(replyMessageId);
                         req.flags |= 4;
                     } else {
@@ -4157,7 +4168,7 @@ public class MediaDataController extends BaseController {
             }, true);
         }
         if (lastReplyMessageId != 0) {
-            if (queryWithDialog == getUserConfig().getClientUserId() || getMessagesStorage().isMonoForum(queryWithDialog)) {
+            if (queryWithDialog == getUserConfig().getClientUserId() || getMessagesController().isMonoForum(queryWithDialog)) {
                 req.saved_peer_id = getMessagesController().getInputPeer(lastReplyMessageId);
                 req.flags |= 4;
             } else {
@@ -5098,7 +5109,7 @@ public class MediaDataController extends BaseController {
         });
     }
 
-    public void loadMusic(long dialogId, long maxId, long minId) {
+    public void loadMusic(long dialogId, long topicId, long maxId, long minId) {
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             ArrayList<MessageObject> arrayListBegin = new ArrayList<>();
             ArrayList<MessageObject> arrayListEnd = new ArrayList<>();
@@ -5106,7 +5117,9 @@ public class MediaDataController extends BaseController {
                 for (int a = 0; a < 2; a++) {
                     ArrayList<MessageObject> arrayList = a == 0 ? arrayListBegin : arrayListEnd;
                     SQLiteCursor cursor;
-                    if (a == 0) {
+                    if (topicId != 0) {
+                        cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_topics WHERE uid = %d AND topic_id = %d AND mid %s %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, topicId, a == 0 ? "<" : ">", a == 0 ? maxId : minId, MEDIA_MUSIC));
+                    } else if (a == 0) {
                         if (!DialogObject.isEncryptedDialog(dialogId)) {
                             cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid < %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, maxId, MEDIA_MUSIC));
                         } else {
@@ -5138,7 +5151,7 @@ public class MediaDataController extends BaseController {
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd));
+            AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd, topicId));
         });
     }
     //---------------- MEDIA END ----------------
@@ -5155,25 +5168,37 @@ public class MediaDataController extends BaseController {
     private static Path roundPath;
 
     public void buildShortcuts() {
-        if (Build.VERSION.SDK_INT < 23) {
+        buildShortcuts(false);
+    }
+
+    public void buildShortcuts(boolean clearShortcuts) {
+        boolean canBuildShortcuts = Build.VERSION.SDK_INT >= 23;
+        if (!canBuildShortcuts && !clearShortcuts) {
+            return;
+        }
+        ArrayList<TLRPC.TL_topPeer> hintsFinal = new ArrayList<>();
+        if (canBuildShortcuts && SharedConfig.passcodeHash.length() <= 0) {
+            for (int a = 0; a < hints.size(); a++) {
+                hintsFinal.add(hints.get(a));
+            }
+        }
+        boolean recreateShortcuts = Build.VERSION.SDK_INT >= 30;
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                if (clearShortcuts) {
+                    ShortcutManagerCompat.removeAllDynamicShortcuts(ApplicationLoader.applicationContext);
+                }
+                if (!canBuildShortcuts) {
             return;
         }
         int maxShortcuts = ShortcutManagerCompat.getMaxShortcutCountPerActivity(ApplicationLoader.applicationContext) - 2;
         if (maxShortcuts <= 0) {
             maxShortcuts = 5;
         }
-        ArrayList<TLRPC.TL_topPeer> hintsFinal = new ArrayList<>();
-        if (SharedConfig.passcodeHash.length() <= 0) {
-            for (int a = 0; a < hints.size(); a++) {
-                hintsFinal.add(hints.get(a));
-                if (hintsFinal.size() == maxShortcuts - 2) {
-                    break;
+                int hintsCount = maxShortcuts - 2;
+                if (hintsCount > 0 && hintsFinal.size() > hintsCount) {
+                    hintsFinal.subList(hintsCount, hintsFinal.size()).clear();
                 }
-            }
-        }
-        boolean recreateShortcuts = Build.VERSION.SDK_INT >= 30;
-        Utilities.globalQueue.postRunnable(() -> {
-            try {
                 if (SharedConfig.directShareHash == null) {
                     SharedConfig.directShareHash = UUID.randomUUID().toString();
                     ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE).edit().putString("directShareHash2", SharedConfig.directShareHash).commit();
@@ -8947,24 +8972,69 @@ public class MediaDataController extends BaseController {
         return reactionsMap;
     }
 
-    public String getDoubleTapReaction() {
-        if (doubleTapReaction != null) {
-            return doubleTapReaction;
+    private void loadDoubleTapReaction(int attempt) {
+        if (doubleTapReactionPreference != null) {
+            return;
         }
-        if (!getReactionsList().isEmpty()) {
-            String savedReaction = MessagesController.getEmojiSettings(currentAccount).getString("reaction_on_double_tap", null);
-            if (savedReaction != null && (getReactionsMap().get(savedReaction) != null || savedReaction.startsWith("animated_"))) {
-                doubleTapReaction = savedReaction;
-                return doubleTapReaction;
+        String savedReaction = null;
+        try {
+            savedReaction = MessagesController.getEmojiSettings(currentAccount).getString("reaction_on_double_tap", null);
+        } catch (ClassCastException e) {
+            FileLog.e(e);
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (attempt + 1 < DOUBLE_TAP_REACTION_MAX_ATTEMPTS && doubleTapReactionPreference == null) {
+                Utilities.globalQueue.postRunnable(() -> loadDoubleTapReaction(attempt + 1), attempt == 0 ? 1000 : 5000);
             }
-            return getReactionsList().get(0).reaction;
+            return;
         }
-        return null;
+        synchronized (doubleTapReactionLock) {
+            if (doubleTapReactionPreference != null) {
+                return;
+            }
+            doubleTapReactionPreference = new DoubleTapReactionPreference(savedReaction);
+        }
+        notifyDoubleTapReactionChanged();
+    }
+
+    private void saveDoubleTapReaction(DoubleTapReactionPreference preference, int attempt) {
+        if (doubleTapReactionPreference != preference) {
+            return;
+        }
+        try {
+            MessagesController.getEmojiSettings(currentAccount).edit().putString("reaction_on_double_tap", preference.reaction).apply();
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (attempt + 1 < DOUBLE_TAP_REACTION_MAX_ATTEMPTS && doubleTapReactionPreference == preference) {
+                Utilities.globalQueue.postRunnable(() -> saveDoubleTapReaction(preference, attempt + 1), attempt == 0 ? 1000 : 5000);
+            }
+        }
+    }
+
+    private void notifyDoubleTapReactionChanged() {
+        AndroidUtilities.runOnUIThread(() -> {
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.reactionsDidLoad);
+        });
+    }
+    public String getDoubleTapReaction() {
+        DoubleTapReactionPreference preference = doubleTapReactionPreference;
+        if (preference == null) {
+            return null;
+        }
+        String savedReaction = preference.reaction;
+            if (savedReaction != null && (getReactionsMap().get(savedReaction) != null || savedReaction.startsWith("animated_"))) {
+            return savedReaction;
+        }
+        return getReactionsList().isEmpty() ? null : getReactionsList().get(0).reaction;
     }
 
     public void setDoubleTapReaction(String reaction) {
-        MessagesController.getEmojiSettings(currentAccount).edit().putString("reaction_on_double_tap", reaction).apply();
-        doubleTapReaction = reaction;
+        synchronized (doubleTapReactionLock) {
+            DoubleTapReactionPreference preference = new DoubleTapReactionPreference(reaction);
+            doubleTapReactionPreference = preference;
+            Utilities.globalQueue.postRunnable(() -> saveDoubleTapReaction(preference, 0));
+        }
+        notifyDoubleTapReactionChanged();
     }
 
     public List<TLRPC.TL_availableReaction> getEnabledReactionsList() {

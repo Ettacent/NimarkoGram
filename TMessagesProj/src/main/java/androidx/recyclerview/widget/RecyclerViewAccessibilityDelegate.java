@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright 2018 The Android Open Source Project
  *
@@ -40,7 +42,7 @@ public class RecyclerViewAccessibilityDelegate extends AccessibilityDelegateComp
     }
 
     boolean shouldIgnore() {
-        return mRecyclerView.hasPendingAdapterUpdates();
+        return mRecyclerView.hasPendingAdapterUpdates() || mRecyclerView.mState.isPreLayout();
     }
 
     @Override

@@ -1,0 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+package org.telegram.utils.glass.fade;
+
+public enum GlassFadeDirection {
+    TOP, LEFT, RIGHT, BOTTOM
+}

@@ -383,6 +383,11 @@ public final class AppConfig {
     }
 
     public static boolean mediaSendChoice = getPreferences().getBoolean("mediaSendChoice", true);
+    public static boolean documentViewer = getPreferences().getBoolean("documentViewer", true);
+    public static void toggleDocumentViewer() {
+        documentViewer = !documentViewer;
+        getEditor().putBoolean("documentViewer", documentViewer).apply();
+    }
     public static void toggleMediaSendChoice() {
         mediaSendChoice = !mediaSendChoice;
         getEditor().putBoolean("mediaSendChoice", mediaSendChoice).apply();

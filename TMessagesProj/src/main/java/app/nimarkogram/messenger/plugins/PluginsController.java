@@ -34,6 +34,7 @@ import app.nimarkogram.messenger.utils.chats.ChatUtils;
 import de.robv.android.xposed.XC_MethodHook;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -217,7 +218,7 @@ public class PluginsController implements PluginsHooks {
         volatile RuntimeState state;
         int activeCalls;
         final ArrayList<Runnable> quiescenceListeners = new ArrayList<>();
-        final ArrayList<RuntimeCallbackHolder> callbackHolders =
+        final ArrayList<WeakReference<RuntimeCallbackHolder>> callbackHolders =
                 new ArrayList<>();
         final ArrayList<RuntimeCallbackHolder> preparingCallbacks =
                 new ArrayList<>();
@@ -405,21 +406,128 @@ public class PluginsController implements PluginsHooks {
         return TextUtils.isEmpty(pluginId) ? 0 : toggleGenerations.getOrDefault(pluginId, 0);
     }
 
+    private final ThreadLocal<RuntimeCleanupPhase> runtimeCleanupPhases =
+            new ThreadLocal<>();
+
+    private final class RuntimeCleanupPhase {
+        int depth;
+        ArrayList<Runnable> pending;
+
+        public void close(Throwable bodyFailure) {
+            if (--depth != 0) return;
+            ArrayList<Runnable> resources = pending;
+            if (resources == null) return;
+            pending = null;
+            runtimeCleanupPhases.remove();
+            drainRuntimeResources(resources, bodyFailure);
+        }
+    }
+
+    private RuntimeCleanupPhase beginRuntimeCleanupPhase() {
+        RuntimeCleanupPhase phase = runtimeCleanupPhases.get();
+        if (phase == null) {
+            phase = new RuntimeCleanupPhase();
+            runtimeCleanupPhases.set(phase);
+        }
+        phase.depth++;
+        return phase;
+    }
+
+    public void releaseRuntimeResource(Runnable resource) {
+        releaseRuntimeResource(resource, null);
+    }
+
+    public void releaseRuntimeResource(Runnable resource, Throwable bodyFailure) {
+        if (resource == null) return;
+        RuntimeCleanupPhase phase = runtimeCleanupPhases.get();
+        if (phase != null && phase.depth > 0) {
+            if (phase.pending == null) phase.pending = new ArrayList<>();
+            phase.pending.add(resource);
+        } else {
+            drainRuntimeResources(Collections.singletonList(resource), bodyFailure);
+        }
+    }
+
+    private static void drainRuntimeResources(List<Runnable> resources, Throwable bodyFailure) {
+        int count = resources.size();
+        Throwable[] cleanupFailures = new Throwable[count];
+        Throwable[] loggingFailures = new Throwable[count];
+        Throwable primary = bodyFailure;
+
+        for (int i = 0; i < count; i++) {
+            try {
+                resources.get(i).run();
+            } catch (Throwable failure) {
+                cleanupFailures[i] = failure;
+                if (primary == null && isRuntimeCleanupFatal(failure)) {
+                    primary = failure;
+                }
+            }
+        }
+
+        for (int i = 0; i < count; i++) {
+            Throwable failure = cleanupFailures[i];
+            if (failure == null || isRuntimeCleanupFatal(failure)) continue;
+            try {
+                FileLog.e("NimarkoGram: runtime resource cleanup failed", failure);
+            } catch (Throwable loggingFailure) {
+                loggingFailures[i] = loggingFailure;
+                if (primary == null && isRuntimeCleanupFatal(loggingFailure)) {
+                    primary = loggingFailure;
+                }
+            }
+        }
+
+        for (int i = 0; i < count; i++) {
+            addRuntimeCleanupSuppressed(primary, cleanupFailures[i]);
+            addRuntimeCleanupSuppressed(primary, loggingFailures[i]);
+        }
+        if (bodyFailure == null && primary != null) {
+            if (primary instanceof VirtualMachineError) {
+                throw (VirtualMachineError) primary;
+            }
+            throw (ThreadDeath) primary;
+        }
+    }
+
+    private static boolean isRuntimeCleanupFatal(Throwable failure) {
+        return failure instanceof VirtualMachineError || failure instanceof ThreadDeath;
+    }
+
+    private static void addRuntimeCleanupSuppressed(Throwable primary, Throwable failure) {
+        if (primary == null || failure == null || primary == failure) return;
+        try {
+            for (Throwable existing : primary.getSuppressed()) {
+                if (existing == failure) return;
+            }
+            primary.addSuppressed(failure);
+        } catch (Throwable ignored) {
+        }
+    }
     private Object generationLock(String pluginId) {
         return toggleGenerationLocks.computeIfAbsent(pluginId, ignored -> new Object());
     }
 
     private int nextToggleGeneration(String pluginId) {
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase1 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure1 = null;
+        try { synchronized (generationLock(pluginId)) {
             int next = toggleGenerations.getOrDefault(pluginId, 0) + 1;
             toggleGenerations.put(pluginId, next);
             return next;
+        } } catch (Throwable cleanupFailure1) {
+            cleanupBodyFailure1 = cleanupFailure1;
+            throw cleanupFailure1;
+        } finally {
+            cleanupPhase1.close(cleanupBodyFailure1);
         }
     }
 
     public PluginRuntimeToken preparePluginRuntime(String pluginId, int generation) {
         if (TextUtils.isEmpty(pluginId)) return null;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase2 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure2 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (!isPluginEnableRequestedLocked(pluginId, generation)) {
                 return null;
             }
@@ -433,6 +541,11 @@ public class PluginsController implements PluginsHooks {
             currentRuntimeByPlugin.put(pluginId, slot);
             runtimeSlotsByToken.put(token, slot);
             return token;
+        } } catch (Throwable cleanupFailure2) {
+            cleanupBodyFailure2 = cleanupFailure2;
+            throw cleanupFailure2;
+        } finally {
+            cleanupPhase2.close(cleanupBodyFailure2);
         }
     }
 
@@ -461,7 +574,9 @@ public class PluginsController implements PluginsHooks {
 
     public boolean enterPluginRuntime(PluginRuntimeToken token) {
         if (token == null) return false;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase3 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure3 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             boolean unloading = token.equals(pluginUnloadPermit.get());
             if (unloading) {
                 RuntimeSlot oldSlot = runtimeSlotsByToken.get(token);
@@ -494,6 +609,11 @@ public class PluginsController implements PluginsHooks {
             slot.activeCalls++;
             runtimeScopes.get().push(token);
             return true;
+        } } catch (Throwable cleanupFailure3) {
+            cleanupBodyFailure3 = cleanupFailure3;
+            throw cleanupFailure3;
+        } finally {
+            cleanupPhase3.close(cleanupBodyFailure3);
         }
     }
 
@@ -509,7 +629,9 @@ public class PluginsController implements PluginsHooks {
             runtimeScopes.set(new RuntimeScopeStack());
         }
         List<Runnable> listeners = Collections.emptyList();
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase4 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure4 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot != null && slot.activeCalls > 0) {
                 slot.activeCalls--;
@@ -518,6 +640,11 @@ public class PluginsController implements PluginsHooks {
                     slot.quiescenceListeners.clear();
                 }
             }
+        } } catch (Throwable cleanupFailure4) {
+            cleanupBodyFailure4 = cleanupFailure4;
+            throw cleanupFailure4;
+        } finally {
+            cleanupPhase4.close(cleanupBodyFailure4);
         }
         for (Runnable listener : listeners) {
             try {
@@ -536,12 +663,19 @@ public class PluginsController implements PluginsHooks {
             return;
         }
         boolean runNow;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase5 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure5 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             runNow = slot == null || slot.activeCalls == 0;
             if (!runNow) {
                 slot.quiescenceListeners.add(listener);
             }
+        } } catch (Throwable cleanupFailure5) {
+            cleanupBodyFailure5 = cleanupFailure5;
+            throw cleanupFailure5;
+        } finally {
+            cleanupPhase5.close(cleanupBodyFailure5);
         }
         if (runNow) {
             listener.run();
@@ -550,7 +684,9 @@ public class PluginsController implements PluginsHooks {
 
     public void releasePluginRuntime(PluginRuntimeToken token) {
         if (token == null) return;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase6 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure6 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot == null) return;
             if (slot.activeCalls != 0) {
@@ -560,27 +696,46 @@ public class PluginsController implements PluginsHooks {
             }
             slot.quiescenceListeners.clear();
             runtimeSlotsByToken.remove(token, slot);
+        } } catch (Throwable cleanupFailure6) {
+            cleanupBodyFailure6 = cleanupFailure6;
+            throw cleanupFailure6;
+        } finally {
+            cleanupPhase6.close(cleanupBodyFailure6);
         }
     }
 
     public boolean isPluginRuntimeCurrent(PluginRuntimeToken token) {
         if (token == null || AppConfig.pluginsSafeMode) return false;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase7 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure7 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             return slot != null
                     && slot.state != RuntimeState.REVOKED
                     && slot.token.equals(token)
                     && toggleGenerations.getOrDefault(token.pluginId, 0) == token.generation;
+        } } catch (Throwable cleanupFailure7) {
+            cleanupBodyFailure7 = cleanupFailure7;
+            throw cleanupFailure7;
+        } finally {
+            cleanupPhase7.close(cleanupBodyFailure7);
         }
     }
 
     public boolean isPluginRuntimeExecuting(PluginRuntimeToken token) {
         if (token == null) return false;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase8 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure8 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             return slot != null
                     && slot.token.equals(token)
                     && slot.activeCalls > 0;
+        } } catch (Throwable cleanupFailure8) {
+            cleanupBodyFailure8 = cleanupFailure8;
+            throw cleanupFailure8;
+        } finally {
+            cleanupPhase8.close(cleanupBodyFailure8);
         }
     }
 
@@ -589,7 +744,9 @@ public class PluginsController implements PluginsHooks {
         if (token == null || holder == null || AppConfig.pluginsSafeMode) {
             return false;
         }
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase9 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure9 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || slot.state == RuntimeState.REVOKED
                     || !slot.token.equals(token)
@@ -598,11 +755,30 @@ public class PluginsController implements PluginsHooks {
                             != token.generation) {
                 return false;
             }
-            if (!slot.callbackHolders.contains(holder)) {
-                slot.callbackHolders.add(holder);
+            if (!containsCallbackHolderLocked(slot, holder)) {
+                slot.callbackHolders.add(new WeakReference<>(holder));
             }
             return true;
+        } } catch (Throwable cleanupFailure9) {
+            cleanupBodyFailure9 = cleanupFailure9;
+            throw cleanupFailure9;
+        } finally {
+            cleanupPhase9.close(cleanupBodyFailure9);
         }
+    }
+
+    private static boolean containsCallbackHolderLocked(
+            RuntimeSlot slot, RuntimeCallbackHolder holder) {
+        boolean found = false;
+        for (int i = slot.callbackHolders.size() - 1; i >= 0; i--) {
+            RuntimeCallbackHolder current = slot.callbackHolders.get(i).get();
+            if (current == null) {
+                slot.callbackHolders.remove(i);
+            } else if (current == holder) {
+                found = true;
+            }
+        }
+        return found;
     }
 
     public int deferRuntimeCallback(
@@ -610,12 +786,14 @@ public class PluginsController implements PluginsHooks {
         if (token == null || holder == null || AppConfig.pluginsSafeMode) {
             return RUNTIME_TASK_DROP;
         }
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase10 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure10 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || slot.state == RuntimeState.REVOKED
                     || !slot.token.equals(token)
                     || runtimeSlotsByToken.get(token) != slot
-                    || !slot.callbackHolders.contains(holder)
+                    || !containsCallbackHolderLocked(slot, holder)
                     || toggleGenerations.getOrDefault(token.pluginId, 0)
                             != token.generation) {
                 return RUNTIME_TASK_DROP;
@@ -632,23 +810,42 @@ public class PluginsController implements PluginsHooks {
                 slot.preparingCallbacks.add(holder);
             }
             return RUNTIME_TASK_WAIT;
+        } } catch (Throwable cleanupFailure10) {
+            cleanupBodyFailure10 = cleanupFailure10;
+            throw cleanupFailure10;
+        } finally {
+            cleanupPhase10.close(cleanupBodyFailure10);
         }
     }
 
     public void unregisterRuntimeCallbackHolder(
             PluginRuntimeToken token, RuntimeCallbackHolder holder) {
         if (token == null || holder == null) return;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase11 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure11 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot == null) return;
             slot.preparingCallbacks.remove(holder);
-            slot.callbackHolders.remove(holder);
+            for (int i = slot.callbackHolders.size() - 1; i >= 0; i--) {
+                RuntimeCallbackHolder current = slot.callbackHolders.get(i).get();
+                if (current == null || current == holder) {
+                    slot.callbackHolders.remove(i);
+                }
+            }
+        } } catch (Throwable cleanupFailure11) {
+            cleanupBodyFailure11 = cleanupFailure11;
+            throw cleanupFailure11;
+        } finally {
+            cleanupPhase11.close(cleanupBodyFailure11);
         }
     }
 
     public int getPluginRuntimeTaskDecision(PluginRuntimeToken token) {
         if (token == null || AppConfig.pluginsSafeMode) return RUNTIME_TASK_DROP;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase12 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure12 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || !slot.token.equals(token)
                     || slot.state == RuntimeState.REVOKED
@@ -661,6 +858,11 @@ public class PluginsController implements PluginsHooks {
             }
             return isPluginActive(token.pluginId)
                     ? RUNTIME_TASK_RUN : RUNTIME_TASK_DROP;
+        } } catch (Throwable cleanupFailure12) {
+            cleanupBodyFailure12 = cleanupFailure12;
+            throw cleanupFailure12;
+        } finally {
+            cleanupPhase12.close(cleanupBodyFailure12);
         }
     }
 
@@ -687,7 +889,9 @@ public class PluginsController implements PluginsHooks {
     public boolean commitPluginRuntime(PluginRuntimeToken token, Plugin plugin) {
         if (token == null || plugin == null) return false;
         final ArrayList<RuntimeCallbackHolder> callbacksToActivate;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase13 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure13 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
             if (slot == null || !slot.token.equals(token)
                     || slot.state != RuntimeState.PREPARING
@@ -704,6 +908,11 @@ public class PluginsController implements PluginsHooks {
             callbacksToActivate =
                     new ArrayList<>(slot.preparingCallbacks);
             slot.preparingCallbacks.clear();
+        } } catch (Throwable cleanupFailure13) {
+            cleanupBodyFailure13 = cleanupFailure13;
+            throw cleanupFailure13;
+        } finally {
+            cleanupPhase13.close(cleanupBodyFailure13);
         }
         for (RuntimeCallbackHolder holder : callbacksToActivate) {
             try {
@@ -722,12 +931,19 @@ public class PluginsController implements PluginsHooks {
 
     public void revokePluginRuntime(PluginRuntimeToken token) {
         if (token == null) return;
-        synchronized (generationLock(token.pluginId)) {
+        RuntimeCleanupPhase cleanupPhase14 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure14 = null;
+        try { synchronized (generationLock(token.pluginId)) {
             RuntimeSlot slot = runtimeSlotsByToken.get(token);
             if (slot != null && slot.token.equals(token)) {
                 revokeRuntimeSlotLocked(slot);
                 currentRuntimeByPlugin.remove(token.pluginId, slot);
             }
+        } } catch (Throwable cleanupFailure14) {
+            cleanupBodyFailure14 = cleanupFailure14;
+            throw cleanupFailure14;
+        } finally {
+            cleanupPhase14.close(cleanupBodyFailure14);
         }
     }
 
@@ -742,7 +958,11 @@ public class PluginsController implements PluginsHooks {
         if (slot == null) return;
         slot.state = RuntimeState.REVOKED;
         ArrayList<RuntimeCallbackHolder> holders =
-                new ArrayList<>(slot.callbackHolders);
+                new ArrayList<>();
+        for (WeakReference<RuntimeCallbackHolder> reference : slot.callbackHolders) {
+            RuntimeCallbackHolder holder = reference.get();
+            if (holder != null) holders.add(holder);
+        }
         slot.preparingCallbacks.clear();
         slot.callbackHolders.clear();
         for (RuntimeCallbackHolder holder : holders) {
@@ -757,7 +977,9 @@ public class PluginsController implements PluginsHooks {
 
     public boolean getRequestedPluginEnabled(String pluginId) {
         if (TextUtils.isEmpty(pluginId)) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase15 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure15 = null;
+        try { synchronized (generationLock(pluginId)) {
             Boolean pending = pendingToggleState.get(pluginId);
             if (pending != null) return pending;
             if (startupActivations.contains(pluginId)
@@ -768,13 +990,25 @@ public class PluginsController implements PluginsHooks {
             }
             Plugin plugin = plugins.get(pluginId);
             return plugin != null && plugin.isEnabled();
+        } } catch (Throwable cleanupFailure15) {
+            cleanupBodyFailure15 = cleanupFailure15;
+            throw cleanupFailure15;
+        } finally {
+            cleanupPhase15.close(cleanupBodyFailure15);
         }
     }
 
     public boolean isPluginEnableRequested(String pluginId, int generation) {
         if (TextUtils.isEmpty(pluginId) || AppConfig.pluginsSafeMode) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase16 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure16 = null;
+        try { synchronized (generationLock(pluginId)) {
             return isPluginEnableRequestedLocked(pluginId, generation);
+        } } catch (Throwable cleanupFailure16) {
+            cleanupBodyFailure16 = cleanupFailure16;
+            throw cleanupFailure16;
+        } finally {
+            cleanupPhase16.close(cleanupBodyFailure16);
         }
     }
 
@@ -789,8 +1023,15 @@ public class PluginsController implements PluginsHooks {
     }
 
     public boolean claimPluginEnableCode(String pluginId, int generation) {
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase17 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure17 = null;
+        try { synchronized (generationLock(pluginId)) {
             return isPluginEnableRequestedLocked(pluginId, generation);
+        } } catch (Throwable cleanupFailure17) {
+            cleanupBodyFailure17 = cleanupFailure17;
+            throw cleanupFailure17;
+        } finally {
+            cleanupPhase17.close(cleanupBodyFailure17);
         }
     }
 
@@ -800,7 +1041,9 @@ public class PluginsController implements PluginsHooks {
         if (token != null && token.generation == generation) {
             return commitPluginRuntime(token, plugin);
         }
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase18 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure18 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (!isPluginEnableRequestedLocked(pluginId, generation)
                     || plugins.get(pluginId) != plugin) {
                 return false;
@@ -811,6 +1054,11 @@ public class PluginsController implements PluginsHooks {
                     .putBoolean(PREF_PLUGIN_ENABLED_KEY_PREFIX + pluginId, true)
                     .commit();
             return true;
+        } } catch (Throwable cleanupFailure18) {
+            cleanupBodyFailure18 = cleanupFailure18;
+            throw cleanupFailure18;
+        } finally {
+            cleanupPhase18.close(cleanupBodyFailure18);
         }
     }
 
@@ -823,7 +1071,9 @@ public class PluginsController implements PluginsHooks {
             PluginRuntimeToken runtimeToken) {
         if (TextUtils.isEmpty(pluginId)) return false;
         final PluginCleanup cleanup;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase19 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure19 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (toggleGenerations.getOrDefault(pluginId, 0) != generation) {
                 return false;
             }
@@ -833,6 +1083,11 @@ public class PluginsController implements PluginsHooks {
                 plugin.setError(failure);
             }
             cleanup = detachPluginRuntimeLocked(pluginId, runtimeToken);
+        } } catch (Throwable cleanupFailure19) {
+            cleanupBodyFailure19 = cleanupFailure19;
+            throw cleanupFailure19;
+        } finally {
+            cleanupPhase19.close(cleanupBodyFailure19);
         }
         finishPluginDeactivation(cleanup);
         return true;
@@ -840,8 +1095,15 @@ public class PluginsController implements PluginsHooks {
 
     public boolean isPluginToggleGenerationCurrent(String pluginId, int generation) {
         if (TextUtils.isEmpty(pluginId)) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase20 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure20 = null;
+        try { synchronized (generationLock(pluginId)) {
             return toggleGenerations.getOrDefault(pluginId, 0) == generation;
+        } } catch (Throwable cleanupFailure20) {
+            cleanupBodyFailure20 = cleanupFailure20;
+            throw cleanupFailure20;
+        } finally {
+            cleanupPhase20.close(cleanupBodyFailure20);
         }
     }
 
@@ -849,7 +1111,9 @@ public class PluginsController implements PluginsHooks {
             String pluginId, int transactionGeneration,
             boolean transactionEnabled) {
         if (TextUtils.isEmpty(pluginId)) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase21 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure21 = null;
+        try { synchronized (generationLock(pluginId)) {
             boolean effectiveEnabled;
             if (toggleGenerations.getOrDefault(pluginId, 0)
                     == transactionGeneration) {
@@ -868,13 +1132,25 @@ public class PluginsController implements PluginsHooks {
                             effectiveEnabled)
                     .commit();
             return effectiveEnabled;
+        } } catch (Throwable cleanupFailure21) {
+            cleanupBodyFailure21 = cleanupFailure21;
+            throw cleanupFailure21;
+        } finally {
+            cleanupPhase21.close(cleanupBodyFailure21);
         }
     }
 
     public boolean runForPluginToggleGeneration(String pluginId, int generation, Runnable action) {
         if (TextUtils.isEmpty(pluginId) || action == null) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase22 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure22 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (toggleGenerations.getOrDefault(pluginId, 0) != generation) return false;
+        } } catch (Throwable cleanupFailure22) {
+            cleanupBodyFailure22 = cleanupFailure22;
+            throw cleanupFailure22;
+        } finally {
+            cleanupPhase22.close(cleanupBodyFailure22);
         }
         action.run();
         return isPluginToggleGenerationCurrent(pluginId, generation);
@@ -931,8 +1207,15 @@ public class PluginsController implements PluginsHooks {
 
     public boolean canPluginRegisterRuntime(String pluginId) {
         if (TextUtils.isEmpty(pluginId) || AppConfig.pluginsSafeMode) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase23 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure23 = null;
+        try { synchronized (generationLock(pluginId)) {
             return canPluginRegisterRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure23) {
+            cleanupBodyFailure23 = cleanupFailure23;
+            throw cleanupFailure23;
+        } finally {
+            cleanupPhase23.close(cleanupBodyFailure23);
         }
     }
 
@@ -968,23 +1251,44 @@ public class PluginsController implements PluginsHooks {
     public boolean runPluginRuntimePythonMutation(String pluginId, PyObject mutation) {
         if (TextUtils.isEmpty(pluginId) || mutation == null) return false;
         final int runtimeEpoch;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase24 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure24 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (!canPluginRegisterRuntimeLocked(pluginId)) return false;
             runtimeEpoch = runtimeEpochs.getOrDefault(pluginId, 0);
+        } } catch (Throwable cleanupFailure24) {
+            cleanupBodyFailure24 = cleanupFailure24;
+            throw cleanupFailure24;
+        } finally {
+            cleanupPhase24.close(cleanupBodyFailure24);
         }
         mutation.call();
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase25 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure25 = null;
+        try { synchronized (generationLock(pluginId)) {
             return runtimeEpochs.getOrDefault(pluginId, 0) == runtimeEpoch
                     && canPluginRegisterRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure25) {
+            cleanupBodyFailure25 = cleanupFailure25;
+            throw cleanupFailure25;
+        } finally {
+            cleanupPhase25.close(cleanupBodyFailure25);
         }
     }
 
     public boolean runPluginRuntimeMutation(String pluginId, Runnable mutation) {
         if (TextUtils.isEmpty(pluginId) || mutation == null) return false;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase26 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure26 = null;
+        try { synchronized (generationLock(pluginId)) {
             if (!canPluginRegisterRuntimeLocked(pluginId)) return false;
             mutation.run();
             return canPluginRegisterRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure26) {
+            cleanupBodyFailure26 = cleanupFailure26;
+            throw cleanupFailure26;
+        } finally {
+            cleanupPhase26.close(cleanupBodyFailure26);
         }
     }
 
@@ -992,7 +1296,9 @@ public class PluginsController implements PluginsHooks {
         if (TextUtils.isEmpty(pluginId)) return -1;
         final int cancellationGeneration;
         final PluginCleanup cleanup;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase27 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure27 = null;
+        try { synchronized (generationLock(pluginId)) {
 
             if (toggleGenerations.getOrDefault(pluginId, 0) != generation) return -1;
             if (persistDisabled) {
@@ -1014,6 +1320,11 @@ public class PluginsController implements PluginsHooks {
                         .commit();
             }
             cleanup = detachPluginRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure27) {
+            cleanupBodyFailure27 = cleanupFailure27;
+            throw cleanupFailure27;
+        } finally {
+            cleanupPhase27.close(cleanupBodyFailure27);
         }
         finishPluginDeactivation(cleanup);
         notifyPluginsChanged();
@@ -1752,7 +2063,9 @@ public class PluginsController implements PluginsHooks {
         pendingIds.addAll(pendingToggleCallbacks.keySet());
         pendingIds.addAll(enablingInProgress);
         for (String pluginId : pendingIds) {
-            synchronized (generationLock(pluginId)) {
+            RuntimeCleanupPhase cleanupPhase28 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure28 = null;
+            try { synchronized (generationLock(pluginId)) {
                 toggleGenerations.put(
                         pluginId,
                         toggleGenerations.getOrDefault(pluginId, 0) + 1);
@@ -1760,6 +2073,11 @@ public class PluginsController implements PluginsHooks {
                 enablingInProgress.remove(pluginId);
                 cancelled.addAll(
                         drainPendingToggleCallbacksLocked(pluginId));
+            } } catch (Throwable cleanupFailure28) {
+                cleanupBodyFailure28 = cleanupFailure28;
+                throw cleanupFailure28;
+            } finally {
+                cleanupPhase28.close(cleanupBodyFailure28);
             }
         }
         return cancelled;
@@ -1876,7 +2194,9 @@ public class PluginsController implements PluginsHooks {
 
         if (z && "NimarkoMedia".equals(str)) {
             final int specialGeneration;
-            synchronized (generationLock(str)) {
+            RuntimeCleanupPhase cleanupPhase29 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure29 = null;
+            try { synchronized (generationLock(str)) {
                 if (!isControllerLifecycleCurrent(requestEpoch)) {
                     if (callback != null) {
                         AndroidUtilities.runOnUIThread(
@@ -1887,6 +2207,11 @@ public class PluginsController implements PluginsHooks {
                 specialGeneration =
                         toggleGenerations.getOrDefault(str, 0) + 1;
                 toggleGenerations.put(str, specialGeneration);
+            } } catch (Throwable cleanupFailure29) {
+                cleanupBodyFailure29 = cleanupFailure29;
+                throw cleanupFailure29;
+            } finally {
+                cleanupPhase29.close(cleanupBodyFailure29);
             }
             Plugin nm = this.plugins.get(str);
             if (nm != null) {
@@ -1902,12 +2227,19 @@ public class PluginsController implements PluginsHooks {
             enablingInProgress.remove(str);
             pendingToggleState.remove(str);
             final List<PendingToggleCallback> callbacks;
-            synchronized (generationLock(str)) {
+            RuntimeCleanupPhase cleanupPhase30 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure30 = null;
+            try { synchronized (generationLock(str)) {
                 callbacks = drainPendingToggleCallbacksLocked(str);
                 if (callback != null) {
                     callbacks.add(new PendingToggleCallback(
                             z, specialGeneration, requestEpoch, callback));
                 }
+            } } catch (Throwable cleanupFailure30) {
+                cleanupBodyFailure30 = cleanupFailure30;
+                throw cleanupFailure30;
+            } finally {
+                cleanupPhase30.close(cleanupBodyFailure30);
             }
             notifyPluginsChanged();
             AndroidUtilities.runOnUIThread(() -> {
@@ -1934,7 +2266,9 @@ public class PluginsController implements PluginsHooks {
         final int generation;
         final PluginCleanup immediateCleanup;
 
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase31 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure31 = null;
+        try { synchronized (generationLock(str)) {
             if (!isControllerLifecycleCurrent(requestEpoch)) {
                 if (callback != null) {
                     AndroidUtilities.runOnUIThread(
@@ -1962,6 +2296,11 @@ public class PluginsController implements PluginsHooks {
                 enablingInProgress.add(str);
                 immediateCleanup = null;
             }
+        } } catch (Throwable cleanupFailure31) {
+            cleanupBodyFailure31 = cleanupFailure31;
+            throw cleanupFailure31;
+        } finally {
+            cleanupPhase31.close(cleanupBodyFailure31);
         }
 
         if (!z) {
@@ -1991,7 +2330,9 @@ public class PluginsController implements PluginsHooks {
         }
         final boolean targetState;
         final int appliedGeneration;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase32 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure32 = null;
+        try { synchronized (generationLock(str)) {
             if (!isControllerLifecycleCurrent(scheduledEpoch)) {
                 return;
             }
@@ -2002,13 +2343,20 @@ public class PluginsController implements PluginsHooks {
             targetState = target;
             appliedGeneration = toggleGenerations.getOrDefault(
                     str, scheduledGeneration);
+        } } catch (Throwable cleanupFailure32) {
+            cleanupBodyFailure32 = cleanupFailure32;
+            throw cleanupFailure32;
+        } finally {
+            cleanupPhase32.close(cleanupBodyFailure32);
         }
         PluginsEngine pluginEngine = getPluginEngine(str);
         if (pluginEngine == null) {
             List<PendingToggleCallback> callbacks = Collections.emptyList();
             boolean retry = false;
             int retryGeneration = appliedGeneration;
-            synchronized (generationLock(str)) {
+            RuntimeCleanupPhase cleanupPhase33 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure33 = null;
+            try { synchronized (generationLock(str)) {
                 if (toggleGenerations.getOrDefault(str, 0) == appliedGeneration
                         && pendingToggleState.remove(str, targetState)) {
                     callbacks = drainPendingToggleCallbacksLocked(str);
@@ -2018,6 +2366,11 @@ public class PluginsController implements PluginsHooks {
                     retryGeneration = toggleGenerations.getOrDefault(
                             str, appliedGeneration);
                 }
+            } } catch (Throwable cleanupFailure33) {
+                cleanupBodyFailure33 = cleanupFailure33;
+                throw cleanupFailure33;
+            } finally {
+                cleanupPhase33.close(cleanupBodyFailure33);
             }
             if (retry) {
                 final int generationToRetry = retryGeneration;
@@ -2045,10 +2398,17 @@ public class PluginsController implements PluginsHooks {
 
             final Boolean latest;
             final int latestGeneration;
-            synchronized (generationLock(str)) {
+            RuntimeCleanupPhase cleanupPhase34 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure34 = null;
+            try { synchronized (generationLock(str)) {
                 latest = pendingToggleState.get(str);
                 latestGeneration = toggleGenerations.getOrDefault(
                         str, appliedGeneration);
+            } } catch (Throwable cleanupFailure34) {
+                cleanupBodyFailure34 = cleanupFailure34;
+                throw cleanupFailure34;
+            } finally {
+                cleanupPhase34.close(cleanupBodyFailure34);
             }
             if (latest != null && (latest != targetState || latestGeneration != appliedGeneration)) {
 
@@ -2058,7 +2418,9 @@ public class PluginsController implements PluginsHooks {
                         str, latestGeneration, scheduledEpoch));
             } else {
                 List<PendingToggleCallback> completionCallbacks;
-                synchronized (generationLock(str)) {
+                RuntimeCleanupPhase cleanupPhase35 = beginRuntimeCleanupPhase();
+                Throwable cleanupBodyFailure35 = null;
+                try { synchronized (generationLock(str)) {
                     if (!isControllerLifecycleCurrent(scheduledEpoch)) {
                         return;
                     }
@@ -2073,6 +2435,11 @@ public class PluginsController implements PluginsHooks {
                     }
                     completionCallbacks = drainPendingToggleCallbacksLocked(str);
                     enablingInProgress.remove(str);
+                } } catch (Throwable cleanupFailure35) {
+                    cleanupBodyFailure35 = cleanupFailure35;
+                    throw cleanupFailure35;
+                } finally {
+                    cleanupPhase35.close(cleanupBodyFailure35);
                 }
                 deliverToggleCallbacks(
                         completionCallbacks, targetState,
@@ -2142,7 +2509,9 @@ public class PluginsController implements PluginsHooks {
         final boolean requestedState;
         final int generation;
         final long lifecycleEpoch = controllerLifecycleEpoch.get();
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase36 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure36 = null;
+        try { synchronized (generationLock(pluginId)) {
             Boolean pending = pendingToggleState.remove(pluginId);
             requestedState = pending != null && pending;
             generation = toggleGenerations.getOrDefault(pluginId, 0);
@@ -2152,6 +2521,11 @@ public class PluginsController implements PluginsHooks {
             if (plugin != null) {
                 plugin.setEnabled(false);
             }
+        } } catch (Throwable cleanupFailure36) {
+            cleanupBodyFailure36 = cleanupFailure36;
+            throw cleanupFailure36;
+        } finally {
+            cleanupPhase36.close(cleanupBodyFailure36);
         }
         invalidateInterestedPluginsCache();
         notifyPluginsChanged();
@@ -2165,7 +2539,9 @@ public class PluginsController implements PluginsHooks {
         final PluginCleanup cleanup;
         final List<PendingToggleCallback> supersededCallbacks;
         final boolean preferenceSaved;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase37 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure37 = null;
+        try { synchronized (generationLock(pluginId)) {
             toggleGenerations.put(
                     pluginId,
                     toggleGenerations.getOrDefault(pluginId, 0) + 1);
@@ -2195,6 +2571,11 @@ public class PluginsController implements PluginsHooks {
             }
             preferenceSaved = committed;
             cleanup = detachPluginRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure37) {
+            cleanupBodyFailure37 = cleanupFailure37;
+            throw cleanupFailure37;
+        } finally {
+            cleanupPhase37.close(cleanupBodyFailure37);
         }
 
         finishPluginDeactivation(cleanup);
@@ -2213,7 +2594,9 @@ public class PluginsController implements PluginsHooks {
         final PluginCleanup cleanup;
         final List<PendingToggleCallback> supersededCallbacks;
         final boolean preferenceSaved;
-        synchronized (generationLock(pluginId)) {
+        RuntimeCleanupPhase cleanupPhase38 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure38 = null;
+        try { synchronized (generationLock(pluginId)) {
             try {
                 if (!PythonPluginsEngine.prepareDurablePluginDeletion(
                         this, pluginId)) {
@@ -2254,6 +2637,11 @@ public class PluginsController implements PluginsHooks {
             }
             preferenceSaved = committed;
             cleanup = detachPluginRuntimeLocked(pluginId);
+        } } catch (Throwable cleanupFailure38) {
+            cleanupBodyFailure38 = cleanupFailure38;
+            throw cleanupFailure38;
+        } finally {
+            cleanupPhase38.close(cleanupBodyFailure38);
         }
 
         finishPluginDeactivation(cleanup);
@@ -2291,7 +2679,9 @@ public class PluginsController implements PluginsHooks {
         List<PendingToggleCallback> supersededCallbacks =
                 Collections.emptyList();
         boolean deletionPrepared;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase39 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure39 = null;
+        try { synchronized (generationLock(str)) {
 
             try {
                 deletionPrepared =
@@ -2315,6 +2705,11 @@ public class PluginsController implements PluginsHooks {
                 }
                 immediateCleanup = detachPluginRuntimeLocked(str);
             }
+        } } catch (Throwable cleanupFailure39) {
+            cleanupBodyFailure39 = cleanupFailure39;
+            throw cleanupFailure39;
+        } finally {
+            cleanupPhase39.close(cleanupBodyFailure39);
         }
         if (!deletionPrepared) {
             if (callback != null) {
@@ -2353,7 +2748,9 @@ public class PluginsController implements PluginsHooks {
     public void cleanupPlugin(String str, PluginRuntimeToken runtimeToken) {
         if (TextUtils.isEmpty(str)) return;
         final PluginCleanup cleanup;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase40 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure40 = null;
+        try { synchronized (generationLock(str)) {
             if (runtimeToken == null
                     && currentRuntimeByPlugin.get(str) != null) {
 
@@ -2368,6 +2765,11 @@ public class PluginsController implements PluginsHooks {
                 return;
             }
             cleanup = detachPluginRuntimeLocked(str, runtimeToken);
+        } } catch (Throwable cleanupFailure40) {
+            cleanupBodyFailure40 = cleanupFailure40;
+            throw cleanupFailure40;
+        } finally {
+            cleanupPhase40.close(cleanupBodyFailure40);
         }
         finishPluginDeactivation(cleanup);
     }
@@ -2665,7 +3067,9 @@ public class PluginsController implements PluginsHooks {
                 }
                 List<SettingItem> replacedSettings = null;
                 boolean published = false;
-                synchronized (generationLock(str)) {
+                RuntimeCleanupPhase cleanupPhase41 = beginRuntimeCleanupPhase();
+                Throwable cleanupBodyFailure41 = null;
+                try { synchronized (generationLock(str)) {
                     if (toggleGenerations.getOrDefault(str, 0) == generation
                             && isPluginActive(str)
                             && isPluginRuntimeCurrent(runtimeToken)) {
@@ -2675,6 +3079,11 @@ public class PluginsController implements PluginsHooks {
                         this.settingsRuntimeTokens.put(str, runtimeToken);
                         published = true;
                     }
+                } } catch (Throwable cleanupFailure41) {
+                    cleanupBodyFailure41 = cleanupFailure41;
+                    throw cleanupFailure41;
+                } finally {
+                    cleanupPhase41.close(cleanupBodyFailure41);
                 }
                 if (!published) {
                     clearSettingPythonReferences(
@@ -2720,11 +3129,18 @@ public class PluginsController implements PluginsHooks {
         boolean removed;
         PluginRuntimeToken runtimeToken;
         List<SettingItem> removedSettings;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase42 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure42 = null;
+        try { synchronized (generationLock(str)) {
             if (toggleGenerations.getOrDefault(str, 0) != generation) return;
             runtimeToken = this.settingsRuntimeTokens.remove(str);
             removedSettings = this.settings.remove(str);
             removed = removedSettings != null;
+        } } catch (Throwable cleanupFailure42) {
+            cleanupBodyFailure42 = cleanupFailure42;
+            throw cleanupFailure42;
+        } finally {
+            cleanupPhase42.close(cleanupBodyFailure42);
         }
         clearSettingPythonReferences(removedSettings);
         if (removed) {
@@ -2808,13 +3224,20 @@ public class PluginsController implements PluginsHooks {
             return;
         }
         boolean rejected = false;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase43 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure43 = null;
+        try { synchronized (generationLock(str)) {
             if (!canPluginRegisterRuntimeLocked(str)) {
                 rejected = true;
             } else if (this.hooks.computeIfAbsent(str, k -> new CopyOnWriteArraySet<>()).add(hookRecord)) {
                 FileLog.d(str2);
                 invalidateHooksCache();
             }
+        } } catch (Throwable cleanupFailure43) {
+            cleanupBodyFailure43 = cleanupFailure43;
+            throw cleanupFailure43;
+        } finally {
+            cleanupPhase43.close(cleanupBodyFailure43);
         }
         if (rejected) {
             FileLog.w("Rejected late runtime hook registration for inactive plugin " + str);
@@ -2830,7 +3253,9 @@ public class PluginsController implements PluginsHooks {
     private void removeHook(String str, Predicate<HookRecord> predicate, String str2) {
         if (TextUtils.isEmpty(str)) return;
         final List<HookRecord> toRemove;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase44 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure44 = null;
+        try { synchronized (generationLock(str)) {
             Set<HookRecord> set = this.hooks.get(str);
             if (set == null || set.isEmpty()) return;
             toRemove = set.stream().filter(predicate).collect(Collectors.toList());
@@ -2840,6 +3265,11 @@ public class PluginsController implements PluginsHooks {
                 this.hooks.remove(str, set);
             }
             invalidateHooksCache();
+        } } catch (Throwable cleanupFailure44) {
+            cleanupBodyFailure44 = cleanupFailure44;
+            throw cleanupFailure44;
+        } finally {
+            cleanupPhase44.close(cleanupBodyFailure44);
         }
 
         FileLog.d(str2);
@@ -2868,7 +3298,9 @@ public class PluginsController implements PluginsHooks {
         }
         if (records.isEmpty()) return;
         boolean rejected;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase45 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure45 = null;
+        try { synchronized (generationLock(str)) {
             rejected = !canPluginRegisterRuntimeLocked(str);
             if (!rejected) {
                 Set<HookRecord> pluginHooks =
@@ -2877,6 +3309,11 @@ public class PluginsController implements PluginsHooks {
                     invalidateHooksCache();
                 }
             }
+        } } catch (Throwable cleanupFailure45) {
+            cleanupBodyFailure45 = cleanupFailure45;
+            throw cleanupFailure45;
+        } finally {
+            cleanupPhase45.close(cleanupBodyFailure45);
         }
         if (rejected) {
             FileLog.w("Rejected late Xposed hook batch for inactive plugin " + str);
@@ -2894,11 +3331,18 @@ public class PluginsController implements PluginsHooks {
     public void removeHooksByPluginId(String str) {
         if (TextUtils.isEmpty(str)) return;
         final List<HookRecord> detachedHooks;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase46 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure46 = null;
+        try { synchronized (generationLock(str)) {
             Set<HookRecord> setRemove = this.hooks.remove(str);
             if (setRemove == null) return;
             detachedHooks = new ArrayList<>(setRemove);
             invalidateHooksCache();
+        } } catch (Throwable cleanupFailure46) {
+            cleanupBodyFailure46 = cleanupFailure46;
+            throw cleanupFailure46;
+        } finally {
+            cleanupPhase46.close(cleanupBodyFailure46);
         }
         finishPluginDeactivation(new PluginCleanup(str, detachedHooks, false, false, false));
     }
@@ -2912,7 +3356,9 @@ public class PluginsController implements PluginsHooks {
             if (menuItemRecord.menuType == null) {
                 return null;
             }
-            synchronized (generationLock(str)) {
+            RuntimeCleanupPhase cleanupPhase47 = beginRuntimeCleanupPhase();
+            Throwable cleanupBodyFailure47 = null;
+            try { synchronized (generationLock(str)) {
                 if (!canPluginRegisterRuntimeLocked(str)) {
                     menuItemRecord.releaseCallback(
                             menuItemRecord.runtimeToken);
@@ -2955,6 +3401,11 @@ public class PluginsController implements PluginsHooks {
                      Collections.sort(newList, (o1, o2) -> Integer.compare(o2.priority, o1.priority));
                      return newList;
                 });
+            } } catch (Throwable cleanupFailure47) {
+                cleanupBodyFailure47 = cleanupFailure47;
+                throw cleanupFailure47;
+            } finally {
+                cleanupPhase47.close(cleanupBodyFailure47);
             }
             FileLog.d("Added menu item: " + menuItemRecord.itemId + " for plugin " + str + " in type " + menuItemRecord.menuType);
             AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.pluginMenuItemsUpdated));
@@ -2969,7 +3420,9 @@ public class PluginsController implements PluginsHooks {
     public boolean removeMenuItem(String str, String str2) {
         if (TextUtils.isEmpty(str) || TextUtils.isEmpty(str2)) return false;
         final MenuItemRecord menuItemRecordRemove;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase48 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure48 = null;
+        try { synchronized (generationLock(str)) {
             MenuItemRecord current = this.menuItemsById.get(str2);
             if (current == null || current.menuType == null || !str.equals(current.pluginId)
                     || !this.menuItemsById.remove(str2, current)) {
@@ -2986,6 +3439,11 @@ public class PluginsController implements PluginsHooks {
             }
             menuItemRecordRemove.releaseCallback(
                     menuItemRecordRemove.runtimeToken);
+        } } catch (Throwable cleanupFailure48) {
+            cleanupBodyFailure48 = cleanupFailure48;
+            throw cleanupFailure48;
+        } finally {
+            cleanupPhase48.close(cleanupBodyFailure48);
         }
         FileLog.d("Removed menu item: " + str2 + " for plugin " + str);
         AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationNameOnUIThread(NotificationCenter.pluginMenuItemsUpdated));
@@ -2995,7 +3453,9 @@ public class PluginsController implements PluginsHooks {
     public void removeMenuItemsByPluginId(String str) {
         if (TextUtils.isEmpty(str)) return;
         boolean removed = false;
-        synchronized (generationLock(str)) {
+        RuntimeCleanupPhase cleanupPhase49 = beginRuntimeCleanupPhase();
+        Throwable cleanupBodyFailure49 = null;
+        try { synchronized (generationLock(str)) {
             for (MenuItemRecord record : new ArrayList<>(this.menuItemsById.values())) {
                 if (!str.equals(record.pluginId)
                         || !this.menuItemsById.remove(record.itemId, record)) {
@@ -3012,6 +3472,11 @@ public class PluginsController implements PluginsHooks {
                 record.releaseCallback(record.runtimeToken);
                 removed = true;
             }
+        } } catch (Throwable cleanupFailure49) {
+            cleanupBodyFailure49 = cleanupFailure49;
+            throw cleanupFailure49;
+        } finally {
+            cleanupPhase49.close(cleanupBodyFailure49);
         }
         FileLog.d("Removed all menu items for plugin: " + str);
         if (removed) {
@@ -3444,6 +3909,26 @@ public class PluginsController implements PluginsHooks {
         private static final PluginsController INSTANCE = new PluginsController();
         static {
             diagnosticInstance = INSTANCE;
+            app.nimarkogram.messenger.badges.BadgePluginOwners.install(
+                    new app.nimarkogram.messenger.badges.BadgePluginOwners.Resolver() {
+                        @Override public app.nimarkogram.messenger.badges.BadgePluginOwners.Owner capture() {
+                            PluginRuntimeToken token = INSTANCE.captureCurrentPluginRuntime();
+                            if (token == null) return null;
+                            RuntimeSlot slot = INSTANCE.currentRuntimeByPlugin.get(token.pluginId);
+                            if (slot == null || slot.state == RuntimeState.REVOKED || !slot.token.equals(token)
+                                    || INSTANCE.toggleGenerations.getOrDefault(token.pluginId, 0) != token.generation) return null;
+                            return new app.nimarkogram.messenger.badges.BadgePluginOwners.Owner(token.pluginId, token);
+                        }
+
+                        @Override public boolean isActive(app.nimarkogram.messenger.badges.BadgePluginOwners.Owner owner) {
+                            if (!AppConfig.pluginsEngine || AppConfig.pluginsSafeMode) return false;
+                            Plugin plugin = INSTANCE.plugins.get(owner.pluginId);
+                            RuntimeSlot slot = INSTANCE.currentRuntimeByPlugin.get(owner.pluginId);
+                            return plugin != null && plugin.isEnabled() && slot != null && slot.state == RuntimeState.ACTIVE
+                                    && INSTANCE.toggleGenerations.getOrDefault(owner.pluginId, 0) == slot.token.generation
+                                    && (owner.runtime == null || slot.token.equals(owner.runtime));
+                        }
+                    });
         }
     }
 

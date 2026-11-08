@@ -52,6 +52,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PeerColorActivity;
@@ -776,7 +777,7 @@ public final class BulletinFactory {
     public Bulletin createEmojiBulletin(TLRPC.Document document, CharSequence text) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         layout.textView.setText(text);
@@ -789,7 +790,7 @@ public final class BulletinFactory {
     public Bulletin createEmojiBulletin(TLRPC.Document document, CharSequence text, CharSequence subtext) {
         final Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         layout.titleTextView.setText(text);
@@ -800,7 +801,7 @@ public final class BulletinFactory {
     public Bulletin createEmojiBulletin(TLRPC.Document document, CharSequence text, CharSequence subtext, CharSequence buttonText, Runnable onButtonClick) {
         final Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         layout.titleTextView.setText(text);
@@ -812,7 +813,7 @@ public final class BulletinFactory {
     public Bulletin createStaticEmojiBulletin(TLRPC.Document document, CharSequence text) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         layout.imageView.stopAnimation();
@@ -826,7 +827,7 @@ public final class BulletinFactory {
     public Bulletin createEmojiBulletin(TLRPC.Document document, CharSequence text, CharSequence button, Runnable onButtonClick) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         if (layout.imageView.getImageReceiver() != null) {
@@ -843,7 +844,7 @@ public final class BulletinFactory {
     public Bulletin createEmojiLoadingBulletin(TLRPC.Document document, CharSequence text, CharSequence button, Runnable onButtonClick) {
         final Bulletin.LoadingLottieLayout layout = new Bulletin.LoadingLottieLayout(getContext(), resourcesProvider);
         if (MessageObject.isTextColorEmoji(document)) {
-            layout.imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_undo_infoColor), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(layout.imageView, Theme.key_undo_infoColor, PorterDuff.Mode.SRC_IN);
         }
         layout.setAnimation(document, 36, 36);
         layout.textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);

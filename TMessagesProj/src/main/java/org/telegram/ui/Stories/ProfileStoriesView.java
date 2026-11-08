@@ -36,14 +36,18 @@ import com.google.zxing.common.detector.MathUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.Theme;
@@ -58,6 +62,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import app.nimarkogram.messenger.utils.ProfileAppearanceMotion;
 public class ProfileStoriesView extends View implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int CIRCLES_MAX = 3;
@@ -74,6 +79,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private final View avatarContainer;
     private final ProfileActivity.AvatarImageView avatarImage;
 
+    private final Theme.ResourcesProvider resourcesProvider;
+    private boolean initialized;
     private final AnimatedTextView.AnimatedTextDrawable titleDrawable = new AnimatedTextView.AnimatedTextDrawable(false, true, true);
 
     private final Paint clipOutAvatar = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -94,9 +101,10 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private float fragmentTransitionProgress = 1f;
     private boolean hasStoryRing;
     private final AnimatedFloat storyRingPresence = new AnimatedFloat(0f, this, 0, 250, CubicBezierInterpolator.DEFAULT);
+    private float presentedStoryRingPresence;
     private int uploadingStoriesCount;
     private StoriesController.UploadingStory lastUploadingStory;
-    private final StoriesUtilities.StoryGradientTools gradientTools = new StoriesUtilities.StoryGradientTools(this, false);
+    private final StoriesUtilities.StoryGradientTools gradientTools;
 
     public void setProgressToStoriesInsets(float progressToInsets) {
         if (this.progressToInsets == progressToInsets) {
@@ -109,16 +117,17 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private class StoryCircle {
         public StoryCircle(TL_stories.StoryItem storyItem) {
             this.storyId = storyItem.id;
+            this.imageReceiver.setCurrentAccount(currentAccount);
             this.imageReceiver.setRoundRadius(dp(200));
             this.imageReceiver.setParentView(ProfileStoriesView.this);
-            this.live = storyItem.media instanceof TLRPC.TL_messageMediaVideoStream;
             if (attached) {
                 this.imageReceiver.onAttachedToWindow();
             }
-            StoriesUtilities.setThumbImage(this.avatarDrawable, this.imageReceiver, storyItem, 25, 25);
+            bindContent(storyItem);
         }
 
         int storyId;
+        private String contentKey;
         AvatarDrawable avatarDrawable = new AvatarDrawable();
         ImageReceiver imageReceiver = new ImageReceiver();
         int index = 0;
@@ -136,7 +145,17 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         final RectF borderRect = new RectF();
 
         public float getIndex() {
-            return indexAnimated.set(index);
+            return indexAnimated.set(index, !ProfileAppearanceMotion.isEnabled());
+        }
+
+        private void bindContent(TL_stories.StoryItem storyItem) {
+            storyItem.dialogId = dialogId;
+            final String nextKey = storyContentKey(storyItem);
+            if (nextKey.equals(contentKey)) return;
+            imageReceiver.setCrossfadeWithOldImage(contentKey != null);
+            StoriesUtilities.setThumbImage(avatarDrawable, imageReceiver, storyItem, 25, 25);
+            live = storyItem.media instanceof TLRPC.TL_messageMediaVideoStream;
+            contentKey = nextKey;
         }
 
         public void destroy() {
@@ -160,6 +179,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         this.isTopic = isTopic;
         this.avatarContainer = avatarContainer;
         this.avatarImage = avatarImage;
+        this.resourcesProvider = resourcesProvider;
+        gradientTools = new StoriesUtilities.StoryGradientTools(currentAccount, this, false);
         avatarImage.getImageReceiver().setVisibleInvalidate(this::invalidate);
         storiesController = MessagesController.getInstance(currentAccount).getStoriesController();
 
@@ -186,7 +207,60 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         clipOutAvatar.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
         paint.setStrokeWidth(dpf2(2.33f));
         paint.setStyle(Paint.Style.STROKE);
+        initialized = true;
         updateStories(false, false);
+    }
+
+    private String storyContentKey(TL_stories.StoryItem storyItem) {
+        final StringBuilder key = new StringBuilder().append(currentAccount).append(':')
+                .append(dialogId).append(':').append(storyItem.id).append(':');
+        final TLRPC.MessageMedia media = storyItem.media;
+        key.append(media == null ? "none" : media.getClass().getName());
+        if (media instanceof TLRPC.TL_messageMediaVideoStream) {
+            final TLObject peer = MessagesController.getInstance(currentAccount).getUserOrChat(dialogId);
+            appendImageKey(key, ImageLocation.getForUserOrChat(currentAccount, peer, ImageLocation.TYPE_SMALL), peer);
+            if (peer instanceof TLRPC.User) {
+                TLRPC.User user = (TLRPC.User) peer;
+                key.append(':').append(UserObject.getUserName(user)).append(':').append(UserObject.getColorId(user));
+                if (user.photo != null) key.append(':').append(user.photo.photo_id).append(':')
+                        .append(Utilities.bytesToHex(user.photo.stripped_thumb));
+            } else if (peer instanceof TLRPC.Chat) {
+                TLRPC.Chat chat = (TLRPC.Chat) peer;
+                key.append(':').append(chat.title).append(':').append(ChatObject.getColorId(chat));
+                if (chat.photo != null) key.append(':').append(chat.photo.photo_id).append(':')
+                        .append(Utilities.bytesToHex(chat.photo.stripped_thumb));
+            }
+        } else if (media != null && media.document != null) {
+            final TLRPC.Document document = media.document;
+            key.append(':').append(document.id);
+            final TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(document.thumbs, dp(25), false, null, true);
+            appendImageKey(key, ImageLocation.getForDocument(size, document), storyItem);
+            appendStrippedKey(key, document.thumbs);
+        } else if (media != null && media.photo != null) {
+            final TLRPC.Photo photo = media.photo;
+            key.append(':').append(photo.id);
+            final TLRPC.PhotoSize size = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, dp(25), false, null, true);
+            appendImageKey(key, ImageLocation.getForPhoto(size, photo), storyItem);
+            appendStrippedKey(key, photo.sizes);
+        }
+        return key.toString();
+    }
+
+    private static void appendImageKey(StringBuilder key, ImageLocation location, Object parent) {
+        key.append(':').append(location == null ? null : location.getKey(parent, null, false));
+        if (location != null && location.photoSize != null) {
+            key.append(':').append(Utilities.bytesToHex(location.photoSize.bytes));
+        }
+    }
+
+    private static void appendStrippedKey(StringBuilder key, ArrayList<TLRPC.PhotoSize> sizes) {
+        if (sizes == null) return;
+        for (TLRPC.PhotoSize size : sizes) {
+            if (size instanceof TLRPC.TL_photoStrippedSize) {
+                key.append(':').append(Utilities.bytesToHex(size.bytes));
+                break;
+            }
+        }
     }
 
     @Override
@@ -195,7 +269,45 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     }
 
     private TL_stories.PeerStories peerStories;
+    private boolean controllerStoriesObserved;
+
+    private TL_stories.PeerStories storiesForThisPeer(TL_stories.PeerStories stories) {
+        if (dialogId == 0 || stories == null || stories.peer == null
+                || DialogObject.getPeerDialogId(stories.peer) != dialogId) return null;
+        if (stories.stories != null) {
+            for (int i = 0; i < stories.stories.size(); i++) {
+                final TL_stories.StoryItem story = stories.stories.get(i);
+                if (story == null || story.dialogId != 0 && story.dialogId != dialogId) return null;
+            }
+        }
+        return stories;
+    }
+
+    private TL_stories.StoryItem storyForPreview(TL_stories.StoryItem story, TL_stories.PeerStories stateStories, int now) {
+        if (story instanceof TL_stories.TL_storyItemDeleted
+                || story.expire_date != 0 && now > story.expire_date) return null;
+        if (story instanceof TL_stories.TL_storyItemSkipped && stateStories != null && stateStories.stories != null) {
+            for (int i = 0; i < stateStories.stories.size(); i++) {
+                if (stateStories.stories.get(i).id == story.id) {
+                    story = stateStories.stories.get(i);
+                    break;
+                }
+            }
+        }
+        if (story instanceof TL_stories.TL_storyItemSkipped && peerStories != null && peerStories.stories != null) {
+            for (int i = 0; i < peerStories.stories.size(); i++) {
+                if (peerStories.stories.get(i).id == story.id) {
+                    story = peerStories.stories.get(i);
+                    break;
+                }
+            }
+        }
+        if (story instanceof TL_stories.TL_storyItemDeleted || story instanceof TL_stories.TL_storyItemSkipped
+                || story.expire_date != 0 && now > story.expire_date) return null;
+        return story;
+    }
     public void setStories(TL_stories.PeerStories peerStories) {
+        if (peerStories != null && storiesForThisPeer(peerStories) == null) return;
         this.peerStories = peerStories;
         updateStories(true, false);
     }
@@ -204,24 +316,41 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         updateStories(true, true);
     }
 
+    public void refreshOnResume() {
+        if (!initialized) return;
+        updateStories(false, false, true);
+    }
+
+    public boolean hasActiveStoryRing() {
+        return !isTopic && !app.nimarkogram.messenger.AppConfig.hideStories && hasStoryRing;
+    }
     private void updateStories(boolean animated, boolean asUpdate) {
+        updateStories(animated, asUpdate, false);
+    }
+
+    private void updateStories(boolean animated, boolean asUpdate, boolean preservePresentation) {
         if (app.nimarkogram.messenger.AppConfig.hideStories) return;
         if (isTopic) {
             return;
         }
+        final boolean motionEnabled = ProfileAppearanceMotion.isEnabled();
+        animated = animated && attached && motionEnabled;
+        if (!motionEnabled) cancelStoryBounces();
+        final boolean hadStoryRing = hasStoryRing;
         final boolean me = dialogId == UserConfig.getInstance(currentAccount).getClientUserId();
         final int now = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
-        TL_stories.PeerStories userFullStories = MessagesController.getInstance(currentAccount).getStoriesController().getStoriesFromFullPeer(dialogId);
-        TL_stories.PeerStories stateStories = MessagesController.getInstance(currentAccount).getStoriesController().getStories(dialogId);
-        final TL_stories.PeerStories userStories;
-        if (dialogId == 0) {
-            userStories = null;
-        } else {
-            userStories = userFullStories;
+        peerStories = storiesForThisPeer(peerStories);
+        TL_stories.PeerStories userFullStories = storiesForThisPeer(storiesController.getStoriesFromFullPeer(dialogId));
+        TL_stories.PeerStories stateStories = storiesForThisPeer(storiesController.getStories(dialogId));
+        if (userFullStories != null || stateStories != null) {
+            controllerStoriesObserved = true;
         }
-        int max_read_id = 0;
-        if (userFullStories != null) {
-            max_read_id = Math.max(max_read_id, userFullStories.max_read_id);
+        final TL_stories.PeerStories userStories = userFullStories != null ? userFullStories
+                : stateStories != null ? stateStories
+                : controllerStoriesObserved ? null : storiesForThisPeer(peerStories);
+        int max_read_id = storiesController.getMaxStoriesReadId(dialogId);
+        if (userStories != null) {
+            max_read_id = Math.max(max_read_id, userStories.max_read_id);
         }
         if (stateStories != null) {
             max_read_id = Math.max(max_read_id, stateStories.max_read_id);
@@ -234,7 +363,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         if (stories != null) {
             for (int i = 0; i < stories.size(); ++i) {
                 TL_stories.StoryItem storyItem = stories.get(i);
-                if (storyItem instanceof TL_stories.TL_storyItemDeleted) {
+                if (storyItem instanceof TL_stories.TL_storyItemDeleted
+                        || storyItem.expire_date != 0 && now > storyItem.expire_date) {
                     continue;
                 }
                 if (storyItem.id > max_read_id) {
@@ -243,38 +373,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
                 count++;
             }
             for (int i = 0; i < stories.size(); ++i) {
-                TL_stories.StoryItem storyItem = stories.get(i);
-                if (storyItem instanceof TL_stories.TL_storyItemDeleted) {
-                    continue;
-                }
-                if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                    int id = storyItem.id;
-                    if (stateStories != null) {
-                        for (int j = 0; j < stateStories.stories.size(); ++j) {
-                            if (stateStories.stories.get(j).id == id) {
-                                storyItem = stateStories.stories.get(j);
-                                break;
-                            }
-                        }
-                    }
-                    if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                        if (userFullStories != null) {
-                            for (int j = 0; j < userFullStories.stories.size(); ++j) {
-                                if (userFullStories.stories.get(j).id == id) {
-                                    storyItem = userFullStories.stories.get(j);
-                                    break;
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                    if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                        continue;
-                    }
-                }
-                if (storyItem.expire_date != 0 && now > storyItem.expire_date) {
-                    continue;
-                }
+                TL_stories.StoryItem storyItem = storyForPreview(stories.get(i), stateStories, now);
+                if (storyItem == null) continue;
                 if (me || storyItem.id > max_read_id) {
                     storiesToShow.add(storyItem);
                     if (storiesToShow.size() >= CIRCLES_MAX) {
@@ -285,38 +385,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         }
         if (storiesToShow.size() < CIRCLES_MAX) {
             for (int i = 0; i < stories.size(); ++i) {
-                TL_stories.StoryItem storyItem = stories.get(i);
-                if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                    int id = storyItem.id;
-                    if (stateStories != null) {
-                        for (int j = 0; j < stateStories.stories.size(); ++j) {
-                            if (stateStories.stories.get(j).id == id) {
-                                storyItem = stateStories.stories.get(j);
-                                break;
-                            }
-                        }
-                    }
-                    if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                        if (userFullStories != null) {
-                            for (int j = 0; j < userFullStories.stories.size(); ++j) {
-                                if (userFullStories.stories.get(j).id == id) {
-                                    storyItem = userFullStories.stories.get(j);
-                                    break;
-                                }
-                            }
-                        }
-                        continue;
-                    }
-                    if (storyItem instanceof TL_stories.TL_storyItemSkipped) {
-                        continue;
-                    }
-                }
-                if (storyItem instanceof TL_stories.TL_storyItemDeleted) {
-                    continue;
-                }
-                if (storyItem.expire_date != 0 && now > storyItem.expire_date) {
-                    continue;
-                }
+                TL_stories.StoryItem storyItem = storyForPreview(stories.get(i), stateStories, now);
+                if (storyItem == null) continue;
                 if (!storiesToShow.contains(storyItem)) {
                     storiesToShow.add(storyItem);
                     if (storiesToShow.size() >= CIRCLES_MAX) {
@@ -329,6 +399,9 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         for (int i = 0; i < circles.size(); ++i) {
             StoryCircle circle = circles.get(i);
 
+            final float oldScale = circle.scale;
+            final int oldIndex = circle.index;
+            final boolean oldRead = circle.read;
             int index = -1;
             TL_stories.StoryItem storyItem = null;
             for (int j = 0; j < storiesToShow.size(); ++j) {
@@ -343,10 +416,13 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             if (index == -1) {
                 circle.scale = 0f;
             } else {
+                circle.bindContent(storyItem);
+                circle.scale = 1f;
                 circle.index = index;
-                circle.read = me || userStories != null && storyItem != null && storyItem.id <= storiesController.getMaxStoriesReadId(dialogId);
+                circle.read = me || storyItem != null && storyItem.id <= max_read_id;
             }
-            if (!animated) {
+            if (!animated && (!preservePresentation || !motionEnabled || circle.scale != oldScale
+                    || circle.index != oldIndex || circle.read != oldRead)) {
                 circle.apply();
             }
         }
@@ -368,7 +444,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
                 circle.index = i;
                 circle.scale = 1f;
                 circle.scaleAnimated.set(0f, true);
-                circle.read = me || userStories != null && storyItem.id <= userStories.max_read_id;
+                circle.read = me || storyItem.id <= max_read_id;
                 if (!animated) {
                     circle.apply();
                 }
@@ -396,32 +472,43 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         }
         this.count = newCount;
         hasStoryRing = mainCircle != null || uploadingStoriesCount > 0 || storiesController.isLastUploadingFailed(dialogId);
-        if (!animated) {
-            storyRingPresence.set(hasStoryRing ? 1f : 0f, true);
+        if (!animated && (!preservePresentation || !motionEnabled || hasStoryRing != hadStoryRing)) {
+            presentedStoryRingPresence = hasStoryRing ? 1f : 0f;
+            storyRingPresence.set(presentedStoryRingPresence, true);
         }
         titleDrawable.setText(this.count > 0 ? LocaleController.formatPluralString("Stories", this.count) : "", animated && !LocaleController.isRTL);
 
+        updateGradientColors(animated);
+        invalidate();
+    }
+
+    private void updateGradientColors(boolean animated) {
+        animated = animated && ProfileAppearanceMotion.isEnabled();
         if (dialogId >= 0) {
             final TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
-            if (user != null && user.emoji_status instanceof TLRPC.TL_emojiStatusCollectible) {
+            if (user != null && DialogObject.isEmojiStatusCollectible(user.emoji_status)) {
                 gradientTools.setColor(MessagesController.PeerColor.fromCollectible(user.emoji_status), animated);
             } else {
                 gradientTools.setUser(user, animated);
             }
         } else {
             TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-dialogId);
-            if (chat != null && chat.emoji_status instanceof TLRPC.TL_emojiStatusCollectible) {
+            if (chat != null && DialogObject.isEmojiStatusCollectible(chat.emoji_status)) {
                 gradientTools.setColor(MessagesController.PeerColor.fromCollectible(chat.emoji_status), animated);
             } else {
                 gradientTools.setChat(chat, animated);
             }
         }
 
-        invalidate();
     }
 
     public void updateColors() {
 
+        if (!initialized) return;
+        livePaint.setColor(Theme.getColor(Theme.key_stories_circle_live1, resourcesProvider));
+        updateGradientColors(attached && ProfileAppearanceMotion.isEnabled());
+        if (!ProfileAppearanceMotion.isEnabled()) cancelStoryBounces();
+        invalidate();
     }
 
     private float expandProgress;
@@ -454,25 +541,75 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private float newStoryBounceT = 1;
     private ValueAnimator newStoryBounce;
 
+    private AnimatorSet avatarBounce;
+    private final Runnable newStoryHaptic = () -> {
+        if (canPlayStoryHaptic()) AndroidUtilities.vibrateCursor(this);
+    };
+
+    private boolean canPlayStoryHaptic() {
+        return initialized && attached && ProfileAppearanceMotion.isEnabled()
+                && isShown() && hasWindowFocus() && getWindowVisibility() == VISIBLE;
+    }
+
+    private void cancelNewStoryBounce() {
+        AndroidUtilities.cancelRunOnUIThread(newStoryHaptic);
+        if (newStoryBounce != null) {
+            ValueAnimator previous = newStoryBounce;
+            newStoryBounce = null;
+            previous.removeAllUpdateListeners();
+            previous.removeAllListeners();
+            previous.cancel();
+        }
+        newStoryBounceT = 1f;
+    }
+
+    private void cancelStoryBounces() {
+        final boolean changed = newStoryBounce != null || avatarBounce != null
+                || newStoryBounceT != 1f || bounceScale != 1f;
+        cancelNewStoryBounce();
+        cancelAvatarBounce();
+        if (changed) {
+            if (avatarImage != null) avatarImage.invalidate();
+            invalidate();
+        }
+    }
+
+    private void cancelAvatarBounce() {
+        if (avatarBounce != null) {
+            AnimatorSet previous = avatarBounce;
+            avatarBounce = null;
+            previous.removeAllListeners();
+            for (Animator child : previous.getChildAnimations()) {
+                if (child instanceof ValueAnimator) ((ValueAnimator) child).removeAllUpdateListeners();
+            }
+            previous.cancel();
+        }
+        bounceScale = 1f;
+        if (avatarImage != null) avatarImage.bounceScale = 1f;
+    }
     private void vibrateNewStory() {
-        if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW) {
+        if (!canPlayStoryHaptic() || SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW) {
             return;
         }
         AndroidUtilities.vibrateCursor(this);
-        AndroidUtilities.runOnUIThread(() -> {
-            AndroidUtilities.vibrateCursor(this);
-        }, 180);
+        AndroidUtilities.cancelRunOnUIThread(newStoryHaptic);
+        AndroidUtilities.runOnUIThread(newStoryHaptic, 180);
     }
 
     public void animateNewStory() {
-        if (newStoryBounce != null) {
-            newStoryBounce.cancel();
-        }
+        cancelNewStoryBounce();
+        if (!initialized || !attached || !ProfileAppearanceMotion.isEnabled()) return;
 
         final boolean[] vibrated = new boolean[] { false };
 
-        newStoryBounce = ValueAnimator.ofFloat(0, 1);
-        newStoryBounce.addUpdateListener(anm -> {
+        final ValueAnimator next = ValueAnimator.ofFloat(0, 1);
+        newStoryBounce = next;
+        next.addUpdateListener(anm -> {
+            if (newStoryBounce != anm) return;
+            if (!ProfileAppearanceMotion.isEnabled() || !attached) {
+                cancelStoryBounces();
+                return;
+            }
             float t = (float) anm.getAnimatedValue();
             if (!vibrated[0] && t > .2f) {
                 vibrated[0] = true;
@@ -481,9 +618,11 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             newStoryBounceT = Math.max(1, t);
             invalidate();
         });
-        newStoryBounce.addListener(new AnimatorListenerAdapter() {
+        next.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (newStoryBounce != animation) return;
+                newStoryBounce = null;
             if (!vibrated[0]) {
                 vibrated[0] = true;
                 vibrateNewStory();
@@ -492,17 +631,81 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             invalidate();
             }
         });
-        newStoryBounce.setInterpolator(new OvershootInterpolator(3.0f));
-        newStoryBounce.setDuration(400);
-        newStoryBounce.setStartDelay(120);
-        newStoryBounce.start();
+        next.setInterpolator(new OvershootInterpolator(3.0f));
+        next.setDuration(400);
+        next.setStartDelay(120);
+        next.start();
+    }
+
+    public void pauseRingPresentation() {
+        if (storyRingPresence != null) storyRingPresence.set(presentedStoryRingPresence, true);
+        if (initialized) cancelStoryBounces();
+    }
+
+    protected boolean canPresentStoryRing() {
+        if (!attached || !isShown() || !hasWindowFocus() || getWindowVisibility() != VISIBLE
+                || getWidth() <= 0 || getHeight() <= 0
+                || avatarContainer.getWidth() <= 0 || avatarContainer.getHeight() <= 0
+                || fragmentTransitionProgress <= 0f || expandProgress >= .2f) return false;
+        for (View view = this; view != null;
+                view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    private float storyRingPresenceForDraw(Canvas canvas) {
+        if (!ProfileAppearanceMotion.isEnabled()) {
+            presentedStoryRingPresence = hasStoryRing ? 1f : 0f;
+            pauseRingPresentation();
+        } else if (!canPresentStoryRing()) {
+            pauseRingPresentation();
+        } else if (canvas.isHardwareAccelerated()) {
+            presentedStoryRingPresence = storyRingPresence.set(hasStoryRing ? 1f : 0f);
+        }
+        return presentedStoryRingPresence;
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) pauseRingPresentation();
+        else {
+            refreshOnResume();
+            invalidate();
+        }
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility != VISIBLE) pauseRingPresentation();
+        else {
+            refreshOnResume();
+            invalidate();
+        }
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility != VISIBLE) pauseRingPresentation();
+        else {
+            refreshOnResume();
+            invalidate();
+        }
     }
 
     float w;
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
-        float rright = rightAnimated.set(this.right);
+        final boolean motionEnabled = ProfileAppearanceMotion.isEnabled();
+        if (!motionEnabled) {
+            cancelStoryBounces();
+            if (titleDrawable.isAnimating()) titleDrawable.cancelAnimation();
+        }
+        float rright = rightAnimated.set(this.right, !motionEnabled);
         float avatarPullProgress = Utilities.clamp((avatarContainer.getScaleX() - 1f) / 0.4f, 1f, 0f);
         float insetMain = lerp(dpf2(4f), dpf2(3.5f), avatarPullProgress);
         insetMain *= progressToInsets;
@@ -516,15 +719,15 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         boolean needsSort = false;
         for (int i = 0; i < circles.size(); ++i) {
             StoryCircle circle = circles.get(i);
-            circle.cachedScale = circle.scaleAnimated.set(circle.scale);
+            circle.cachedScale = circle.scaleAnimated.set(circle.scale, !motionEnabled);
             if (circle.cachedScale <= 0 && circle.scale <= 0) {
                 circle.destroy();
                 circles.remove(i);
                 i--;
                 continue;
             }
-            circle.cachedIndex = circle.indexAnimated.set(circle.index);
-            circle.cachedRead = circle.readAnimated.set(circle.read);
+            circle.cachedIndex = circle.indexAnimated.set(circle.index, !motionEnabled);
+            circle.cachedRead = circle.readAnimated.set(circle.read, !motionEnabled);
             if (i > 0 && circles.get(i - 1).cachedIndex > circle.cachedIndex) {
                 needsSort = true;
                 break;
@@ -534,7 +737,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             Collections.sort(circles, (a, b) -> (int) (b.cachedIndex - a.cachedIndex));
         }
 
-        final float ringAlpha = storyRingPresence.set(hasStoryRing ? 1f : 0f)
+        final float ringAlpha = storyRingPresenceForDraw(canvas)
                 * clamp(fragmentTransitionProgress, 1f, 0f);
         float segmentsAlpha = clamp(1f - expandProgress / 0.2f, 1, 0) * ringAlpha;
         boolean isFailed = storiesController.isLastUploadingFailed(dialogId);
@@ -545,7 +748,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             this.progressToUploading.set(false, true);
         }
         boolean isUploading = (hasUploadingStories && !isFailed) || progressWasDrawn && !progressIsDone;
-        float progressToUploading = this.progressToUploading.set(isUploading);
+        float progressToUploading = this.progressToUploading.set(isUploading, !motionEnabled);
         progressToUploading = lerp(0f, progressToUploading, fragmentTransitionProgress);
 
         canvas.save();
@@ -562,7 +765,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             if (radialProgress == null) {
                 radialProgress = new RadialProgress(this);
                 radialProgress.setBackground(null, true, false);
-                radialProgress.setRoundRectProgress(ChatObject.isForum(UserConfig.selectedAccount, dialogId));
+                radialProgress.setRoundRectProgress(ChatObject.isForum(currentAccount, dialogId));
             }
             float uploadingProgress = 0;
             if (!storiesController.hasUploadingStories(dialogId) || storiesController.isLastUploadingFailed(dialogId)) {
@@ -587,7 +790,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             unreadPaint.setStrokeWidth(dpf2(2.33f));
             radialProgress.setPaint(unreadPaint);
             radialProgress.setProgressRect((int) rect2.left, (int) rect2.top, (int) rect2.right, (int) rect2.bottom);
-            radialProgress.setProgress(Utilities.clamp(uploadingProgress, 1f, 0), true);
+            radialProgress.setProgress(Utilities.clamp(uploadingProgress, 1f, 0), motionEnabled);
             if (avatarImage.drawAvatar) {
                 radialProgress.draw(canvas);
             }
@@ -605,8 +808,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         }
         if (progressToUploading < 1f) {
             segmentsAlpha = clamp(1f - expandProgress / 0.2f, 1, 0) * (1f - progressToUploading) * ringAlpha;
-            final float segmentsCount = segmentsCountAnimated.set(count);
-            final float segmentsUnreadCount = segmentsUnreadCountAnimated.set(unreadCount);
+            final float segmentsCount = segmentsCountAnimated.set(count, !motionEnabled);
+            final float segmentsUnreadCount = segmentsUnreadCountAnimated.set(unreadCount, !motionEnabled);
 
             if (isFailed) {
                 rect2.set(rect1);
@@ -614,7 +817,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
                 final Paint paint = StoriesUtilities.getErrorPaint(rect2);
                 paint.setStrokeWidth(AndroidUtilities.dp(2));
                 paint.setAlpha((int) (255 * segmentsAlpha));
-                boolean isForum = ChatObject.isForum(UserConfig.selectedAccount, dialogId);
+                boolean isForum = ChatObject.isForum(currentAccount, dialogId);
                 float roundedR = ringCornerRadius(rect2, isForum);
                 if (isForum || roundedR >= 0) {
                     float r = roundedR >= 0 ? roundedR : rect2.height() * 0.32f;
@@ -825,7 +1028,13 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     }
 
     private void animateBounce() {
-        AnimatorSet animatorSet = new AnimatorSet();
+        if (!initialized || !attached || !ProfileAppearanceMotion.isEnabled()) {
+            cancelStoryBounces();
+            return;
+        }
+        cancelAvatarBounce();
+        final AnimatorSet animatorSet = new AnimatorSet();
+        avatarBounce = animatorSet;
         ValueAnimator inAnimator = ValueAnimator.ofFloat(1, 1.05f);
         inAnimator.setDuration(100);
         inAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT);
@@ -835,6 +1044,11 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         outAnimator.setInterpolator(new OvershootInterpolator());
 
         ValueAnimator.AnimatorUpdateListener updater = animation -> {
+            if (avatarBounce != animatorSet) return;
+            if (!ProfileAppearanceMotion.isEnabled() || !attached) {
+                cancelStoryBounces();
+                return;
+            }
             avatarImage.bounceScale = bounceScale = (float) animation.getAnimatedValue();
             avatarImage.invalidate();
             invalidate();
@@ -845,6 +1059,8 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         animatorSet.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
+                if (avatarBounce != animation) return;
+                avatarBounce = null;
                 avatarImage.bounceScale = bounceScale = 1f;
                 avatarImage.invalidate();
                 invalidate();
@@ -921,7 +1137,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     }
 
     private void drawArc(Canvas canvas, RectF oval, float startAngle, float sweepAngle, boolean useCenter, Paint paint) {
-        boolean isForum = ChatObject.isForum(UserConfig.selectedAccount, dialogId);
+        boolean isForum = ChatObject.isForum(currentAccount, dialogId);
         float roundedR = ringCornerRadius(oval, isForum);
         if (isForum || roundedR >= 0) {
             float r = roundedR >= 0 ? roundedR : oval.height() * 0.32f;
@@ -1045,7 +1261,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
         boolean changed = Math.abs(left - this.left) > 0.1f || Math.abs(right - this.right) > 0.1f || Math.abs(cy - this.cy) > 0.1f;
         this.left = left;
         this.right = right;
-        if (!animated) {
+        if (!animated || !ProfileAppearanceMotion.isEnabled()) {
             this.rightAnimated.set(this.right, true);
         }
         this.cy = cy;
@@ -1063,7 +1279,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.storiesUpdated) {
+        if (id == NotificationCenter.storiesUpdated && account == currentAccount) {
             updateStories(true, true);
         }
     }
@@ -1077,11 +1293,13 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
             circles.get(i).imageReceiver.onAttachedToWindow();
         }
 
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.storiesUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storiesUpdated);
+        refreshOnResume();
     }
 
     @Override
     protected void onDetachedFromWindow() {
+        pauseRingPresentation();
         super.onDetachedFromWindow();
 
         attached = false;
@@ -1182,7 +1400,7 @@ public class ProfileStoriesView extends View implements NotificationCenter.Notif
     private float tapX, tapY;
 
     private float getExpandRight() {
-        return expandRight - expandRightPadAnimated.set(expandRightPad) * dp(71);
+        return expandRight - expandRightPadAnimated.set(expandRightPad, !ProfileAppearanceMotion.isEnabled()) * dp(71);
     }
 
     @Override

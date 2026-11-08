@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -37,6 +39,7 @@ public:
     int32_t failedByFloodWait = 0;
     bool awaitingIntegrityCheck = false;
     bool awaitingCaptchaCheck = false;
+    int32_t captchaCheckGeneration = 0;
     bool premiumFloodWait = false;
     ConnectionType connectionType;
     uint32_t requestFlags;

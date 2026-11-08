@@ -1075,6 +1075,9 @@ public class TL_iv {
 
         public String language;
 
+        public boolean diff, continuesPrev, continuesNext;
+        public int codeLength = -1;
+        public int diffColumns;
         public void readParams(InputSerializedData stream, boolean exception) {
             text = RichText.TLdeserialize(stream, stream.readInt32(exception), exception);
             language = stream.readString(exception);

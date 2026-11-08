@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community.sheet;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -58,7 +60,7 @@ public class CommunityAddOptionsSheet extends BottomSheetWithRecyclerListView {
         headerMoveTop = dp(12);
         actionBar.setTitle(getTitle());
 
-        setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider));
+        setBackgroundColorKey(Theme.key_windowBackgroundGray);
 
         cell = new FrameLayout(context);
         cell.setPadding(0, dp(3), 0, dp(3));

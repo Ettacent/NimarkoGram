@@ -45,6 +45,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.ContentPreviewViewer;
 
@@ -52,7 +53,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 
-public class SuggestEmojiView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
+public class SuggestEmojiView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable {
 
     public final static int DIRECTION_TO_BOTTOM = 0;
     public final static int DIRECTION_TO_TOP = 1;
@@ -326,7 +327,7 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
         itemAnimator.setDurations(45);
         itemAnimator.setTranslationInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
         listView.setItemAnimator(itemAnimator);
-        listView.setSelectorDrawableColor(Theme.getColor(Theme.key_listSelector, resourcesProvider));
+        ThemeBind.listSelectorColor(listView, Theme.key_listSelector, resourcesProvider);
         RecyclerListView.OnItemClickListener onItemClickListener;
         listView.setOnItemClickListener(onItemClickListener = (view, position) -> {
             onClick(((EmojiImageView) view).emoji);
@@ -386,12 +387,27 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
         }
     }
 
+    private PorterDuffColorFilter gradientFilter;
+    private int gradientFilterColor;
+
+    @Override
     public void updateColors() {
         if (backgroundPaint != null) {
             backgroundPaint.setColor(Theme.getColor(Theme.key_chat_stickersHintPanel, resourcesProvider));
         }
-        Theme.chat_gradientLeftDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_stickersHintPanel, resourcesProvider), PorterDuff.Mode.MULTIPLY));
-        Theme.chat_gradientRightDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_stickersHintPanel, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+        final int gradientColor = Theme.getColor(Theme.key_chat_stickersHintPanel, resourcesProvider);
+        if (gradientFilter == null || gradientFilterColor != gradientColor) {
+            gradientFilter = new PorterDuffColorFilter(gradientFilterColor = gradientColor, PorterDuff.Mode.MULTIPLY);
+        }
+        if (Theme.chat_gradientLeftDrawable != null && Theme.chat_gradientLeftDrawable.getColorFilter() != gradientFilter) {
+            Theme.chat_gradientLeftDrawable.setColorFilter(gradientFilter);
+        }
+        if (Theme.chat_gradientRightDrawable != null && Theme.chat_gradientRightDrawable.getColorFilter() != gradientFilter) {
+            Theme.chat_gradientRightDrawable.setColorFilter(gradientFilter);
+        }
+        if (containerView != null) {
+            containerView.invalidate();
+        }
     }
 
     public void forceClose() {
@@ -940,8 +956,8 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.newEmojiSuggestionsAvailable);
+        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.newEmojiSuggestionsAvailable);
     }
 
     @Override

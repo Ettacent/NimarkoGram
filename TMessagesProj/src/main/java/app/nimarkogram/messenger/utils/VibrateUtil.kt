@@ -53,7 +53,7 @@ object VibrateUtil {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             runCatching {
                 val effect = VibrationEffect.createOneShot(time, VibrationEffect.DEFAULT_AMPLITUDE)
-                vibrator.vibrate(effect, null)
+                vibrator.vibrate(effect)
             }
         } else {
             runCatching {

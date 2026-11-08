@@ -242,9 +242,16 @@ public final class WsBypassController {
                 VpnDetector.recheckNow();
                 WsBypassCore.getInstance().resetResilienceState();
                 if (VoipBypassConfig
-                        .isDataBypassEnabled() && !enforceVpnSuspensionFresh()
-                        && !running && !starting.get()) {
+                        .isDataBypassEnabled() && !enforceVpnSuspensionFresh()) {
+                    if (!running && !starting.get()) {
                     startAsync();
+                    } else if (running) {
+                        int account = UserConfig.selectedAccount;
+                        WsRelayAuth.prefetchAsync(account);
+                        if (VoipBypassConfig.isVoipBypassEnabled()) {
+                            VoipRelayAuth.prefetchAsync(account);
+                        }
+                    }
                 }
             } catch (Throwable ignored) {
             } finally {

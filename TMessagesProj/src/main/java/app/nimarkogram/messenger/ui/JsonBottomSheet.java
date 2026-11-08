@@ -469,6 +469,7 @@ public class JsonBottomSheet extends BottomSheet implements NotificationCenter.N
             menuIconImageView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_actionBarActionModeDefaultSelector, resourcesProvider), 1));
             menuIconImageView.setScaleType(ImageView.ScaleType.CENTER);
             menuIconImageView.setImageResource(R.drawable.ic_ab_other);
+            org.telegram.ui.ActionBar.HeaderMenuOverlay.bind(this, menuIconImageView, resourcesProvider, null, null);
             menuIconImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogSearchIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
             menuIconImageView.setOnClickListener((v) -> ChatHelper2.showJsonMenu(JsonBottomSheet.this, headerView, messageObject));
             addView(menuIconImageView, LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, 0, 11, 16, 0));

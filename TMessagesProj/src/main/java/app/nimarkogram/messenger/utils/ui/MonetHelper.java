@@ -39,8 +39,12 @@ public class MonetHelper {
     private static final int SUCCESS_LIGHT = 0xff188038;
     private static final int SUCCESS_DARK = 0xff81c995;
     private static final Set<String> VALID_TOKENS = ConcurrentHashMap.newKeySet();
-    private static final ConcurrentHashMap<String, Integer> COLOR_CACHE = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Integer> AMOLED_COLOR_CACHE = new ConcurrentHashMap<>();
+    private static final class ColorCaches {
+        final ConcurrentHashMap<String, Integer> regular = new ConcurrentHashMap<>();
+        final ConcurrentHashMap<String, Integer> amoled = new ConcurrentHashMap<>();
+    }
+
+    private static volatile ColorCaches colorCaches = new ColorCaches();
 
     @SuppressLint("NewApi")
     private static final SparseIntArray IDS = new SparseIntArray() {{
@@ -169,7 +173,8 @@ public class MonetHelper {
             return 0;
         }
         rawColor = rawColor.trim();
-        ConcurrentHashMap<String, Integer> cache = amoled ? AMOLED_COLOR_CACHE : COLOR_CACHE;
+        ColorCaches caches = colorCaches;
+        ConcurrentHashMap<String, Integer> cache = amoled ? caches.amoled : caches.regular;
         Integer cached = cache.get(rawColor);
         if (cached != null) {
             return cached;
@@ -437,32 +442,41 @@ public class MonetHelper {
 
     private static class OverlayChangeReceiver extends BroadcastReceiver {
 
-        private final Runnable applyChangedPalette = () -> {
-            Theme.ThemeInfo activeTheme = Theme.getActiveTheme();
-            if (activeTheme != null && activeTheme.isMonet()) {
-                Theme.applyThemeInBackground(activeTheme, Theme.isCurrentThemeNight(), null);
-            }
-        };
+        private Runnable applyChangedPalette;
+        private int paletteRefreshGeneration;
+        private Context registeredContext;
 
         public void register(Context context) {
             IntentFilter packageFilter = new IntentFilter(ACTION_OVERLAY_CHANGED);
             packageFilter.addDataScheme("package");
             packageFilter.addDataSchemeSpecificPart("android", PatternMatcher.PATTERN_LITERAL);
             ContextCompat.registerReceiver(context, this, packageFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+            registeredContext = context;
+            if (Theme.hasDeferredMonetPaletteRefresh()) schedulePaletteRefresh();
         }
 
         public void unregister(Context context) {
-            AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
+            if (registeredContext == context) {
+                if (applyChangedPalette != null) AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
+                Theme.cancelMonetPaletteRefresh(paletteRefreshGeneration);
+                applyChangedPalette = null;
+                registeredContext = null;
+            }
             context.unregisterReceiver(this);
+        }
+
+        private void schedulePaletteRefresh() {
+            final int generation = paletteRefreshGeneration = Theme.beginMonetPaletteRefresh();
+            if (applyChangedPalette != null) AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
+            applyChangedPalette = () -> Theme.requestMonetPaletteRefresh(generation);
+            AndroidUtilities.runOnUIThread(applyChangedPalette, 80);
         }
 
         @Override
         public void onReceive(Context context, Intent intent) {
             if (ACTION_OVERLAY_CHANGED.equals(intent.getAction())) {
-                COLOR_CACHE.clear();
-                AMOLED_COLOR_CACHE.clear();
-                AndroidUtilities.cancelRunOnUIThread(applyChangedPalette);
-                AndroidUtilities.runOnUIThread(applyChangedPalette, 80);
+                colorCaches = new ColorCaches();
+                schedulePaletteRefresh();
             }
         }
     }

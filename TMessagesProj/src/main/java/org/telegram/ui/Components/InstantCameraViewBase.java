@@ -11,7 +11,9 @@ import android.widget.FrameLayout;
 
 import app.nimarkogram.messenger.AppConfig;
 
+import org.telegram.messenger.AppGlobalConfig;
 import org.telegram.messenger.ImageReceiver;
+import org.telegram.messenger.UserConfig;
 import org.telegram.utils.settings.SharedSettings;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
@@ -52,7 +54,7 @@ public abstract class InstantCameraViewBase extends FrameLayout {
             Theme.ResourcesProvider resourcesProvider,
             boolean isNewDesign
     ) {
-        return isUsingCamera2Implementation()
+        return isCamera2Enabled(UserConfig.selectedAccount)
                 ? new InstantCameraView2(context, delegate, resourcesProvider, isNewDesign)
                 : new InstantCameraView(context, delegate, resourcesProvider, isNewDesign);
     }
@@ -67,7 +69,14 @@ public abstract class InstantCameraViewBase extends FrameLayout {
 
 
         return AppConfig.cameraType != AppConfig.CAMERA_X
-                && SharedSettings.roundVideoCamera2Enabled.get();
+                && isCamera2Enabled(UserConfig.selectedAccount);
+    }
+
+    public static boolean isCamera2Enabled(int account) {
+        if (AppConfig.cameraType == AppConfig.CAMERA_X) return false;
+        return SharedSettings.roundVideoCamera2Enabled.isSet() ?
+            SharedSettings.roundVideoCamera2Enabled.get() :
+            !AppGlobalConfig.getInstance(account).roundVideoRecorderV2Disabled.get();
     }
 
 

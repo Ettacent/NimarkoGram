@@ -37,6 +37,9 @@ final class OneShotCallbackState<T> {
         return state.compareAndSet(State.WAITING, State.RUNNING);
     }
 
+    boolean isWaiting() {
+        return state.get() == State.WAITING;
+    }
     T takeForExecution() {
         if (state.get() != State.RUNNING) {
             return null;

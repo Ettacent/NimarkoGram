@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,6 +23,7 @@ import android.widget.FrameLayout;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -35,8 +38,8 @@ public class EditTextSettingsCell extends FrameLayout {
         super(context);
 
         textView = new EditTextBoldCursor(context);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-        textView.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText);
+        ThemeBind.hintTextColor(textView, Theme.key_windowBackgroundWhiteHintText);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         textView.setLines(1);
         textView.setMaxLines(1);

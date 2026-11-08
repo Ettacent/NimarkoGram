@@ -15,7 +15,10 @@ import android.view.View;
 
 public final class MessagePreviewCrossfade {
     public interface Content { void draw(Canvas canvas); }
-    public interface Alignment { boolean isCentered(); }
+    public interface Alignment {
+        boolean isCentered();
+        default float getHorizontalFactor() { return isCentered() ? .5f : 0f; }
+    }
     private final View owner;
     private final Paint outgoingPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint incomingPaint = new Paint();
@@ -62,7 +65,7 @@ public final class MessagePreviewCrossfade {
             } else {
                 snapshot = Bitmap.createBitmap(contentWidth(), contentHeight(), Bitmap.Config.ARGB_8888);
                 Canvas canvas = new Canvas(snapshot);
-                if (isCentered()) canvas.translate((snapshot.getWidth() - owner.getWidth()) / 2f, 0);
+                canvas.translate((snapshot.getWidth() - owner.getWidth()) * horizontalFactor(), 0);
                 final float savedProgress = progress;
                 progress = capturedProgress;
                 try {
@@ -112,14 +115,14 @@ public final class MessagePreviewCrossfade {
     private int contentWidth() { return Math.max(owner.getWidth(), outgoing == null ? 0 : outgoing.getWidth()); }
     private int contentHeight() { return Math.max(owner.getHeight(), outgoing == null ? 0 : outgoing.getHeight()); }
 
-    private boolean isCentered() { return alignment != null && alignment.isCentered(); }
+    private float horizontalFactor() { return alignment == null ? 0f : alignment.getHorizontalFactor(); }
     public void draw(Canvas canvas, Content content) {
         if (outgoing == null || progress >= 1f) {
             content.draw(canvas);
             return;
         }
         int alpha = Math.round(255 * progress);
-        float outgoingX = isCentered() ? (owner.getWidth() - outgoing.getWidth()) / 2f : 0f;
+        float outgoingX = (owner.getWidth() - outgoing.getWidth()) * horizontalFactor();
         float left = Math.min(0f, outgoingX);
         float right = Math.max(owner.getWidth(), outgoingX + outgoing.getWidth());
         int layer = canvas.saveLayer(left, 0, right, contentHeight(), null);

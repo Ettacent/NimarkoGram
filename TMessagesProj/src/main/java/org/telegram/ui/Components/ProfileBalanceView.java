@@ -11,7 +11,9 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.text.TextUtils;
 import android.view.Gravity;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -66,10 +68,18 @@ public class ProfileBalanceView extends ProfileMusicView {
 
     public void setBalance(long nanograms) {
         final String formatted = balanceFormat.format(new BigDecimal(GramWallet.formatGramsBalance(nanograms, false)));
-        amount.setText(formatted, balanceInitialized);
+        if (balanceInitialized && TextUtils.equals(formatted, amount.getText())) return;
+        amount.setText(formatted, balanceInitialized && (!isProfileAnimationEnabled() || canAnimateProfileContent()));
+        clearProfileContentPresentation();
         balanceInitialized = true;
         setContentDescription(getString(R.string.StarsBalance) + ": " + formatted);
         invalidateContentWidth();
+    }
+
+    @Override
+    protected void finishProfileContentAnimation() {
+        super.finishProfileContentAnimation();
+        if (amount != null && amount.isAnimating()) amount.cancelAnimation();
     }
 
     @Override
@@ -96,6 +106,23 @@ public class ProfileBalanceView extends ProfileMusicView {
         label.ellipsize(Math.max(0, available - amount.getCurrentWidth()));
         amountWidth = amount.getCurrentWidth(Math.max(0, available - label.getWidth()));
         return label.getWidth() + dp(4 + 13 + 2 + 8) + amountWidth;
+    }
+
+    @Override
+    protected float getTargetContentWidth(float maxWidth) {
+        label.ellipsize(-1);
+        final float available = Math.max(0, maxWidth - dp(16 + 4 + 13 + 2 + 8));
+        label.ellipsize(Math.max(0, available - amount.getAnimateToWidth()));
+        return label.getWidth() + dp(4 + 13 + 2 + 8)
+                + Math.min(amount.getAnimateToWidth(), Math.max(0, available - label.getWidth()));
+    }
+
+    @Override
+    protected boolean isProfileTextVisible(Canvas canvas, RectF bounds) {
+        if (amount.isAnimating()) return false;
+        float left = bounds.left + dp(8) + label.getWidth() + dp(4 + 13 + 2);
+        float right = Math.min(bounds.right - dp(8), left + amountWidth);
+        return left < right && isProfileTextAreaVisible(canvas, left, bounds.top, right, bounds.bottom);
     }
 
     @Override

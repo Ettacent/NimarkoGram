@@ -34,9 +34,9 @@ import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
+import org.telegram.utils.glass.source.GlassSource;
+import org.telegram.utils.glass.source.GlassSourceColor;
+import org.telegram.utils.glass.source.GlassSourceRenderNode;
 
 final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListener {
     private final View view;
@@ -53,6 +53,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
     private boolean hasVisibleMaterial;
     private final Rect visibleMaterialBounds = new Rect();
     private long lastFrameTime;
+    private final Runnable checkReadiness = this::checkReadiness;
     private final int[] overlayPosition = new int[2];
 
     NotificationGlassSurface(View view) {
@@ -93,6 +94,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
     }
 
     void detach() {
+        view.removeCallbacks(checkReadiness);
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(this);
         observer = null;
         releaseLayers();
@@ -115,8 +117,23 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         update(elapsed);
         view.getLocationOnScreen(overlayPosition);
         if (current != null) current.updateOffset();
-        if (incoming != null) incoming.updateOffset();
+        if (incoming != null) {
+            incoming.updateOffset();
+            incoming.requestReadyFrame();
+            view.removeCallbacks(checkReadiness);
+            view.post(checkReadiness);
+        }
         return true;
+    }
+
+    private void checkReadiness() {
+        if (observer != null && incoming != null) incoming.requestReadyFrame();
+    }
+
+    private boolean canRequestFrame(Layer layer) {
+        return observer != null && surface != null && surface.getAlpha() > 0
+                && !surface.getBounds().isEmpty()
+                && isViewVisible(view) && isViewVisible(layer.sourceRoot);
     }
 
     private boolean isNavigationRunning() {
@@ -127,14 +144,18 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
                 || root.getParentLayout().isSwipeInProgress()));
     }
 
-    private boolean isMaterialVisible(Canvas canvas, Rect bounds) {
-        if (observer == null || !view.isAttachedToWindow() || !view.isShown()
-                || view.getWindowVisibility() != View.VISIBLE) return false;
-        for (View parent = view; parent != null;
+    private boolean isViewVisible(View target) {
+        if (!target.isAttachedToWindow() || !target.isShown()
+                || target.getWindowVisibility() != View.VISIBLE) return false;
+        for (View parent = target; parent != null;
              parent = parent.getParent() instanceof View ? (View) parent.getParent() : null) {
             if (parent.getAlpha() <= 0f) return false;
         }
-        return view.getGlobalVisibleRect(visibleMaterialBounds)
+        return target.getGlobalVisibleRect(visibleMaterialBounds);
+    }
+
+    private boolean isMaterialVisible(Canvas canvas, Rect bounds) {
+        return observer != null && isViewVisible(view)
                 && canvas.getClipBounds(visibleMaterialBounds)
                 && visibleMaterialBounds.intersect(bounds);
     }
@@ -193,7 +214,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
             return;
         }
         if (incoming != null) {
-            if (incoming.rendered && incoming.isReady()) {
+            if (incoming.rendered && incoming.isReady() && canRequestFrame(incoming)) {
                 progress = Math.min(1f, progress + elapsed / 180f);
             }
             incoming.rendered = false;
@@ -202,7 +223,6 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
                 current = incoming;
                 incoming = null;
             }
-            view.postInvalidateOnAnimation();
         }
         if (navigating || incoming != null) return;
         BaseFragment fragment = active;
@@ -220,7 +240,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         }
         incoming = new Layer(factory, sourceRoot);
         progress = 0;
-        view.postInvalidateOnAnimation();
+        if (canRequestFrame(incoming)) view.postInvalidateOnAnimation();
     }
 
     private final class Layer {
@@ -228,12 +248,18 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         final View sourceRoot;
         final BlurredBackgroundDrawable glass;
         final int[] origin = new int[2];
-        boolean rendered;
+        boolean rendered, readyFrameRequested;
+
+        void requestReadyFrame() {
+            boolean ready = canRequestFrame(this) && isReady();
+            if (ready && !readyFrameRequested) view.invalidate();
+            readyFrameRequested = ready;
+        }
 
         boolean isReady() {
-            BlurredBackgroundSource source = glass.getUnwrappedSource();
-            return !(source instanceof BlurredBackgroundSourceRenderNode)
-                    || ((BlurredBackgroundSourceRenderNode) source).isDisplayListReady();
+            GlassSource source = glass.getUnwrappedSource();
+            return !(source instanceof GlassSourceRenderNode)
+                    || ((GlassSourceRenderNode) source).isDisplayListReady();
         }
 
         Layer(BlurredBackgroundDrawableViewFactory factory, View sourceRoot) {
@@ -256,6 +282,7 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         }
 
         void updateOffset() {
+            if (!isViewVisible(view) || !isViewVisible(sourceRoot)) return;
             if (sourceRoot.isAttachedToWindow()) sourceRoot.getLocationOnScreen(origin);
             int x = overlayPosition[0] - origin[0], y = overlayPosition[1] - origin[1];
             if (glass.getSourceOffsetX() != x || glass.getSourceOffsetY() != y) {
@@ -276,14 +303,17 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
         private int alpha = 255;
         private int materialColor;
 
+        private boolean strokeColorsInitialized;
+        private int strokeTop, strokeBottom, strokeFull;
+        private float strokeWidthTop, strokeWidthBottom;
         SurfaceDrawable() {
             blendPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
             material = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
                     new int[]{background, background});
             material.setCornerRadius(AndroidUtilities.dp(18));
-            BlurredBackgroundSourceColor transparentSource = new BlurredBackgroundSourceColor();
+            GlassSourceColor transparentSource = new GlassSourceColor();
             transparentSource.setColor(Color.TRANSPARENT);
-            sheen = transparentSource.createDrawable();
+            sheen = BlurredBackgroundDrawableViewFactory.createDrawable(transparentSource);
             sheen.setColorProvider(new BlurredBackgroundProviderBuilder(null) {
                 @Override public int getStrokeColorFull() { return animatedStrokeFull.get(); }
             }.setBackgroundColor((r, isDark) -> Color.TRANSPARENT)
@@ -302,8 +332,19 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
                 material.setColor(color);
                 invalidateSelf();
             }
-            sheen.setStrokeWidth(panelColors.getStrokeWidthTop(), panelColors.getStrokeWidthBottom());
+            int top = animatedStroke.get(), bottom = animatedStrokeBottom.get(), full = animatedStrokeFull.get();
+            float widthTop = panelColors.getStrokeWidthTop(), widthBottom = panelColors.getStrokeWidthBottom();
+            if (!strokeColorsInitialized || strokeTop != top || strokeBottom != bottom || strokeFull != full
+                    || strokeWidthTop != widthTop || strokeWidthBottom != widthBottom) {
+                strokeColorsInitialized = true;
+                strokeTop = top;
+                strokeBottom = bottom;
+                strokeFull = full;
+                strokeWidthTop = widthTop;
+                strokeWidthBottom = widthBottom;
+                sheen.setStrokeWidth(widthTop, widthBottom);
             sheen.updateColors();
+            }
         }
 
         @Override protected void onBoundsChange(Rect bounds) {
@@ -334,7 +375,8 @@ final class NotificationGlassSurface implements ViewTreeObserver.OnPreDrawListen
                 blendPaint.setAlpha(weight);
                 save = canvas.saveLayer(bounds.left, bounds.top, bounds.right, bounds.bottom, blendPaint);
                 incoming.glass.draw(canvas);
-                incoming.rendered = true;
+                incoming.rendered = isMaterialVisible(canvas, bounds) && isViewVisible(incoming.sourceRoot);
+                if (incoming.rendered) view.postInvalidateOnAnimation();
                 canvas.restoreToCount(save);
                 canvas.restoreToCount(blend);
             } else {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -20,6 +22,7 @@ import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
@@ -51,10 +54,13 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.ActionBar.MaterialSharedAxisMotion;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
@@ -66,7 +72,9 @@ import org.telegram.ui.Components.URLSpanNoUnderline;
 
 import java.util.concurrent.atomic.AtomicReference;
 
-public class AboutLinkCell extends FrameLayout {
+import java.util.function.BooleanSupplier;
+
+public class AboutLinkCell extends FrameLayout implements Theme.Colorable {
 
     private StaticLayout textLayout;
     private String oldText;
@@ -102,6 +110,157 @@ public class AboutLinkCell extends FrameLayout {
     private boolean needSpace = false;
     private boolean moreButtonDisabled;
 
+    private boolean profileTextReplacementEnabled;
+    private Object profileTextOwner;
+    private int profileTextField;
+    private BooleanSupplier mayPresentProfileText;
+    private final Rect profileTextVisibleRect = new Rect();
+    private TextLayoutState currentTextState;
+    private TextLayoutState presentedTextState;
+    private float presentedExpandT;
+    private boolean presentedShouldExpand;
+    private int presentedTextWidth, presentedTextHeight;
+    private OutgoingText outgoingText;
+    private ValueAnimator profileTextAnimator;
+    private float profileTextProgress = 1f;
+    private boolean oldParseLinks;
+    private int profileTextCaptureDepth;
+
+    private static final class TextLayoutState {
+        final StaticLayout text, firstThreeLines;
+        final StaticLayout[] nextLines;
+        final int lastInlineLine;
+        final boolean needSpace;
+
+        TextLayoutState(AboutLinkCell cell) {
+            text = cell.textLayout;
+            firstThreeLines = cell.firstThreeLinesLayout;
+            nextLines = cell.nextLinesLayouts;
+            lastInlineLine = cell.lastInlineLine;
+            needSpace = cell.needSpace;
+        }
+    }
+
+    private static final class OutgoingText {
+        final TextLayoutState layouts;
+        final float expandT;
+        final boolean shouldExpand;
+        final int width, height;
+
+        OutgoingText(AboutLinkCell cell) {
+            layouts = cell.presentedTextState;
+            expandT = cell.presentedExpandT;
+            shouldExpand = cell.presentedShouldExpand;
+            width = cell.presentedTextWidth;
+            height = cell.presentedTextHeight;
+        }
+    }
+
+    public void setProfileTextReplacementEnabled(boolean enabled, Object owner, int field, BooleanSupplier mayPresent) {
+        enabled &= owner != null;
+        if (profileTextReplacementEnabled != enabled || profileTextOwner != owner || profileTextField != field) {
+            finishProfileTextReplacement();
+            if (links != null && (enabled || profileTextReplacementEnabled)) resetProfileTextLinks();
+        }
+        profileTextReplacementEnabled = enabled;
+        profileTextOwner = enabled ? owner : null;
+        profileTextField = enabled ? field : 0;
+        mayPresentProfileText = enabled ? mayPresent : null;
+        currentTextState = enabled && textLayout != null ? new TextLayoutState(this) : null;
+    }
+
+    public void beginProfileTextCapture() {
+        profileTextCaptureDepth++;
+    }
+
+    public void endProfileTextCapture() {
+        if (profileTextCaptureDepth > 0) profileTextCaptureDepth--;
+    }
+
+    public void finishProfileTextReplacement() {
+        final boolean needsRedraw = outgoingText != null;
+        ValueAnimator previous = profileTextAnimator;
+        profileTextAnimator = null;
+        if (previous != null) {
+            previous.removeAllUpdateListeners();
+            previous.removeAllListeners();
+            previous.cancel();
+        }
+        outgoingText = null;
+        presentedTextState = null;
+        profileTextProgress = 1f;
+        if (needsRedraw) invalidate();
+    }
+
+    private boolean canPresentProfileText() {
+        if (!profileTextReplacementEnabled || !isAttachedToWindow() || !isShown() || !hasWindowFocus()
+                || getWindowVisibility() != VISIBLE || getWidth() <= 0 || getHeight() <= 0
+                || !getGlobalVisibleRect(profileTextVisibleRect)
+                || mayPresentProfileText != null && !mayPresentProfileText.getAsBoolean()) return false;
+        for (View view = this; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    private boolean profileTextMotionEnabled() {
+        return SharedConfig.animationsEnabled() && (Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled());
+    }
+
+    private void startProfileTextReplacement() {
+        profileTextProgress = 0f;
+        ValueAnimator next = ValueAnimator.ofFloat(0f, 1f);
+        profileTextAnimator = next;
+        next.setDuration(200);
+        next.setInterpolator(MaterialSharedAxisMotion::appearanceAlpha);
+        next.addUpdateListener(value -> {
+            if (profileTextAnimator != value) return;
+            if (!profileTextMotionEnabled() || !canPresentProfileText()) {
+                finishProfileTextReplacement();
+                return;
+            }
+            profileTextProgress = (float) value.getAnimatedValue();
+            if (profileTextProgress < 1f) invalidate();
+        });
+        next.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                if (profileTextAnimator == animation) finishProfileTextReplacement();
+            }
+        });
+        next.start();
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        finishProfileTextReplacement();
+        if (profileTextReplacementEnabled) resetProfileTextLinks();
+        super.onDetachedFromWindow();
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility != VISIBLE) finishProfileTextReplacement();
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        if (visibility != VISIBLE) finishProfileTextReplacement();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasWindowFocus) {
+        super.onWindowFocusChanged(hasWindowFocus);
+        if (!hasWindowFocus) finishProfileTextReplacement();
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        if (w != oldw) finishProfileTextReplacement();
+    }
     private GestureDetectorCompat gestureDetector;
 
     public AboutLinkCell(Context context, BaseFragment fragment) {
@@ -121,7 +280,7 @@ public class AboutLinkCell extends FrameLayout {
 
         valueTextView = new TextView(context);
         valueTextView.setVisibility(GONE);
-        valueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
+        ThemeBind.textColor(valueTextView, Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider);
         valueTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         valueTextView.setLines(1);
         valueTextView.setMaxLines(1);
@@ -133,7 +292,7 @@ public class AboutLinkCell extends FrameLayout {
 
         bottomShadow = new FrameLayout(context);
         Drawable shadowDrawable = context.getResources().getDrawable(R.drawable.gradient_bottom).mutate();
-        shadowDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider), PorterDuff.Mode.SRC_ATOP));
+        ThemeBind.drawableColorFilter(this, shadowDrawable, Theme.key_windowBackgroundWhite, resourcesProvider, PorterDuff.Mode.SRC_ATOP);
         bottomShadow.setBackground(shadowDrawable);
         addView(bottomShadow, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 12, Gravity.BOTTOM | Gravity.FILL_HORIZONTAL, 16, 0, 16, 0));
 
@@ -164,7 +323,7 @@ public class AboutLinkCell extends FrameLayout {
                 super.onDraw(canvas);
             }
         };
-        showMoreTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText, resourcesProvider));
+        ThemeBind.textColor(showMoreTextView, Theme.key_windowBackgroundWhiteBlueText, resourcesProvider);
         showMoreTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         showMoreTextView.setLines(1);
         showMoreTextView.setMaxLines(1);
@@ -176,7 +335,7 @@ public class AboutLinkCell extends FrameLayout {
         showMoreTextView.setPadding(dp(2), 0, dp(2), 0);
         showMoreTextBackgroundView = new FrameLayout(context);
         showMoreBackgroundDrawable = context.getResources().getDrawable(R.drawable.gradient_left).mutate();
-        showMoreBackgroundDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+        ThemeBind.drawableColorFilter(this, showMoreBackgroundDrawable, Theme.key_windowBackgroundWhite, resourcesProvider, PorterDuff.Mode.MULTIPLY);
         showMoreTextBackgroundView.setBackground(showMoreBackgroundDrawable);
         showMoreTextBackgroundView.setPadding(
             showMoreTextBackgroundView.getPaddingLeft() + dp(4),
@@ -195,8 +354,21 @@ public class AboutLinkCell extends FrameLayout {
         return color;
     }
 
+    private int lastRippleColor;
+
+    @Override
     public void updateColors() {
         Theme.profile_aboutTextPaint.linkColor = processColor(Theme.getColor(Theme.key_chat_messageLinkIn, resourcesProvider));
+        try {
+            final int rippleColor = Theme.getColor(Theme.key_listSelector, resourcesProvider);
+            if (rippleBackground != null && rippleColor != lastRippleColor) {
+                lastRippleColor = rippleColor;
+                Theme.setSelectorDrawableColor(rippleBackground, rippleColor, true);
+            }
+            backgroundPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     @Override
@@ -286,38 +458,81 @@ public class AboutLinkCell extends FrameLayout {
 
     final float SPACE = dp(3f);
     private void drawText(Canvas canvas) {
+        final boolean capturingText = profileTextCaptureDepth > 0;
+        final boolean presentationDraw = !capturingText && canvas.isHardwareAccelerated();
+        final boolean mayPresent = presentationDraw && canPresentProfileText();
+        if (presentationDraw && profileTextReplacementEnabled && (!mayPresent || !profileTextMotionEnabled())) {
+            finishProfileTextReplacement();
+        }
+        if (!capturingText) {
         canvas.save();
         canvas.clipRect(dp(18 - 8), dp(8), getWidth() - dp(18), getHeight());
         canvas.translate(textX = dp(18), 0);
         if (links != null && links.draw(canvas)) {
             invalidate();
         }
-        canvas.translate(0, textY = dp(8));
+            canvas.restore();
+            textY = dp(8);
+        }
 
         try {
             Theme.profile_aboutTextPaint.linkColor = processColor(Theme.getColor(Theme.key_chat_messageLinkIn, resourcesProvider));
-            if (firstThreeLinesLayout == null || !shouldExpand) {
-                if (textLayout != null) {
-                    textLayout.draw(canvas);
+            if (outgoingText != null) {
+                TextLayoutState old = outgoingText.layouts;
+                drawTextLayer(canvas, old.text, old.firstThreeLines, old.nextLines, old.lastInlineLine, old.needSpace,
+                        outgoingText.shouldExpand, outgoingText.expandT, null, outgoingText.width, outgoingText.height,
+                        1f - profileTextProgress);
+            }
+            drawTextLayer(canvas, textLayout, firstThreeLinesLayout, nextLinesLayouts, lastInlineLine, needSpace,
+                    shouldExpand, expandT, capturingText ? null : nextLinesLayoutsPositions, getWidth(), getHeight(),
+                    outgoingText == null ? 1f : profileTextProgress);
+            if (mayPresent && outgoingText == null && !TextUtils.isEmpty(oldText) && currentTextState != null
+                    && !canvas.quickReject(dp(18), dp(8), getWidth() - dp(18),
+                    Math.min(getHeight(), dp(8) + textLayout.getHeight()), Canvas.EdgeType.AA)) {
+                presentedTextState = currentTextState;
+                presentedExpandT = expandT;
+                presentedShouldExpand = shouldExpand;
+                presentedTextWidth = getWidth();
+                presentedTextHeight = getHeight();
+            } else if (presentationDraw) {
+                presentedTextState = null;
+            }
+        } catch (Exception e) {
+            if (presentationDraw && profileTextReplacementEnabled) finishProfileTextReplacement();
+            FileLog.e(e);
+        }
+    }
+
+    private void drawTextLayer(Canvas canvas, StaticLayout text, StaticLayout firstThree, StaticLayout[] nextLines,
+                               int lastInline, boolean space, boolean expand, float expansion, Point[] positions,
+                               int width, int height, float alpha) {
+        final int save = canvas.save();
+        try {
+            canvas.clipRect(dp(18 - 8), dp(8), width - dp(18), height);
+            if (alpha < 1f) canvas.saveLayerAlpha(0, 0, width, height, (int) (255 * alpha), Canvas.ALL_SAVE_FLAG);
+            canvas.translate(dp(18), dp(8));
+            if (firstThree == null || !expand) {
+                if (text != null) {
+                    text.draw(canvas);
                 }
             } else {
-                firstThreeLinesLayout.draw(canvas);
-                int lastLine = firstThreeLinesLayout.getLineCount() - 1;
-                float top = firstThreeLinesLayout.getLineTop(lastLine) + firstThreeLinesLayout.getTopPadding();
-                float x = firstThreeLinesLayout.getLineRight(lastLine) + (needSpace ? SPACE : 0),
-                      y = firstThreeLinesLayout.getLineBottom(lastLine) - firstThreeLinesLayout.getLineTop(lastLine) - firstThreeLinesLayout.getBottomPadding();
-                float t = easeInOutCubic(1f - (float) Math.pow(expandT, 0.25f));
-                if (nextLinesLayouts != null) {
-                    for (int line = 0; line < nextLinesLayouts.length; ++line) {
-                        final StaticLayout layout = nextLinesLayouts[line];
+                firstThree.draw(canvas);
+                int lastLine = firstThree.getLineCount() - 1;
+                float top = firstThree.getLineTop(lastLine) + firstThree.getTopPadding();
+                float x = firstThree.getLineRight(lastLine) + (space ? SPACE : 0),
+                      y = firstThree.getLineBottom(lastLine) - firstThree.getLineTop(lastLine) - firstThree.getBottomPadding();
+                float t = easeInOutCubic(1f - (float) Math.pow(expansion, 0.25f));
+                if (nextLines != null) {
+                    for (int line = 0; line < nextLines.length; ++line) {
+                        final StaticLayout layout = nextLines[line];
                         if (layout != null) {
                             final int c = canvas.save();
-                            if (nextLinesLayoutsPositions[line] != null) {
-                                nextLinesLayoutsPositions[line].set((int) (textX + x * t), (int) (textY + top + y * (1f - t)));
+                            if (positions != null && positions[line] != null) {
+                                positions[line].set((int) (dp(18) + x * t), (int) (dp(8) + top + y * (1f - t)));
                             }
-                            if (lastInlineLine != -1 && lastInlineLine <= line) {
+                            if (lastInline != -1 && lastInline <= line) {
                                 canvas.translate(0, top + y);
-                                canvas.saveLayerAlpha(0, 0, layout.getWidth(), layout.getHeight(), (int) (255 * expandT), Canvas.ALL_SAVE_FLAG);
+                                canvas.saveLayerAlpha(0, 0, layout.getWidth(), layout.getHeight(), (int) (255 * expansion), Canvas.ALL_SAVE_FLAG);
                             } else {
                                 canvas.translate(x * t, top + y * (1f - t));
                             }
@@ -329,10 +544,9 @@ public class AboutLinkCell extends FrameLayout {
                     }
                 }
             }
-        } catch (Exception e) {
-            FileLog.e(e);
+        } finally {
+            canvas.restoreToCount(save);
         }
-        canvas.restore();
     }
 
     protected void didPressUrl(String url, Browser.Progress progress) {
@@ -353,19 +567,51 @@ public class AboutLinkCell extends FrameLayout {
         invalidate();
     }
 
+    private void resetProfileTextLinks() {
+        resetPressedLink();
+        links.clear(false);
+        pressedLinkLayout = null;
+        if (currentProgress != null) {
+            currentProgress.cancel();
+            currentProgress = null;
+        }
+        if (currentLoading != null) {
+            links.removeLoading(currentLoading, false);
+            currentLoading = null;
+        }
+    }
     public void setText(String text, boolean parseLinks) {
         setTextAndValue(text, null, parseLinks);
     }
 
     public void setTextAndValue(String text, String value, boolean parseLinks) {
-        if (TextUtils.isEmpty(text) || TextUtils.equals(text, oldText)) {
+        if (!profileTextReplacementEnabled && (TextUtils.isEmpty(text) || TextUtils.equals(text, oldText))) {
             return;
         }
+        String safeText;
         try {
-            oldText = AndroidUtilities.getSafeString(text);
+            safeText = AndroidUtilities.getSafeString(text == null ? "" : text);
         } catch (Throwable e) {
-            oldText = text;
+            safeText = text == null ? "" : text;
         }
+        boolean textChanged = !TextUtils.equals(safeText, oldText);
+        if (profileTextReplacementEnabled && !textChanged && oldParseLinks == parseLinks
+                && TextUtils.equals(TextUtils.isEmpty(value) ? "" : value, valueTextView.getText())) return;
+        boolean startReplacement = false;
+        if (profileTextReplacementEnabled && textChanged) {
+            if (!canPresentProfileText() || !profileTextMotionEnabled()) {
+                finishProfileTextReplacement();
+            } else if (outgoingText == null && presentedTextState != null) {
+                outgoingText = new OutgoingText(this);
+                startReplacement = true;
+            }
+            presentedTextState = null;
+        }
+        if (profileTextReplacementEnabled) {
+            resetProfileTextLinks();
+        }
+        oldText = safeText;
+        oldParseLinks = parseLinks;
         stringBuilder = new SpannableStringBuilder(oldText);
         accessibilityText = null;
         MessageObject.addLinks(false, stringBuilder, false, false, !parseLinks);
@@ -377,6 +623,7 @@ public class AboutLinkCell extends FrameLayout {
         updateHeight();
         int wasValueVisibility = valueTextView.getVisibility();
         if (TextUtils.isEmpty(value)) {
+            if (profileTextReplacementEnabled) valueTextView.setText("");
             valueTextView.setVisibility(GONE);
         } else {
             valueTextView.setText(value);
@@ -385,6 +632,8 @@ public class AboutLinkCell extends FrameLayout {
         if (wasValueVisibility != valueTextView.getVisibility()) {
             checkTextLayout(lastMaxWidth, true);
         }
+        if (startReplacement) startProfileTextReplacement();
+        invalidate();
         requestLayout();
     }
 
@@ -743,6 +992,7 @@ public class AboutLinkCell extends FrameLayout {
             }
             lastMaxWidth = maxWidth;
 
+            if (profileTextReplacementEnabled) currentTextState = new TextLayoutState(this);
             container.setMinimumHeight(textHeight());
 
             if (shouldExpand && firstThreeLinesLayout != null) {

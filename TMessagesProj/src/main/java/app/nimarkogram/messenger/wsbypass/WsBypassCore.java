@@ -36,7 +36,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 
 public final class WsBypassCore {
 
@@ -108,7 +109,8 @@ public final class WsBypassCore {
     private static final double WS_FAIL_COOLDOWN_MAX_SEC = 300.0;
     private static final double WS_BLACKLIST_TTL_SEC = 420.0;
     private static final long WS_ROUTE_DEADLINE_MS = 9_000L;
-    private static final long WS_RELAY_BUDGET_MS = 3_500L;
+    private static final long WS_RELAY_BUDGET_MS = RelayRegion.ASIA_RELAY_ENABLED ? 5_500L : 3_500L;
+    private static final long WL_RELAY_BUDGET_MS = 3_500L;
     private static final long WS_DIRECT_BUDGET_MS = 2_500L;
     private static final int MAX_DIRECT_ATTEMPTS = 4;
     private static final long WS_POOL_KEEPER_INTERVAL_SEC = 30L;
@@ -118,6 +120,8 @@ public final class WsBypassCore {
     private static final int RECV_CHUNK = 256 * 1024;
     private static final int TCP_FALLBACK_TIMEOUT_MS = 10_000;
     private static final int ACCEPT_TIMEOUT_MS = 1_000;
+    private static final int MAX_ACCEPT_ERRORS = 3;
+    private static final int ACCEPT_ERROR_RETRY_MS = 250;
     private static final int HANDSHAKE_READ_TIMEOUT_MS = 10_000;
     private static final int LISTEN_BACKLOG = 64;
 
@@ -169,6 +173,7 @@ public final class WsBypassCore {
     private volatile ServerSocket listener;
     private volatile Thread acceptThread;
     private volatile ExecutorService handlerPool;
+    private final Semaphore handshakeSlots = new Semaphore(32);
     private volatile ScheduledExecutorService keeperPool;
     private volatile ScheduledFuture<?> keeperTask;
     private volatile byte[] secretBytes = new byte[0];
@@ -237,7 +242,7 @@ public final class WsBypassCore {
                 try {
                     srv.bind(new InetSocketAddress(InetAddress.getByName(LOCAL_PROXY_HOST), bindPort), LISTEN_BACKLOG);
                 } catch (IOException ex) {
-                    
+
                     if (bindPort != 0) {
                         try { srv.close(); } catch (Throwable ignored) {}
                         srv = new ServerSocket();
@@ -373,19 +378,32 @@ public final class WsBypassCore {
     }
 
     private void acceptLoop(long generation) {
+        int consecutiveAcceptErrors = 0;
         try {
             while (running && isBridgeGenerationCurrent(generation)) {
                 ServerSocket srv = listener;
                 if (srv == null) break;
-                
+
                 try {
                     Socket conn;
                     try {
                         conn = srv.accept();
+                        consecutiveAcceptErrors = 0;
                     } catch (SocketTimeoutException to) {
+                        consecutiveAcceptErrors = 0;
                         continue;
                     } catch (IOException ex) {
-                        if (!running) break;
+                        if (!running || !isBridgeGenerationCurrent(generation)) break;
+                        if (srv.isClosed() || ++consecutiveAcceptErrors >= MAX_ACCEPT_ERRORS) {
+                            FileLog.e("WsBypassCore.acceptLoop listener failed", ex);
+                            break;
+                        }
+                        try {
+                            Thread.sleep(ACCEPT_ERROR_RETRY_MS);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                         continue;
                     }
                     try {
@@ -407,6 +425,11 @@ public final class WsBypassCore {
                         closeQuietly(fc);
                         break;
                     }
+                    if (!handshakeSlots.tryAcquire()) {
+                        untrack(fc);
+                        closeQuietly(fc);
+                        continue;
+                    }
                     try {
                         pool.submit(new Runnable() {
                             @Override
@@ -415,17 +438,18 @@ public final class WsBypassCore {
                             }
                         });
                     } catch (Throwable t) {
+                        handshakeSlots.release();
                         untrack(fc);
                         closeQuietly(fc);
                     }
                 } catch (Throwable iter) {
                     FileLog.e("WsBypassCore.acceptLoop iteration error", iter);
-                    
+
                     try { Thread.sleep(50); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
                 }
             }
         } finally {
-            
+
             if (Thread.currentThread() == acceptThread) {
                 running = false;
                 FileLog.d("WsBypassCore.acceptLoop exited; running cleared");
@@ -434,6 +458,7 @@ public final class WsBypassCore {
     }
 
     private void handleClient(Socket conn, long generation) {
+        boolean handshakePending = true;
         try {
             if (!isBridgeGenerationCurrent(generation)) {
                 return;
@@ -447,6 +472,8 @@ public final class WsBypassCore {
             }
 
             MtprotoHandshake.HandshakeResult hr = MtprotoHandshake.tryHandshake(initPacket, connectionSecret);
+            handshakeSlots.release();
+            handshakePending = false;
             if (hr == null) { return; }
 
             int dc = hr.dcId;
@@ -475,7 +502,7 @@ public final class WsBypassCore {
             }
 
             if (ws == null) {
-                
+
                 return;
             }
 
@@ -509,8 +536,9 @@ public final class WsBypassCore {
                 untrack(ws);
             }
         } catch (Throwable t) {
-            
+
         } finally {
+            if (handshakePending) handshakeSlots.release();
             closeQuietly(conn);
             untrack(conn);
         }
@@ -519,6 +547,8 @@ public final class WsBypassCore {
     private RawWebSocket connectWsCf(int dc, boolean isMedia, long deadlineNanos,
                                      long generation) throws IOException {
         if (WlAccess.enabled()) {
+            final long wlDeadlineNanos = Math.min(deadlineNanos,
+                    System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WL_RELAY_BUDGET_MS));
             if (wlRetryGate.remaining(nowElapsedMs()) > 0L) {
                 throw new IOException("wl_rate_limited");
             }
@@ -530,7 +560,7 @@ public final class WsBypassCore {
             String path = DomainPool.relayPathForDc(dc);
             try {
                 return RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, WlAccess.PORT, path,
-                        WlAccess.headers(grant, "GET", path, null), deadlineNanos,
+                        WlAccess.headers(grant, "GET", path, null), wlDeadlineNanos,
                         () -> isBridgeGenerationCurrent(generation) && WlAccess.enabled()
                                 && WlAccess.isCurrent(grant));
             } catch (RawWebSocket.HandshakeException error) {
@@ -542,9 +572,9 @@ public final class WsBypassCore {
             }
         }
         IOException last = null;
-        
+
         final String path = DomainPool.relayPathForDc(dc);
-        
+
         Map<String, String> headers = new HashMap<>();
         final int authAccount = UserConfig.selectedAccount;
         WsRelayAuth.Credential authCredential = null;
@@ -610,7 +640,7 @@ public final class WsBypassCore {
 
     private RawWebSocket connectWsDirect(int dc, boolean isMedia, String targetIp,
                                          long deadlineNanos) throws IOException {
-        
+
         RawWebSocket pooled = wsPool.get(dc, isMedia);
         if (pooled != null) return pooled;
 
@@ -715,16 +745,16 @@ public final class WsBypassCore {
             return;
         }
         try {
-        final AtomicBoolean done = new AtomicBoolean(false);
+        final CountDownLatch done = new CountDownLatch(1);
         Thread t1 = new Thread(new Runnable() {
             @Override
             public void run() {
-                lowerPriority();
                 try {
+                lowerPriority();
                     InputStream in = client.getInputStream();
                     OutputStream out = remote.getOutputStream();
                     byte[] buf = new byte[RECV_CHUNK];
-                    while (!done.get()) {
+                    while (done.getCount() != 0) {
                         int n = in.read(buf);
                         if (n <= 0) break;
                         byte[] chunk = (n == buf.length) ? buf : Arrays.copyOf(buf, n);
@@ -735,9 +765,11 @@ public final class WsBypassCore {
                             out.flush();
                         }
                     }
-                } catch (Throwable ignored) {}
-                done.set(true);
+                } catch (Throwable ignored) {
+                } finally {
+                    done.countDown();
                 shutdownWrite(remote);
+                }
             }
         }, "wsbypass-tcp-up");
         t1.setDaemon(true);
@@ -745,12 +777,12 @@ public final class WsBypassCore {
         Thread t2 = new Thread(new Runnable() {
             @Override
             public void run() {
-                lowerPriority();
                 try {
+                lowerPriority();
                     InputStream in = remote.getInputStream();
                     OutputStream out = client.getOutputStream();
                     byte[] buf = new byte[RECV_CHUNK];
-                    while (!done.get()) {
+                    while (done.getCount() != 0) {
                         int n = in.read(buf);
                         if (n <= 0) break;
                         byte[] chunk = (n == buf.length) ? buf : Arrays.copyOf(buf, n);
@@ -762,27 +794,30 @@ public final class WsBypassCore {
                             markBridgeOk(generation);
                         }
                     }
-                } catch (Throwable ignored) {}
-                done.set(true);
+                } catch (Throwable ignored) {
+                } finally {
+                    done.countDown();
                 shutdownWrite(client);
+                }
             }
         }, "wsbypass-tcp-down");
         t2.setDaemon(true);
 
+        try {
         t1.start();
         t2.start();
-        
-        try {
-            while (!done.get() && (t1.isAlive() || t2.isAlive())) {
-                Thread.sleep(50);
-            }
-        } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-        done.set(true);
+
+            done.await();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            done.countDown();
         closeQuietly(client);
         closeQuietly(remote);
         try { t1.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         try { t2.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         untrack(remote);
+        }
         } finally {
             markBridgeStopped(generation);
         }
@@ -797,14 +832,14 @@ public final class WsBypassCore {
             return;
         }
         try {
-        final AtomicBoolean done = new AtomicBoolean(false);
+        final CountDownLatch done = new CountDownLatch(1);
         Thread up = new Thread(new Runnable() {
             @Override
             public void run() {
                 try {
                     InputStream in = client.getInputStream();
                     byte[] buf = new byte[RECV_CHUNK];
-                    while (!done.get()) {
+                    while (done.getCount() != 0) {
                         int n = in.read(buf);
                         if (n <= 0) {
                             if (splitter != null) {
@@ -825,7 +860,7 @@ public final class WsBypassCore {
                             List<byte[]> parts = splitter.split(data);
                             if (parts == null || parts.isEmpty()) continue;
                             if (parts.size() > 1) {
-                                
+
                                 ws.sendBatch(parts);
                             } else {
                                 ws.send(parts.get(0));
@@ -834,8 +869,10 @@ public final class WsBypassCore {
                             ws.send(data);
                         }
                     }
-                } catch (Throwable t) { }
-                done.set(true);
+                } catch (Throwable t) {
+                } finally {
+                    done.countDown();
+                }
             }
         }, "wsbypass-ws-up");
         up.setDaemon(true);
@@ -847,7 +884,7 @@ public final class WsBypassCore {
                     OutputStream out = client.getOutputStream();
                     byte[] plainBuffer = new byte[64 * 1024 + 32];
                     byte[] clientBuffer = new byte[64 * 1024 + 32];
-                    while (!done.get()) {
+                    while (done.getCount() != 0) {
                         byte[] payload = ws.recv();
                         if (payload == null) { break; }
                         if (payload.length == 0) continue;
@@ -863,27 +900,30 @@ public final class WsBypassCore {
                             markBridgeOk(generation);
                         }
                     }
-                } catch (Throwable t) { }
-                done.set(true);
+                } catch (Throwable t) {
+                } finally {
+                    done.countDown();
+                }
             }
         }, "wsbypass-ws-down");
         down.setDaemon(true);
 
+        try {
         up.start();
         down.start();
-        
-        try {
-            while (!done.get() && (up.isAlive() || down.isAlive())) {
-                Thread.sleep(50);
-            }
-        } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-        done.set(true);
+
+            done.await();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        } finally {
+            done.countDown();
         try { ws.close(); } catch (Throwable ignored) {}
         closeQuietly(client);
         try { up.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         try { down.join(500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         untrack(ws);
         untrack(client);
+        }
         } finally {
             markBridgeStopped(generation);
         }
@@ -1034,10 +1074,15 @@ public final class WsBypassCore {
 
     private static byte[] recvExact(Socket conn, int size) throws IOException {
         InputStream in = conn.getInputStream();
+        final long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(HANDSHAKE_READ_TIMEOUT_MS);
         byte[] out = new byte[size];
         int off = 0;
         while (off < size) {
+            long remaining = deadline - System.nanoTime();
+            if (remaining <= 0) throw new SocketTimeoutException("local proxy handshake deadline");
+            conn.setSoTimeout((int) Math.max(1, (remaining + 999_999L) / 1_000_000L));
             int r = in.read(out, off, size - off);
+            if (System.nanoTime() >= deadline) throw new SocketTimeoutException("local proxy handshake deadline");
             if (r < 0) throw new IOException("unexpected eof");
             off += r;
         }

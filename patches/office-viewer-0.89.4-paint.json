@@ -1,0 +1,56 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "24f7e244c3a7e590e58bade2a188ec0af1be722b7183dd14fd50e2c4e03458cb",
+      "replacements": [
+        {
+          "before": "\t\tlet u = this.hooks.epoch(), d = t.canvas;\n\t\tl.add(e);",
+          "after": "\t\tlet u = this.hooks.epoch(), d = t.canvas;\n\t\t// NimarkoGram: publish paint identity only after a current render commits.\n\t\td.removeAttribute(\"data-office-painted-unit\");\n\t\tl.add(e);",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tt.renderedScale = i, this.hooks.commitRuns(e, t, p, n, m), f = !0;",
+          "after": "\t\t\tt.renderedScale = i, this.hooks.commitRuns(e, t, p, n, m), t.canvas.setAttribute(\"data-office-painted-unit\", String(e)), f = !0;",
+          "count": 1
+        },
+        {
+          "before": "\t\tlet c = this.hooks.epoch(), l = this.hooks.scale(), u = t.canvas, d = [], f = this.hooks.wantRuns(t), p;\n\t\ttry {",
+          "after": "\t\tlet c = this.hooks.epoch(), l = this.hooks.scale(), u = t.canvas, d = [], f = this.hooks.wantRuns(t), p;\n\t\tu.removeAttribute(\"data-office-painted-unit\");\n\t\ttry {",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tthis.isCurrent(e, t, i, a, o, u, c) && (t.renderedScale = l, this.hooks.commitRuns(e, t, d, u, n, f, !1));",
+          "after": "\t\t\tthis.isCurrent(e, t, i, a, o, u, c) && (t.renderedScale = l, this.hooks.commitRuns(e, t, d, u, n, f, !1), u.setAttribute(\"data-office-painted-unit\", String(e)));",
+          "count": 1
+        },
+        {
+          "before": "\t\tlet i = this.hooks.scale(), a = this.hooks.epoch(), o = document.createElement(\"canvas\");\n\t\to.style.cssText",
+          "after": "\t\tlet i = this.hooks.scale(), a = this.hooks.epoch(), o = document.createElement(\"canvas\");\n\t\tt.canvas.removeAttribute(\"data-office-painted-unit\");\n\t\to.style.cssText",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tt.dispatcher.destroy(), t.wrapper.insertBefore(o, r), r.remove(), t.canvas = o, t.dispatcher = u, t.renderedScale = i, this.hooks.commitRuns(e, t, f, o, n, p, !0);",
+          "after": "\t\t\tt.dispatcher.destroy(), t.wrapper.insertBefore(o, r), r.remove(), t.canvas = o, t.dispatcher = u, t.renderedScale = i, this.hooks.commitRuns(e, t, f, o, n, p, !0), o.setAttribute(\"data-office-painted-unit\", String(e));",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.slots.delete(e), this.hooks.resetSlot(e, t), this.free.push(t);",
+          "after": "\t\tt.canvas.removeAttribute(\"data-office-painted-unit\"), t.wrapper.removeAttribute(\"data-office-unit\");\n\t\tthis.slots.delete(e), this.hooks.resetSlot(e, t), this.free.push(t);",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tthis.hooks.positionSlot(r, a, n), this.slots.set(r, a), this.hooks.onNewSlot?.(r, a);",
+          "after": "\t\t\ta.wrapper.setAttribute(\"data-office-unit\", String(r));\n\t\t\tthis.hooks.positionSlot(r, a, n), this.slots.set(r, a), this.hooks.onNewSlot?.(r, a);",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tthis.hooks.positionSlot(t, r, e), this.slots.set(t, r), this.hooks.onNewSlot?.(t, r), this.hooks.renderSlot(t, r, !0);",
+          "after": "\t\t\tr.wrapper.setAttribute(\"data-office-unit\", String(t));\n\t\t\tthis.hooks.positionSlot(t, r, e), this.slots.set(t, r), this.hooks.onNewSlot?.(t, r), this.hooks.renderSlot(t, r, !0);",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,7 @@ import org.telegram.ui.ActionBar.Theme;
 
 import java.util.Random;
 
+import java.util.HashSet;
 public class FlickerLoadingView extends View implements Theme.Colorable {
 
     public final static int DIALOG_TYPE = 1;
@@ -1006,6 +1007,11 @@ public class FlickerLoadingView extends View implements Theme.Colorable {
         }
     }
 
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(colorKey1);
+        colors.add(colorKey2);
+    }
     private float checkRtl(float x) {
         if (LocaleController.isRTL) {
             return getMeasuredWidth() - x;

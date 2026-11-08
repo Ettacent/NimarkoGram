@@ -4,6 +4,7 @@ package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.graphics.PorterDuff;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -31,6 +32,7 @@ import androidx.core.view.GestureDetectorCompat;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class CustomPhoneKeyboardView extends ViewGroup {
     public final static int KEYBOARD_HEIGHT_DP = 230;
 
@@ -155,7 +157,7 @@ public class CustomPhoneKeyboardView extends ViewGroup {
             }
         };
         backButton.setImageResource(R.drawable.msg_clear_input);
-        backButton.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.colorFilter(backButton, Theme.key_windowBackgroundWhiteBlackText, PorterDuff.Mode.SRC_ATOP);
         int pad = dp(11);
         backButton.setPadding(pad, pad, pad, pad);
         backButton.setOnClickListener(v -> {});
@@ -165,7 +167,7 @@ public class CustomPhoneKeyboardView extends ViewGroup {
             final View v = views[a];
             if (v == null) continue;
             ScaleStateListAnimator.apply(v, 0.02f, 1.2f);
-            v.setBackground(getButtonDrawable(a));
+            setButtonBackground(v, a);
         }
     }
 
@@ -269,12 +271,32 @@ public class CustomPhoneKeyboardView extends ViewGroup {
             defaultColor, pressedColor, pressedColor);
     }
 
+    private static void setButtonBackground(View v, int index) {
+        ThemeBind.selectorBackground(v, getButtonDrawable(index), ThemeBind.of(Theme.key_listSelector), ThemeBind.alpha(Theme.key_listSelector, 30));
+    }
+
+    private int lastBackButtonColor, lastButtonsSelectorColor;
     public void updateColors() {
-        backButton.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        final int backColor = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText);
+        if (backColor != lastBackButtonColor || backButton.getColorFilter() == null) {
+            lastBackButtonColor = backColor;
+            backButton.setColorFilter(backColor, PorterDuff.Mode.SRC_ATOP);
+        }
+        final int defaultColor = Theme.getColor(Theme.key_listSelector);
+        final int pressedColor = ColorUtils.setAlphaComponent(defaultColor, 30);
+        final boolean selectorChanged = defaultColor != lastButtonsSelectorColor;
+        lastButtonsSelectorColor = defaultColor;
         for (int a = 0; a < views.length; a++) {
             View v = views[a];
             if (v != null) {
-                v.setBackground(getButtonDrawable(a));
+                if (v.getBackground() != null) {
+                    if (selectorChanged) {
+                        Theme.setSelectorDrawableColor(v.getBackground(), defaultColor, false);
+                        Theme.setSelectorDrawableColor(v.getBackground(), pressedColor, true);
+                    }
+                } else {
+                    setButtonBackground(v, a);
+                }
 
                 if (v instanceof NumberButtonView) {
                     ((NumberButtonView) v).updateColors();
@@ -283,7 +305,7 @@ public class CustomPhoneKeyboardView extends ViewGroup {
         }
     }
 
-    private final static class NumberButtonView extends View {
+    private final static class NumberButtonView extends View implements Theme.Colorable {
         private final TextPaint numberTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final TextPaint symbolsTextPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
         private final String mNumber;
@@ -298,12 +320,18 @@ public class CustomPhoneKeyboardView extends ViewGroup {
             numberTextPaint.setTextSize(dp(24));
             symbolsTextPaint.setTextSize(dp(14));
 
-            updateColors();
+            applyColors();
         }
 
-        private void updateColors() {
+        private void applyColors() {
             numberTextPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             symbolsTextPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
+        }
+
+        @Override
+        public void updateColors() {
+            applyColors();
+            invalidate();
         }
 
         @Override

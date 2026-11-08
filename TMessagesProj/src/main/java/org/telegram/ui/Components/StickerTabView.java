@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -17,6 +19,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class StickerTabView extends FrameLayout {
 
     public final static int STICKER_TYPE = 0;
@@ -89,7 +92,7 @@ public class StickerTabView extends FrameLayout {
         textView.setEllipsize(TextUtils.TruncateAt.END);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11);
         textView.setGravity(Gravity.CENTER_HORIZONTAL);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText);
         addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 8, 0, 8, 10));
 
         textView.setVisibility(View.GONE);

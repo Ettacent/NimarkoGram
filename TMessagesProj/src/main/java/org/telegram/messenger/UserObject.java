@@ -374,6 +374,9 @@ public class UserObject {
         return user != null && user.bot_forum_view;
     }
 
+    public static boolean isBotForumSidebar(TLRPC.User user) {
+        return isBotForum(user) && user.bot_forum_sidebar;
+    }
     public static boolean isBotForumWithEditableTopics(int currentAccount, long userId) {
         TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(userId);
         return isBotForumWithEditableTopics(user);

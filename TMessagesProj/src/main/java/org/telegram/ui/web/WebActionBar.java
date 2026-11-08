@@ -174,6 +174,11 @@ public class WebActionBar extends FrameLayout {
 
         rightmenu = new LinearLayout(context) {
             @Override
+            protected boolean drawChild(Canvas canvas, android.view.View child, long drawingTime) {
+                return !org.telegram.ui.ActionBar.HeaderMenuOverlay.isDrawingSource(child) && super.drawChild(canvas, child, drawingTime);
+            }
+
+            @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 setPivotY(ArticleViewer.BOTTOM_ACTION_BAR ? getMeasuredHeight() : 0);
@@ -199,6 +204,8 @@ public class WebActionBar extends FrameLayout {
         menuButton = new ImageView(context);
         menuButton.setScaleType(ImageView.ScaleType.CENTER);
         menuButton.setImageResource(R.drawable.ic_ab_other);
+        org.telegram.ui.ActionBar.HeaderMenuOverlay.bind(menuButton, resourcesProvider);
+        org.telegram.ui.ActionBar.HeaderMenuOverlay.setSourceDrawingManaged(menuButton);
         menuButton.setColorFilter(new PorterDuffColorFilter(0, PorterDuff.Mode.SRC_IN));
         menuButton.setOnClickListener(v -> {
             if (!(getParent() instanceof ViewGroup)) return;

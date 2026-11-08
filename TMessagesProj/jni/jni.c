@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include <stdio.h>
 #include <string.h>
 #include <jni.h>
@@ -11,6 +13,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "twidget/twidget-bridge.h"
 
 int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env);
 int videoOnJNILoad(JavaVM *vm, JNIEnv *env);
@@ -20,7 +23,7 @@ int ffmpegOnJNILoad(JavaVM *vm, JNIEnv *env);
 jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	JNIEnv *env = 0;
     srand(time(NULL));
-    
+
 	if ((*vm)->GetEnv(vm, (void **) &env, JNI_VERSION_1_6) != JNI_OK) {
 		return -1;
 	}
@@ -39,6 +42,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
     tgvoipOnJNILoad(vm, env);
 
+    if (!registerTwidgetNatives(env) && (*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+
 	return JNI_VERSION_1_6;
 }
 
@@ -50,7 +57,7 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_aesIgeEncryption(JNIEnv *en
     jbyte *what = (*env)->GetDirectBufferAddress(env, buffer) + offset;
     unsigned char *keyBuff = (unsigned char *)(*env)->GetByteArrayElements(env, key, NULL);
     unsigned char *ivBuff = (unsigned char *)(*env)->GetByteArrayElements(env, iv, NULL);
-    
+
     AES_KEY akey;
     if (!encrypt) {
         AES_set_decrypt_key(keyBuff, 32 * 8, &akey);
@@ -235,17 +242,20 @@ int64_t listdir(const char *fileName, int32_t mode, int32_t docType, int64_t tim
                     continue;
                 }
             }
-            strncpy(buff, fileName, 4095);
-            strncat(buff, "/", 4095);
-            strncat(buff, entry->d_name, 4095);
+            int pathLength = snprintf(buff, sizeof(buff), "%s/%s", fileName, name);
+            if (pathLength < 0 || (size_t) pathLength >= sizeof(buff)) {
+                continue;
+            }
             if (entry->d_type == DT_DIR) {
                 if (subdirs) {
                     value += listdir(buff, mode, docType, time, subdirs);
                 }
             } else {
-                int rc = stat(buff, &attrib);
+                if (stat(buff, &attrib) != 0) {
+                    continue;
+                }
                 if (mode == 0) {
-                    value += rc == 0 ? attrib.st_size : 0;
+                    value += attrib.st_size;
                 } else if (mode == 1) {
                     if (attrib.st_atim.tv_sec != 0) {
                         if (attrib.st_atim.tv_sec < time) {
@@ -265,28 +275,47 @@ int64_t listdir(const char *fileName, int32_t mode, int32_t docType, int64_t tim
 }
 
 JNIEXPORT jlong Java_org_telegram_messenger_Utilities_getDirSize(JNIEnv *env, jclass class, jstring path, jint docType, jboolean subdirs) {
+    if (path == NULL) {
+        return 0;
+    }
     const char *fileName = (*env)->GetStringUTFChars(env, path, NULL);
+    if (fileName == NULL) {
+        return 0;
+    }
     jlong value = listdir(fileName, 0, docType, 0, subdirs);
     (*env)->ReleaseStringUTFChars(env, path, fileName);
     return value;
 }
 
 JNIEXPORT jlong Java_org_telegram_messenger_Utilities_getLastUsageFileTime(JNIEnv *env, jclass class, jstring path) {
+    if (path == NULL) {
+        return 0;
+    }
     const char *fileName = (*env)->GetStringUTFChars(env, path, NULL);
+    if (fileName == NULL) {
+        return 0;
+    }
     struct stat attrib;
-    stat(fileName, &attrib);
-    jlong value;
-    if (attrib.st_atim.tv_sec > 316000000) {
-        value = attrib.st_atim.tv_sec;
-    } else {
-        value = attrib.st_mtim.tv_sec;
+    jlong value = 0;
+    if (stat(fileName, &attrib) == 0) {
+        if (attrib.st_atim.tv_sec > 316000000) {
+            value = attrib.st_atim.tv_sec;
+        } else {
+            value = attrib.st_mtim.tv_sec;
+        }
     }
     (*env)->ReleaseStringUTFChars(env, path, fileName);
     return value;
 }
 
 JNIEXPORT void Java_org_telegram_messenger_Utilities_clearDir(JNIEnv *env, jclass class, jstring path, jint docType, jlong time, jboolean subdirs) {
+    if (path == NULL) {
+        return;
+    }
     const char *fileName = (*env)->GetStringUTFChars(env, path, NULL);
+    if (fileName == NULL) {
+        return;
+    }
     listdir(fileName, 1, docType, time, subdirs);
     (*env)->ReleaseStringUTFChars(env, path, fileName);
 }

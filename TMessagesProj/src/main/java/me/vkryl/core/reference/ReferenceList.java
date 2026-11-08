@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This file is a part of X-Core
  * Copyright © Vyacheslav Krylov 2014
@@ -227,11 +229,7 @@ public final class ReferenceList<T> implements Iterable<T>, ReferenceCreator<T> 
   @Override
   public final Iterator<T> iterator () {
     if (semaphore != null) {
-      try {
-        semaphore.acquire();
-      } catch (InterruptedException t) {
-        throw new IllegalStateException();
-      }
+      semaphore.acquireUninterruptibly();
     }
     synchronized (items) {
       if (cacheIterator) {

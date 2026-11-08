@@ -143,7 +143,7 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 
    /**
     * Creates a Ffmpeg video Decoder.
-@@ -160,99 +158,125 @@
+@@ -160,99 +158,142 @@
    }
 
    @Override
@@ -181,11 +181,12 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 -      nativeContext = ffmpegReset(nativeContext);
 -      if (nativeContext == 0) {
 -        return new FfmpegDecoderException("Error resetting (see logcat).");
+-      }
+-      pendingInputs.clear();
 +      FfmpegDecoderException error = resetDecoder();
 +      if (error != null) {
 +        return error;
-       }
--      pendingInputs.clear();
++      }
      }
 
      ByteBuffer inputData = Util.castNonNull(inputBuffer.data);
@@ -199,56 +200,11 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 -          ffmpegSendPacket(nativeContext, pending.data, pending.data.limit(), pending.timeUs);
 -      if (pendingResult == VIDEO_DECODER_ERROR_READ_FRAME) {
 -        break;
-+    outputBufferAvailable = true;
-+    int sendResult =
-+        ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
-+
-+    retryInput = sendResult == VIDEO_DECODER_ERROR_READ_FRAME;
-+    if (sendResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
-+      return invalidData("send", sendResult, Integer.MIN_VALUE);
-+    }
-+    if (sendResult != VIDEO_DECODER_SUCCESS && !retryInput) {
-+      return failure("send", sendResult, sendResult, Integer.MIN_VALUE);
-+    }
-+    if (!retryInput) {
-+      outputFormat = inputBuffer.format;
-+      lastInputTimeUs = inputBuffer.timeUs;
-+    }
-+
-+    int receiveResult = receiveFrame(outputBuffer);
-+    if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
-+      return invalidData("receive", sendResult, receiveResult);
-+    }
-+    if (receiveResult == VIDEO_DECODER_NEED_INPUT && !retryInput) {
-+      outputBufferAvailable = false;
-+      return null;
-+    }
-+
-+    return receiveResult == VIDEO_DECODER_SUCCESS
-+        ? null : failure("receive", receiveResult, sendResult, receiveResult);
-+  }
-+
-+  @Override
-+  @Nullable
-+  protected FfmpegDecoderException drain(VideoDecoderOutputBuffer outputBuffer, boolean reset) {
-+    outputBufferAvailable = true;
-+    if (reset) {
-+      FfmpegDecoderException error = resetDecoder();
-+      if (error != null) {
-+        return error;
-       }
+-      }
 -      pendingInputs.removeFirst();
 -      if (pendingResult == VIDEO_DECODER_ERROR_OTHER) {
 -        return new FfmpegDecoderException("ffmpegDecode error: (see logcat)");
-+    }
-+    int sendResult = Integer.MIN_VALUE;
-+    if (!drainSent) {
-+      sendResult = ffmpegSendPacket(nativeContext, null, 0, 0);
-+      if (sendResult == VIDEO_DECODER_SUCCESS || sendResult == VIDEO_DECODER_END_OF_STREAM) {
-+        drainSent = true;
-+      } else if (sendResult != VIDEO_DECODER_ERROR_READ_FRAME) {
-+        return failure("drain_send", sendResult, sendResult, Integer.MIN_VALUE);
-       }
+-      }
 -      // VIDEO_DECODER_ERROR_INVALID_DATA: drop the invalid sample and continue.
 -    }
 -
@@ -256,8 +212,12 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 -    // (it must never be dropped: avcodec_send_packet EAGAIN means "not consumed") and
 -    // drain one decoded frame into this output buffer instead.
 -    int sendPacketResult =
--        ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
--
++    outputBufferAvailable = true;
++    boolean retriedWithoutOutput = false;
++    while (true) {
++      int sendResult =
+         ffmpegSendPacket(nativeContext, inputData, inputData.limit(), inputBuffer.timeUs);
+
 -    if (sendPacketResult == VIDEO_DECODER_ERROR_READ_FRAME) {
 -      pendingInputs.addLast(copyPendingInput(inputData, inputBuffer.timeUs));
 -      if (!decodeOnly) {
@@ -273,17 +233,66 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 -        // The drained frame belongs to the same stream, so the current format applies.
 -        outputBuffer.format = inputBuffer.format;
 -      }
-+    }
++      retryInput = sendResult == VIDEO_DECODER_ERROR_READ_FRAME;
++      if (sendResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++        return invalidData("send", sendResult, Integer.MIN_VALUE);
++      }
++      if (sendResult != VIDEO_DECODER_SUCCESS && !retryInput) {
++        return failure("send", sendResult, sendResult, Integer.MIN_VALUE);
++      }
++      if (!retryInput) {
++        outputFormat = inputBuffer.format;
++        lastInputTimeUs = inputBuffer.timeUs;
++      }
 +
-+    int receiveResult = receiveFrame(outputBuffer);
-+    if (receiveResult == VIDEO_DECODER_END_OF_STREAM) {
-+      outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
++      int receiveResult = receiveFrame(outputBuffer);
++      if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++        return invalidData("receive", sendResult, receiveResult);
++      }
++      if (receiveResult == VIDEO_DECODER_NEED_INPUT) {
++        if (!retryInput) {
++          outputBufferAvailable = false;
        return null;
      }
--
+
 -    if (sendPacketResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
 -      outputBuffer.shouldBeSkipped = true;
--      return null;
++        if (!retriedWithoutOutput) {
++          retriedWithoutOutput = true;
++          continue;
++        }
++      }
++      return receiveResult == VIDEO_DECODER_SUCCESS
++          ? null : failure("receive", receiveResult, sendResult, receiveResult);
++    }
++  }
++
++  @Override
++  @Nullable
++  protected FfmpegDecoderException drain(VideoDecoderOutputBuffer outputBuffer, boolean reset) {
++    outputBufferAvailable = true;
++    if (reset) {
++      FfmpegDecoderException error = resetDecoder();
++      if (error != null) {
++        return error;
++      }
++    }
++    boolean retriedWithoutOutput = false;
++    while (true) {
++      int sendResult = Integer.MIN_VALUE;
++      if (!drainSent) {
++        sendResult = ffmpegSendPacket(nativeContext, null, 0, 0);
++        if (sendResult == VIDEO_DECODER_SUCCESS || sendResult == VIDEO_DECODER_END_OF_STREAM) {
++          drainSent = true;
++        } else if (sendResult != VIDEO_DECODER_ERROR_READ_FRAME) {
++          return failure("drain_send", sendResult, sendResult, Integer.MIN_VALUE);
++        }
++      }
++
++      int receiveResult = receiveFrame(outputBuffer);
++      if (receiveResult == VIDEO_DECODER_END_OF_STREAM) {
++        outputBuffer.addFlag(C.BUFFER_FLAG_END_OF_STREAM);
+       return null;
 -    } else if (sendPacketResult == VIDEO_DECODER_ERROR_OTHER) {
 -      return new FfmpegDecoderException("ffmpegDecode error: (see logcat)");
 -    }
@@ -320,11 +329,18 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
 -    copy.put(inputData);
 -    copy.flip();
 -    return new PendingInput(copy, timeUs);
-+    if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
-+      return invalidData("drain_receive", sendResult, receiveResult);
++      }
++      if (receiveResult == VIDEO_DECODER_ERROR_INVALID_DATA) {
++        return invalidData("drain_receive", sendResult, receiveResult);
++      }
++      if (sendResult == VIDEO_DECODER_ERROR_READ_FRAME
++          && receiveResult == VIDEO_DECODER_NEED_INPUT && !retriedWithoutOutput) {
++        retriedWithoutOutput = true;
++        continue;
++      }
++      return receiveResult == VIDEO_DECODER_SUCCESS
++          ? null : failure("drain_receive", receiveResult, sendResult, receiveResult);
 +    }
-+    return receiveResult == VIDEO_DECODER_SUCCESS
-+        ? null : failure("drain_receive", receiveResult, sendResult, receiveResult);
 +  }
 +
 +  @Nullable
@@ -350,7 +366,7 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
    }
 
    @Override
-@@ -294,6 +318,7 @@
+@@ -294,6 +335,7 @@
 
    private native long ffmpegReset(long context);
 
@@ -358,7 +374,7 @@ diff --git a/libraries/decoder_ffmpeg/src/main/java/androidx/media3/decoder/ffmp
    private native void ffmpegRelease(long context);
 
    private native int ffmpegRenderFrame(
-@@ -310,7 +335,7 @@
+@@ -310,7 +352,7 @@
     * @return {@link #VIDEO_DECODER_SUCCESS} if successful, {@link #VIDEO_DECODER_ERROR_OTHER} if an
     * error occurred.
     */

@@ -55,9 +55,11 @@ public class LetterDrawable extends Drawable {
         this(null, 0);
     }
 
+    private final Theme.ResourcesProvider resourcesProvider;
     public LetterDrawable(Theme.ResourcesProvider resourcesProvider, int style) {
         super();
         this.style = style;
+        this.resourcesProvider = resourcesProvider;
         if (style == STYLE_DEFAULT) {
             if (namePaint == null) {
                 namePaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
@@ -123,6 +125,8 @@ public class LetterDrawable extends Drawable {
             return;
         }
         if (style == STYLE_DEFAULT) {
+            paint.setColor(Theme.getColor(Theme.key_sharedMedia_linkPlaceholder, resourcesProvider));
+            textPaint.setColor(Theme.getColor(Theme.key_sharedMedia_linkPlaceholderText, resourcesProvider));
             rect.set(bounds.left, bounds.top, bounds.right, bounds.bottom);
             canvas.drawRoundRect(rect, dp(8), dp(8), paint);
         }

@@ -77,7 +77,8 @@ public class ChatsPreferencesActivity extends UniversalPreferencesActivity {
             disableSendHintsRow = 41;
 
     private static final int largePhotosRow = 50, playVideoOnVolumeBtnRow = 51, autoPauseVideoRow = 52,
-            gifSpoilersRow = 53, videoSeekSliderRow = 54, multiMicrophoneRow = 55, disableVoiceAutoNextRow = 56;
+            gifSpoilersRow = 53, videoSeekSliderRow = 54, multiMicrophoneRow = 55, disableVoiceAutoNextRow = 56,
+            documentViewerRow = 57;
 
     private static final int reactionsOverlayRow = 60, reactionAnimationRow = 61, premStickAnimRow = 62,
             premStickAutoplayRow = 63;
@@ -103,7 +104,7 @@ public class ChatsPreferencesActivity extends UniversalPreferencesActivity {
             case doubleTapRow, slideActionRow, leftBottomBtnRow, forwardWithoutAuthorRow,
                     disableSwipeToNextRow, deleteForAllRow, disableVibrationRow -> PAGE_GESTURES;
             case largePhotosRow, playVideoOnVolumeBtnRow, autoPauseVideoRow,
-                    gifSpoilersRow, videoSeekSliderRow, multiMicrophoneRow, disableVoiceAutoNextRow -> PAGE_MEDIA;
+                    gifSpoilersRow, videoSeekSliderRow, multiMicrophoneRow, disableVoiceAutoNextRow, documentViewerRow -> PAGE_MEDIA;
             case reactionsOverlayRow, reactionAnimationRow, premStickAnimRow,
                     premStickAutoplayRow -> PAGE_REACTIONS;
             case notificationSoundRow, vibrateInChatsRow -> PAGE_NOTIFICATIONS;
@@ -280,6 +281,9 @@ public class ChatsPreferencesActivity extends UniversalPreferencesActivity {
     }
 
     private void fillMedia(ArrayList<UItem> items) {
+        items.add(SettingsHelper.asSwitchCG(documentViewerRow,
+                        getString(R.string.NM_DocViewerTitle), getString(R.string.NM_DocViewerDescription))
+                .setChecked(AppConfig.documentViewer));
         items.add(SettingsHelper.asSwitchCG(disableVoiceAutoNextRow,
                         getString(R.string.NimarkoDisableVMAutoplay),
                         getString(R.string.NM_DisableVoiceAutoNext_Desc))
@@ -439,6 +443,10 @@ public class ChatsPreferencesActivity extends UniversalPreferencesActivity {
             updateCheckState(view, AppConfig.disableVibration);
             showRestartBulletin();
 
+        } else if (id == documentViewerRow) {
+            AppConfig.toggleDocumentViewer();
+            item.checked = AppConfig.documentViewer;
+            updateCheckState(view, item.checked);
         } else if (id == disableVoiceAutoNextRow) {
             AppConfig.toggleDisableVoiceMessagesAutoNext();
             item.checked = AppConfig.disableVoiceMessagesAutoNext;

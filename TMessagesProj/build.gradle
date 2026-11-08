@@ -10,6 +10,7 @@ apply plugin: 'kotlin-android'
 apply plugin: 'com.chaquo.python'
 apply plugin: 'org.telegram.build-plugin'
 apply plugin: 'idea'
+apply from: rootProject.file('gradle/office-viewer.gradle')
 
 def nimarkoPrivateProperties = new Properties()
 def nimarkoPrivateFile = rootProject.file('private.properties')
@@ -43,7 +44,7 @@ idea {
 repositories {
     mavenCentral()
     google()
-    maven { url 'https://chaquo.com/maven' }
+    maven { url = 'https://chaquo.com/maven' }
 }
 
 configurations {
@@ -81,9 +82,7 @@ dependencies {
 
     compileOnly 'org.checkerframework:checker-qual:2.5.2'
     compileOnly 'org.checkerframework:checker-compat-qual:2.5.0'
-    implementation 'com.google.firebase:firebase-messaging:22.0.0'
-    implementation 'com.google.firebase:firebase-datatransport:18.1.0'
-    implementation 'com.google.firebase:firebase-appindexing:20.0.0'
+
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
     implementation 'com.google.android.gms:play-services-auth:20.4.0'
     implementation 'com.google.android.gms:play-services-vision:20.1.3'
@@ -102,8 +101,15 @@ dependencies {
     implementation 'com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1'
     implementation 'com.google.android.gms:play-services-mlkit-image-labeling:16.0.8'
 
+
     implementation "androidx.credentials:credentials:1.6.0-alpha04"
     implementation "androidx.credentials:credentials-play-services-auth:1.6.0-alpha04"
+
+
+    api platform('com.google.firebase:firebase-bom:34.19.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation "com.google.firebase:firebase-pnv"
+    implementation 'com.google.firebase:firebase-appindexing:20.0.0'
 
     implementation "io.noties.markwon:core:4.6.2"
     implementation "io.noties.markwon:ext-strikethrough:4.6.2"
@@ -125,7 +131,7 @@ dependencies {
 //    implementation 'com.google.mlkit:translate:17.0.3'
 
     constraints {
-        // NimarkoGram: bumped 1.8.0 -> 1.9.0 to align with kotlin-gradle-plugin 1.9.0.
+
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0") {
             because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
         }
@@ -138,7 +144,7 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     // ---- NimarkoGram (ported extera) ----
-    // Kotlin stdlib pinned to 1.9.0 (matches buildscript classpath).
+
     implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
     // Pine xposed-style hooks (used by extera plugins.xposed). We keep the 0.3.0 AAR for its Java classes,
 
@@ -208,13 +214,18 @@ dependencies {
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
-    ndkVersion "26.3.11579264"
+    ndkVersion = "26.3.11579264"
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
     // Our 16KB-aligned jni/<abi>/libpine.so wins over the 4KB one bundled in the Pine 0.3.0 AAR.
     packagingOptions {
         pickFirst 'lib/**/libpine.so'
+    }
+
+    buildFeatures {
+        aidl = true
+        buildConfig = true
     }
 
     externalNativeBuild {
@@ -234,14 +245,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
 
-        coreLibraryDesugaringEnabled true
+        coreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
         jvmTarget = '17'
         // NG: suppress Kotlin metadata version-check errors from transitive
         // dependencies (androidx.credentials-1.6.0-alpha04, recaptcha-18.7.1)
-        // which ship with Kotlin 2.1.0 metadata. NG uses Kotlin 1.9.0 — the
+
         // older compiler can't READ the newer metadata blocks but the actual
         // bytecode is JVM-17 compatible. -Xskip-metadata-version-check tells
         // kotlinc to treat unreadable metadata as opaque rather than erroring.
@@ -284,11 +295,11 @@ android {
 
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
 
-        multiDexEnabled true
+        multiDexEnabled = true
 
         externalNativeBuild {
             cmake {
-                version '3.22.1'
+                version = '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-24' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
                 targets 'tmessages.49'
             }
@@ -298,8 +309,8 @@ android {
     buildTypes {
         debug {
             jniDebuggable true
-            shrinkResources false
-            multiDexEnabled true
+            shrinkResources = false
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
@@ -312,7 +323,7 @@ android {
         HA_private {
             matchingFallbacks = ['release']
             jniDebuggable false
-            multiDexEnabled true
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PRIVATE_URL") + "\""
@@ -325,7 +336,7 @@ android {
         HA_public {
             matchingFallbacks = ['release']
             jniDebuggable false
-            multiDexEnabled true
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_PUBLIC_URL") + "\""
@@ -338,7 +349,7 @@ android {
         HA_hardcore {
             matchingFallbacks = ['release']
             jniDebuggable false
-            multiDexEnabled true
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"" + getProps("BETA_HARDCORE_URL") + "\""
@@ -353,7 +364,7 @@ android {
             jniDebuggable false
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro'
-            multiDexEnabled true
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"\""
@@ -367,8 +378,8 @@ android {
             jniDebuggable false
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), '../TMessagesProj/proguard-rules.pro'
-            shrinkResources false
-            multiDexEnabled true
+            shrinkResources = false
+            multiDexEnabled = true
             ndk.debugSymbolLevel = 'FULL'
             buildConfigField "String", "BUILD_VERSION_STRING", "\"" + APP_VERSION_NAME + "\""
             buildConfigField "String", "BETA_URL", "\"\""
@@ -379,7 +390,7 @@ android {
         }
     }
 
-    namespace 'org.telegram.messenger'
+    namespace = 'org.telegram.messenger'
 }
 
 // Chaquopy reads settings at apply-time, so this block may sit before or
@@ -404,6 +415,7 @@ chaquopy {
             // -Wl,-z,max-page-size=16384. For ARMv7, pip ignores these
             // incompatible wheels and keeps using Chaquopy's official ones.
             options "--find-links", "${project.projectDir}/python-wheels/arm64-v8a"
+            options "--constraint", project.file("python-constraints.txt").absolutePath
             install "requests==2.31.0"
             install "certifi"
             install "urllib3"
@@ -458,19 +470,22 @@ def getProps(String propName) {
 // generates the runtime FirebaseApp config the final APK actually uses.
 // apply plugin: 'com.google.gms.google-services'
 
+
+def visibilityRequestedTasks = gradle.startParameter.taskNames.toList()
+def visibilityPublicAllowed = !project.hasProperty("IS_PRIVATE") || !project.property("IS_PRIVATE").toBoolean()
+def privateVisibilityArtifact = file("${projectDir}_AppHockeyApp/afat/HA_private/Telegram-Beta.apk")
 task checkVisibility {
     doFirst {
-        def isPrivateBuild = project.gradle.startParameter.taskNames.find {
+        def isPrivateBuild = visibilityRequestedTasks.find {
             it.contains("HA_private") || it.contains("HA_hardcore") || it.contains("Debug") || it.contains("Release")
         }
-        def isPublicAllowed = !project.hasProperty("IS_PRIVATE") || !project.property("IS_PRIVATE").toBoolean()
-        if (!isPrivateBuild && !isPublicAllowed) {
+        if (!isPrivateBuild && !visibilityPublicAllowed) {
             throw new GradleException("Building public version of private code!")
         }
     }
     doLast {
-        if (project.gradle.startParameter.taskNames.find { it.contains("HA_public") }) {
-            def privateBuild = file("${projectDir}_AppHockeyApp/afat/HA_private/Telegram-Beta.apk")
+        if (visibilityRequestedTasks.find { it.contains("HA_public") }) {
+            def privateBuild = privateVisibilityArtifact
             if (privateBuild.exists()) {
                 privateBuild.delete()
             }

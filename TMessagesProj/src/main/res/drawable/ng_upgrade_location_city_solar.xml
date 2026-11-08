@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<!-- Derived from Telegram location_city layout (GPL v2 or later).
+     Modifications Copyright (C) 2026 Ettacent. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4,20V5.5C4,4.672 4.672,4 5.5,4H9.5C10.328,4 11,4.672 11,5.5V20M13,20V10.5C13,9.672 13.672,9 14.5,9H18.5C19.328,9 20,9.672 20,10.5V20M3,20H21M6.5,8H8.5M6.5,11H8.5M6.5,14H8.5M6.5,17H8.5M15.5,12H17.5M15.5,15H17.5"/>
+</vector>

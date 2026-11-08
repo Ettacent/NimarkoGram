@@ -17,13 +17,11 @@ import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
-import android.graphics.RenderNode;
 import android.graphics.Shader;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -54,7 +52,8 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatMessageCell;
-import org.telegram.ui.ProfileActivity;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -75,16 +74,13 @@ public class ProfileActionsView extends View {
     public boolean isOpeningLayout = true;
     private boolean snapPositionsPending;
     public float clipHeight = -1;
-    private final Path clipAvatarPath = new Path();
-    private final Path clipPath = new Path();
-    private ProfileActivity.AvatarImageView avatarView;
-    private float renderNodeScale;
-    private float renderNodeTranslateY;
-    private RenderNode renderNode;
+    @Nullable
+    private BlurredBackgroundDrawableViewFactory glassFactory;
+    private final ArrayList<BlurredBackgroundDrawable> glass = new ArrayList<>();
+    private int glassUsed;
 
     private int activeCount = 0;
     private final int targetHeight;
-    private boolean ignoreRect = false;
     private float currentHeight = 0;
 
     private OnActionClickListener onActionClickListener = null;
@@ -157,22 +153,29 @@ public class ProfileActionsView extends View {
         setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_YES);
     }
 
-    public void drawingBlur(boolean drawing) {
-        if (ignoreRect != drawing || renderNode != null) {
-            ignoreRect = drawing;
-            renderNode = null;
-            avatarView = null;
+    public void setGlassFactory(@Nullable BlurredBackgroundDrawableViewFactory factory) {
+        glassFactory = factory;
+        glass.clear();
+        glassUsed = 0;
             invalidate();
         }
+    private void drawGlass(Canvas canvas, RectF rect, float radius, float alpha) {
+        if (glassUsed == glass.size()) {
+            glass.add(glassFactory.create(this, ProfileButtonsGlass.NO_COLORS).setRadius(radius));
+        }
+        final BlurredBackgroundDrawable drawable = glass.get(glassUsed++);
+        drawable.setBounds((int) rect.left, (int) rect.top, (int) Math.ceil(rect.right), (int) Math.ceil(rect.bottom));
+        drawable.setAlpha((int) (0xFF * alpha));
+        drawable.draw(canvas);
     }
 
-    public void drawingBlur(RenderNode renderNode, ProfileActivity.AvatarImageView avatarView, float scale, float dy) {
-        this.ignoreRect = false;
-        this.renderNode = renderNode;
-        this.avatarView = avatarView;
-        this.renderNodeScale = scale;
-        this.renderNodeTranslateY = dy;
-        invalidate();
+    private void hideUnusedGlass() {
+        for (int i = glassUsed; i < glass.size(); i++) {
+            final BlurredBackgroundDrawable drawable = glass.get(i);
+            if (!drawable.getBounds().isEmpty()) {
+                drawable.setBounds(0, 0, 0, 0);
+            }
+        }
     }
 
     public void setOnActionClickListener(OnActionClickListener onActionClickListener) {
@@ -249,6 +252,16 @@ public class ProfileActionsView extends View {
         invalidate();
     }
 
+    private float drawnContentTop = Float.NaN;
+
+    public float getDrawnContentTop() {
+        return getVisibility() == VISIBLE && Math.round(255 * getAlpha()) > 0
+                && (clipHeight < 0 || clipHeight - getY() > drawnContentTop) ? drawnContentTop : Float.NaN;
+    }
+
+    private void recordDrawnContentTop(float value) {
+        drawnContentTop = Float.isNaN(drawnContentTop) ? value : Math.min(drawnContentTop, value);
+    }
     public void snapPositionsOnNextDraw() {
         snapPositionsPending = true;
         invalidate();
@@ -261,9 +274,12 @@ public class ProfileActionsView extends View {
 
     @Override
     protected void onDraw(@NonNull Canvas canvas) {
+        drawnContentTop = Float.NaN;
+        glassUsed = 0;
         if (clipHeight >= 0f) {
             final float bottom = clipHeight - getY();
             if (bottom <= 0) {
+                hideUnusedGlass();
                 return;
             }
             canvas.clipRect(0f, 0f, getMeasuredWidth(), bottom);
@@ -272,6 +288,7 @@ public class ProfileActionsView extends View {
         float height = Math.max(0f, currentHeight - ypadding - top);
 
         if (height <= 0f) {
+            hideUnusedGlass();
             return;
         }
 
@@ -284,9 +301,6 @@ public class ProfileActionsView extends View {
         final float profileT = 1f - bannerT;
         final boolean useRadial = radialGradient != null;
 
-        if (renderNode != null) {
-            clipPath.rewind();
-        }
 
         Action newFirstAction = null, newLastAction = null;
         int c = actions.size();
@@ -309,15 +323,6 @@ public class ProfileActionsView extends View {
             }
 
             action.updatePosition();
-            if (renderNode != null) {
-                AndroidUtilities.rectTmp.set(action.rect);
-                AndroidUtilities.rectTmp.inset(
-                    action.rect.width() / 2.0f * (1.0f - action.getScale()),
-                    action.rect.height() / 2.0f * (1.0f - action.getScale())
-                );
-                AndroidUtilities.rectTmp.inset(-1, -1);
-                clipPath.addRoundRect(AndroidUtilities.rectTmp, r, r, Path.Direction.CCW);
-            }
         }
         firstAction = newFirstAction;
         lastAction = newLastAction;
@@ -325,10 +330,10 @@ public class ProfileActionsView extends View {
         float fraction = Utilities.clamp01(height / targetHeight);
         float alphaFraction1 = Utilities.clamp01((fraction - 0.2f) / 0.8f);
         if (alphaFraction1 <= 0f) {
+            hideUnusedGlass();
             return;
         }
 
-        if (!ignoreRect) {
             for (int i = 0; i < c; i++) {
                 Action action = actions.get(i);
                 if (!action.isDeleted) {
@@ -337,6 +342,11 @@ public class ProfileActionsView extends View {
                         action.rect.width() / 2.0f * (1.0f - action.getScale()),
                         action.rect.height() / 2.0f * (1.0f - action.getScale())
                     );
+                if (glassFactory != null) {
+                    final float glassAlpha = action.getAlpha() * alphaFraction1;
+                    drawGlass(canvas, AndroidUtilities.rectTmp, r, glassAlpha);
+                    if (glassAlpha > 0f) recordDrawnContentTop(AndroidUtilities.rectTmp.top);
+                }
                     int wasAlpha = paint.getAlpha();
                     int newAlpha = (int) (action.getAlpha() * alphaFraction1 * wasAlpha);
                     paint.setAlpha((int) (newAlpha * (useRadial ? 0.1f : 1f) * profileT));
@@ -349,29 +359,30 @@ public class ProfileActionsView extends View {
                         paint.setShadowLayer(0, 0, 0, 0);
                     }
 
-                    if (paint.getAlpha() > 0) {
+                if (glassFactory == null && paint.getAlpha() > 0) {
+                    recordDrawnContentTop(AndroidUtilities.rectTmp.top);
                         canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, paint);
                     }
-                    if (useRadial) {
+                if (glassFactory == null && useRadial) {
                         int wasAlpha2 = shaderPaint.getAlpha();
                         shaderPaint.setAlpha((int) (action.getAlpha() * alphaFraction1 * wasAlpha2 * profileT));
                         matrix.setTranslate(AndroidUtilities.rectTmp.left, AndroidUtilities.rectTmp.top);
                         radialGradient.setLocalMatrix(matrix);
                         if (shaderPaint.getAlpha() > 0) {
+                        recordDrawnContentTop(AndroidUtilities.rectTmp.top);
                             canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, shaderPaint);
                         }
                         shaderPaint.setAlpha(wasAlpha2);
                     }
-                    if (bannerT > 0f) {
+                if (glassFactory == null && bannerT > 0f) {
                         neutralPaint.setAlpha((int) (action.getAlpha() * alphaFraction1 * 40f * bannerT));
+                    if (neutralPaint.getAlpha() > 0) recordDrawnContentTop(AndroidUtilities.rectTmp.top);
                         canvas.drawRoundRect(AndroidUtilities.rectTmp, r, r, neutralPaint);
                     }
                     paint.setAlpha(wasAlpha);
                 }
             }
-        }
-
-        drawRenderNode(canvas);
+        hideUnusedGlass();
 
         float alphaFraction2 = Utilities.clamp01((fraction - 0.4f) / 0.6f);
         if (alphaFraction2 > 0f) {
@@ -380,43 +391,6 @@ public class ProfileActionsView extends View {
             }
         }
         snapPositionsPending = false;
-    }
-
-    private void drawRenderNode(Canvas canvas) {
-        final float alpha = 1f - Utilities.clamp01(bannerProgress);
-        if (alpha <= 0f || renderNode == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !renderNode.hasDisplayList() || !canvas.isHardwareAccelerated()) {
-            return;
-        }
-
-        int restoreCount = alpha >= 0.999f
-                ? canvas.save()
-                : canvas.saveLayerAlpha(0, 0, getWidth(), getHeight(), Math.round(255 * alpha));
-        if (avatarView != null) {
-            View v = (View) avatarView.getParent();
-            float vl = v.getX();
-            float vt = v.getY() - getTranslationY();
-            float vw = v.getWidth() * v.getScaleX();
-            float vh = v.getHeight() * v.getScaleY();
-
-            clipAvatarPath.rewind();
-            clipAvatarPath.addRoundRect(
-                    vl,
-                    vt,
-                    vl + vw,
-                    vt + vh,
-                    avatarView.getRoundRadiusForExpand() * v.getScaleX(),
-                    avatarView.getRoundRadiusForExpand() * v.getScaleY(),
-                    Path.Direction.CCW
-            );
-            canvas.clipPath(clipAvatarPath);
-        }
-
-        canvas.clipPath(clipPath);
-        canvas.translate(0f, renderNodeTranslateY);
-        canvas.scale(renderNodeScale, renderNodeScale);
-        canvas.drawRenderNode(renderNode);
-
-        canvas.restoreToCount(restoreCount);
     }
 
     public void stopLoading(int key) {
@@ -467,11 +441,7 @@ public class ProfileActionsView extends View {
         action.refreshPackIcons();
         final boolean isButtonColorLight = isButtonColorLight();
         float useFilledWhiteIcon = !isButtonColorLight ? 1 : MathUtils.clamp((parentExpanded - 0.75f) / 0.25f, 0, 1);
-        if (isButtonColorLight && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            useFilledWhiteIcon = 0f;
-        }
-        useFilledWhiteIcon = AndroidUtilities.lerp(
-                useFilledWhiteIcon, 1f, Utilities.clamp01(bannerProgress));
+        useFilledWhiteIcon = AndroidUtilities.lerp(useFilledWhiteIcon, 1f, Utilities.clamp01(bannerProgress));
 
         final int textColor = ColorUtils.blendARGB(Color.BLACK, Color.WHITE, useFilledWhiteIcon);
         if (lastColorFilter == null || lastColorFilterColor != textColor) {

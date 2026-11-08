@@ -1,0 +1,64 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' blob:; img-src 'self' blob: data:; style-src 'unsafe-inline'; font-src 'self' blob: data:; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title></title>
+<style>
+:root { color-scheme: light; --desk: #e8e8e8; --foreground: #222; --accent: #2481cc; }
+:root {
+ --ooxml-xlsx-chrome-background: var(--desk);
+ --ooxml-xlsx-chrome-surface: var(--desk);
+ --ooxml-xlsx-chrome-surface-muted: var(--chrome-muted);
+ --ooxml-xlsx-chrome-text: var(--foreground);
+ --ooxml-xlsx-chrome-text-muted: var(--foreground);
+ --ooxml-xlsx-chrome-border: var(--chrome-border);
+ --ooxml-xlsx-chrome-selection-background: var(--chrome-selected);
+ --ooxml-xlsx-chrome-accent: var(--accent);
+ --ooxml-xlsx-chrome-scrollbar-color: var(--chrome-border) var(--desk);
+}
+html, body, #viewer { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--desk); color: var(--foreground); font-family: system-ui, sans-serif; }
+#viewer { position: relative; }
+#viewer [data-office-unit] { background: var(--office-paper, #fff); }
+#viewer [data-office-unit] > canvas { box-shadow: none !important; }
+#viewer [data-office-sheet-surface] { background: var(--office-paper, #fff); }
+#viewer [data-office-unit] > canvas:not([data-office-valid-unit]) { visibility: hidden; }
+.office-navigation-cover { position: absolute; inset: 0; z-index: 11; background: var(--desk); pointer-events: none; }
+.office-reading-cover { position: absolute; inset: 0; z-index: 12; pointer-events: none; }
+#viewer [data-office-scroll-host] { box-sizing: border-box; scroll-padding-bottom: var(--office-bottom-inset, 0px); }
+#viewer [data-office-scroll-host] > div:first-child,
+#viewer [data-xlsx-viewport-input] > div:first-child { box-sizing: content-box; padding-bottom: var(--office-bottom-inset, 0px); }
+#viewer, #viewer * { touch-action: none; }
+#viewer, #viewer * { scrollbar-width: none !important; }
+#viewer::-webkit-scrollbar, #viewer ::-webkit-scrollbar { display: none; width: 0; height: 0; }
+* { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
+#viewer.xlsx > div > div:nth-child(2) { display: none !important; }
+#viewer.xlsx [data-xlsx-validation-panel], #viewer [data-ooxml-comment-ui] { display: none !important; }
+</style>
+<script src="./engine/office-paper-host.js" defer></script>
+<script src="./engine/office-paper-runtime.js" defer></script>
+<script src="./office-tile-cache.js" defer></script>
+<script src="./quality.js" defer></script>
+<script src="./viewer.js" defer></script>
+</head>
+<body><main id="viewer"></main>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" style="position:absolute;pointer-events:none">
+<defs>
+<filter id="office-reading-filter" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+<feColorMatrix id="office-reading-matrix" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0"/>
+</filter>
+<filter id="office-sheet-reading-filter" x="0" y="0" width="100%" height="100%" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+<feColorMatrix id="office-sheet-reading-matrix" in="SourceGraphic" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0" result="night"/>
+<feFlood id="office-sheet-reading-region" x="0" y="0" width="1" height="1" flood-color="white" result="cells"/>
+<feComposite in="night" in2="cells" operator="in" result="nightCells"/>
+<feComposite in="SourceGraphic" in2="cells" operator="out" result="headers"/>
+<feMerge><feMergeNode in="headers"/><feMergeNode in="nightCells"/></feMerge>
+</filter>
+</defs>
+</svg>
+</body>
+</html>

@@ -20,6 +20,7 @@ public final class PythonBoundarySanitizer {
     private static final int MAX_NESTING = 16;
     private static final int MAX_VISITED = 256;
 
+    private static final int MAX_ELEMENTS = 65536;
     private static final ThreadLocal<boolean[]> activeScan = new ThreadLocal<>();
     private PythonBoundarySanitizer() {
     }
@@ -76,11 +77,11 @@ public final class PythonBoundarySanitizer {
         boolean[] reentered = new boolean[1];
         activeScan.set(reentered);
         try {
-            return scan(value, new IdentityHashMap<>(), 0, new int[]{0}, reentered);
+            return scan(value, new IdentityHashMap<>(), 0, new int[]{0, 0}, reentered);
         } catch (VirtualMachineError | ThreadDeath | LinkageError fatal) {
             throw fatal;
         } catch (Throwable traversalFailure) {
-            
+
             return ScanResult.INDETERMINATE;
         } finally {
             activeScan.remove();
@@ -102,11 +103,11 @@ public final class PythonBoundarySanitizer {
 
 
         if (value instanceof PyProxy || value instanceof PyObject) return ScanResult.RAW_PROXY;
-        if (reentered[0]) return ScanResult.INDETERMINATE;
+        if (reentered[0] || visitedCount[1]++ >= MAX_ELEMENTS) return ScanResult.INDETERMINATE;
         if (value == null || !isContainer(value)) return ScanResult.SAFE;
         if (visited.put(value, Boolean.TRUE) != null) return ScanResult.SAFE;
         if (depth >= MAX_NESTING || visitedCount[0] >= MAX_VISITED) {
-            
+
             return ScanResult.INDETERMINATE;
         }
 

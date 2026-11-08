@@ -239,7 +239,6 @@ public class SMSStatsActivity extends GradientHeaderActivity implements Notifica
 
         @Override
         public void onViewAttachedToWindow(@NonNull RecyclerView.ViewHolder holder) {
-            super.onViewAttachedToWindow(holder);
             if (holder.getItemViewType() == VIEW_TYPE_TABLE) {
                 ((TableView) holder.itemView).update(false);
             }

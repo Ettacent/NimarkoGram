@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 1.3.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -246,7 +248,7 @@ public class ContactsController extends BaseController {
     public HashMap<String, TLRPC.TL_contact> contactsByShortPhone = new HashMap<>();
 
     private int completedRequestsCount;
-    
+
     private static volatile ContactsController[] Instance = new ContactsController[UserConfig.MAX_ACCOUNT_COUNT];
     public static ContactsController getInstance(int num) {
         ContactsController localInstance = Instance[num];
@@ -927,7 +929,7 @@ public class ContactsController extends BaseController {
                 FileLog.e(e);
             }
         }
-         
+
         return contactsMap != null ? contactsMap : new HashMap<>();
     }
 
@@ -990,8 +992,8 @@ public class ContactsController extends BaseController {
         Utilities.globalQueue.postRunnable(() -> {
             int newPhonebookContacts = 0;
             int serverContactsInPhonebook = 0;
-            boolean disableDeletion = true; 
-             
+            boolean disableDeletion = true;
+
             HashMap<String, Contact> contactShortHashMap = new HashMap<>();
             for (HashMap.Entry<String, Contact> entry : contactHashMap.entrySet()) {
                 Contact c = entry.getValue();
@@ -1164,7 +1166,7 @@ public class ContactsController extends BaseController {
                     }
                     if (!disableDeletion && !contactHashMap.isEmpty()) {
                         AndroidUtilities.runOnUIThread(() -> {
-                             
+
                             final ArrayList<TLRPC.User> toDelete = new ArrayList<>();
                             if (contactHashMap != null && !contactHashMap.isEmpty()) {
                                 try {
@@ -1249,7 +1251,7 @@ public class ContactsController extends BaseController {
                 if (!toImport.isEmpty()) {
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.e("start import contacts");
-                         
+
                     }
 
                     final int checkType;
@@ -1498,7 +1500,7 @@ public class ContactsController extends BaseController {
     }
 
     public void processLoadedContacts(final ArrayList<TLRPC.TL_contact> contactsArr, final ArrayList<TLRPC.User> usersArr, final int from) {
-        
+
         AndroidUtilities.runOnUIThread(() -> {
             getMessagesController().putUsers(usersArr, from == 1);
 
@@ -1521,7 +1523,7 @@ public class ContactsController extends BaseController {
                 TLRPC.User user = getMessagesController().getUser(contactsArr.get(a).user_id);
                 if (user != null) {
                     usersDict.put(user.id, user);
-                    
+
                 }
             }
 
@@ -1965,16 +1967,33 @@ public class ContactsController extends BaseController {
             }
             final ContentResolver contentResolver = ApplicationLoader.applicationContext.getContentResolver();
             Uri rawContactUri = ContactsContract.RawContacts.CONTENT_URI;
-            cursor = contentResolver.query(rawContactUri, new String[]{BaseColumns._ID, ContactsContract.RawContacts.SYNC2}, null, null, null);
+            cursor = contentResolver.query(rawContactUri, new String[]{BaseColumns._ID, ContactsContract.RawContacts.SYNC2, ContactsContract.RawContacts.ACCOUNT_NAME}, ContactsContract.RawContacts.ACCOUNT_TYPE + "=?", new String[]{account.type}, ContactsContract.RawContacts.DELETED + " ASC");
             LongSparseArray<Long> bookContacts = new LongSparseArray<>();
             if (cursor != null) {
+                LongSparseArray<Long> ownContacts = new LongSparseArray<>();
+                ArrayList<Long> rawContactsToDelete = new ArrayList<>();
                 while (cursor.moveToNext()) {
-                    bookContacts.put(cursor.getLong(1), cursor.getLong(0));
+                    long rawContactId = cursor.getLong(0);
+                    long userId = cursor.getLong(1);
+                    if (userId == 0) {
+                        continue;
+                    }
+                    if (account.name.equals(cursor.getString(2))) {
+                        if (forceUpdate || ownContacts.indexOfKey(userId) >= 0) {
+                            rawContactsToDelete.add(rawContactId);
+                            continue;
+                        }
+                        ownContacts.put(userId, rawContactId);
+                    }
+                    bookContacts.put(userId, rawContactId);
                 }
                 cursor.close();
                 cursor = null;
 
-                FileLog.d("performWriteContactsToPhoneBookInternal contacts array " + contactsArray.size() + " " + forceUpdate + " bookContactsSize=" + bookContacts.size() + " currentAccount=" + currentAccount);
+                FileLog.d("performWriteContactsToPhoneBookInternal contacts array " + contactsArray.size() + " " + forceUpdate + " bookContactsSize=" + bookContacts.size() + " toDelete=" + rawContactsToDelete.size() + " currentAccount=" + currentAccount);
+                if (!rawContactsToDelete.isEmpty()) {
+                    deleteRawContactsFromPhoneBook(contentResolver, account, rawContactsToDelete, ownContacts, bookContacts);
+                }
                 ArrayList<ContentProviderOperation> query = null;
                 for (int a = 0; a < contactsArray.size(); a++) {
                     TLRPC.TL_contact u = contactsArray.get(a);
@@ -2004,6 +2023,41 @@ public class ContactsController extends BaseController {
         }
 
         FileLog.d("performWriteContactsToPhoneBookInternal " + (System.currentTimeMillis() - time)) ;
+    }
+
+    private void deleteRawContactsFromPhoneBook(ContentResolver contentResolver, Account account, ArrayList<Long> rawContactIds, LongSparseArray<Long> ownContacts, LongSparseArray<Long> bookContacts) {
+        synchronized (observerLock) {
+            ignoreChanges = true;
+        }
+        try {
+            final Uri rawContactUri = ContactsContract.RawContacts.CONTENT_URI.buildUpon().appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true").build();
+            if (rawContactIds.size() > ownContacts.size() * 2 + 500) {
+                contentResolver.delete(rawContactUri, ContactsContract.RawContacts.ACCOUNT_TYPE + "=? AND " + ContactsContract.RawContacts.ACCOUNT_NAME + "=? AND " + ContactsContract.RawContacts.SYNC2 + " IS NOT NULL", new String[]{account.type, account.name});
+                for (int a = 0; a < ownContacts.size(); a++) {
+                    long userId = ownContacts.keyAt(a);
+                    if (ownContacts.valueAt(a).equals(bookContacts.get(userId))) {
+                        bookContacts.remove(userId);
+                    }
+                }
+            } else {
+                StringBuilder ids = new StringBuilder();
+                for (int a = 0; a < rawContactIds.size(); a++) {
+                    if (ids.length() != 0) {
+                        ids.append(',');
+                    }
+                    ids.append(rawContactIds.get(a));
+                    if ((a + 1) % 500 == 0 || a == rawContactIds.size() - 1) {
+                        contentResolver.delete(rawContactUri, BaseColumns._ID + " IN (" + ids + ")", null);
+                        ids.setLength(0);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        synchronized (observerLock) {
+            ignoreChanges = false;
+        }
     }
 
     private void performWriteContactsToPhoneBook() {
@@ -2845,7 +2899,7 @@ public class ContactsController extends BaseController {
             int groupID;
             if (cursor != null && cursor.moveToFirst()) {
                 groupID = cursor.getInt(0);
-                 
+
             } else {
                 ContentValues values = new ContentValues();
                 values.put(ContactsContract.Groups.ACCOUNT_TYPE, systemAccount.type);
@@ -2893,7 +2947,7 @@ public class ContactsController extends BaseController {
                         .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, firstName)
                         .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, lastName)
                         .build());
-                
+
                 ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
                         .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, backRef)
                         .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
@@ -2946,7 +3000,7 @@ public class ContactsController extends BaseController {
                 return;
             }
             resolver.delete(ContactsContract.RawContacts.CONTENT_URI, ContactsContract.RawContacts._ID + "=?", new String[]{contactID + ""});
-            
+
         } catch (Exception x) {
             FileLog.e(x);
         }
@@ -2978,7 +3032,7 @@ public class ContactsController extends BaseController {
 
     @NonNull
     public static String formatName(String firstName, String lastName, int maxLength) {
-         
+
         if (firstName != null) {
             firstName = firstName.trim();
         }

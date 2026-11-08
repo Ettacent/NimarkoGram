@@ -1,4 +1,4 @@
-## NimarkoGram: mvel2 references javax.script (not on Android). Don't warn.
+# Modifications Copyright (C) 2026 Ettacent
 -dontwarn javax.script.**
 -dontwarn org.mvel2.jsr223.**
 ## NimarkoGram: keep MVEL — reflectively constructed expressions
@@ -57,7 +57,19 @@
 -keep class org.webrtc.* { *; }
 -keep class org.webrtc.audio.* { *; }
 -keep class org.webrtc.voiceengine.* { *; }
--keep class org.telegram.messenger.* { *; }
+-keepclasseswithmembers,includedescriptorclasses class org.telegram.messenger.* {
+    native <methods>;
+}
+-keep class org.telegram.messenger.AnimatedFileDrawableStream {
+    int read(int, int);
+    void cancel();
+    boolean isFinishedLoadingFile();
+    boolean isCanceled();
+    java.lang.String getFinishedFilePath();
+}
+-keep class org.telegram.messenger.NotificationBadge$* implements org.telegram.messenger.NotificationBadge$Badger {
+    <init>();
+}
 -keep class org.telegram.messenger.camera.* { *; }
 -keep class org.telegram.messenger.secretmedia.* { *; }
 -keep class org.telegram.messenger.support.* { *; }
@@ -96,6 +108,8 @@
 
 # https://developers.google.com/ml-kit/known-issues#android_issues
 -keep class com.google.mlkit.nl.languageid.internal.LanguageIdentificationJni { *; }
+-keep class org.telegram.utils.twidget.WidgetSandboxNative { *; }
+-keep class org.telegram.utils.twidget.WidgetSandboxBackend { *; }
 
 # Huawei Services
 -keep class com.huawei.hianalytics.**{ *; }

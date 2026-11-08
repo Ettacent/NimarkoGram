@@ -38,7 +38,8 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.Components.voip.RTMPStreamPipOverlay;
+import org.telegram.ui.Components.voip.GroupCallPipContent;
+import org.telegram.ui.Components.voip.RtmpStreamPipContent;
 import org.telegram.ui.GroupCallActivity;
 
 import static android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
@@ -56,6 +57,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
     GroupCallPipAlertView pipAlertView;
     int currentAccount;
     WindowManager windowManager;
+    boolean isOverlay;
     WindowManager.LayoutParams windowLayoutParams;
     AvatarsImageView avatarsImageView;
     RLottieDrawable deleteIcon;
@@ -453,7 +455,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
     }
 
     public static boolean isShowing() {
-        if (RTMPStreamPipOverlay.isVisible()) {
+        if (RtmpStreamPipContent.isFloating()) {
             return true;
         }
         if (instance != null) {
@@ -723,8 +725,14 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
         if (instance != null) {
             return;
         }
+        final boolean overlay = AndroidUtilities.checkInlinePermissions(ApplicationLoader.applicationContext);
+        final android.app.Activity activity = AndroidUtilities.findActivity(context);
+        if (!overlay && activity == null) {
+            return;
+        }
         instance = new GroupCallPip(context, account);
-        WindowManager wm = (WindowManager) ApplicationLoader.applicationContext.getSystemService(Context.WINDOW_SERVICE);
+        instance.isOverlay = overlay;
+        WindowManager wm = overlay ? (WindowManager) ApplicationLoader.applicationContext.getSystemService(Context.WINDOW_SERVICE) : activity.getWindowManager();
         instance.windowManager = wm;
 
         WindowManager.LayoutParams windowLayoutParams = createWindowLayoutParams(context);
@@ -768,6 +776,11 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
         NotificationCenter.getInstance(instance.currentAccount).addObserver(instance, NotificationCenter.groupCallUpdated);
         NotificationCenter.getGlobalInstance().addObserver(instance, NotificationCenter.webRtcSpeakerAmplitudeEvent);
         NotificationCenter.getGlobalInstance().addObserver(instance, NotificationCenter.didEndCall);
+        GroupCallPipContent.onBubbleChanged();
+    }
+
+    public boolean isOverlay() {
+        return isOverlay;
     }
 
     private void onDestroy() {
@@ -814,6 +827,7 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
 
             instance.onDestroy();
             instance = null;
+            GroupCallPipContent.onBubbleChanged();
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.groupCallVisibilityChanged);
         }
     }
@@ -1003,22 +1017,36 @@ public class GroupCallPip implements NotificationCenter.NotificationCenterDelega
     }
 
     public static void updateVisibility(Context context) {
+        GroupCallPipContent.update();
         VoIPService service = VoIPService.getSharedInstance();
 
         boolean groupCall = false;
         if (service != null && service.groupCall != null && !service.isHangingUp()) {
             groupCall = true;
         }
+        final boolean overlay = AndroidUtilities.checkInlinePermissions(ApplicationLoader.applicationContext);
+        final android.app.Activity activity = AndroidUtilities.findActivity(context);
         boolean visible;
-        if (!AndroidUtilities.checkInlinePermissions(ApplicationLoader.applicationContext)) {
+        if (RtmpStreamPipContent.isFloating()) {
             visible = false;
-        } else {
+        } else if (overlay) {
             visible = groupCall && !forceRemoved && (ApplicationLoader.mainInterfaceStopped || !GroupCallActivity.groupCallUiVisible);
+        } else {
+            visible = groupCall && !forceRemoved && activity != null && !ApplicationLoader.mainInterfaceStopped && !GroupCallActivity.groupCallUiVisible
+                && !AndroidUtilities.isInPictureInPictureMode(activity) && !GroupCallPipContent.isInSystemPip();
+        }
+        if (visible && instance != null && instance.isOverlay != overlay) {
+            finish();
         }
         if (visible) {
             show(context, service.getAccount());
+            if (instance != null) {
             instance.showAvatars(true);
+            }
         } else {
+            if (instance != null && !instance.isOverlay) {
+                instance.windowView.setVisibility(View.GONE);
+            }
             finish();
         }
     }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -36,11 +38,9 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.LaunchActivity;
-import org.telegram.ui.PhotoViewer;
 import org.telegram.ui.PremiumPreviewFragment;
 import org.telegram.ui.Stars.StarsController;
 import org.telegram.ui.Stars.StarsIntroActivity;
-import org.telegram.ui.Stories.DarkThemeResourceProvider;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
 import java.util.ArrayList;
@@ -341,7 +341,7 @@ public class PostsSearchContainer extends FrameLayout {
                 StarsController.getInstance(currentAccount).getBalance(true, () -> {
                     final Activity activity = AndroidUtilities.getActivity();
                     final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
-                    final Theme.ResourcesProvider resourcesProvider = PhotoViewer.getInstance().isVisible() || lastFragment != null && lastFragment.hasShownSheet() ? new DarkThemeResourceProvider() : (lastFragment != null ? lastFragment.getResourceProvider() : null);
+                    final Theme.ResourcesProvider resourcesProvider = AlertsCreator.getStarsDialogResourcesProvider(lastFragment);
                     new StarsIntroActivity.StarsNeededSheet(activity, currentAccount, resourcesProvider, paying, StarsIntroActivity.StarsNeededSheet.TYPE_SEARCH, "", () -> {
                         load(true);
                     }, 0).show();

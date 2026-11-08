@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -61,7 +63,7 @@ public class RecyclerAnimationScrollHelper {
         }
         if (recyclerView.getItemAnimator() != null) {
             if (waitForAnimations) {
-                
+
                 if (recyclerView.getItemAnimator().isRunning(() -> recyclerView.post(() -> scrollToPosition(position, offset, bottom, smooth, false)))) {
                     return;
                 }
@@ -75,7 +77,7 @@ public class RecyclerAnimationScrollHelper {
         }
 
         int n = recyclerView.getChildCount();
-        if (n == 0 || !MessagesController.getGlobalMainSettings().getBoolean("view_animations", true)) {
+        if (n == 0 || recyclerView.getVisibility() != View.VISIBLE || !MessagesController.getGlobalMainSettings().getBoolean("view_animations", true)) {
             layoutManager.scrollToPositionWithOffset(position, offset, bottom);
             return;
         }

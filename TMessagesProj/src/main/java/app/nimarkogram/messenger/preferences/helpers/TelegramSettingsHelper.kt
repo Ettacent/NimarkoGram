@@ -4,6 +4,12 @@
  */
 /* Modifications Copyright (C) 2026 Ettacent */
 
+/*
+ * NimarkoGram port of CherryGram's
+ * {@code uz.unnarsx.cherrygram.preferences.helpers.TelegramSettingsHelper}.
+ *
+ * Original Copyright github.com/arsLan4k1390, 2022-2026. GPL v2+.
+ */
 
 package app.nimarkogram.messenger.preferences.helpers
 
@@ -182,6 +188,7 @@ class TelegramSettingsHelper(
     }
 
 
+    @Suppress("UNUSED_PARAMETER")
     fun injectChannelAdvice(items: ArrayList<UItem>) {
     }
 

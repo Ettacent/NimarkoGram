@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -27,6 +29,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ChatThemeController;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
@@ -37,6 +40,7 @@ import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.ChatThemeBottomSheet;
@@ -234,7 +238,7 @@ public class ChannelWallpaperActivity extends BaseFragment {
             View view;
             if (viewType == VIEW_TYPE_BUTTON) {
                 TextCell textCell = new TextCell(getContext(), resourceProvider);
-                textCell.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                ThemeBind.backgroundColor(textCell, Theme.key_windowBackgroundWhite, ChannelWallpaperActivity.this.getResourceProvider());
                 view = textCell;
             } else if (viewType == VIEW_TYPE_THEMES) {
                 ChannelColorActivity.ThemeChooser themesWallpaper = new ChannelColorActivity.ThemeChooser(getContext(), true, currentAccount, resourceProvider);
@@ -281,7 +285,7 @@ public class ChannelWallpaperActivity extends BaseFragment {
                     params.occupyNavigationBar = true;
                     showAsSheet(themePreviewActivity, params);
                 });
-                themesWallpaper.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                ThemeBind.backgroundColor(themesWallpaper, Theme.key_windowBackgroundWhite, ChannelWallpaperActivity.this.getResourceProvider());
                 view = themesWallpaper;
             } else {
                 view = new TextInfoPrivacyCell(getContext());
@@ -310,7 +314,7 @@ public class ChannelWallpaperActivity extends BaseFragment {
                 ((TextCell) holder.itemView).setColors(Theme.key_text_RedRegular, Theme.key_text_RedRegular);
             } else if (position == infoRow) {
                 ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(isChannel ? R.string.ChannelWallpaperInfo : R.string.GroupWallpaperInfo));
-                ((TextInfoPrivacyCell) holder.itemView).setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
+                ThemeBind.backgroundColor((TextInfoPrivacyCell) holder.itemView, Theme.key_windowBackgroundGray, ChannelWallpaperActivity.this.getResourceProvider());
                 ((TextInfoPrivacyCell) holder.itemView).setForeground(Theme.getThemedDrawableByKey(getContext(), R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow, resourceProvider));
             } else if (position == themesRow) {
                 ((ChannelColorActivity.ThemeChooser) holder.itemView).setGalleryWallpaper(galleryWallpaper);
@@ -333,6 +337,26 @@ public class ChannelWallpaperActivity extends BaseFragment {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             return holder.getItemViewType() == VIEW_TYPE_BUTTON;
+        }
+    }
+
+    @Override
+    public void onThemeColorsChanged() {
+        super.onThemeColorsChanged();
+        try {
+            if (actionBar != null) {
+                actionBar.setBackgroundColor(getThemedColor(Theme.key_actionBarDefault));
+                actionBar.setTitleColor(getThemedColor(Theme.key_actionBarDefaultTitle));
+                actionBar.setItemsColor(getThemedColor(Theme.key_actionBarDefaultIcon), false);
+            }
+            if (listView != null) {
+                listView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
+            }
+            if (contentView != null) {
+                contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
         }
     }
 

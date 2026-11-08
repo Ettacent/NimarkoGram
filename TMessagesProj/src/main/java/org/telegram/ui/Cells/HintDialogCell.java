@@ -12,6 +12,7 @@ package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import org.telegram.messenger.FileLog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -38,6 +39,7 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
@@ -47,7 +49,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Premium.PremiumGradient;
 
-public class HintDialogCell extends FrameLayout {
+public class HintDialogCell extends FrameLayout implements Theme.Colorable {
 
     private BackupImageView imageView;
     private TextView nameTextView;
@@ -93,7 +95,7 @@ public class HintDialogCell extends FrameLayout {
             }
         };
         NotificationCenter.listenEmojiLoading(nameTextView);
-        nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(nameTextView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         nameTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
         nameTextView.setMaxLines(1);
         nameTextView.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
@@ -186,7 +188,7 @@ public class HintDialogCell extends FrameLayout {
     }
 
     public void setColors(int textColorKey, int backgroundColorKey) {
-        nameTextView.setTextColor(Theme.getColor(textColorKey, resourcesProvider));
+        ThemeBind.textColor(nameTextView, textColorKey, resourcesProvider);
         this.backgroundColorKey = backgroundColorKey;
         checkBox.setColor(Theme.key_dialogRoundCheckBox, backgroundColorKey, Theme.key_dialogRoundCheckBoxCheck);
     }
@@ -315,5 +317,16 @@ public class HintDialogCell extends FrameLayout {
 
     public long getDialogId() {
         return dialogId;
+    }
+    @Override
+    public void updateColors() {
+        try {
+            if (counterView != null) {
+                counterView.invalidate();
+            }
+            invalidate();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 }

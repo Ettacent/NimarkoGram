@@ -81,11 +81,14 @@ import org.telegram.tgnet.tl.TL_iv;
 import org.telegram.tgnet.tl.TL_keyboard;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.PhotoViewer;
 import org.telegram.ui.Cells.ChatMessageCell;
+import org.telegram.ui.Cells.ChatMessageTransitionParams;
 import org.telegram.ui.Cells.TextSelectionHelper;
+import org.telegram.ui.Components.RichWidgetBlock;
 import org.telegram.ui.Components.AnimatedArrowDrawable;
 import org.telegram.ui.Components.AnimatedFileDrawable;
 import org.telegram.ui.Components.AnimatedFloat;
@@ -155,8 +158,9 @@ public class RichMessageLayout {
 
     public static final int PART_MAX_HEIGHT_DP = 900;
     public static final int QUOTE_NEST_VPAD = 3;
-    private static final int ORDERED_LIST_MARKER_WIDTH_DP = 28;
-    private static final int ORDERED_LIST_MARKER_START_DP = 6;
+    private static final int BULLET_LIST_MARKER_WIDTH_DP = 16;
+    private static final int ORDERED_LIST_MARKER_WIDTH_DP = 16;
+    private static final int ORDERED_LIST_MARKER_START_DP = 0;
 
     public final ArrayList<RichUnsupportedBlock> unsupportedBlocks = new ArrayList<>();
     public final ArrayList<RichUnsupportedBlock> unsupportedBlocksRoot = new ArrayList<>();
@@ -207,6 +211,8 @@ public class RichMessageLayout {
 
     public boolean isRtl() { return richMessage != null && richMessage.rtl; }
     public boolean isOut() { return messageObject != null && messageObject.isOutOwner(); }
+    public boolean isCompactIn() { return messageObject != null && messageObject.isCompactMode() && !messageObject.isOutOwner(); }
+    public static final int COMPACT_MEDIA_RADIUS = 12;
     public boolean forceTranslationLoading;
     public boolean isTranslating() { return forceTranslationLoading || (messageObject != null && MessagesController.getInstance(currentAccount).getTranslateController().isTranslating(messageObject)); }
 
@@ -345,7 +351,7 @@ public class RichMessageLayout {
     public boolean startsWithMedia() {
         if (blocks.isEmpty()) return false;
         final RichBlock first = blocks.get(0);
-        return first instanceof RichPhotoBlock || first instanceof RichVideoBlock || first instanceof RichCollageBlock || first instanceof RichSlideshowBlock;
+        return first instanceof RichPhotoBlock || first instanceof RichVideoBlock || first instanceof RichCollageBlock || first instanceof RichSlideshowBlock || first instanceof RichWidgetBlock;
     }
 
     private RichMessageLayout prev;
@@ -746,8 +752,7 @@ public class RichMessageLayout {
     private static void drawMediaReceiver(Canvas canvas, ImageReceiver receiver, TL_iv.PageBlock block,
                                           boolean allowBackdrop) {
         if (allowBackdrop && ChatMessageCell.drawingGlassBackdrop && !receiver.getVisible()
-                && PhotoViewer.isShowingPageBlock(block)
-                && !PhotoViewer.getInstance().hasClosingBackdrop(receiver)) {
+                && PhotoViewer.isShowingPageBlock(block)) {
             receiver.drawIgnoringVisibility(canvas);
         } else {
             receiver.draw(canvas);
@@ -878,7 +883,7 @@ public class RichMessageLayout {
             if (isHeading) {
                 block.setContentPadding(dp(10), dp(6));
             } else if (pageBlock instanceof TL_iv.pageBlockParagraph) {
-                block.setContentPadding(previousSiblingParagraph ? 0 : dp(5), dp(4.66f));
+                block.setContentPadding(previousSiblingParagraph ? 0 : dp(6), dp(6));
             }
             block.accessibilityLabelResId = getBlockAccessibilityLabel(pageBlock);
             blocks.add(block);
@@ -893,14 +898,14 @@ public class RichMessageLayout {
 
             level++;
             numTextPaint.setTextSize(dp(SharedConfig.fontSize));
-            int maxNumWidth = dp(18);
+            int maxNumWidth = dp(BULLET_LIST_MARKER_WIDTH_DP);
             for (int i = 0; i < list.items.size(); ++i) {
                 final TL_iv.PageListItem item = list.items.get(i);
                 int numWidth;
                 if (item.checkbox) {
                     numWidth = dp(26);
                 } else {
-                    numWidth = dp(18);
+                    numWidth = dp(BULLET_LIST_MARKER_WIDTH_DP);
                 }
                 maxNumWidth = Math.max(maxNumWidth, numWidth);
             }
@@ -961,7 +966,7 @@ public class RichMessageLayout {
                 final String marker = orderedListMarker(list, item, i);
                 final int checkboxWidth = item.checkbox ? dp(26) : 0;
                 maxNumWidth = Math.max(maxNumWidth, (int) Math.ceil(markerMeasurePaint.measureText(marker))
-                    + dp(ORDERED_LIST_MARKER_START_DP + 4) + checkboxWidth);
+                    + dp(ORDERED_LIST_MARKER_START_DP + 8) + checkboxWidth);
             }
             final Rect listPadding = new Rect(padding);
             if (isRtl()) {
@@ -1184,6 +1189,12 @@ public class RichMessageLayout {
                 anchors.put(anchor.name.toLowerCase(), blocks.size());
             }
             return null;
+        } else if (pageBlock instanceof TL_iv.pageBlockEmbed && RichWidgetBlock.supports((TL_iv.pageBlockEmbed) pageBlock)) {
+            final TL_iv.pageBlockEmbed embed = (TL_iv.pageBlockEmbed) pageBlock;
+            final RichBlock block = new RichWidgetBlock(this, padding, RichWidgetBlock.contentWidth(embed, maxWidth), embed, blocks.isEmpty());
+            blocks.add(block);
+            emitCaption(embed.caption, padding, textFlags);
+            return block;
         } else if (pageBlock instanceof TL_iv.pageBlockUnsupported) {
             final int o = BitwiseUtils.hasFlag(textFlags, TEXT_FLAG_BLOCK_QUOTE) ? dp(6) : level > 0 ? dp(4) : 0;
             final RichUnsupportedBlock block = new RichUnsupportedBlock(this, new Rect(
@@ -1247,7 +1258,7 @@ public class RichMessageLayout {
             if (!(block instanceof RichTextBlock) || block.listLevel <= 0) continue;
             final boolean previousIsList = i > 0 && blocks.get(i - 1).listLevel > 0;
             final boolean nextIsList = i + 1 < blocks.size() && blocks.get(i + 1).listLevel > 0;
-            ((RichTextBlock) block).setContentPadding(dp(previousIsList ? 2 : 6), dp(nextIsList ? 5 : 9));
+            ((RichTextBlock) block).setContentPadding(dp(previousIsList ? 3 : 6), dp(nextIsList ? 3 : 6));
         }
     }
 
@@ -1270,6 +1281,10 @@ public class RichMessageLayout {
 
     public int getMinWidth() {
         return minWidth;
+    }
+
+    public int getMaxWidth() {
+        return maxWidth;
     }
 
     public int getHeight() {
@@ -1327,7 +1342,7 @@ public class RichMessageLayout {
         return out;
     }
 
-    private void drawBackground(Canvas canvas, ChatMessageCell.TransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
+    private void drawBackground(Canvas canvas, ChatMessageTransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
         if (!quotes.isEmpty()) {
             for (QuoteBackground q : quotes) {
                 int quoteTop = getBlockTop(q.startBlockIndex, tp);
@@ -1360,7 +1375,7 @@ public class RichMessageLayout {
         }
     }
 
-    private void drawPullquoteBackground(Canvas canvas, RichPullquoteBlock block, ChatMessageCell.TransitionParams tp) {
+    private void drawPullquoteBackground(Canvas canvas, RichPullquoteBlock block, ChatMessageTransitionParams tp) {
         final int textWidth = block.getTextWidth();
         if (textWidth <= 0) return;
 
@@ -1409,7 +1424,7 @@ public class RichMessageLayout {
         pullquoteIcon.setAlpha(0xFF);
     }
 
-    private int getBlockTop(int index, ChatMessageCell.TransitionParams tp) {
+    private int getBlockTop(int index, ChatMessageTransitionParams tp) {
         if (index >= 0 && index < blocks.size() && tp != null && (detailsAnimating || blockquoteAnimating)) {
             final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
             final RichBlock block = blocks.get(index);
@@ -1417,7 +1432,7 @@ public class RichMessageLayout {
         }
         return index >= 0 && index < blocks.size() ? Math.round(blocks.get(index).currY) : height;
     }
-    private int getBlockBottom(int index, ChatMessageCell.TransitionParams tp) {
+    private int getBlockBottom(int index, ChatMessageTransitionParams tp) {
         if (index >= 0 && index < blocks.size() && tp != null && (detailsAnimating || blockquoteAnimating)) {
             final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
             final RichBlock block = blocks.get(index);
@@ -1453,7 +1468,7 @@ public class RichMessageLayout {
                 || viewportBand(oldTop + oldHeight) != viewportBand(top + height);
     }
 
-    private void drawInternal(Canvas canvas, ChatMessageCell.TransitionParams tp) {
+    private void drawInternal(Canvas canvas, ChatMessageTransitionParams tp) {
         float clipTop = 0f, clipBottom = 0f;
         final boolean hasClip = cell != null && cell.getVisiblePartHeightForDraw() > 0;
         if (hasClip) {
@@ -1483,7 +1498,7 @@ public class RichMessageLayout {
         }
     }
 
-    private void drawInternal(Canvas canvas, ChatMessageCell.TransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
+    private void drawInternal(Canvas canvas, ChatMessageTransitionParams tp, boolean hasClip, float clipTop, float clipBottom) {
         updateTranslationLoading();
         final boolean wasAnimating = detailsAnimating || blockquoteAnimating;
 
@@ -1581,7 +1596,7 @@ public class RichMessageLayout {
         return false;
     }
 
-    public void draw(Canvas canvas, int padLeft, int padRight, ChatMessageCell.TransitionParams tp) {
+    public void draw(Canvas canvas, int padLeft, int padRight, ChatMessageTransitionParams tp) {
         setBubblePaddings(padLeft, padRight);
         textPaint.linkColor = getThemedColor(isOut() ? Theme.key_chat_messageLinkOut : Theme.key_chat_messageLinkIn);
 
@@ -1600,7 +1615,7 @@ public class RichMessageLayout {
         }
     }
 
-    public void draw(Canvas canvas, int padLeft, int padRight, ChatMessageCell.TransitionParams tp, float clipTop, float clipBottom) {
+    public void draw(Canvas canvas, int padLeft, int padRight, ChatMessageTransitionParams tp, float clipTop, float clipBottom) {
         setBubblePaddings(padLeft, padRight);
         textPaint.linkColor = getThemedColor(isOut() ? Theme.key_chat_messageLinkOut : Theme.key_chat_messageLinkIn);
         drawInternal(canvas, tp, clipBottom > clipTop, clipTop, clipBottom);
@@ -1804,14 +1819,14 @@ public class RichMessageLayout {
         header.setTypeface(AndroidUtilities.bold());
         header.setText(LocaleController.getString(R.string.InstantViewReference));
         header.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
-        header.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(header, Theme.key_dialogTextBlack, resourcesProvider);
         header.setPadding(dp(22), 0, dp(22), 0);
         linearLayout.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
 
         final LinkSpanDrawable.LinksTextView body = new LinkSpanDrawable.LinksTextView(context, resourcesProvider);
         body.setTextSize(TypedValue.COMPLEX_UNIT_DIP, SharedConfig.fontSize);
-        body.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
-        body.setLinkTextColor(getThemedColor(Theme.key_dialogTextLink));
+        ThemeBind.textColor(body, Theme.key_dialogTextBlack, resourcesProvider);
+        ThemeBind.linkTextColor(body, Theme.key_dialogTextLink, resourcesProvider);
         body.setMovementMethod(android.text.method.LinkMovementMethod.getInstance());
         body.setPadding(dp(22), 0, dp(22), dp(16));
         body.setText(content);
@@ -1850,7 +1865,8 @@ public class RichMessageLayout {
     public boolean onTouchEvent(MotionEvent event) {
         final int act = event.getActionMasked();
 
-        if (act == MotionEvent.ACTION_DOWN && (event.getX() < padLeft || event.getX() > getMinWidth() + padRight)) {
+        final float minX = startsWithMedia() && blocks.get(0) instanceof RichWidgetBlock ? -padLeft : isCompactIn() ? 0 : padLeft;
+        if (act == MotionEvent.ACTION_DOWN && (event.getX() < minX || event.getX() > getMinWidth() + padRight)) {
             return false;
         }
 
@@ -2289,6 +2305,7 @@ public class RichMessageLayout {
         public final int flags;
         public final boolean metricsOnly;
         private boolean fullSizeTableEmoji;
+        public int codeSizeDecrement;
         public StyleSpan(RichMessageLayout root, int flags) {
             this(root, flags, false);
         }
@@ -2333,19 +2350,19 @@ public class RichMessageLayout {
                 return dp(baseSize);
             }
             switch (block) {
-                case TEXT_FLAG_BLOCK_HEADING1: return dp(baseSize + 3);
+                case TEXT_FLAG_BLOCK_HEADING1: return dp(baseSize + 4);
                 case TEXT_FLAG_BLOCK_HEADING2: return dp(baseSize + 2);
                 case TEXT_FLAG_BLOCK_HEADING3: return dp(baseSize + 1);
-                case TEXT_FLAG_BLOCK_HEADING4: return dp(baseSize);
-                case TEXT_FLAG_BLOCK_HEADING5: return dp(baseSize - 1);
-                case TEXT_FLAG_BLOCK_HEADING6: return dp(baseSize - 2);
+                case TEXT_FLAG_BLOCK_HEADING4:
+                case TEXT_FLAG_BLOCK_HEADING5:
+                case TEXT_FLAG_BLOCK_HEADING6: return dp(baseSize);
 
                 case TEXT_FLAG_BLOCK_BUTTON:
                 case TEXT_FLAG_BLOCK_FOOTER:   return dp(baseSize - 2);
                 case TEXT_FLAG_BLOCK_TABLE:    return dp(Math.max(8, baseSize - 2));
                 case TEXT_FLAG_BLOCK_TABLE_TITLE:
                                                return dp(baseSize - 2);
-                case TEXT_FLAG_BLOCK_CODE:     return dp(baseSize - 1);
+                case TEXT_FLAG_BLOCK_CODE:     return dp(Math.max(Math.min(10, baseSize - 2), baseSize - 2 - codeSizeDecrement));
                 case TEXT_FLAG_BLOCK_QUOTE:
                 case TEXT_FLAG_BLOCK_QUOTE_CAPTION:
                 case TEXT_FLAG_BLOCK_PULLQUOTE:
@@ -2374,9 +2391,9 @@ public class RichMessageLayout {
                 return AndroidUtilities.bold();
             } else if (block >= 1 && block <= 6) {
                 if (hasFlag(flags, TEXT_FLAG_ITALIC)) {
-                    return AndroidUtilities.getTypeface("fonts/mw_bolditalic.ttf");
+                    return AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM_ITALIC);
                 }
-                return AndroidUtilities.getTypeface("fonts/mw_bold.ttf");
+                return AndroidUtilities.bold();
             } else if (hasFlag(flags, TEXT_FLAG_MONO)) {
                 return Typeface.MONOSPACE;
             }
@@ -2558,6 +2575,12 @@ public class RichMessageLayout {
                 return text;
             }
 
+            final Spanned spanned = (Spanned) text;
+            if (spanned.getSpans(0, spanned.length(), AnimatedEmojiSpan.class).length == 0
+                && spanned.getSpans(0, spanned.length(), Emoji.EmojiSpan.class).length == 0
+                && spanned.getSpans(0, spanned.length(), RichButtonSpan.class).length == 0) {
+                return text;
+            }
             final SpannableStringBuilder result = new SpannableStringBuilder(text);
             for (AnimatedEmojiSpan span : result.getSpans(0, result.length(), AnimatedEmojiSpan.class)) {
                 span.setPreserveFontMetrics(true);
@@ -3101,7 +3124,7 @@ public class RichMessageLayout {
 
         private void dispatchLinkClick(CharacterStyle span, boolean longPress) {
             if (span == null) return;
-            if (!longPress && span instanceof URLSpan) {
+            if (!longPress && span instanceof URLSpan && !(span instanceof URLSpanNoUnderline)) {
                 final String url = ((URLSpan) span).getURL();
                 if (url != null && url.startsWith("#") && root.handleAnchorClick(url)) {
                     if (view != null) {
@@ -4237,6 +4260,7 @@ public class RichMessageLayout {
             tableLayout.setStriped(block.striped);
             tableLayout.setRtl(root.isRtl());
             tableLayout.setFillWidth(false);
+            tableLayout.setBalancedColumns(true);
             if (block.compact) {
                 tableLayout.setCellPadding(dp(5), dp(5), dp(5));
             }
@@ -4280,7 +4304,7 @@ public class RichMessageLayout {
                 && !TextUtils.isEmpty(getString(block.title));
             if (hasTitle) {
                 final int titleFlags = setBlockFlags(0, TEXT_FLAG_BLOCK_TABLE_TITLE);
-                title = new Text(root, root.formatText(block.title, titleFlags), viewportWidth);
+                title = new Text(root, root.formatText(block.title, titleFlags), viewportWidth, Layout.Alignment.ALIGN_CENTER);
                 title.setDrawAtOrigin(true);
                 titleHeight = title.getHeight() + dp(9);
             } else {
@@ -4289,7 +4313,9 @@ public class RichMessageLayout {
             }
 
             final int titleWidth = title != null ? title.getMinWidth() : 0;
-            intrinsicTableWidth = Math.max(0, Math.min(viewportWidth, Math.max(intrinsicContentWidth, titleWidth)));
+            intrinsicTableWidth = root.isCompactIn()
+                ? Math.max(0, viewportWidth)
+                : Math.max(0, Math.min(viewportWidth, Math.max(intrinsicContentWidth, titleWidth)));
             resolvedTableWidth = intrinsicTableWidth;
 
             for (int i = 0; i < tableLayout.getChildCount(); ++i) {
@@ -4824,7 +4850,7 @@ public class RichMessageLayout {
             unsupportedBlockHeight = unsupportedBlockDrawable.measure(unsupportedBlockWidth);
         }
 
-        public float getY(ChatMessageCell.TransitionParams tp) {
+        public float getY(ChatMessageTransitionParams tp) {
             if (tp != null && (root.detailsAnimating || root.blockquoteAnimating)) {
                 final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
                 return AndroidUtilities.lerp(prevY, currY, prog);
@@ -4833,7 +4859,7 @@ public class RichMessageLayout {
             }
         }
 
-        public float getHeight(ChatMessageCell.TransitionParams tp) {
+        public float getHeight(ChatMessageTransitionParams tp) {
             if (tp != null && (root.detailsAnimating || root.blockquoteAnimating)) {
                 final float prog = Math.max(0f, Math.min(1f, tp.animateChangeProgress));
                 return AndroidUtilities.lerp(prevH, currH, prog);
@@ -5864,18 +5890,27 @@ public class RichMessageLayout {
         private boolean textHandlingTouch;
         private int touchSlop;
 
-        private static final int HPAD = 0;
-        private static final int VPAD = 8;
-        private static final int BACKGROUND_OUTER_VPAD = 7;
-        private static final int SCROLLBAR_HEIGHT = 5;
-        private static final int SCROLLBAR_HPAD = 6;
-        private static final int SCROLLBAR_VPAD = 7;
+        private static final int HPAD = 14;
+        private static final int HEADER_HEIGHT = 30;
+        private static final int CODE_TOP = 2;
+        private static final int CODE_BOTTOM = 12;
+        private static final int RADIUS = 12;
+        private static final int COPY_SIZE = 18;
+        private static final int COPY_RIGHT = 10;
+        private static final int COPY_TOP = 8;
+        private static final int BACKGROUND_OUTER_VPAD = 6;
 
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path clipPath = new Path();
+        private org.telegram.ui.Components.Text languageText;
+        private Drawable copyIcon;
+        private int copyIconColor;
+        private boolean copyPressed;
         public String plain;
         public SpannableString content;
         public final String language;
 
+        private int codeSizeDecrement;
         @Override
         public CharSequence getAccessibilityLabel() {
             final CharSequence label = super.getAccessibilityLabel();
@@ -5898,8 +5933,9 @@ public class RichMessageLayout {
             plain = root.getString(block.text);
             if (plain == null) plain = "";
             content = new SpannableString(plain);
+            codeSizeDecrement = getCodeSizeDecrement(plain.length());
             if (content.length() > 0) {
-                content.setSpan(new StyleSpan(root, TEXT_FLAG_BLOCK_CODE), 0, content.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                content.setSpan(codeSpan(), 0, content.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 content.setSpan(new QuoteRootSpan(block.text, 0), 0, content.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 if (prevBlock != null) {
                     final SpannableString oldContent = prevBlock.content;
@@ -5916,7 +5952,7 @@ public class RichMessageLayout {
                         for (int i = 0; i < spans.length; ++i) {
                             fallback.removeSpan(spans[i]);
                         }
-                        fallback.setSpan(new StyleSpan(root, TEXT_FLAG_BLOCK_CODE), 0, fallback.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                        fallback.setSpan(codeSpan(), 0, fallback.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         final CodeHighlighting.Span[] codeSpans = fallback.getSpans(0, fallback.length(), CodeHighlighting.Span.class);
                         for (int i = 0; i < codeSpans.length; ++i) {
                             final int start = fallback.getSpanStart(codeSpans[i]);
@@ -5932,100 +5968,129 @@ public class RichMessageLayout {
                 }
             }
 
-            this.text = new Text(root, content, dp(5000), Layout.Alignment.ALIGN_NORMAL, 1.30f);
+            this.text = new Text(root, content, dp(5000), Layout.Alignment.ALIGN_NORMAL, 1.22f);
             this.texts = new Text[] { this.text };
 
-            contentWidth = Math.max(0, text.right - text.left) + dp(HPAD) * 2;
+            if (!TextUtils.isEmpty(language)) {
+                languageText = new org.telegram.ui.Components.Text(language, Math.max(8, SharedConfig.fontSize - 4));
+            }
+            final int headerWidth = dp(HPAD) + (languageText != null ? (int) Math.ceil(languageText.getCurrentWidth()) + dp(12) : 0) + dp(COPY_SIZE + COPY_RIGHT);
+            int codeWidth = Math.max(0, text.right - text.left) + dp(HPAD) * 2;
+            if (languageText == null && text.layout != null && text.layout.getLineCount() > 0) {
+                final int firstLineWidth = (int) Math.ceil(text.layout.getLineRight(0)) - text.left;
+                codeWidth = Math.max(codeWidth, dp(HPAD) + firstLineWidth + dp(8 + COPY_SIZE + COPY_RIGHT));
+            }
+            contentWidth = Math.max(headerWidth, codeWidth);
             maxScrollX = Math.max(0, contentWidth - viewportWidth);
             if (prevBlock != null) {
                 scrollX = Utilities.clamp(prevBlock.scrollX, maxScrollX, 0);
             }
         }
 
+        public static int getCodeSizeDecrement(int length) {
+            if (length > 500) return 3;
+            if (length > 220) return 2;
+            if (length > 80) return 1;
+            return 0;
+        }
+
+        private StyleSpan codeSpan() {
+            final StyleSpan span = new StyleSpan(root, TEXT_FLAG_BLOCK_CODE);
+            span.codeSizeDecrement = codeSizeDecrement;
+            return span;
+        }
+
+        private int getCardWidth() {
+            return root.getMinWidth() - padding.left - padding.right;
+        }
+
+        private int getBackgroundHeight() {
+            return getCodeTop() + text.getHeight() + dp(CODE_BOTTOM);
+        }
+
+        private int getCodeTop() {
+            return languageText != null ? dp(HEADER_HEIGHT + CODE_TOP) : dp(CODE_BOTTOM);
+        }
+
+        private int getCopyTop() {
+            if (languageText != null || text.layout == null || text.layout.getLineCount() == 0) {
+                return dp(COPY_TOP);
+            }
+            final float firstLineCenter = getCodeTop() + text.layout.getLineBaseline(0) - dp(Math.max(Math.min(10, SharedConfig.fontSize - 2), SharedConfig.fontSize - 2 - codeSizeDecrement)) * .36f;
+            return Math.round(firstLineCenter - dp(COPY_SIZE) / 2f);
+        }
+
+        private int getSecondaryColor() {
+            return Theme.multAlpha(root.getThemedColor(root.isOut() ? Theme.key_chat_messageTextOut : Theme.key_chat_messageTextIn), .5f);
+        }
+
         private void drawBackground(Canvas canvas) {
             bgPaint.setColor(root.getThemedColor(root.isOut()
                 ? Theme.key_chat_outArticleCodeBackground
                 : Theme.key_chat_inArticleCodeBackground));
-            if (padding.left > 0) {
-                canvas.drawRect(0, 0, root.getMinWidth() - padding.left - padding.right, getBackgroundHeight(), bgPaint);
-            } else {
-                canvas.drawRect(-root.padLeft, 0, root.getMinWidth() + root.padRight, getBackgroundHeight(), bgPaint);
-            }
+            AndroidUtilities.rectTmp.set(0, 0, getCardWidth(), getBackgroundHeight());
+            canvas.drawRoundRect(AndroidUtilities.rectTmp, dp(RADIUS), dp(RADIUS), bgPaint);
         }
 
-        private int getBackgroundHeight() {
-            return text.getHeight() + dp(VPAD * 2) + (maxScrollX > 0 ? dp(SCROLLBAR_HEIGHT + SCROLLBAR_VPAD * 2) : 0);
+        private void drawHeader(Canvas canvas) {
+            final int color = getSecondaryColor();
+            if (languageText != null) {
+                languageText.ellipsize(getCardWidth() - dp(HPAD + 12 + COPY_SIZE + COPY_RIGHT));
+                languageText.draw(canvas, dp(HPAD), dp(COPY_TOP + COPY_SIZE / 2f), color, 1f);
+            }
+            if (copyIcon == null) {
+                copyIcon = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.msg_copy).mutate();
+            }
+            if (copyIconColor != color) {
+                copyIcon.setColorFilter(new PorterDuffColorFilter(copyIconColor = color, PorterDuff.Mode.SRC_IN));
+            }
+            copyIcon.setAlpha(copyPressed ? 0x80 : 0xFF);
+            final int right = getCardWidth() - dp(COPY_RIGHT);
+            final int top = getCopyTop();
+            copyIcon.setBounds(right - dp(COPY_SIZE), top, right, top + dp(COPY_SIZE));
+            copyIcon.draw(canvas);
         }
 
-        private void drawScrollbar(Canvas canvas) {
-            if (maxScrollX <= 0) return;
-
-            final float backgroundLeft;
-            final float backgroundRight;
-            if (padding.left > 0) {
-                backgroundLeft = 0;
-                backgroundRight = root.getMinWidth() - padding.left - padding.right;
-            } else {
-                backgroundLeft = -root.padLeft;
-                backgroundRight = root.getMinWidth() + root.padRight;
-            }
-
-            final float trackLeft = backgroundLeft + dp(SCROLLBAR_HPAD);
-            final float trackRight = backgroundRight - dp(SCROLLBAR_HPAD);
-            if (trackRight <= trackLeft) return;
-
-            final float trackTop = text.getHeight() + dp(VPAD * 2 + SCROLLBAR_VPAD);
-            final float trackBottom = trackTop + dp(SCROLLBAR_HEIGHT);
-            final float radius = dp(SCROLLBAR_HEIGHT / 2f);
-
-            bgPaint.setColor(root.getThemedColor(root.isOut()
-                ? Theme.key_chat_outArticleCodeScrollbarBackground
-                : Theme.key_chat_inArticleCodeScrollbarBackground));
-            canvas.drawRoundRect(trackLeft, trackTop, trackRight, trackBottom, radius, radius, bgPaint);
-
-            final float trackWidth = trackRight - trackLeft;
-            final float thumbWidth = Math.min(trackWidth, Math.max(dp(SCROLLBAR_HEIGHT), trackWidth * viewportWidth / (float) contentWidth));
-            final float thumbLeft = trackLeft + (trackWidth - thumbWidth) * scrollX / (float) maxScrollX;
-            bgPaint.setColor(root.getThemedColor(root.isOut()
-                ? Theme.key_chat_outArticleCodeScrollbar
-                : Theme.key_chat_inArticleCodeScrollbar));
-            canvas.drawRoundRect(thumbLeft, trackTop, thumbLeft + thumbWidth, trackBottom, radius, radius, bgPaint);
+        private boolean isCopyHit(float x, float y) {
+            final int right = getCardWidth();
+            return x >= right - dp(COPY_SIZE + COPY_RIGHT * 2) && x <= right && y >= 0 && y <= getCopyTop() + dp(COPY_SIZE + COPY_TOP);
         }
 
         private void drawTextContent(Canvas canvas, boolean faded, int lineIndex, float xPosition) {
-            final int bgWidth = Math.min(viewportWidth, contentWidth);
-            final int bgHeight = text.getHeight() + dp(VPAD) * 2;
-
-            if (padding.left > 0) {
+            final int width = getCardWidth();
+            final int height = getBackgroundHeight();
+            final boolean scrolls = maxScrollX > 0;
                 canvas.save();
-                canvas.clipRect(0, 0, bgWidth, bgHeight);
-                canvas.translate(dp(HPAD) - scrollX, dp(VPAD));
-                if (faded) {
-                    text.drawFade(canvas, lineIndex, xPosition);
-                } else {
-                    text.draw(canvas);
-                }
-                canvas.restore();
-            } else {
-                canvas.saveLayerAlpha(-root.padLeft, 0, bgWidth + root.padRight, bgHeight, 0xFF, Canvas.ALL_SAVE_FLAG);
-                canvas.save();
-                canvas.translate(dp(HPAD) - scrollX, dp(VPAD));
-                if (faded) {
-                    text.drawFade(canvas, lineIndex, xPosition);
-                } else {
-                    text.draw(canvas);
-                }
-                canvas.restore();
-
-                AndroidUtilities.rectTmp.set(-root.padLeft, 0, -root.padLeft + dp(12), bgHeight);
-                root.clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.LEFT, 1.0f);
-
-                final int right = root.getMinWidth() + root.padRight - padding.left - padding.right;
-                AndroidUtilities.rectTmp.set(right - dp(12), 0, right, bgHeight);
-                root.clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.RIGHT, 1.0f);
-
-                canvas.restore();
+            clipPath.rewind();
+            AndroidUtilities.rectTmp.set(0, 0, width, height);
+            clipPath.addRoundRect(AndroidUtilities.rectTmp, dp(RADIUS), dp(RADIUS), Path.Direction.CW);
+            canvas.clipPath(clipPath);
+            if (scrolls) {
+                canvas.saveLayerAlpha(0, 0, width, height, 0xFF, Canvas.ALL_SAVE_FLAG);
             }
+            canvas.save();
+            canvas.translate(dp(HPAD) - scrollX, getCodeTop());
+                if (faded) {
+                    text.drawFade(canvas, lineIndex, xPosition);
+                } else {
+                    text.draw(canvas);
+                }
+                canvas.restore();
+            if (scrolls) {
+                final float top = languageText != null ? dp(HEADER_HEIGHT) : 0;
+                if (scrollX > 0) {
+                    AndroidUtilities.rectTmp.set(0, top, dp(HPAD), height);
+                    root.clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.LEFT, Math.min(1f, scrollX / (float) dp(HPAD)));
+                }
+                if (scrollX < maxScrollX) {
+                    AndroidUtilities.rectTmp.set(width - dp(HPAD), top, width, height);
+                    root.clip.draw(canvas, AndroidUtilities.rectTmp, GradientClip.RIGHT, Math.min(1f, (maxScrollX - scrollX) / (float) dp(HPAD)));
+                }
+                canvas.restore();
+
+            }
+
+                canvas.restore();
         }
 
         @Override
@@ -6034,7 +6099,7 @@ public class RichMessageLayout {
             canvas.translate(0, dp(BACKGROUND_OUTER_VPAD));
             drawBackground(canvas);
             drawTextContent(canvas, false, 0, 0f);
-            drawScrollbar(canvas);
+            drawHeader(canvas);
             canvas.restore();
         }
 
@@ -6049,7 +6114,7 @@ public class RichMessageLayout {
             canvas.translate(0, dp(BACKGROUND_OUTER_VPAD));
             drawBackground(canvas);
             drawTextContent(canvas, true, lineIndex, xPosition);
-            drawScrollbar(canvas);
+            drawHeader(canvas);
             canvas.restore();
         }
 
@@ -6111,7 +6176,27 @@ public class RichMessageLayout {
         public boolean onTouchEvent(MotionEvent event) {
             final int act = event.getActionMasked();
             final float dxOffset = dp(HPAD) - scrollX;
-            final float dyOffset = dp(BACKGROUND_OUTER_VPAD + VPAD);
+            final float dyOffset = dp(BACKGROUND_OUTER_VPAD) + getCodeTop();
+
+            if (act == MotionEvent.ACTION_DOWN && isCopyHit(event.getX(), event.getY() - dp(BACKGROUND_OUTER_VPAD))) {
+                copyPressed = true;
+                if (view != null) view.invalidate();
+                return true;
+            }
+            if (copyPressed) {
+                if (act == MotionEvent.ACTION_MOVE && !isCopyHit(event.getX(), event.getY() - dp(BACKGROUND_OUTER_VPAD))) {
+                    copyPressed = false;
+                    if (view != null) view.invalidate();
+                } else if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) {
+                    copyPressed = false;
+                    if (view != null) view.invalidate();
+                    final ChatMessageCell.ChatMessageCellDelegate delegate = root.getDelegate();
+                    if (act == MotionEvent.ACTION_UP && delegate != null) {
+                        delegate.didPressRichCodeCopy(root.getCell(), plain, language);
+                    }
+                }
+                return true;
+            }
 
             if (act == MotionEvent.ACTION_DOWN) {
                 ensureTouchConfig();
@@ -6196,7 +6281,7 @@ public class RichMessageLayout {
         public boolean findLink(CharacterStyle link, int blockY, FoundLink out) {
             if (text.fillFoundLink(link, out)) {
                 out.x = padding.left + dp(HPAD) - scrollX - text.left;
-                out.y = blockY + padding.top + dp(BACKGROUND_OUTER_VPAD + VPAD);
+                out.y = blockY + padding.top + dp(BACKGROUND_OUTER_VPAD) + getCodeTop();
                 return true;
             }
             return false;
@@ -6213,7 +6298,7 @@ public class RichMessageLayout {
             this.layoutY = blockY;
             this.layoutRow = row;
             text.setX(blockX + dp(HPAD) - scrollX - text.left);
-            text.setY(blockY + dp(BACKGROUND_OUTER_VPAD + VPAD));
+            text.setY(blockY + dp(BACKGROUND_OUTER_VPAD) + getCodeTop());
             text.setRow(row);
         }
 
@@ -6741,8 +6826,8 @@ public class RichMessageLayout {
             final int width = root.getMinWidth() - padding.left - padding.right;
             final boolean inQuote = isInQuote();
             final int pad = dp(2);
-            final int bleedL = inQuote ? 0 : root.padLeft - pad;
-            final int bleedR = inQuote ? 0 : root.padRight - pad;
+            final int bleedL = inQuote || root.isCompactIn() ? 0 : root.padLeft - pad;
+            final int bleedR = inQuote || root.isCompactIn() ? 0 : root.padRight - pad;
             final boolean fit = availWidth() > imgWidth;
             if (inQuote) {
                 canvas.save();
@@ -6772,7 +6857,7 @@ public class RichMessageLayout {
             drawMediaReceiver(canvas, imageReceiver, getBlock(), !isSpoiler() || spoilerReveal.fullyRevealed());
             if (isSpoiler() && !spoilerReveal.fullyRevealed()) {
                 drawMediaSpoiler(canvas);
-            } else if (radialProgress != null && buttonState != -1) {
+            } else if (radialProgress != null) {
                 final int left = getImageLeft();
                 radialProgress.setProgressRect(left + buttonX, buttonY, left + buttonX + buttonSize, buttonY + buttonSize);
                 radialProgress.draw(canvas);
@@ -6794,6 +6879,10 @@ public class RichMessageLayout {
                 rad = dp(SharedConfig.bubbleRadius);
             }
             final int nearRad = Math.min(dp(3), rad);
+            if (root.isCompactIn()) {
+                imageReceiver.setRoundRadius(dp(COMPACT_MEDIA_RADIUS));
+                return;
+            }
             imageReceiver.setRoundRadius(first && !root.hasNameOffset() && (root.isOut() || !root.isPinnedTop()) ? rad : nearRad, first && (!root.isOut() || !root.isPinnedTop()) ? rad : nearRad, nearRad, nearRad);
         }
 
@@ -7348,10 +7437,17 @@ public class RichMessageLayout {
             }
             mapBgPaint.setColor(root.getThemedColor(Theme.key_chat_inLocationBackground));
             final boolean inQuote = isInQuote();
-            final int bleedL = inQuote ? 0 : root.padLeft;
-            final int bleedR = inQuote ? 0 : root.padRight;
+            final boolean compact = root.isCompactIn();
+            final int bleedL = inQuote || compact ? 0 : root.padLeft;
+            final int bleedR = inQuote || compact ? 0 : root.padRight;
+            if (compact) {
+                AndroidUtilities.rectTmp.set(0, 0, imgWidth, imgHeight);
+                canvas.drawRoundRect(AndroidUtilities.rectTmp, dp(COMPACT_MEDIA_RADIUS), dp(COMPACT_MEDIA_RADIUS), mapBgPaint);
+                imageReceiver.setRoundRadius(dp(COMPACT_MEDIA_RADIUS));
+            } else {
             canvas.drawRect(-bleedL, 0, imgWidth + bleedR, imgHeight, mapBgPaint);
 
+            }
             final Drawable placeholder = Theme.chat_locationDrawable[root.isOut() ? 1 : 0];
             if (placeholder != null) {
                 final int pw = placeholder.getIntrinsicWidth();
@@ -7468,8 +7564,11 @@ public class RichMessageLayout {
         private int seekBarWidth;
         private int layoutWidth = -1;
 
+        private boolean layoutHasOptions;
+        private final RectF optionsHit = new RectF();
         private int buttonState;
         private boolean buttonPressed;
+        private boolean optionsPressed;
         private final int observerTag;
 
         public RichAudioBlock(RichMessageLayout root, Rect padding, int maxWidth, TL_iv.pageBlockAudio block) {
@@ -7496,8 +7595,9 @@ public class RichMessageLayout {
 
         private void layoutInner() {
             layoutWidth = this.maxWidth + root.padLeft + root.padRight;
+            layoutHasOptions = canShowOptions();
             seekBarX = buttonX + dp(50) + size;
-            seekBarWidth = Math.max(0, layoutWidth - seekBarX - dp(18));
+            seekBarWidth = Math.max(0, layoutWidth - seekBarX - dp(layoutHasOptions ? 42 : 18));
 
             String author = currentMessageObject != null ? currentMessageObject.getMusicAuthor(false) : null;
             String title = currentMessageObject != null ? currentMessageObject.getMusicTitle(false) : null;
@@ -7653,7 +7753,7 @@ public class RichMessageLayout {
         @Override
         protected void onDraw(Canvas canvas) {
             if (currentMessageObject == null || currentDocument == null) return;
-            if (layoutWidth != this.maxWidth + root.padLeft + root.padRight) {
+            if (layoutWidth != this.maxWidth + root.padLeft + root.padRight || layoutHasOptions != canShowOptions()) {
                 layoutInner();
             }
 
@@ -7695,7 +7795,27 @@ public class RichMessageLayout {
                 canvas.restore();
             }
 
+            if (layoutHasOptions) {
+                final Drawable menuDrawable = root.isOut()
+                    ? root.getThemedDrawable(Theme.key_drawable_msgOutMenu)
+                    : Theme.chat_msgInMenuDrawable;
+                final int menuX = getMenuX();
+                final int menuY = dp(7);
+                menuDrawable.setBounds(menuX, menuY, menuX + menuDrawable.getIntrinsicWidth(), menuY + menuDrawable.getIntrinsicHeight());
+                menuDrawable.draw(canvas);
+                optionsHit.set(menuX - dp(8), 0, menuX + menuDrawable.getIntrinsicWidth() + dp(8), dp(54));
+            } else {
+                optionsHit.setEmpty();
+            }
             canvas.restore();
+        }
+
+        private boolean canShowOptions() {
+            return currentDocument != null && root.cell != null && root.delegate != null && root.delegate.canSaveRichDocument(root.cell);
+        }
+
+        private int getMenuX() {
+            return layoutWidth + padding.right - dp(32);
         }
 
         @Override
@@ -7704,6 +7824,26 @@ public class RichMessageLayout {
             final float x = event.getX() + root.padLeft;
             final float y = event.getY();
 
+            final boolean insideOptions = optionsHit.contains(x, y);
+            if (act == MotionEvent.ACTION_DOWN && insideOptions) {
+                optionsPressed = true;
+                return true;
+            }
+            if (optionsPressed) {
+                if (act == MotionEvent.ACTION_MOVE && !insideOptions) {
+                    optionsPressed = false;
+                    return true;
+                }
+                if (act == MotionEvent.ACTION_UP || act == MotionEvent.ACTION_CANCEL) {
+                    final boolean openOptions = act == MotionEvent.ACTION_UP && insideOptions;
+                    optionsPressed = false;
+                    if (openOptions && canShowOptions()) {
+                        if (view != null) view.playSoundEffect(SoundEffectConstants.CLICK);
+                        root.delegate.didPressRichDocumentOptions(root.cell, currentDocument, getCellBounds());
+                    }
+                    return true;
+                }
+            }
             final boolean seekHandled = seekBar.onTouch(act, x - seekBarX, y - seekBarY);
             if (seekHandled) {
                 if (act == MotionEvent.ACTION_DOWN) requestDisallowParentIntercept(true);
@@ -7739,10 +7879,10 @@ public class RichMessageLayout {
                 seekBar.setParent(view);
             }
             updateButtonState(false);
-            NotificationCenter.getInstance(root.currentAccount).addObserver(this, NotificationCenter.messagePlayingDidStart);
-            NotificationCenter.getInstance(root.currentAccount).addObserver(this, NotificationCenter.messagePlayingDidReset);
-            NotificationCenter.getInstance(root.currentAccount).addObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
-            NotificationCenter.getInstance(root.currentAccount).addObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
+            NotificationCenter.getInstance(root.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingDidStart);
+            NotificationCenter.getInstance(root.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingDidReset);
+            NotificationCenter.getInstance(root.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
+            NotificationCenter.getInstance(root.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingProgressDidChanged);
         }
 
         @Override
@@ -7930,7 +8070,7 @@ public class RichMessageLayout {
             if (buttonState == 0) {
                 final Activity activity = findActivity(view == null ? null : view.getContext());
                 final File file = path();
-                if (activity != null && file != null) AndroidUtilities.openForView(file, FileLoader.getDocumentFileName(document), document.mime_type, activity, root.resourcesProvider, false);
+                if (activity != null && file != null) AndroidUtilities.openForView(file, FileLoader.getDocumentFileName(document), document.mime_type, activity, root.resourcesProvider, false, root.messageObject);
             } else if (buttonState == 1 && document != null) {
                 FileLoader.getInstance(root.currentAccount).loadFile(document, root.messageObject, 1, 1);
                 buttonState = 2;
@@ -8001,9 +8141,7 @@ public class RichMessageLayout {
                     optionsPressed = false;
                     if (openOptions && document != null && canShowOptions()) {
                         if (view != null) view.playSoundEffect(SoundEffectConstants.CLICK);
-                        final float anchorX = root.cell.getTextX() + padding.left - root.padLeft + getMenuX();
-                        final float anchorY = root.cell.getTextY() + currY + padding.top + dp(7);
-                        root.delegate.didPressRichDocumentOptions(root.cell, document, anchorX, anchorY);
+                        root.delegate.didPressRichDocumentOptions(root.cell, document, getCellBounds());
                     }
                     return true;
                 }
@@ -8550,7 +8688,7 @@ public class RichMessageLayout {
             }
             rowYPx[maxRow + 1] = Math.round(acc * pixelMaxHeight);
 
-            final int gap = dp(2);
+            final int gap = dp(root.isCompactIn() ? 3 : 2);
             for (int i = 0; i < positions.length; ++i) {
                 final MessageObject.GroupedMessagePosition p = positions[i];
                 int yPx = rowYPx[p.minY];
@@ -8605,6 +8743,10 @@ public class RichMessageLayout {
                 rad = dp(SharedConfig.bubbleRadius);
             }
             final int nearRad = Math.min(dp(3), rad);
+            if (root.isCompactIn()) {
+                imageReceiver.setRoundRadius(dp(COMPACT_MEDIA_RADIUS));
+                return;
+            }
             final int tl = top && left ? (first && !root.hasNameOffset() && (root.isOut() || !root.isPinnedTop()) ? rad : nearRad) : 0;
             final int tr = top && right ? (first && !root.hasNameOffset() && (!root.isOut() || !root.isPinnedTop()) ? rad : nearRad) : 0;
             final int br = bottom && right ? nearRad : 0;
@@ -8620,8 +8762,8 @@ public class RichMessageLayout {
             }
             final boolean inQuote = isInQuote();
             final int pad = dp(2);
-            final int padL = inQuote ? 0 : root.padLeft - pad;
-            final int padR = inQuote ? 0 : root.padRight - pad;
+            final int padL = inQuote || root.isCompactIn() ? 0 : root.padLeft - pad;
+            final int padR = inQuote || root.isCompactIn() ? 0 : root.padRight - pad;
             final float k = (this.maxWidth > 0 && (padL > 0 || padR > 0))
                 ? (this.maxWidth + padL + padR) / (float) this.maxWidth
                 : 1f;
@@ -8751,13 +8893,18 @@ public class RichMessageLayout {
             }
             final boolean inQuote = isInQuote();
             final int pad = dp(2);
-            final int padL = inQuote ? 0 : root.padLeft - pad;
-            final int padR = inQuote ? 0 : root.padRight - pad;
+            final int padL = inQuote || root.isCompactIn() ? 0 : root.padLeft - pad;
+            final int padR = inQuote || root.isCompactIn() ? 0 : root.padRight - pad;
             final int slideWidth = this.slideWidth + padL + padR;
             int clipTl = 0, clipTr = 0, clipBr = 0, clipBl = 0;
             canvas.save();
             if (inQuote) {
                 clipTl = clipTr = clipBr = clipBl = dp(8);
+                clipPath.rewind();
+                clipPath.addRoundRect(0, 0, this.slideWidth, slideHeight, clipTl, clipTl, Path.Direction.CW);
+                canvas.clipPath(clipPath);
+            } else if (root.isCompactIn()) {
+                clipTl = clipTr = clipBr = clipBl = dp(COMPACT_MEDIA_RADIUS);
                 clipPath.rewind();
                 clipPath.addRoundRect(0, 0, this.slideWidth, slideHeight, clipTl, clipTl, Path.Direction.CW);
                 canvas.clipPath(clipPath);
@@ -9423,6 +9570,13 @@ public class RichMessageLayout {
             out.set(padding.left, (int) currY, padding.left + maxWidth, (int) (currY + getHeight()));
         }
 
+        protected RectF getCellBounds() {
+            final float top = root.cell.getTextY() + currY + padding.top;
+            return new RectF(
+                root.cell.getTextX() - root.padLeft + dp(4), top,
+                root.cell.getTextX() + root.getMinWidth() + root.padRight - dp(4), top + getHeight() - padding.top - padding.bottom
+            );
+        }
         public final boolean onAccessibilityElementClick(int element, View host) {
             if (checkbox != null && element == 0) {
                 if (!canToggleCheckbox()) return false;
@@ -9528,10 +9682,10 @@ public class RichMessageLayout {
                 root.numTextPaint.setColor(root.getThemedColor(root.isOut() ? Theme.key_chat_messageTextOut : Theme.key_chat_messageTextIn));
                 canvas.save();
                 if (!listOrdered && !listCheckbox) {
-                    final float diameter = dpf2(4.3f);
+                    final float diameter = dpf2(5f);
                     final float centerX = rtl
-                        ? rtlTextRight + dp(18) - dpf2(5.66f) - diameter / 2f
-                        : dpf2(5.66f) + diameter / 2f - dp(18);
+                        ? rtlTextRight + listMarkerWidth - dpf2(.5f) - diameter / 2f
+                        : dpf2(.5f) + diameter / 2f - listMarkerWidth;
                     final float centerY = numLayoutY + numLayout.getLineBaseline(0) - dp(SharedConfig.fontSize) * .35f;
                     canvas.drawCircle(centerX, centerY, diameter / 2f, root.numTextPaint);
                 } else if (rtl) {

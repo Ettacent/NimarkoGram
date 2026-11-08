@@ -1,0 +1,28 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+
+.pg {
+  position: relative;
+  display: block;
+  margin: 0 auto var(--pg-gap);
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  width: 100%;
+}
+
+.pg > canvas { position: relative; }
+.pg > canvas.pdf-retiring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+html.vw-night {
+  --pg-edge: calc(1px * var(--vw-zoom));
+  --pg-edge-colour: #474747;
+}
+html.vw-night body { background: #000; }
+html.vw-night .pg {
+  background: #000;
+  box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour);
+}

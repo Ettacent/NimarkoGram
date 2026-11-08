@@ -22,6 +22,7 @@ import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.icu.text.RelativeDateTimeFormatter;
 import android.os.Build;
+import android.os.SystemClock;
 import android.telephony.TelephonyManager;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -52,8 +53,10 @@ import org.xmlpull.v1.XmlPullParser;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -63,6 +66,7 @@ import java.util.Currency;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.TimeZone;
@@ -1266,26 +1270,17 @@ public class LocaleController {
     }
 
     private HashMap<String, String> getLocaleFileStrings(File file) {
-        return getLocaleFileStrings(file, false);
+        return getLocaleFileStrings(file, false, false, true);
     }
 
-    private HashMap<String, String> getLocaleFileStrings(File file, boolean preserveEscapes) {
-        boolean[] reload = new boolean[2];
-        HashMap<String, String> result = getLocaleFileStrings(file, preserveEscapes, reload);
-        reloadLastFile = reload[0];
-        return result;
-    }
-
-    private HashMap<String, String> getLocaleFileStrings(File file, boolean preserveEscapes, boolean[] reload) {
+    private HashMap<String, String> getLocaleFileStrings(File file, boolean preserveEscapes, boolean nullOnError, boolean setReloadFlag) {
         FileInputStream stream = null;
-        reload[0] = false;
-        reload[1] = false;
-        FileLog.d("getLocaleFileStrings: reloadLastFile = false");
+        HashMap<String, String> stringMap = null;
         try {
             if (!file.exists()) {
                 return new HashMap<>();
             }
-            HashMap<String, String> stringMap = new HashMap<>(10_000);
+            stringMap = new HashMap<>(10_000);
             XmlPullParser parser = Xml.newPullParser();
 
             stream = new FileInputStream(file);
@@ -1307,14 +1302,14 @@ public class LocaleController {
                         if (value != null) {
                             value = value.trim();
                             if (preserveEscapes) {
-                                value = value.replace("<", "&lt;").replace(">", "&gt;").replace("'", "\\'").replace("& ", "&amp; ");
+                                value = escapeXmlText(value, false);
                             } else {
                                 value = value.replace("\\n", "\n");
                                 value = value.replace("\\", "");
                                 String old = value;
                                 value = value.replace("&lt;", "<");
-                                if (!reload[0] && !value.equals(old)) {
-                                    reload[0] = true;
+                                if (setReloadFlag && !reloadLastFile && !value.equals(old)) {
+                                    reloadLastFile = true;
                                     FileLog.d("getLocaleFileStrings: value != old, reloadLastFile = true;");
                                 }
                             }
@@ -1342,9 +1337,13 @@ public class LocaleController {
                 AndroidUtilities.copyFile(file, new File(filesDir, file.getName()));
             } catch (Exception e2) {}
             FileLog.e(e);
+            if (setReloadFlag) {
             FileLog.d("getLocaleFileStrings: error, reloadLastFile = true;");
-            reload[0] = true;
-            reload[1] = true;
+                reloadLastFile = true;
+            }
+            if (nullOnError) {
+                return null;
+            }
         } finally {
             try {
                 if (stream != null) {
@@ -1354,7 +1353,23 @@ public class LocaleController {
                 FileLog.e(e);
             }
         }
-        return new HashMap<>();
+        return stringMap != null ? stringMap : new HashMap<>();
+    }
+
+    private static boolean hasMalformedCopy(File file) {
+        return file != null && new File(new File(ApplicationLoader.getFilesDirFixed(), "malformed_locales"), file.getName()).exists();
+    }
+
+    private static void deleteMalformedCopy(File file) {
+        if (file != null) {
+            new File(new File(ApplicationLoader.getFilesDirFixed(), "malformed_locales"), file.getName()).delete();
+        }
+    }
+
+    private HashMap<String, String> getLocaleFileStrings(File file, boolean preserveEscapes, boolean[] reload) {
+        HashMap<String, String> values = getLocaleFileStrings(file, preserveEscapes, true, false);
+        reload[0] = reload[1] = values == null;
+        return values != null ? values : new HashMap<>();
     }
 
     private static boolean isChinesePackAlias(String code) {
@@ -1476,6 +1491,7 @@ public class LocaleController {
                 localizationExternalSize = 0;
             } else if (!fromFile) {
                 HashMap<String, String> localeValues;
+                reloadLastFile = false;
                 localeValues = getLocaleFileStrings(hasBase ? localeInfo.getPathToBaseFile() : localeInfo.getPathToFile());
                 if (hasBase) {
                     localeValues.putAll(getLocaleFileStrings(localeInfo.getPathToFile()));
@@ -1511,6 +1527,10 @@ public class LocaleController {
             clearStringResourceIdCache();
             changingConfiguration = false;
             FileLog.d("applyLanguage: reloadLastFile=" + reloadLastFile + " force=" + force + " isLoadingRemote=" + isLoadingRemote);
+            if (init && !isLoadingRemote && (localeInfo.isRemote() || localeInfo.isUnofficial()) && (hasMalformedCopy(pathToFile) || hasBase && hasMalformedCopy(pathToBaseFile))) {
+                FileLog.d("reload locale because it was malformed before " + pathToFile);
+                reloadLastFile = true;
+            }
             if (reloadLastFile || !isLoadingRemote && !force && shouldReinstallLangpack(localeInfo.shortName)) {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("reload locale because one of file is corrupted " + pathToFile + " " + pathToBaseFile + " reloadLastFile=" + reloadLastFile + " isLoadingRemote=" + isLoadingRemote + " force=" + force);
@@ -1808,6 +1828,11 @@ public class LocaleController {
             }
         } catch (Exception e) {
             FileLog.e(e);
+            if (res != 0) {
+                try {
+                    return String.format(ApplicationLoader.applicationContext.getString(res), args);
+                } catch (Exception ignore) {}
+            }
             return "LOC_ERR: " + key;
         }
     }
@@ -1877,6 +1902,8 @@ public class LocaleController {
             } else {
                 return String.format("%s %s", LocaleController.formatPluralString("Weeks", days / 7), LocaleController.formatPluralString("Days", days % 7));
             }
+        } else if (ttl >= 60 * 60 * 24 * 365 && ttl % (60 * 60 * 24 * 365) == 0) {
+            return LocaleController.formatPluralString("Years", ttl / 60 / 60 / 24 / 365);
         } else {
             return LocaleController.formatPluralString("Months", ttl / 60 / 60 / 24 / 30);
         }
@@ -3046,9 +3073,7 @@ public class LocaleController {
             if (rounded != null) {
                 rounded[0] = number;
             }
-            java.text.DecimalFormat formatter = (java.text.DecimalFormat) NumberFormat.getInstance(Locale.US);
-            formatter.applyPattern("#,###");
-            return formatter.format(number);
+            return formatGroupedIntUS(number);
         }
         StringBuilder K = new StringBuilder();
         int lastDec = 0;
@@ -3077,6 +3102,32 @@ public class LocaleController {
         } else {
             return String.format(Locale.US, "%d%s", number, K.toString());
         }
+    }
+
+    private static String formatGroupedIntUS(int number) {
+        if (number > -1000 && number < 1000) {
+            return Integer.toString(number);
+        }
+        long remaining = number;
+        if (remaining < 0) {
+            remaining = -remaining;
+        }
+        char[] result = new char[14];
+        int position = result.length;
+        int groupSize = 0;
+        while (remaining > 0) {
+            if (groupSize == 3) {
+                result[--position] = ',';
+                groupSize = 0;
+            }
+            result[--position] = (char) ('0' + remaining % 10);
+            remaining /= 10;
+            groupSize++;
+        }
+        if (number < 0) {
+            result[--position] = '-';
+        }
+        return new String(result, position, result.length - position);
     }
 
     public static String formatUserStatus(int currentAccount, TLRPC.User user) {
@@ -3158,10 +3209,89 @@ public class LocaleController {
     }
 
     private String escapeString(String str) {
-        if (str.contains("[CDATA")) {
-            return str;
+        return escapeXmlText(str, true);
+    }
+
+    private static String escapeXmlText(String str, boolean fromServer) {
+        final int length = str.length();
+        StringBuilder builder = null;
+        for (int i = 0; i < length; i++) {
+            final char c = str.charAt(i);
+            String replacement = null;
+            int skip = 0;
+            if (c == '<') {
+                if (fromServer && str.startsWith("<![CDATA[", i)) {
+                    final int end = str.indexOf("]]>", i + 9);
+                    if (end >= 0) {
+                        skip = end + 3 - i - 1;
+                    } else {
+                        replacement = "&lt;";
+                    }
+                } else {
+                    replacement = "&lt;";
+                }
+            } else if (c == '>') {
+                replacement = "&gt;";
+            } else if (c == '&') {
+                if (!fromServer || !isXmlReference(str, i)) {
+                    replacement = "&amp;";
+                }
+            } else if (Character.isHighSurrogate(c) && i + 1 < length && Character.isLowSurrogate(str.charAt(i + 1))) {
+                skip = 1;
+            } else if (!isXmlChar(c)) {
+                replacement = "";
+            }
+            if (replacement != null && builder == null) {
+                builder = new StringBuilder(length + 16);
+                builder.append(str, 0, i);
+            }
+            if (builder != null) {
+                if (replacement != null) {
+                    builder.append(replacement);
+                } else {
+                    builder.append(str, i, i + skip + 1);
+                }
+            }
+            i += skip;
         }
-        return str.replace("<", "&lt;").replace(">", "&gt;").replace("& ", "&amp; ");
+        return builder != null ? builder.toString() : str;
+    }
+
+    private static boolean isXmlChar(int c) {
+        return c == 0x9 || c == 0xA || c == 0xD || c >= 0x20 && c <= 0xD7FF || c >= 0xE000 && c <= 0xFFFD || c >= 0x10000 && c <= 0x10FFFF;
+    }
+
+    private static boolean isXmlReference(String str, int ampersand) {
+        final int end = str.indexOf(';', ampersand + 1);
+        if (end < 0 || end - ampersand > 9) {
+            return false;
+        }
+        final String name = str.substring(ampersand + 1, end);
+        switch (name) {
+            case "amp":
+            case "lt":
+            case "gt":
+            case "quot":
+            case "apos":
+                return true;
+        }
+        if (name.length() < 2 || name.charAt(0) != '#') {
+            return false;
+        }
+        final boolean hex = name.charAt(1) == 'x';
+        final int start = hex ? 2 : 1;
+        if (start >= name.length()) {
+            return false;
+        }
+        int codePoint = 0;
+        for (int i = start; i < name.length(); i++) {
+            final int digit = Character.digit(name.charAt(i), hex ? 16 : 10);
+            if (digit < 0 || name.charAt(i) > 'f') {
+                return false;
+            }
+            codePoint = codePoint * (hex ? 16 : 10) + digit;
+        }
+        return isXmlChar(codePoint);
     }
 
     public void saveRemoteLocaleStringsForCurrentLocale(final TLRPC.TL_langPackDifference difference, int currentAccount) {
@@ -3178,6 +3308,10 @@ public class LocaleController {
     }
 
     public void saveRemoteLocaleStrings(LocaleInfo localeInfo, final TLRPC.TL_langPackDifference difference, int currentAccount, Runnable onDone) {
+        saveRemoteLocaleStrings(localeInfo, difference, currentAccount, false, onDone);
+    }
+
+    private void saveRemoteLocaleStrings(LocaleInfo localeInfo, final TLRPC.TL_langPackDifference difference, int currentAccount, boolean requested, Runnable onDone) {
         AndroidUtilities.runOnUIThread(() -> {
             LocaleInfo snapshot = new LocaleInfo();
             if (localeInfo != null) {
@@ -3186,7 +3320,7 @@ public class LocaleController {
                 snapshot.pluralLangCode = localeInfo.pluralLangCode;
                 snapshot.pathToFile = localeInfo.pathToFile;
             }
-            remoteLocaleUpdates.add(() -> prepareRemoteLocaleStrings(localeInfo, snapshot, difference, currentAccount, () -> {
+            remoteLocaleUpdates.add(() -> prepareRemoteLocaleStrings(localeInfo, snapshot, difference, currentAccount, requested, () -> {
                 try {
                     if (onDone != null) {
                         onDone.run();
@@ -3212,7 +3346,7 @@ public class LocaleController {
                 && Objects.equals(localeInfo.pathToFile, snapshot.pathToFile);
     }
 
-    private void prepareRemoteLocaleStrings(LocaleInfo localeInfo, LocaleInfo snapshot, final TLRPC.TL_langPackDifference difference, int currentAccount, Runnable onDone) {
+    private void prepareRemoteLocaleStrings(LocaleInfo localeInfo, LocaleInfo snapshot, final TLRPC.TL_langPackDifference difference, int currentAccount, boolean requested, Runnable onDone) {
         if (difference == null || difference.lang_code == null || localeInfo == null || !matchesRemoteLocale(localeInfo, snapshot)
                 || !snapshot.isRemote() && !snapshot.isUnofficial()) {
             FileLog.d("saveRemoteLocaleStrings: empty difference=" + (difference == null || difference.strings.isEmpty()) + "; locale is local or null=" + (localeInfo == null || localeInfo.isLocal()));
@@ -3253,14 +3387,15 @@ public class LocaleController {
         if (savedVersion != null) {
             version = Math.max(version, savedVersion);
         }
-        final boolean useCached = savedVersion != null && savedVersion == version
+        final boolean repairFullPack = difference.from_version == 0 && (hasMalformedCopy(finalFile) || !finalFile.exists());
+        final boolean useCached = !repairFullPack && savedVersion != null && savedVersion == version
                 && (difference.version < savedVersion || difference.from_version != 0 && difference.version == savedVersion);
         final int versionToApply = useCached ? savedVersion : difference.version;
-        if (!useCached && (difference.version < version || difference.from_version != 0 && difference.version == version
+        if (!useCached && (!repairFullPack && difference.version < version || difference.from_version != 0 && difference.version == version
                 || difference.from_version > version)) {
             onDone.run();
             if (difference.from_version > version) {
-                applyRemoteLanguage(localeInfo, langCode, true, currentAccount, null);
+                applyRemoteLanguage(localeInfo, langCode, requested, currentAccount, null);
             }
             return;
         }
@@ -3269,15 +3404,18 @@ public class LocaleController {
         }
         remoteLocaleQueue.postRunnable(() -> {
             File temporaryFile = null;
+            boolean reloadRequired = false;
             try {
                 boolean[] reload = new boolean[2];
                 final HashMap<String, String> updatedValues;
                 if (useCached) {
                     if (!finalFile.exists()) {
+                        reloadRequired = true;
                         throw new IOException("Missing cached locale");
                     }
                     updatedValues = getLocaleFileStrings(finalFile, false, reload);
                     if (reload[1]) {
+                        reloadRequired = true;
                         throw new IOException("Invalid cached locale");
                     }
                 } else {
@@ -3287,10 +3425,12 @@ public class LocaleController {
                         values = new HashMap<>();
                     } else {
                         if (!finalFile.exists()) {
+                            reloadRequired = true;
                             throw new IOException("Missing locale for difference");
                         }
                         values = getLocaleFileStrings(finalFile, true, reload);
                         if (reload[1]) {
+                            reloadRequired = true;
                             throw new IOException("Invalid locale for difference");
                         }
                     }
@@ -3307,17 +3447,26 @@ public class LocaleController {
                             values.put(string.key + "_other", string.other_value != null ? escapeString(string.other_value) : "");
                         } else if (string instanceof TLRPC.TL_langPackStringDeleted) {
                             values.remove(string.key);
+                            values.remove(string.key + "_zero");
+                            values.remove(string.key + "_one");
+                            values.remove(string.key + "_two");
+                            values.remove(string.key + "_few");
+                            values.remove(string.key + "_many");
+                            values.remove(string.key + "_other");
                         }
                     }
                     FileLog.d("save locale file to " + finalFile);
                     temporaryFile = File.createTempFile(finalFile.getName(), ".tmp", finalFile.getParentFile());
-                    try (BufferedWriter writer = new BufferedWriter(new FileWriter(temporaryFile))) {
+                    try (FileOutputStream stream = new FileOutputStream(temporaryFile);
+                         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
                         writer.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
                         writer.write("<resources>\n");
                         for (HashMap.Entry<String, String> entry : values.entrySet()) {
                             writer.write(String.format("<string name=\"%1$s\">%2$s</string>\n", entry.getKey(), entry.getValue()));
                         }
                         writer.write("</resources>");
+                        writer.flush();
+                        stream.getFD().sync();
                     }
                     updatedValues = getLocaleFileStrings(temporaryFile, false, reload);
                     if (reload[1]) {
@@ -3342,6 +3491,9 @@ public class LocaleController {
                 final int translatedCount = calculateTranslatedCount(valuesToSet);
                 if (temporaryFile != null && !temporaryFile.renameTo(finalFile)) {
                     throw new IOException("Unable to replace remote locale");
+                }
+                if (!useCached && difference.from_version == 0) {
+                    deleteMalformedCopy(finalFile);
                 }
                 FileLog.d("saved locale file to " + finalFile);
                 AndroidUtilities.runOnUIThread(() -> {
@@ -3409,10 +3561,19 @@ public class LocaleController {
                 });
             } catch (Exception e) {
                 FileLog.e(e);
-                AndroidUtilities.runOnUIThread(onDone);
+                final boolean requestReload = reloadRequired;
+                AndroidUtilities.runOnUIThread(() -> {
+                    onDone.run();
+                    if (requestReload && matchesRemoteLocale(localeInfo, snapshot)) {
+                        applyRemoteLanguage(localeInfo, langCode, true, currentAccount, null);
+                    }
+                });
             } finally {
-                if (temporaryFile != null && temporaryFile.exists()) {
+                if (temporaryFile != null) {
+                    deleteMalformedCopy(temporaryFile);
+                    if (temporaryFile.exists()) {
                     temporaryFile.delete();
+                    }
                 }
             }
         });
@@ -3504,6 +3665,65 @@ public class LocaleController {
         }, ConnectionsManager.RequestFlagWithoutLogin);
     }
 
+    private static class LangpackRequest {
+        boolean full;
+        long startTime;
+        int token;
+        int account;
+        ArrayList<Runnable> waiters = new ArrayList<>();
+
+        void runWaiters() {
+            final ArrayList<Runnable> list = waiters;
+            waiters = new ArrayList<>();
+            for (int a = 0; a < list.size(); a++) {
+                list.get(a).run();
+            }
+        }
+    }
+
+    private final HashMap<String, LangpackRequest> langpackRequestsInFlight = new HashMap<>();
+
+    private LangpackRequest startLangpackRequest(String key, boolean full, int account, Runnable onDone) {
+        final LangpackRequest inFlight = langpackRequestsInFlight.get(key);
+        final long now = SystemClock.elapsedRealtime();
+        final boolean stale = inFlight != null && now - inFlight.startTime >= 5 * 60_000;
+        if (inFlight != null && !stale && (inFlight.full || !full)) {
+            FileLog.d("applyRemoteLanguage " + key + " is already loading" + (inFlight.full ? " the whole langpack" : "") + ", wait for it");
+            inFlight.waiters.add(onDone);
+            return null;
+        }
+        final LangpackRequest request = new LangpackRequest();
+        request.full = full;
+        request.startTime = now;
+        request.account = account;
+        if (stale) {
+            request.waiters.addAll(inFlight.waiters);
+            inFlight.waiters.clear();
+        }
+        langpackRequestsInFlight.put(key, request);
+        return request;
+    }
+
+    private void finishLangpackRequest(String key, LangpackRequest request) {
+        if (langpackRequestsInFlight.get(key) == request) {
+            langpackRequestsInFlight.remove(key);
+        }
+    }
+
+    public void cancelRemoteLanguageRequest(int requestId) {
+        if (requestId == 0) {
+            return;
+        }
+        for (Iterator<HashMap.Entry<String, LangpackRequest>> iterator = langpackRequestsInFlight.entrySet().iterator(); iterator.hasNext(); ) {
+            final LangpackRequest request = iterator.next().getValue();
+            if (request.token == requestId) {
+                ConnectionsManager.getInstance(request.account).cancelRequest(requestId, true);
+                iterator.remove();
+                request.runWaiters();
+                return;
+            }
+        }
+    }
     private int applyRemoteLanguage(LocaleInfo localeInfo, String langCode, boolean force, final int currentAccount, Runnable onDone) {
         if (localeInfo == null || !localeInfo.isRemote() && !localeInfo.isUnofficial()) {
             return 0;
@@ -3520,56 +3740,73 @@ public class LocaleController {
         if (force) {
             patched(localeInfo.shortName);
         }
+        int requestId = 0;
         if (localeInfo.hasBaseLang() && (langCode == null || langCode.equals(localeInfo.baseLangCode))) {
-            if (localeInfo.baseVersion != 0 && !force) {
-                if (localeInfo.hasBaseLang()) {
+            final String key = localeInfo.getKey() + "_base";
+            final boolean full = localeInfo.baseVersion == 0 || force;
+            requested[0]++;
+            final LangpackRequest request = startLangpackRequest(key, full, currentAccount, onPartlyDone);
+            if (request != null) {
+                final Runnable onRequestDone = () -> {
+                    onPartlyDone.run();
+                    request.runWaiters();
+                };
+                if (!full) {
                     FileLog.d("applyRemoteLanguage getDifference of base");
                     TLRPC.TL_langpack_getDifference req = new TLRPC.TL_langpack_getDifference();
                     req.from_version = localeInfo.baseVersion;
                     req.lang_code = localeInfo.getBaseLangCode();
                     req.lang_pack = "";
-                    requested[0]++;
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+                    requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                        finishLangpackRequest(key, request);
                         if (response instanceof TLRPC.TL_langPackDifference) {
-                            AndroidUtilities.runOnUIThread(() -> saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, onPartlyDone));
+                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, true, onRequestDone);
                         } else {
-                            AndroidUtilities.runOnUIThread(onPartlyDone);
+                            onRequestDone.run();
                         }
-                    }, ConnectionsManager.RequestFlagWithoutLogin);
-                }
+                    }), ConnectionsManager.RequestFlagWithoutLogin);
+                    request.token = requestId;
             } else {
                 FileLog.d("applyRemoteLanguage getLangPack of base");
                 TLRPC.TL_langpack_getLangPack req = new TLRPC.TL_langpack_getLangPack();
                 req.lang_code = localeInfo.getBaseLangCode();
-                requested[0]++;
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (TLObject response, TLRPC.TL_error error) -> {
-                    if (response instanceof TLRPC.TL_langPackDifference) {
-                        AndroidUtilities.runOnUIThread(() -> {
-                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, onPartlyDone);
-                        });
-                    } else {
-                        AndroidUtilities.runOnUIThread(onPartlyDone);
-                    }
-                }, ConnectionsManager.RequestFlagWithoutLogin);
+                    requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (TLObject response, TLRPC.TL_error error) -> AndroidUtilities.runOnUIThread(() -> {
+                        finishLangpackRequest(key, request);
+                        if (response instanceof TLRPC.TL_langPackDifference) {
+                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, true, onRequestDone);
+                        } else {
+                            onRequestDone.run();
+                        }
+                    }), ConnectionsManager.RequestFlagWithoutLogin);
+                    request.token = requestId;
+                }
             }
         }
         if (langCode == null || langCode.equals(localeInfo.shortName)) {
-            if (localeInfo.version != 0 && !force) {
+            final String key = localeInfo.getKey();
+            final boolean full = localeInfo.version == 0 || force;
+                requested[0]++;
+            final LangpackRequest request = startLangpackRequest(key, full, currentAccount, onPartlyDone);
+            if (request != null) {
+                final Runnable onRequestDone = () -> {
+                    onPartlyDone.run();
+                    request.runWaiters();
+                };
+                if (!full) {
                 FileLog.d("applyRemoteLanguage getDifference");
                 TLRPC.TL_langpack_getDifference req = new TLRPC.TL_langpack_getDifference();
                 req.from_version = localeInfo.version;
                 req.lang_code = localeInfo.getLangCode();
                 req.lang_pack = "";
-                requested[0]++;
-                return ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+                    requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                        finishLangpackRequest(key, request);
                     if (response instanceof TLRPC.TL_langPackDifference) {
-                        AndroidUtilities.runOnUIThread(() -> {
-                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, onPartlyDone);
-                        });
-                    } else {
-                        AndroidUtilities.runOnUIThread(onPartlyDone);
-                    }
-                }, ConnectionsManager.RequestFlagWithoutLogin);
+                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, true, onRequestDone);
+                        } else {
+                            onRequestDone.run();
+                        }
+                    }), ConnectionsManager.RequestFlagWithoutLogin);
+                    request.token = requestId;
             } else {
                 for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
                     ConnectionsManager.setLangCode(localeInfo.getLangCode());
@@ -3577,19 +3814,22 @@ public class LocaleController {
                 FileLog.d("applyRemoteLanguage getLangPack");
                 TLRPC.TL_langpack_getLangPack req = new TLRPC.TL_langpack_getLangPack();
                 req.lang_code = localeInfo.getLangCode();
-                requested[0]++;
-                return ConnectionsManager.getInstance(currentAccount).sendRequest(req, (TLObject response, TLRPC.TL_error error) -> {
+                    requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (TLObject response, TLRPC.TL_error error) -> AndroidUtilities.runOnUIThread(() -> {
+                        finishLangpackRequest(key, request);
                     if (response instanceof TLRPC.TL_langPackDifference) {
-                        AndroidUtilities.runOnUIThread(() -> {
-                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, onPartlyDone);
-                        });
-                    } else {
-                        AndroidUtilities.runOnUIThread(onPartlyDone);
-                    }
-                }, ConnectionsManager.RequestFlagWithoutLogin);
+                            saveRemoteLocaleStrings(localeInfo, (TLRPC.TL_langPackDifference) response, currentAccount, true, onRequestDone);
+                        } else {
+                            onRequestDone.run();
+                        }
+                    }), ConnectionsManager.RequestFlagWithoutLogin);
+                    request.token = requestId;
+                }
             }
         }
-        return 0;
+        if (requested[0] == 0 && onDone != null) {
+            onDone.run();
+        }
+        return requestId;
     }
 
     public String getTranslitString(String src) {

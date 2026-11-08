@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -10,22 +12,14 @@ package org.telegram.ui.Adapters;
 
 import android.location.Address;
 import android.location.Geocoder;
-import android.location.Location;
-import android.os.Build;
 import android.text.TextUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.LocationController;
-import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.Components.ListView.AdapterWithDiffUtils;
@@ -47,79 +41,44 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
     }
 
     public interface BaseLocationAdapterDelegate {
-        void didLoadSearchResult(ArrayList<TLRPC.TL_messageMediaVenue> places);
+        void didLoadSearchResult(ArrayList<TLRPC.TL_messageMediaVenue> locations);
     }
-
-    protected boolean searched = false;
-    protected boolean searching;
-    protected boolean searchingLocations;
     protected ArrayList<TLRPC.TL_messageMediaVenue> locations = new ArrayList<>();
-    protected ArrayList<TLRPC.TL_messageMediaVenue> places = new ArrayList<>();
-    private Location lastSearchLocation;
-    private String lastSearchQuery;
     private String lastFoundQuery;
     private BaseLocationAdapterDelegate delegate;
     private Runnable searchRunnable;
-    private int currentRequestNum;
-    private int currentAccount = UserConfig.selectedAccount;
-    private long dialogId;
-    private boolean searchingUser;
+    private int searchId;
     protected boolean searchInProgress;
 
     public void destroy() {
-        if (currentRequestNum != 0) {
-            ConnectionsManager.getInstance(currentAccount).cancelRequest(currentRequestNum, true);
-            currentRequestNum = 0;
-        }
+        cancelSearch();
     }
 
-    public void setDelegate(long did, BaseLocationAdapterDelegate delegate) {
-        dialogId = did;
+    public void setDelegate(BaseLocationAdapterDelegate delegate) {
         this.delegate = delegate;
     }
 
-    public void searchDelayed(final String query, final Location coordinate) {
-        if (query == null || query.length() == 0) {
-            places.clear();
+    private void cancelSearch() {
+        if (searchRunnable != null) {
+            Utilities.searchQueue.cancelRunnable(searchRunnable);
+            searchRunnable = null;
+        }
+        searchId++;
+    }
+
+    public void searchDelayed(final String query) {
+        cancelSearch();
+        if (TextUtils.isEmpty(query)) {
             locations.clear();
             searchInProgress = false;
             update(true);
         } else {
-            if (searchRunnable != null) {
-                Utilities.searchQueue.cancelRunnable(searchRunnable);
-                searchRunnable = null;
-            }
             searchInProgress = true;
             Utilities.searchQueue.postRunnable(searchRunnable = () -> AndroidUtilities.runOnUIThread(() -> {
                 searchRunnable = null;
-                lastSearchLocation = null;
-                searchPlacesWithQuery(query, coordinate, true);
+                searchLocations(query);
             }), 400);
         }
-    }
-
-    private void searchBotUser() {
-        if (searchingUser) {
-            return;
-        }
-        searchingUser = true;
-        TLRPC.TL_contacts_resolveUsername req = new TLRPC.TL_contacts_resolveUsername();
-        req.username = stories ?
-            MessagesController.getInstance(currentAccount).storyVenueSearchBot :
-            MessagesController.getInstance(currentAccount).venueSearchBot;
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-            if (response != null) {
-                AndroidUtilities.runOnUIThread(() -> {
-                    TLRPC.TL_contacts_resolvedPeer res = (TLRPC.TL_contacts_resolvedPeer) response;
-                    MessagesController.getInstance(currentAccount).putUsers(res.users, false);
-                    MessagesController.getInstance(currentAccount).putChats(res.chats, false);
-                    MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, true, true);
-                    Location coord = lastSearchLocation;
-                    lastSearchLocation = null;
-                    searchPlacesWithQuery(lastSearchQuery, coord, false);
-                });
-            }
-        });
     }
 
     public boolean isSearching() {
@@ -130,93 +89,20 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
         return lastFoundQuery;
     }
 
-    public void searchPlacesWithQuery(final String query, final Location coordinate, boolean searchUser) {
-        searchPlacesWithQuery(query, coordinate, searchUser, false);
-    }
-
-    protected void notifyStartSearch(boolean wasSearching, int oldItemCount, boolean animated) {
-        if (animated && Build.VERSION.SDK_INT >= 19) {
-            if (places.isEmpty() || wasSearching) {
-                if (!wasSearching) {
-                    int fromIndex = Math.max(0, getItemCount() - 4);
-                    notifyItemRangeRemoved(fromIndex, getItemCount() - fromIndex);
-                }
-            } else {
-                int placesCount = 3 + places.size() + locations.size();
-                int offset = oldItemCount - placesCount;
-                notifyItemInserted(offset);
-                notifyItemRangeRemoved(offset, placesCount);
-            }
-        } else {
-            notifyDataSetChanged();
-        }
-    }
-
-    public void searchPlacesWithQuery(final String query, final Location coordinate, boolean searchUser, boolean animated) {
-        if (coordinate == null && !stories || lastSearchLocation != null && coordinate != null && coordinate.distanceTo(lastSearchLocation) < 200) {
-            return;
-        }
-        lastSearchLocation = coordinate == null ? null : new Location(coordinate);
-        lastSearchQuery = query;
-        if (searching) {
-            searching = false;
-            if (currentRequestNum != 0) {
-                ConnectionsManager.getInstance(currentAccount).cancelRequest(currentRequestNum, true);
-                currentRequestNum = 0;
-            }
-        }
-        int oldItemCount = getItemCount();
-        boolean wasSearching = searching;
-        searching = true;
-        boolean wasSearched = searched;
-        searched = true;
-
-        TLObject object = MessagesController.getInstance(currentAccount).getUserOrChat(
-            stories ?
-                MessagesController.getInstance(currentAccount).storyVenueSearchBot :
-                MessagesController.getInstance(currentAccount).venueSearchBot
-        );
-        if (!(object instanceof TLRPC.User)) {
-            if (searchUser) {
-                searchBotUser();
-            }
-            return;
-        }
-        TLRPC.User user = (TLRPC.User) object;
-
-        TLRPC.TL_messages_getInlineBotResults req = new TLRPC.TL_messages_getInlineBotResults();
-        req.query = query == null ? "" : query;
-        req.bot = MessagesController.getInstance(currentAccount).getInputUser(user);
-        req.offset = "";
-
-        if (coordinate != null) {
-            req.geo_point = new TLRPC.TL_inputGeoPoint();
-            req.geo_point.lat = AndroidUtilities.fixLocationCoord(coordinate.getLatitude());
-            req.geo_point._long = AndroidUtilities.fixLocationCoord(coordinate.getLongitude());
-            req.flags |= 1;
-        }
-
-        if (DialogObject.isEncryptedDialog(dialogId)) {
-            req.peer = new TLRPC.TL_inputPeerEmpty();
-        } else {
-            req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
-        }
-
-        if (!TextUtils.isEmpty(query) && (stories || biz)) {
-            searchingLocations = true;
+    private void searchLocations(final String query) {
+        final int id = ++searchId;
             final Locale locale = LocaleController.getInstance().getCurrentLocale();
             final Locale englishLocale = stories ?  locale.getLanguage().contains("en") ? locale : Locale.US : null;
-            final String finalQuery = query;
             Utilities.globalQueue.postRunnable(() -> {
                 final ArrayList<TLRPC.TL_messageMediaVenue> locations = new ArrayList<>();
                 try {
                     final int maxCount = biz ? 10 : 5;
                     Geocoder geocoder = new Geocoder(ApplicationLoader.applicationContext, locale);
-                    List<Address> addresses = geocoder.getFromLocationName(finalQuery, 5);
+                List<Address> addresses = geocoder.getFromLocationName(query, 5);
                     List<Address> engAddresses = null;
                     if (stories) {
                         geocoder = new Geocoder(ApplicationLoader.applicationContext, englishLocale);
-                        engAddresses = geocoder.getFromLocationName(finalQuery, 5);
+                    engAddresses = geocoder.getFromLocationName(query, 5);
                     }
                     HashSet<String> countries = new HashSet<>();
                     HashSet<String> cities = new HashSet<>();
@@ -415,7 +301,7 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
                                 cityLocation.geo._long = _long;
                                 cityLocation.query_id = -1;
                                 cityLocation.title = cityBuilder.toString();
-                                cityLocation.icon = "https://ss3.4sqi.net/img/categories_v2/travel/hotel_64.png";
+                            cityLocation.icon = "city";
                                 cityLocation.emoji = LocationController.countryCodeToEmoji(address.getCountryCode());
                                 cities.add(cityLocation.title);
                                 cityLocation.address = LocaleController.getString(R.string.PassportCity);
@@ -457,7 +343,7 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
                                 countryLocation.geo._long = _long;
                                 countryLocation.query_id = -1;
                                 countryLocation.title = countryBuilder.toString();
-                                countryLocation.icon = "https://ss3.4sqi.net/img/categories_v2/building/government_capitolbuilding_64.png";
+                            countryLocation.icon = "country";
                                 countryLocation.emoji = LocationController.countryCodeToEmoji(address.getCountryCode());
                                 countries.add(countryLocation.title);
                                 countryLocation.address = LocaleController.getString(R.string.Country);
@@ -474,62 +360,19 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
                     }
                 } catch (Exception ignore) {}
                 AndroidUtilities.runOnUIThread(() -> {
-                    searchingLocations = false;
-                    if (coordinate == null) {
-                        currentRequestNum = 0;
-                        searching = false;
-                        places.clear();
+                if (id != searchId) {
+                    return;
+                }
                         searchInProgress = false;
                         lastFoundQuery = query;
-                    }
                     BaseLocationAdapter.this.locations.clear();
                     BaseLocationAdapter.this.locations.addAll(locations);
+                if (delegate != null) {
+                    delegate.didLoadSearchResult(BaseLocationAdapter.this.locations);
+                }
                     update(true);
                 });
             });
-        } else {
-            searchingLocations = false;
-        }
-
-        if (coordinate == null) {
-            return;
-        }
-
-        currentRequestNum = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (error == null) {
-                currentRequestNum = 0;
-                searching = false;
-                places.clear();
-                searchInProgress = false;
-                lastFoundQuery = query;
-
-                TLRPC.messages_BotResults res = (TLRPC.messages_BotResults) response;
-                for (int a = 0, size = res.results.size(); a < size; a++) {
-                    TLRPC.BotInlineResult result = res.results.get(a);
-                    if (!"venue".equals(result.type) || !(result.send_message instanceof TLRPC.TL_botInlineMessageMediaVenue)) {
-                        continue;
-                    }
-                    TLRPC.TL_botInlineMessageMediaVenue mediaVenue = (TLRPC.TL_botInlineMessageMediaVenue) result.send_message;
-                    TLRPC.TL_messageMediaVenue venue = new TLRPC.TL_messageMediaVenue();
-                    venue.geo = mediaVenue.geo;
-                    venue.address = mediaVenue.address;
-                    venue.title = mediaVenue.title;
-                    venue.icon = "https://ss3.4sqi.net/img/categories_v2/" + mediaVenue.venue_type + "_64.png";
-                    venue.venue_type = mediaVenue.venue_type;
-                    venue.venue_id = mediaVenue.venue_id;
-                    venue.provider = mediaVenue.provider;
-                    venue.query_id = res.query_id;
-                    venue.result_id = result.id;
-                    places.add(venue);
-                }
-            }
-            if (delegate != null) {
-                delegate.didLoadSearchResult(places);
-            }
-            update(true);
-        }));
-
-        update(true);
     }
 
     protected void update(boolean animated) {

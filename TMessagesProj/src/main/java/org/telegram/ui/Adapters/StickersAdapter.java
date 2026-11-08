@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -56,7 +58,7 @@ public class StickersAdapter extends RecyclerListView.SelectionAdapter implement
         this.resourcesProvider = resourcesProvider;
         MediaDataController.getInstance(currentAccount).checkStickers(MediaDataController.TYPE_IMAGE);
         MediaDataController.getInstance(currentAccount).checkStickers(MediaDataController.TYPE_MASK);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.newEmojiSuggestionsAvailable);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.newEmojiSuggestionsAvailable);
     }
 
     public void onDestroy() {

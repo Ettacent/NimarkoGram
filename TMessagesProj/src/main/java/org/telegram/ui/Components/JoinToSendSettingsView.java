@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -22,6 +24,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
@@ -50,7 +53,7 @@ public class JoinToSendSettingsView extends LinearLayout {
 
         joinHeaderCell = new HeaderCell(context, 20);
         joinHeaderCell.setText(LocaleController.getString(R.string.ChannelSettingsJoinTitle));
-        joinHeaderCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        ThemeBind.backgroundColor(joinHeaderCell, Theme.key_windowBackgroundWhite);
         addView(joinHeaderCell);
 
         joinToSendCell = new TextCheckCell(context, 20);
@@ -146,13 +149,13 @@ public class JoinToSendSettingsView extends LinearLayout {
 
         if (chatFull != null && chatFull.guard_bot_id != 0) {
             final String name = "@" + DialogObject.getPublicUsername(MessagesController.getInstance(UserConfig.selectedAccount).getUser(chatFull.guard_bot_id));
-            joinRequestInfoCell.setText(AndroidUtilities.replaceSingleLink(LocaleController.formatString(
+            joinRequestInfoCell.setText(AndroidUtilities.replaceSingleLinkKey(LocaleController.formatString(
                 isChannel ?
                     R.string.ChannelSettingsJoinRequestInfoManagedBy :
                     (isPublic ?
                         R.string.GroupPublicSettingsJoinRequestInfoManagedBy :
                         R.string.GroupPrivateSettingsJoinRequestInfoManagedBy), name
-            ), Theme.getColor(Theme.key_telegram_color_text), () -> {
+            ), Theme.key_telegram_color_text, null, () -> {
                 Bundle bundle = new Bundle();
                 bundle.putLong("user_id", chatFull.guard_bot_id);
                 fragment.presentFragment(new ProfileActivity(bundle));

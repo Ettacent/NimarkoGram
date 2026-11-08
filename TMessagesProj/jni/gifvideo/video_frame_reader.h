@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #pragma once
 
 #include <functional>
@@ -16,6 +18,19 @@ public:
         Again,
         Aborted,
         Error,
+        Yield,
+    };
+
+    struct Budget {
+        int steps;
+        int64_t micros;
+        int64_t started = av_gettime_relative();
+
+        bool take() {
+            if (steps <= 0 || av_gettime_relative() - started >= micros) return false;
+            --steps;
+            return true;
+        }
     };
 
     VideoFrameReader(AVFormatContext *fmt, AVCodecContext *dec, int streamIndex)
@@ -34,7 +49,7 @@ public:
 
     std::function<bool()> shouldAbort;
 
-    Status getNextFrame() {
+    Status getNextFrame(Budget *budget = nullptr) {
         if (m_pkt == nullptr || m_frame == nullptr) {
             return Status::Error;
         }
@@ -46,32 +61,43 @@ public:
                 return Status::Aborted;
             }
 
-            int ret = avcodec_receive_frame(m_dec, m_frame);
-            if (ret == 0) {
-                return Status::Ok;
-            }
-            if (ret == AVERROR_EOF) {
-                return Status::Eof;
-            }
-            if (ret != AVERROR(EAGAIN)) {
-                return Status::Error;
-            }
+            if (!m_needFeed) {
+                if (budget && !budget->take()) return Status::Yield;
+                int ret = avcodec_receive_frame(m_dec, m_frame);
+                if (ret == 0) {
+                    return Status::Ok;
+                }
+                if (ret == AVERROR_EOF) {
+                    return Status::Eof;
+                }
+                if (ret != AVERROR(EAGAIN)) {
+                    return Status::Error;
+                }
 
-            if (m_draining) {
-                return Status::Eof;
+                if (m_draining) {
+                    return budget ? Status::Error : Status::Eof;
+                }
+                m_needFeed = true;
             }
-            switch (feedNextPacket()) {
+            switch (feedNextPacket(budget)) {
                 case FeedResult::Sent:
                 case FeedResult::NeedReceive:
+                    m_needFeed = false;
                     break;
                 case FeedResult::Eof:
+                    m_needFeed = false;
                     return Status::Eof;
                 case FeedResult::Again:
+                    if (!budget) m_needFeed = false;
                     return Status::Again;
                 case FeedResult::Aborted:
+                    if (!budget) m_needFeed = false;
                     return Status::Aborted;
                 case FeedResult::Error:
+                    if (!budget) m_needFeed = false;
                     return Status::Error;
+                case FeedResult::Yield:
+                    return Status::Yield;
             }
         }
     }
@@ -87,6 +113,8 @@ public:
         av_packet_unref(m_pkt);
         m_packetPending = false;
         m_draining = false;
+        m_flushPending = false;
+        m_needFeed = false;
         return true;
     }
 
@@ -98,6 +126,7 @@ public:
     }
 
     int streamIndex() const { return m_streamIndex; }
+    bool valid() const { return m_pkt != nullptr && m_frame != nullptr; }
 
 private:
     enum class FeedResult {
@@ -107,18 +136,27 @@ private:
         Again,
         Aborted,
         Error,
+        Yield,
     };
 
-    FeedResult feedNextPacket() {
+    FeedResult feedNextPacket(Budget *budget) {
         const int64_t retryStartedAt = av_gettime_relative();
         int readRetries = 0;
         for (;;) {
-            if (!m_packetPending) {
+            if (shouldAbort && shouldAbort()) return FeedResult::Aborted;
+            if (!m_packetPending && !m_flushPending) {
+                if (budget && !budget->take()) return FeedResult::Yield;
                 int ret = av_read_frame(m_fmt, m_pkt);
+                if (ret >= 0) {
+                    if (m_pkt->stream_index == m_streamIndex) m_packetPending = true;
+                    else av_packet_unref(m_pkt);
+                }
+                if (shouldAbort && shouldAbort()) return FeedResult::Aborted;
                 if (ret == AVERROR(EAGAIN)) {
                     if (shouldAbort && shouldAbort()) {
                         return FeedResult::Aborted;
                     }
+                    if (budget) return FeedResult::Again;
                     if (av_gettime_relative() - retryStartedAt >= 50000) {
                         return FeedResult::Again;
                     }
@@ -130,29 +168,33 @@ private:
                     return FeedResult::Aborted;
                 }
                 if (ret == AVERROR_EOF) {
-                    ret = avcodec_send_packet(m_dec, nullptr);
-                    if (ret == 0) {
-                        m_draining = true;
-                        return FeedResult::Sent;
-                    }
-                    if (ret == AVERROR(EAGAIN)) {
-                        return FeedResult::NeedReceive;
-                    }
-                    if (ret == AVERROR_EOF) {
-                        m_draining = true;
-                        return FeedResult::Eof;
-                    }
+                    m_flushPending = true;
+                } else if (ret < 0) {
                     return FeedResult::Error;
-                }
-                if (ret < 0) {
-                    return FeedResult::Error;
-                }
-
-                if (m_pkt->stream_index != m_streamIndex) {
-                    av_packet_unref(m_pkt);
+                } else if (!m_packetPending) {
                     continue;
                 }
-                m_packetPending = true;
+            }
+
+            if (budget && !budget->take()) return FeedResult::Yield;
+            if (m_flushPending) {
+                int ret;
+                ret = avcodec_send_packet(m_dec, nullptr);
+                if (ret == 0) {
+                    m_flushPending = false;
+                    m_draining = true;
+                    return FeedResult::Sent;
+                }
+                if (ret == AVERROR(EAGAIN)) {
+                    if (!budget) m_flushPending = false;
+                    return FeedResult::NeedReceive;
+                }
+                if (ret == AVERROR_EOF) {
+                    m_flushPending = false;
+                    m_draining = true;
+                    return FeedResult::Eof;
+                }
+                return FeedResult::Error;
             }
 
             int ret = avcodec_send_packet(m_dec, m_pkt);
@@ -180,4 +222,6 @@ private:
     AVFrame *m_frame = nullptr;
     bool m_packetPending = false;
     bool m_draining = false;
+    bool m_needFeed = false;
+    bool m_flushPending = false;
 };

@@ -13,7 +13,7 @@ import org.telegram.messenger.R;
 
 public class Plugin {
     public transient volatile PluginsController.PluginsEngine cachedEngine;
-    
+
     public transient volatile Set<String> implementedHooks;
 
     public transient volatile Map<String, com.chaquo.python.PyObject> boundHooks;
@@ -26,8 +26,10 @@ public class Plugin {
     private String version = "1.0";
     private String minVersion = "12.2.10";
     private String requirements = null;
-    private String description = LocaleController.getString(R.string.PluginNoDescription);
-    private String author = LocaleController.getString(R.string.PluginNoAuthor);
+    private String description;
+    private String author;
+    private boolean descriptionSet;
+    private boolean authorSet;
     private volatile boolean isEnabled = false;
     private volatile boolean notResponding = false;
 
@@ -45,11 +47,12 @@ public class Plugin {
     }
 
     public String getDescription() {
-        return this.description;
+        return descriptionSet ? description : LocaleController.getString(R.string.PluginNoDescription);
     }
 
     public void setDescription(String str) {
         this.description = str;
+        this.descriptionSet = true;
     }
 
     public String getEngine() {
@@ -61,11 +64,12 @@ public class Plugin {
     }
 
     public String getAuthor() {
-        return this.author;
+        return authorSet ? author : LocaleController.getString(R.string.PluginNoAuthor);
     }
 
     public void setAuthor(String str) {
         this.author = str;
+        this.authorSet = true;
     }
 
     public String getName() {
@@ -137,7 +141,7 @@ public class Plugin {
         for (String tok : PythonPluginsEngine.parseRequirements(this.requirements)) {
             String t = tok.trim();
             if (t.isEmpty()) continue;
-            
+
             int cut = t.length();
             for (String sep : new String[]{"==", ">=", "<=", "~=", "!=", ">", "<", ";", "[", " ", "("}) {
                 int i = t.indexOf(sep);

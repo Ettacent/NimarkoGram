@@ -30,6 +30,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.tl.TL_wallet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Adapters.MessagesSearchAdapter;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BulletinFactory;
@@ -45,6 +46,7 @@ import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
 import java.util.ArrayList;
 
+import java.util.HashSet;
 public class WalletTonConnectSessionsFragment extends UniversalFragment implements NotificationCenter.NotificationCenterDelegate {
 
     public WalletTonConnectSessionsFragment() {
@@ -57,7 +59,7 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
 
     @Override
     public boolean onFragmentCreate() {
-        getNotificationCenter().addObserver(this, NotificationCenter.walletUpdate);
+        getNotificationCenter().addWeakObserver(this, NotificationCenter.walletUpdate);
         return super.onFragmentCreate();
     }
 
@@ -142,8 +144,8 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
         final ImageView closeView = new ImageView(context);
         closeView.setImageResource(R.drawable.ic_ab_close);
         closeView.setScaleType(ImageView.ScaleType.CENTER);
-        closeView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider)));
-        closeView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider), PorterDuff.Mode.SRC_IN));
+        ThemeBind.selectorBackground(closeView, Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider)), null, ThemeBind.of(Theme.key_listSelector), resourcesProvider);
+        ThemeBind.colorFilter(closeView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider, PorterDuff.Mode.SRC_IN);
         ScaleStateListAnimator.apply(closeView);
         topLayout.addView(closeView, LayoutHelper.createFrame(48, 48, Gravity.TOP | Gravity.LEFT, 4, 0, 0, 0));
 
@@ -161,7 +163,7 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setGravity(Gravity.CENTER);
         titleView.setText(session.manifest != null ? session.manifest.name : LocaleController.getString(R.string.WalletConnectedApp));
-        titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(titleView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         layout.addView(titleView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 36, 16, 36, 0));
 
         final String domain = AndroidUtilities.getHostAuthority(session.manifest != null ? session.manifest.url : null);
@@ -169,7 +171,7 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
             final TextView linkView = new TextView(context);
             linkView.setTypeface(AndroidUtilities.bold());
             linkView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            linkView.setTextColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+            ThemeBind.textColor(linkView, Theme.key_featuredStickers_addButton, resourcesProvider);
             final SpannableStringBuilder ssb = new SpannableStringBuilder();
             ssb.append(domain);
             linkView.setText(ssb);
@@ -180,12 +182,15 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
         subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         subtitleView.setGravity(Gravity.CENTER);
         subtitleView.setText(LocaleController.getString(R.string.WalletConnectedAppInfo));
-        subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(subtitleView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         layout.addView(subtitleView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL, 36, 16, 36, 28));
 
         final ButtonWithCounterView disconnect = new ButtonWithCounterView(context, resourcesProvider).setRound();
         disconnect.setText(LocaleController.getString(R.string.WalletDisconnect));
         disconnect.setColor(Theme.getColor(Theme.key_text_RedBold, resourcesProvider));
+        if (disconnect.getBackground() != null) {
+            ThemeBind.fillBackground(disconnect, disconnect.getBackground(), ThemeBind.of(Theme.key_text_RedBold), resourcesProvider);
+        }
         layout.addView(disconnect, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44, Gravity.CENTER_HORIZONTAL, 16, 0, 16, 16));
 
         final NewBottomSheet sheet = new NewBottomSheet(context, layout, resourcesProvider);
@@ -252,6 +257,11 @@ public class WalletTonConnectSessionsFragment extends UniversalFragment implemen
             subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
         }
 
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            colors.add(Theme.key_windowBackgroundWhiteBlackText);
+            colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+        }
         public void set(TL_wallet.tonConnectSession session) {
             if (session.manifest != null) {
                 if (session.manifest.icon != null) {

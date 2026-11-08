@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium.boosts.adapters;
 
 import android.annotation.SuppressLint;
@@ -22,6 +24,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.GraySectionCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Components.LayoutHelper;
@@ -202,7 +205,7 @@ public class SelectorAdapter extends AdapterWithDiffUtils {
                 userCell.setUser(item.user);
                 if (item.subtext != null) {
                     userCell.setSubtitle(item.subtext);
-                    userCell.subtitleTextView.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, resourcesProvider));
+                    ThemeBind.textColor(userCell.subtitleTextView, Theme.key_dialogTextGray3, resourcesProvider);
                 }
             } else if (item.chat != null) {
                 userCell.setChat(item.chat, getParticipantsCount(item.chat));

@@ -1,0 +1,102 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+import java.security.MessageDigest
+
+def officeEngine = configurations.create('officeViewerEngine') {
+    canBeConsumed = false
+    canBeResolved = true
+    transitive = false
+}
+
+repositories {
+    exclusiveContent {
+        forRepository {
+            ivy {
+                name = 'OfficeViewerNpm'
+                url = uri('https://registry.npmjs.org/@silurus/ooxml/-/')
+                patternLayout { artifact '[artifact]-[revision].[ext]' }
+                metadataSources { artifact() }
+            }
+        }
+        filter { includeModule('app.nimarkogram.vendor', 'ooxml') }
+    }
+}
+
+dependencies {
+    officeViewerEngine 'app.nimarkogram.vendor:ooxml:0.89.4@tgz'
+}
+
+def expectedDigest = '6967e89844e3e1748ea59b82a53db5ee47b2980e22d8f013fe82379b592850e6'
+def enginePatches = ['search', 'paint', 'validity', 'polish', 'motion', 'continuity', 'interaction-pages', 'interaction-sheets', 'search-preserve', 'responsive-sheets', 'night-images', 'formula-search', 'pptx-formula-search', 'paper-images', 'paper-dark-artwork'].collect {
+    rootProject.file("patches/office-viewer-0.89.4-${it}.json")
+}
+def prepareOfficeAssets = tasks.register('prepareOfficeViewerAssets', Sync) {
+    inputs.files(officeEngine)
+    inputs.files(enginePatches)
+    inputs.property('sha256', expectedDigest)
+    into layout.buildDirectory.dir('generated/officeViewerAssets/office/engine')
+    doFirst {
+        def digest = MessageDigest.getInstance('SHA-256')
+        officeEngine.singleFile.withInputStream { stream ->
+            byte[] buffer = new byte[65536]
+            int length
+            while ((length = stream.read(buffer)) != -1) digest.update(buffer, 0, length)
+        }
+        if (digest.digest().encodeHex().toString() != expectedDigest) {
+            throw new GradleException('Office viewer engine checksum mismatch')
+        }
+    }
+    from({ tarTree(resources.gzip(officeEngine.singleFile)) }) {
+        include 'package/dist/**', 'package/LICENSE', 'package/THIRD_PARTY_NOTICES.md'
+        exclude 'package/dist/types/**', '**/*.map', '**/*.d.ts'
+        eachFile { entry ->
+            entry.path = entry.path.replaceFirst('^package/(dist/)?', '')
+        }
+        includeEmptyDirs = false
+    }
+    doLast {
+        enginePatches.each { patchFile ->
+            def patch = new groovy.json.JsonSlurper().parse(patchFile)
+            if (patch.version != '0.89.4') throw new GradleException('Unexpected Office viewer patch version')
+            patch.files.each { entry ->
+                if (!(entry.path ==~ /(?:assets\/)?[A-Za-z0-9_.-]+\.js/)) throw new GradleException('Invalid Office viewer patch path')
+                def target = new File(destinationDir, entry.path)
+                def hash = MessageDigest.getInstance('SHA-256').digest(target.bytes).encodeHex().toString()
+                if (hash != entry.sha256) throw new GradleException("Office viewer patch source mismatch: ${entry.path}")
+                def source = target.getText('UTF-8')
+                entry.replacements.each { replacement ->
+                    if (!replacement.before || replacement.count != 1 ||
+                            source.split(java.util.regex.Pattern.quote(replacement.before), -1).length - 1 != replacement.count) {
+                        throw new GradleException("Office viewer patch context mismatch: ${entry.path}")
+                    }
+                    source = source.replace(replacement.before, replacement.after)
+                }
+                target.setText(source, 'UTF-8')
+            }
+        }
+        new File(destinationDir, 'MODIFICATIONS.txt').setText(
+                'Office Open XML Viewer 0.89.4, Copyright (c) 2026 Yuki Yokotani, MIT.\n' +
+                'Source: https://github.com/yukiyokotani/office-open-xml-viewer/tree/64b784ff19d44905e0eec60393ba681d375ba93a\n' +
+                'Modifications Copyright (C) 2026 Ettacent.\n' +
+                'Search match allocation, text indexing and aggregate scans are bounded; long scans yield for cancellation.\n' +
+                'Page-slot commit identities expose completed initial rendering without pixel polling.\n' +
+                'Recycled canvases remain hidden until a current page commit; paint scale identifies settled rendering.\n' +
+                'Office reading layers, overlay insets and retained quality previews: patches/office-viewer-0.89.4-polish.json.\n' +
+                'Direct anchored zoom: patches/office-viewer-0.89.4-motion.json.\n' +
+                'Fixed-gap zoom geometry and sheet preview scheduling: patches/office-viewer-0.89.4-continuity.json.\n' +
+                'Interaction-owned page scheduling, bounded raster admission and retained spreadsheet presentation: patches/office-viewer-0.89.4-interaction-pages.json and patches/office-viewer-0.89.4-interaction-sheets.json.\n' +
+                'Cooperative spreadsheet painting and viewport cancellation: patches/office-viewer-0.89.4-responsive-sheets.json.\n' +
+                'Semantic reading palettes before image composition (main and workers): patches/office-viewer-0.89.4-night-images.json.\n' +
+                'Retained visible math text and atomic formula search highlights: patches/office-viewer-0.89.4-formula-search.json.\n' +
+                'Painted PPTX OMML text and atomic formula search geometry: patches/office-viewer-0.89.4-pptx-formula-search.json.\n' +
+                'Bounded static paper-image processing with opaque backing and original artwork preservation: patches/office-viewer-0.89.4-paper-images.json.\n' +
+                'Dark backing and contrast-aware ink for admitted artwork, preserving original photographs and enclosed whites: patches/office-viewer-0.89.4-paper-dark-artwork.json.\n' +
+                'Exact reproducible patches: patches/office-viewer-0.89.4-search.json, patches/office-viewer-0.89.4-paint.json and patches/office-viewer-0.89.4-validity.json in the NimarkoGram source.\n', 'UTF-8')
+    }
+}
+
+android.sourceSets.main.assets.srcDir(layout.buildDirectory.dir('generated/officeViewerAssets'))
+tasks.configureEach { task ->
+    if (task.name.startsWith('merge') && task.name.endsWith('Assets')) {
+        task.dependsOn(prepareOfficeAssets)
+    }
+}

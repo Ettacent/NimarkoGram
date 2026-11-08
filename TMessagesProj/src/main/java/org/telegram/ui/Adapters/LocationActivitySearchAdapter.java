@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x
  * It is licensed under GNU GPL v. 2 or later.
@@ -51,24 +53,12 @@ public class LocationActivitySearchAdapter extends BaseLocationAdapter {
 
     @Override
     public int getItemCount() {
-        int count = 0;
-        if (!locations.isEmpty()) {
-            count += 1 + locations.size();
+        if (locations.isEmpty()) {
+            return isSearching() ? 3 : 0;
         }
-        if (!myLocationDenied) {
-            if (isSearching()) {
-                count += 3;
-            } else {
-                if (!locations.isEmpty() && !places.isEmpty()) {
-                    count++;
+        return 1 + locations.size();
                 }
-                count += places.size();
-            }
-        }
-        return count;
-    }
-
-    public boolean isEmpty() { return places.size() == 0 && locations.size() == 0; }
+    public boolean isEmpty() { return locations.isEmpty(); }
 
     @Override
     public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
@@ -84,60 +74,29 @@ public class LocationActivitySearchAdapter extends BaseLocationAdapter {
     @Override
     public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
         if (holder.getItemViewType() == VIEW_TYPE_LOCATION) {
-            TLRPC.TL_messageMediaVenue place = null;
-            String iconUrl = null;
-            int oposition = position;
-            int p = position;
-            if (!locations.isEmpty()) {
-                position--;
-            }
-            if (position >= 0 && position < locations.size()) {
-                place = locations.get(position);
-                iconUrl = "pin";
-                p = 2;
-            } else if (!isSearching()) {
-                position -= locations.size();
-                if (!searchingLocations && !locations.isEmpty()) {
-                    position -= 1;
-                }
-                if (position >= 0 && position < places.size()) {
-                    place = places.get(position);
-                    p = position;
-                }
-            }
+            final TLRPC.TL_messageMediaVenue place = getItem(position);
             LocationCell locationCell = (LocationCell) holder.itemView;
-            locationCell.setLocation(place, p, oposition != getItemCount() - 1 && (searchingLocations || locations.isEmpty() || oposition != (locations.size())));
+            locationCell.setLocation(place, place != null ? 2 : position, position != getItemCount() - 1);
         } else if (holder.getItemViewType() == VIEW_TYPE_SECTION) {
-            if (position == 0 && !locations.isEmpty()) {
                 ((GraySectionCell) holder.itemView).setText(LocaleController.getString(R.string.LocationOnMap));
-            } else {
-                ((GraySectionCell) holder.itemView).setText(LocaleController.getString(R.string.NearbyVenue));
-            }
         }
     }
 
     @Override
     public int getItemViewType(int position) {
-        if ((position == 0 || position == (1 + locations.size())) && !locations.isEmpty()) {
+        if (position == 0 && !locations.isEmpty()) {
             return VIEW_TYPE_SECTION;
         }
         return VIEW_TYPE_LOCATION;
     }
 
     public TLRPC.TL_messageMediaVenue getItem(int position) {
-        if (!locations.isEmpty()) {
-            position--;
+        if (locations.isEmpty()) {
+            return null;
         }
+            position--;
         if (position >= 0 && position < locations.size()) {
             return locations.get(position);
-        } else if (!isSearching()) {
-            position -= locations.size();
-            if (!locations.isEmpty()) {
-                position -= 1;
-            }
-            if (position >= 0 && position < places.size()) {
-                return places.get(position);
-            }
         }
         return null;
     }
@@ -147,10 +106,4 @@ public class LocationActivitySearchAdapter extends BaseLocationAdapter {
         return true;
     }
 
-    @Override
-    protected void notifyStartSearch(boolean wasSearching, int oldItemCount, boolean animated) {
-        if (wasSearching)
-            return;
-        notifyDataSetChanged();
     }
-}

@@ -73,6 +73,8 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     private Runnable loadFrameTask;
     private boolean isStaticVideoDetected;
 
+    private volatile long nonLoopPlaybackGeneration;
+    private volatile long nonLoopEofGeneration = -1;
     private final ArrayList<AnimatedFileBuffer> unusedBuffers = new ArrayList<>();
     private AnimatedFileBuffer renderingBuffer;
     private AnimatedFileBuffer nextRenderingBuffer;
@@ -173,6 +175,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             invalidateAfter = 0;
         }
         scheduleNextGetFrame();
+        if (nonLoopEofGeneration == nonLoopPlaybackGeneration) {
+            checkChoreographerInternal();
+        }
         invalidateInternal();
     }
 
@@ -431,13 +436,18 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                         FileLog.e(e);
                     }
                 }
-                boolean seekWas = false;
-                if (pendingSeekTo >= 0) {
-                    metaData[3] = (int) pendingSeekTo;
-                    long seekTo = pendingSeekTo;
-                    synchronized (sync) {
+                final long playbackGeneration;
+                final long seekTo;
+                synchronized (sync) {
+                    playbackGeneration = nonLoopPlaybackGeneration;
+                    seekTo = pendingSeekTo;
+                    if (seekTo >= 0) {
                         pendingSeekTo = -1;
                     }
+                }
+                boolean seekWas = false;
+                if (seekTo >= 0) {
+                    metaData[3] = (int) seekTo;
                     seekWas = true;
                     if (stream != null) {
                         stream.reset();
@@ -450,11 +460,19 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                     backgroundBuffer.gifPlaybackGeneration = frameGeneration;
                     lastFrameDecodeTime = System.currentTimeMillis();
 
-                    if (mDecoder.getVideoFrame(backgroundBuffer.bitmap, false, startTime, endTime, loop) == 0) {
+                    final int frameResult = mDecoder.getVideoFrameWithStatus(backgroundBuffer.bitmap, false, startTime, endTime, loop);
+                    if (frameResult != AnimatedFileNative.FRAME_READY) {
+                        if (!loop && frameResult == AnimatedFileNative.FRAME_EOF) {
+                            synchronized (sync) {
+                                if (playbackGeneration == nonLoopPlaybackGeneration && pendingSeekTo < 0) {
+                                    nonLoopEofGeneration = playbackGeneration;
+                                }
+                            }
+                        }
                         AndroidUtilities.runOnUIThread(uiRunnableNoFrame);
                         return;
                     }
-                    if (!isStaticVideoDetected) {
+                    if (loop && !isStaticVideoDetected) {
                         isStaticVideoDetected = mDecoder.isStaticVideoDetected();
                     }
                     final boolean timestampWrapped = !seekWas && metaData[3] < lastTimeStamp;
@@ -621,6 +639,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         } else {
             result = mDecoder.getVideoFrame(backgroundBitmap, true, (float) 0, (float) 0, true);
         }
+        resumeAfterNonLoopEof(resetNonLoopEof());
         if (result != 0) {
             return backgroundBitmap;
         } else {
@@ -711,7 +730,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     public void seekTo(long ms, boolean removeLoading, boolean force) {
         resetGifLoopBlend();
+        final boolean wasAtEof;
         synchronized (sync) {
+            wasAtEof = resetNonLoopEof();
             pendingSeekTo = ms;
             pendingSeekToUI = ms;
             scheduledForSeek = false;
@@ -732,12 +753,32 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
                 }
             }
         }
+        resumeAfterNonLoopEof(wasAtEof);
+    }
+
+    private boolean resetNonLoopEof() {
+        if (loop) {
+            return false;
+        }
+        synchronized (sync) {
+            final boolean wasAtEof = nonLoopEofGeneration == nonLoopPlaybackGeneration;
+            nonLoopPlaybackGeneration++;
+            return wasAtEof;
+        }
+    }
+
+    private void resumeAfterNonLoopEof(boolean wasAtEof) {
+        if (wasAtEof) {
+            scheduleNextGetFrame();
+            checkChoreographer();
+        }
     }
 
     public void seekToSync(long ms) {
         resetGifLoopBlend();
         if (mDecoder == null) return;
         mDecoder.seekToMs(ms, true);
+        resumeAfterNonLoopEof(resetNonLoopEof());
     }
 
     public void recycle() {
@@ -760,7 +801,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         } else if (mDecoder != null) {
             mDecoder.stopDecoder();
         }
-        invalidateInternal();
+        AndroidUtilities.executeOnUIThread(this::invalidateInternal);
     }
 
     @UiThread
@@ -899,6 +940,7 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         final boolean ignoreScheduleNext = loadFrameTask != null && !cancel
             || (!PRERENDER_FRAME || nextRenderingBuffer2 != null && !(!scheduledForSeek && pendingSeekToUI >= 0)) && nextRenderingBuffer != null
             || renderingBuffer != null && isStaticVideoDetected
+            || nonLoopEofGeneration == nonLoopPlaybackGeneration
             || !canLoadFrames()
             || destroyWhenDone
             || !isRunning && (!decodeSingleFrame || singleFrameDecoded)
@@ -1306,14 +1348,17 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
     public void setStartEndTime(long startTime, long endTime) {
         float newStartTime = startTime / 1000f;
         float newEndTime = endTime / 1000f;
-        if (this.startTime != newStartTime || this.endTime != newEndTime) {
+        final boolean rangeChanged = this.startTime != newStartTime || this.endTime != newEndTime;
+        if (rangeChanged) {
             resetGifLoopBlend();
         }
         this.startTime = newStartTime;
         this.endTime = newEndTime;
+        final boolean wasAtEof = rangeChanged && resetNonLoopEof();
         if (startTime >= 0 && getCurrentProgressMs() < startTime) {
             seekTo(startTime, true);
         }
+        resumeAfterNonLoopEof(wasAtEof);
     }
 
     public long getStartTime() {
@@ -1346,6 +1391,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             backgroundBuffer.opaque = mDecoder.isLastFrameOpaque();
             backgroundBuffer.hasFrame = true;
         }
+        if (loop && resetNonLoopEof()) {
+            checkChoreographer();
+        }
         return backgroundBuffer.hasFrame ? backgroundBuffer.bitmap : null;
     }
 
@@ -1355,6 +1403,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
             return;
         }
         mDecoder.getVideoFrame(null, false, startTime, endTime, loop);
+        if (loop && resetNonLoopEof()) {
+            checkChoreographer();
+        }
     }
 
     public boolean hasParents() {
@@ -1426,23 +1477,37 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         }
         Canvas canvas = new Canvas(bitmap);
 
-        AnimatedFileNative tempDecoder = AnimatedFileNative.createDecoderFrom(path.getAbsolutePath(), metaData, currentAccount, streamFileSize, stream, false);
+        int[] firstFrameMetaData = new int[metaData.length];
+        AnimatedFileNative tempDecoder = AnimatedFileNative.createDecoderFrom(path.getAbsolutePath(), firstFrameMetaData, currentAccount, streamFileSize, stream, false);
         if (tempDecoder == null) {
             return bitmap;
         }
-        if (generatingCacheBitmap == null) {
-            generatingCacheBitmap = Bitmap.createBitmap(Math.max(1, metaData[0]), Math.max(1, metaData[1]), Bitmap.Config.ARGB_8888);
-        }
-        tempDecoder.getVideoFrame(generatingCacheBitmap, false, startTime, endTime, true);
+        Bitmap firstFrameBitmap = null;
+        try {
+            try {
+                firstFrameBitmap = Bitmap.createBitmap(Math.max(1, firstFrameMetaData[0]), Math.max(1, firstFrameMetaData[1]), Bitmap.Config.ARGB_8888);
+                if (tempDecoder.getVideoFrame(firstFrameBitmap, false, startTime, endTime, true) == 0) {
+                    return bitmap;
+                }
+            } finally {
         tempDecoder.recycle();
+            }
         bitmap.eraseColor(Color.TRANSPARENT);
         canvas.save();
-        float s = (float) renderingWidth / generatingCacheBitmap.getWidth();
+            try {
+                float s = (float) renderingWidth / firstFrameBitmap.getWidth();
         canvas.scale(s, s);
-        canvas.drawBitmap(generatingCacheBitmap, 0, 0, null);
+                canvas.drawBitmap(firstFrameBitmap, 0, 0, null);
+            } finally {
         canvas.restore();
 
+            }
         return bitmap;
+        } finally {
+            if (firstFrameBitmap != null) {
+                firstFrameBitmap.recycle();
+            }
+        }
     }
 
     private boolean canLoadFrames() {
@@ -1500,6 +1565,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
         nextRenderingBuffer2 = null;
         lastFrameTime = now;
         swapBuffersAllowedByChoreographer = false;
+        if (nonLoopEofGeneration == nonLoopPlaybackGeneration) {
+            checkChoreographerInternal();
+        }
     }
     private AnimatedFileBuffer takeUnusedBuffer() {
         synchronized (unusedBuffers) {
@@ -1605,7 +1673,9 @@ public final class AnimatedFileDrawable extends BitmapDrawable implements Animat
 
     @UiThread
     private void checkChoreographerInternal() {
-        if (isRunning && !isPaused && !isStaticVideoDetected) {
+        if (isRunning && !isPaused && !isStaticVideoDetected
+                && (nonLoopEofGeneration != nonLoopPlaybackGeneration
+                    || nextRenderingBuffer != null || nextRenderingBuffer2 != null)) {
             if (!isChoreographerRegistered) {
                 final int fps = metaData[5];
                 if (fps <= 0) {

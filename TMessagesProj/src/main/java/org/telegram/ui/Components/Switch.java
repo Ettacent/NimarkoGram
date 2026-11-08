@@ -43,7 +43,12 @@ import org.telegram.ui.ActionBar.Theme;
 import me.vkryl.android.animator.BoolAnimator;
 
 import app.nimarkogram.messenger.utils.UiAnimationClock;
-public class Switch extends View {
+public class Switch extends View implements Theme.Colorable {
+
+    @Override
+    public void updateColors() {
+        colorSet = 0;
+    }
     private final BoolAnimator animatorIconVisibility = new BoolAnimator(this, CubicBezierInterpolator.EASE_OUT_QUINT, 380L, true);
 
     private RectF rectF;

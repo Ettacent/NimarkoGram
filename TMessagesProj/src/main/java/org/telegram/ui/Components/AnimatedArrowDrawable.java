@@ -23,6 +23,8 @@ public class AnimatedArrowDrawable extends Drawable {
 
     private Paint paint;
     private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
+    private final BoundedPackIconRenderer boundedPackIconRenderer;
+    private final Paint boundedPackPaint;
     private Path path = new Path();
     private float animProgress;
     private float animateToProgress;
@@ -33,6 +35,8 @@ public class AnimatedArrowDrawable extends Drawable {
     private float customStrokeWidthDp;
 
     public AnimatedArrowDrawable(int color, boolean small) {
+        boundedPackIconRenderer = small ? new BoundedPackIconRenderer(false) : null;
+        boundedPackPaint = small ? new Paint(Paint.ANTI_ALIAS_FLAG) : null;
         paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(dp(2));
@@ -45,6 +49,8 @@ public class AnimatedArrowDrawable extends Drawable {
     }
 
     public AnimatedArrowDrawable(int color, float widthDp, float heightDp, float strokeWidthDp) {
+        boundedPackIconRenderer = new BoundedPackIconRenderer(false);
+        boundedPackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(dpf2(strokeWidthDp));
@@ -63,39 +69,61 @@ public class AnimatedArrowDrawable extends Drawable {
     public void draw(Canvas c) {
         IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
         IconResources.PreparedIcon arrow = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.arrow_more);
-        if (arrow == null) {
+        final boolean customSize = customWidthDp > 0 && customHeightDp > 0;
+        final boolean boundedSize = customSize || isSmall;
+        if (arrow == null || boundedSize && !boundedPackIconRenderer.prepare(icons, R.drawable.arrow_more)) {
         c.drawPath(path, paint);
         } else {
             float centerX;
             float centerY;
             float size;
+            float width = 0, height = 0;
             c.save();
-            if (customWidthDp > 0 && customHeightDp > 0) {
+            if (customSize) {
                 centerX = dpf2(customWidthDp) / 2f;
                 centerY = dpf2(customHeightDp) / 2f;
-                size = Math.min(Math.min(dpf2(customWidthDp), dpf2(customHeightDp)), dp(24));
+                width = dpf2(customWidthDp);
+                height = dpf2(customHeightDp);
+                size = height;
                 c.clipRect(0, 0, dpf2(customWidthDp), dpf2(customHeightDp));
             } else if (isSmall) {
                 centerX = dp(8);
                 centerY = dp(6);
-                size = dp(14);
+                width = dp(13) - dp(3) + paint.getStrokeWidth();
+                height = 2 * dp(2) + paint.getStrokeWidth();
+                size = height;
             } else {
                 centerX = dp(13);
                 centerY = dp(12) + dp(2) * animProgress;
                 size = dp(24);
+            }
+            if (boundedSize) {
+                boundedPackPaint.set(paint);
+                boundedPackPaint.setAlpha(255);
             }
             float direction = animProgress * 2f - 1f;
             float minimumFold = Math.min(1f, Math.max(1f, paint.getStrokeWidth()) / size);
             float fold = Math.max(minimumFold, Math.abs(direction));
             float down = Math.max(0f, Math.min(1f, 0.5f + direction / (2f * minimumFold)));
             c.translate(centerX, centerY);
-            int layer = paint.getAlpha() == 255 ? c.save() : c.saveLayerAlpha(-size, -size, size, size, paint.getAlpha());
+            float layerSize = boundedSize ? Math.max(width, height) : size;
+            int layer = paint.getAlpha() == 255 ? c.save() : c.saveLayerAlpha(-layerSize, -layerSize, layerSize, layerSize, paint.getAlpha());
             c.save();
             c.scale(1f, -fold);
+            if (boundedSize) {
+                boundedPackIconRenderer.draw(c, boundedPackPaint, 0, 0,
+                        width, height, 1f - down, false);
+            } else {
             packIconRenderer.draw(c, arrow, paint, 0, 0, size, 1f - down, 0);
+            }
             c.restore();
             c.scale(1f, fold);
+            if (boundedSize) {
+                boundedPackIconRenderer.draw(c, boundedPackPaint, 0, 0,
+                        width, height, down, false);
+            } else {
             packIconRenderer.draw(c, arrow, paint, 0, 0, size, down, 0);
+            }
             c.restoreToCount(layer);
             c.restore();
         }

@@ -16,14 +16,14 @@ import org.telegram.ui.Components.blur3.capture.IBlur3Capture;
 import org.telegram.ui.Components.blur3.utils.Blur3Utils;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
+import org.telegram.utils.glass.source.GlassSourceRenderNode;
 
 @RequiresApi(31)
 public final class NotificationListGlassSource {
     private final ViewGroup root;
     private final View[] contents;
     private final DownscaleScrollableNoiseSuppressor suppressor = new DownscaleScrollableNoiseSuppressor();
-    private final BlurredBackgroundSourceRenderNode source = new BlurredBackgroundSourceRenderNode(null);
+    private final GlassSourceRenderNode source = new GlassSourceRenderNode(null);
     private final BlurredBackgroundDrawableViewFactory factory = new BlurredBackgroundDrawableViewFactory(source);
     private final ArrayList<RectF> positions = new ArrayList<>();
     private final RectF region = new RectF();

@@ -1,0 +1,476 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "plot-area-frame-D3JtHvov.js",
+      "sha256": "13e12e2e16b86dde55cf87fc8c54c2e2628de7be00312cb0a398b5fa47406d75",
+      "replacements": [
+        {
+          "before": "bc as zn, yi as zr, wu as zt };\n",
+          "after": "bc as zn, yi as zr, wu as zt };\n\nexport { officeReadingNormalize, officeReadingContext, officeReadingRaw, officeReadingOriginal, officeReadingPaletteOf, officeReadingColor, officeReadingShapeIsArtwork, officeReadingMath, officeReadingWait };\n",
+          "count": 1
+        },
+        {
+          "before": "import { f as e, o as t, s as n,",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Per-render semantic paints. Images, masks, drawing artwork and chrome use the\n// original context. No canvas prototype hooks, pixel reads or source mutation.\nconst officeReadingContextInfo = new WeakMap();\nfunction officeReadingNormalize(value) {\n    if (!value || value.dark !== true) return null;\n    const matrix = value.matrix;\n    if (!Array.isArray(matrix) || matrix.length !== 20 || !matrix.every(n => Number.isFinite(n) && Math.abs(n) <= 4)\n            || matrix.slice(15).some((n, i) => n !== (i === 3 ? 1 : 0))) throw TypeError('Invalid Office reading palette');\n    if (value.officeReadingVersion === 1 && Object.isFrozen(value) && Object.isFrozen(matrix)) return value;\n    return Object.freeze({officeReadingVersion: 1, dark: true, matrix: Object.freeze(matrix.slice())});\n}\nfunction officeReadingRgba(value) {\n    if (typeof value !== 'string') return null;\n    const color = value.trim().toLowerCase();\n    if (color === 'transparent') return [0, 0, 0, 0];\n    if (color === 'black') return [0, 0, 0, 1];\n    if (color === 'white') return [255, 255, 255, 1];\n    const hex = /^#([\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})$/.exec(color);\n    if (hex) {\n        let s = hex[1];\n        if (s.length <= 4) s = [...s].map(c => c + c).join('');\n        return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16), s.length === 8 ? parseInt(s.slice(6), 16) / 255 : 1];\n    }\n    const rgb = /^rgba?\\(\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)(?:\\s*,\\s*([\\d.+-]+))?\\s*\\)$/.exec(color);\n    if (!rgb) return null;\n    const channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])];\n    return channels.every(Number.isFinite) && channels.slice(0, 3).every(n => n >= 0 && n <= 255) && channels[3] >= 0 && channels[3] <= 1 ? channels : null;\n}\nfunction officeReadingColor(value, palette) {\n    if (!palette) return value;\n    const rgba = officeReadingRgba(value);\n    if (!rgba || rgba[3] === 0) return value;\n    const matrix = palette.matrix, input = [rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3], 1];\n    const rgb = [0, 1, 2].map(row => Math.max(0, Math.min(255, matrix.slice(row * 5, row * 5 + 5).reduce((sum, n, i) => sum + n * input[i], 0) * 255)));\n    return `rgba(${rgb.join(',')},${rgba[3]})`;\n}\nfunction officeReadingRaw(context) { return officeReadingContextInfo.get(context)?.raw ?? context; }\nfunction officeReadingPaletteOf(context) { return officeReadingContextInfo.get(context)?.palette ?? null; }\nfunction officeReadingOriginal(context, paint) {\n    const raw = officeReadingRaw(context);\n    if (raw === context) return paint(raw);\n    raw.save();\n    try { return paint(raw); } finally { raw.restore(); }\n}\nfunction officeReadingContext(context, value) {\n    const palette = officeReadingNormalize(value);\n    if (!palette) return officeReadingRaw(context);\n    if (officeReadingPaletteOf(context) === palette) return context;\n    const raw = officeReadingRaw(context), styles = ['fillStyle', 'strokeStyle', 'shadowColor'];\n    let authored = Object.fromEntries(styles.map(key => [key, raw[key]]));\n    const saved = [], methods = new Map(), colors = new Map();\n    const color = value => {\n        if (typeof value !== 'string') return value;\n        if (colors.has(value)) return colors.get(value);\n        const result = officeReadingColor(value, palette);\n        if (colors.size < 512) colors.set(value, result);\n        return result;\n    };\n    const proxy = new Proxy(raw, {\n        get(target, key) {\n            if (styles.includes(key)) return authored[key];\n            const value = Reflect.get(target, key, target);\n            if (typeof value !== 'function') return value;\n            if (!methods.has(key)) {\n                if (key === 'save') methods.set(key, () => { target.save(); saved.push({...authored}); });\n                else if (key === 'restore') methods.set(key, () => { target.restore(); if (saved.length) authored = saved.pop(); });\n                else if (key === 'createLinearGradient' || key === 'createRadialGradient') methods.set(key, (...args) => {\n                    const gradient = value.apply(target, args), add = gradient.addColorStop.bind(gradient);\n                    Object.defineProperty(gradient, 'addColorStop', {value: (offset, ink) => add(offset, color(ink))});\n                    return gradient;\n                });\n                else methods.set(key, value.bind(target));\n            }\n            return methods.get(key);\n        },\n        set(target, key, value) {\n            if (styles.includes(key)) {\n                target[key] = color(value);\n                // Invalid CSS assignments are ignored by Canvas; retain its accepted state.\n                authored[key] = typeof value === 'string' && !officeReadingRgba(value) ? target[key] : value;\n                return true;\n            }\n            return Reflect.set(target, key, value, target);\n        }\n    });\n    officeReadingContextInfo.set(proxy, {raw, palette});\n    return proxy;\n}\nfunction officeReadingShapeIsArtwork(shape) {\n    // Only plain rectangular paper/text has an unambiguous reading role here.\n    // Retain colored/custom/picture-filled/effect-bearing artwork and its labels.\n    if (shape.custGeom?.length || shape.shadow || shape.reflection || shape.glow || shape.softEdge || shape.innerShadow || shape.scene3d || shape.sp3d) return true;\n    if (shape.textBody?.paragraphs?.some(paragraph => paragraph.runs?.some(run => run.shadow || run.reflection || run.glow || run.softEdge || run.outline || run.fill || run.patternFill))) return true;\n    // _o receives shapes with geometry; prstGeom belongs to the picture path.\n    const geometry = typeof shape.geometry === 'string' ? shape.geometry.toLowerCase() : null, fill = shape.fill;\n    if (geometry !== 'rect') return true;\n    if (!fill || fill.fillType === 'none') return !shape.textBody;\n    const rgba = fill.fillType === 'solid' && typeof fill.color === 'string' ? officeReadingRgba(fill.color.startsWith('#') ? fill.color : '#' + fill.color) : null;\n    return !rgba || rgba[3] !== 1 || Math.min(...rgba.slice(0, 3)) < 235 || Math.max(...rgba.slice(0, 3)) - Math.min(...rgba.slice(0, 3)) > 8;\n}\nfunction officeReadingMath(context, image, x, y, width, height) {\n    const palette = officeReadingPaletteOf(context);\n    if (!palette) return context.drawImage(image, x, y, width, height);\n    // Math is a semantic glyph mask, never an ordinary document image. Preserve\n    // its intrinsic alpha and existing destination geometry without reading pixels.\n    const w = image.width, h = image.height;\n    // Na/Ws admit long, narrow glyph rasters (including 8192x28). Keep those\n    // sides and downsample only when the area exceeds 262144 pixels (1 MiB\n    // RGBA). One synchronous scratch avoids alpha seams between scaled tiles.\n    if (!Number.isSafeInteger(w) || !Number.isSafeInteger(h) || w <= 0 || h <= 0) throw RangeError('Invalid Office math source');\n    const ratio = Math.min(1, Math.sqrt(262144 / (w * h)));\n    const sw = Math.max(1, Math.min(32767, 262144, Math.floor(w * ratio)));\n    const sh = Math.max(1, Math.min(32767, Math.floor(262144 / sw), Math.floor(h * ratio)));\n    const canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(sw, sh) : context.canvas.ownerDocument.createElement('canvas');\n    canvas.width = sw; canvas.height = sh;\n    try {\n        const paint = canvas.getContext('2d');\n        if (!paint) throw Error('Office reading math context unavailable');\n        paint.drawImage(image, 0, 0, sw, sh);\n        paint.globalCompositeOperation = 'source-in';\n        paint.fillStyle = officeReadingColor('#000000', palette);\n        paint.fillRect(0, 0, sw, sh);\n        return context.drawImage(canvas, x, y, width, height);\n    } finally { canvas.width = canvas.height = 0; }\n}\n\n// Bounded completion is separate from paint admission. Cancellation never means\n// committed; timer/signal cleanup is independent of RAF and scheduler idle.\nfunction officeReadingWait(viewer, key, committed, subscribe, options = {}) {\n    viewer.officeReadingCancel?.('superseded');\n    let finish;\n    const promise = new Promise(resolve => {\n        let stop = () => {}, timer, closed = false;\n        const signal = options.signal;\n        const close = (status, error) => {\n            if (closed) return;\n            closed = true; stop(); clearTimeout(timer);\n            signal?.removeEventListener('abort', abort);\n            if (viewer.officeReadingCancel === close) { viewer.officeReadingCancel = null; viewer.officeReadingPending = null; }\n            resolve({status, key, ...error ? {error} : {}});\n        };\n        const abort = () => close(options.paused ? 'paused' : 'cancelled');\n        const done = () => {\n            if (viewer._destroyed) close('destroyed');\n            else if (key !== viewer.officeReadingKey) close('superseded');\n            else if (options.paused || viewer._scroller?.interacting) close('paused');\n            else if (committed()) close('committed');\n        };\n        finish = close;\n        viewer.officeReadingCancel = close;\n        signal?.addEventListener('abort', abort, {once: true});\n        if (signal?.aborted) abort(); else done();\n        if (!closed) {\n            stop = subscribe(done, error => close('failed', error)) || stop;\n            const ms = Number.isFinite(options.timeoutMs) ? Math.max(1, Math.min(650, options.timeoutMs)) : 500;\n            timer = setTimeout(() => { done(); if (!closed) close('timeout'); }, ms);\n            done();\n        }\n    });\n    // A synchronous result must not leave a resolved promise registered as work.\n    if (viewer.officeReadingCancel === finish) viewer.officeReadingPending = promise;\n    return promise;\n}\n\nimport { f as e, o as t, s as n,",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "assets/render-worker-BUa1gyCE.js",
+      "sha256": "39e809a3c7e049382bcc5e7177212db44a53621a661d2d9a5c7608e81a367d9b",
+      "replacements": [
+        {
+          "before": "onDiagnostic:r.onDiagnostic,widt",
+          "after": "officeReadingPalette: r.officeReadingPalette, onDiagnostic:r.onDiagnostic,widt",
+          "count": 1
+        },
+        {
+          "before": "ctx:d,scale:f,dpr:g,resourceDpr:",
+          "after": "officeReadingPalette: r.officeReadingPalette, ctx:d,scale:f,dpr:g,resourceDpr:",
+          "count": 1
+        },
+        {
+          "before": "scale:f,dpr:g,region:r.region,re",
+          "after": "officeReadingPalette: r.officeReadingPalette, scale:f,dpr:g,region:r.region,re",
+          "count": 1
+        },
+        {
+          "before": "gion.x,-r.region.y),d.fillStyle=`#ffffff`,d.fillRect(0,0,p,m)};if(r.parse",
+          "after": "gion.x,-r.region.y),d.fillStyle=officeReadingColor('#ffffff', officeReadingNormalize(r.officeReadingPalette)),d.fillRect(0,0,p,m)};if(r.parse",
+          "count": 1
+        },
+        {
+          "before": "Yx(o,i.descriptor.model,{x:a.xPt,y:a.yPt,w:a.widthPt,h:a.heightPt},1,0,e,t,n,r)",
+          "after": "officeReadingOriginal(o, officeRaw => Yx(officeRaw, i.descriptor.model, {x:a.xPt,y:a.yPt,w:a.widthPt,h:a.heightPt}, 1, 0, e, t, n, r))",
+          "count": 1
+        },
+        {
+          "before": "n.drawImage(r,t.xPt,t.yPt,t.widthPt,t.heightPt)",
+          "after": "officeReadingMath(n, r, t.xPt, t.yPt, t.widthPt, t.heightPt)",
+          "count": 1
+        },
+        {
+          "before": "ctx:o,scale:r.scale,dpr:r.dpr,re",
+          "after": "officeReadingPalette: r.officeReadingPalette, ctx:o,scale:r.scale,dpr:r.dpr,re",
+          "count": 1
+        },
+        {
+          "before": "let n=t.ctx.getTransform?.()??{a",
+          "after": "t = {...t, ctx: officeReadingContext(t.ctx, t.officeReadingPalette)};\nlet n=t.ctx.getTransform?.()??{a",
+          "count": 1
+        },
+        {
+          "before": "for(let n of e.commands){if(n.ki",
+          "after": "if (officeReadingRaw(t.ctx) !== t.ctx) return officeReadingOriginal(t.ctx, officeRaw => nQ(e, {...t, ctx: officeRaw}));\nfor(let n of e.commands){if(n.ki",
+          "count": 1
+        },
+        {
+          "before": "var e=Object.defineProperty,t=(e",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Per-render semantic paints. Images, masks, drawing artwork and chrome use the\n// original context. No canvas prototype hooks, pixel reads or source mutation.\nconst officeReadingContextInfo = new WeakMap();\nfunction officeReadingNormalize(value) {\n    if (!value || value.dark !== true) return null;\n    const matrix = value.matrix;\n    if (!Array.isArray(matrix) || matrix.length !== 20 || !matrix.every(n => Number.isFinite(n) && Math.abs(n) <= 4)\n            || matrix.slice(15).some((n, i) => n !== (i === 3 ? 1 : 0))) throw TypeError('Invalid Office reading palette');\n    if (value.officeReadingVersion === 1 && Object.isFrozen(value) && Object.isFrozen(matrix)) return value;\n    return Object.freeze({officeReadingVersion: 1, dark: true, matrix: Object.freeze(matrix.slice())});\n}\nfunction officeReadingRgba(value) {\n    if (typeof value !== 'string') return null;\n    const color = value.trim().toLowerCase();\n    if (color === 'transparent') return [0, 0, 0, 0];\n    if (color === 'black') return [0, 0, 0, 1];\n    if (color === 'white') return [255, 255, 255, 1];\n    const hex = /^#([\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})$/.exec(color);\n    if (hex) {\n        let s = hex[1];\n        if (s.length <= 4) s = [...s].map(c => c + c).join('');\n        return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16), s.length === 8 ? parseInt(s.slice(6), 16) / 255 : 1];\n    }\n    const rgb = /^rgba?\\(\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)(?:\\s*,\\s*([\\d.+-]+))?\\s*\\)$/.exec(color);\n    if (!rgb) return null;\n    const channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])];\n    return channels.every(Number.isFinite) && channels.slice(0, 3).every(n => n >= 0 && n <= 255) && channels[3] >= 0 && channels[3] <= 1 ? channels : null;\n}\nfunction officeReadingColor(value, palette) {\n    if (!palette) return value;\n    const rgba = officeReadingRgba(value);\n    if (!rgba || rgba[3] === 0) return value;\n    const matrix = palette.matrix, input = [rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3], 1];\n    const rgb = [0, 1, 2].map(row => Math.max(0, Math.min(255, matrix.slice(row * 5, row * 5 + 5).reduce((sum, n, i) => sum + n * input[i], 0) * 255)));\n    return `rgba(${rgb.join(',')},${rgba[3]})`;\n}\nfunction officeReadingRaw(context) { return officeReadingContextInfo.get(context)?.raw ?? context; }\nfunction officeReadingPaletteOf(context) { return officeReadingContextInfo.get(context)?.palette ?? null; }\nfunction officeReadingOriginal(context, paint) {\n    const raw = officeReadingRaw(context);\n    if (raw === context) return paint(raw);\n    raw.save();\n    try { return paint(raw); } finally { raw.restore(); }\n}\nfunction officeReadingContext(context, value) {\n    const palette = officeReadingNormalize(value);\n    if (!palette) return officeReadingRaw(context);\n    if (officeReadingPaletteOf(context) === palette) return context;\n    const raw = officeReadingRaw(context), styles = ['fillStyle', 'strokeStyle', 'shadowColor'];\n    let authored = Object.fromEntries(styles.map(key => [key, raw[key]]));\n    const saved = [], methods = new Map(), colors = new Map();\n    const color = value => {\n        if (typeof value !== 'string') return value;\n        if (colors.has(value)) return colors.get(value);\n        const result = officeReadingColor(value, palette);\n        if (colors.size < 512) colors.set(value, result);\n        return result;\n    };\n    const proxy = new Proxy(raw, {\n        get(target, key) {\n            if (styles.includes(key)) return authored[key];\n            const value = Reflect.get(target, key, target);\n            if (typeof value !== 'function') return value;\n            if (!methods.has(key)) {\n                if (key === 'save') methods.set(key, () => { target.save(); saved.push({...authored}); });\n                else if (key === 'restore') methods.set(key, () => { target.restore(); if (saved.length) authored = saved.pop(); });\n                else if (key === 'createLinearGradient' || key === 'createRadialGradient') methods.set(key, (...args) => {\n                    const gradient = value.apply(target, args), add = gradient.addColorStop.bind(gradient);\n                    Object.defineProperty(gradient, 'addColorStop', {value: (offset, ink) => add(offset, color(ink))});\n                    return gradient;\n                });\n                else methods.set(key, value.bind(target));\n            }\n            return methods.get(key);\n        },\n        set(target, key, value) {\n            if (styles.includes(key)) {\n                target[key] = color(value);\n                // Invalid CSS assignments are ignored by Canvas; retain its accepted state.\n                authored[key] = typeof value === 'string' && !officeReadingRgba(value) ? target[key] : value;\n                return true;\n            }\n            return Reflect.set(target, key, value, target);\n        }\n    });\n    officeReadingContextInfo.set(proxy, {raw, palette});\n    return proxy;\n}\nfunction officeReadingShapeIsArtwork(shape) {\n    // Only plain rectangular paper/text has an unambiguous reading role here.\n    // Retain colored/custom/picture-filled/effect-bearing artwork and its labels.\n    if (shape.custGeom?.length || shape.shadow || shape.reflection || shape.glow || shape.softEdge || shape.innerShadow || shape.scene3d || shape.sp3d) return true;\n    if (shape.textBody?.paragraphs?.some(paragraph => paragraph.runs?.some(run => run.shadow || run.reflection || run.glow || run.softEdge || run.outline || run.fill || run.patternFill))) return true;\n    // _o receives shapes with geometry; prstGeom belongs to the picture path.\n    const geometry = typeof shape.geometry === 'string' ? shape.geometry.toLowerCase() : null, fill = shape.fill;\n    if (geometry !== 'rect') return true;\n    if (!fill || fill.fillType === 'none') return !shape.textBody;\n    const rgba = fill.fillType === 'solid' && typeof fill.color === 'string' ? officeReadingRgba(fill.color.startsWith('#') ? fill.color : '#' + fill.color) : null;\n    return !rgba || rgba[3] !== 1 || Math.min(...rgba.slice(0, 3)) < 235 || Math.max(...rgba.slice(0, 3)) - Math.min(...rgba.slice(0, 3)) > 8;\n}\nfunction officeReadingMath(context, image, x, y, width, height) {\n    const palette = officeReadingPaletteOf(context);\n    if (!palette) return context.drawImage(image, x, y, width, height);\n    // Math is a semantic glyph mask, never an ordinary document image. Preserve\n    // its intrinsic alpha and existing destination geometry without reading pixels.\n    const w = image.width, h = image.height;\n    // Na/Ws admit long, narrow glyph rasters (including 8192x28). Keep those\n    // sides and downsample only when the area exceeds 262144 pixels (1 MiB\n    // RGBA). One synchronous scratch avoids alpha seams between scaled tiles.\n    if (!Number.isSafeInteger(w) || !Number.isSafeInteger(h) || w <= 0 || h <= 0) throw RangeError('Invalid Office math source');\n    const ratio = Math.min(1, Math.sqrt(262144 / (w * h)));\n    const sw = Math.max(1, Math.min(32767, 262144, Math.floor(w * ratio)));\n    const sh = Math.max(1, Math.min(32767, Math.floor(262144 / sw), Math.floor(h * ratio)));\n    const canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(sw, sh) : context.canvas.ownerDocument.createElement('canvas');\n    canvas.width = sw; canvas.height = sh;\n    try {\n        const paint = canvas.getContext('2d');\n        if (!paint) throw Error('Office reading math context unavailable');\n        paint.drawImage(image, 0, 0, sw, sh);\n        paint.globalCompositeOperation = 'source-in';\n        paint.fillStyle = officeReadingColor('#000000', palette);\n        paint.fillRect(0, 0, sw, sh);\n        return context.drawImage(canvas, x, y, width, height);\n    } finally { canvas.width = canvas.height = 0; }\n}\n\n// Bounded completion is separate from paint admission. Cancellation never means\n// committed; timer/signal cleanup is independent of RAF and scheduler idle.\nfunction officeReadingWait(viewer, key, committed, subscribe, options = {}) {\n    viewer.officeReadingCancel?.('superseded');\n    let finish;\n    const promise = new Promise(resolve => {\n        let stop = () => {}, timer, closed = false;\n        const signal = options.signal;\n        const close = (status, error) => {\n            if (closed) return;\n            closed = true; stop(); clearTimeout(timer);\n            signal?.removeEventListener('abort', abort);\n            if (viewer.officeReadingCancel === close) { viewer.officeReadingCancel = null; viewer.officeReadingPending = null; }\n            resolve({status, key, ...error ? {error} : {}});\n        };\n        const abort = () => close(options.paused ? 'paused' : 'cancelled');\n        const done = () => {\n            if (viewer._destroyed) close('destroyed');\n            else if (key !== viewer.officeReadingKey) close('superseded');\n            else if (options.paused || viewer._scroller?.interacting) close('paused');\n            else if (committed()) close('committed');\n        };\n        finish = close;\n        viewer.officeReadingCancel = close;\n        signal?.addEventListener('abort', abort, {once: true});\n        if (signal?.aborted) abort(); else done();\n        if (!closed) {\n            stop = subscribe(done, error => close('failed', error)) || stop;\n            const ms = Number.isFinite(options.timeoutMs) ? Math.max(1, Math.min(650, options.timeoutMs)) : 500;\n            timer = setTimeout(() => { done(); if (!closed) close('timeout'); }, ms);\n            done();\n        }\n    });\n    // A synchronous result must not leave a resolved promise registered as work.\n    if (viewer.officeReadingCancel === finish) viewer.officeReadingPending = promise;\n    return promise;\n}\n\nvar e=Object.defineProperty,t=(e",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "assets/render-worker-CyUrUidp.js",
+      "sha256": "9e249d37affbec3cbd385abb9d410b83ec7526a8ea2f8567a3583929868c5987",
+      "replacements": [
+        {
+          "before": "imageResources:t.imageResources,",
+          "after": "officeReadingPalette: t.officeReadingPalette, imageResources:t.imageResources,",
+          "count": 1
+        },
+        {
+          "before": "hJ(M,a.dim,f,p)",
+          "after": "officeReadingOriginal(M, officeRaw => hJ(officeRaw, a.dim, f, p))",
+          "count": 1
+        },
+        {
+          "before": "QC(M,r.chart,{x:$(r.x,d),y:$(r.y,d),w:$(r.width,d),h:$(r.height,d)},e,r.rotation,a.threeD,a.regionMap,ug(A,{rotation:r.rotation,flipH:r.flipH,flipV:r.flipV}),a.chartEx)",
+          "after": "officeReadingOriginal(M, officeRaw => QC(officeRaw, r.chart, {x:$(r.x,d),y:$(r.y,d),w:$(r.width,d),h:$(r.height,d)}, e, r.rotation, a.threeD, a.regionMap, ug(A,{rotation:r.rotation,flipH:r.flipH,flipV:r.flipV}), a.chartEx))",
+          "count": 1
+        },
+        {
+          "before": "`){let e=j[n];if(e&&(ou(M,N,()=>e.paint(M)),e.failure))throw e.failure.err",
+          "after": "`){let e=j[n];if(e&&(ou(M,N,()=>officeReadingOriginal(M, officeRaw => e.paint(officeRaw))),e.failure))throw e.failure.err",
+          "count": 1
+        },
+        {
+          "before": "ure)break}if(c())return e;let M=b();for(let e of E)if(e.paint(M),e.",
+          "after": "ure)break}if(c())return e;let M=officeReadingContext(b(), a.officeReadingPalette);for(let e of E)if(e.paint(M),e.",
+          "count": 1
+        },
+        {
+          "before": "Yl(t.stroke?.fill)&&(e=Vl(e));le",
+          "after": "if (officeReadingRaw(e) !== e && officeReadingShapeIsArtwork(t)) return officeReadingOriginal(e, officeRaw => Gq(officeRaw, t, n, r, i, a, o, s));\nYl(t.stroke?.fill)&&(e=Vl(e));le",
+          "count": 1
+        },
+        {
+          "before": "th>0&&o>0)if(a)e.drawImage(BP(a,t.color),n,r,i.width,o);else if(i.fallb",
+          "after": "th>0&&o>0)if(a)e.drawImage(BP(a,officeReadingColor(t.color, officeReadingPaletteOf(e))),n,r,i.width,o);else if(i.fallb",
+          "count": 1
+        },
+        {
+          "before": "var e=Object.defineProperty,t=(e",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Per-render semantic paints. Images, masks, drawing artwork and chrome use the\n// original context. No canvas prototype hooks, pixel reads or source mutation.\nconst officeReadingContextInfo = new WeakMap();\nfunction officeReadingNormalize(value) {\n    if (!value || value.dark !== true) return null;\n    const matrix = value.matrix;\n    if (!Array.isArray(matrix) || matrix.length !== 20 || !matrix.every(n => Number.isFinite(n) && Math.abs(n) <= 4)\n            || matrix.slice(15).some((n, i) => n !== (i === 3 ? 1 : 0))) throw TypeError('Invalid Office reading palette');\n    if (value.officeReadingVersion === 1 && Object.isFrozen(value) && Object.isFrozen(matrix)) return value;\n    return Object.freeze({officeReadingVersion: 1, dark: true, matrix: Object.freeze(matrix.slice())});\n}\nfunction officeReadingRgba(value) {\n    if (typeof value !== 'string') return null;\n    const color = value.trim().toLowerCase();\n    if (color === 'transparent') return [0, 0, 0, 0];\n    if (color === 'black') return [0, 0, 0, 1];\n    if (color === 'white') return [255, 255, 255, 1];\n    const hex = /^#([\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})$/.exec(color);\n    if (hex) {\n        let s = hex[1];\n        if (s.length <= 4) s = [...s].map(c => c + c).join('');\n        return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16), s.length === 8 ? parseInt(s.slice(6), 16) / 255 : 1];\n    }\n    const rgb = /^rgba?\\(\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)(?:\\s*,\\s*([\\d.+-]+))?\\s*\\)$/.exec(color);\n    if (!rgb) return null;\n    const channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])];\n    return channels.every(Number.isFinite) && channels.slice(0, 3).every(n => n >= 0 && n <= 255) && channels[3] >= 0 && channels[3] <= 1 ? channels : null;\n}\nfunction officeReadingColor(value, palette) {\n    if (!palette) return value;\n    const rgba = officeReadingRgba(value);\n    if (!rgba || rgba[3] === 0) return value;\n    const matrix = palette.matrix, input = [rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3], 1];\n    const rgb = [0, 1, 2].map(row => Math.max(0, Math.min(255, matrix.slice(row * 5, row * 5 + 5).reduce((sum, n, i) => sum + n * input[i], 0) * 255)));\n    return `rgba(${rgb.join(',')},${rgba[3]})`;\n}\nfunction officeReadingRaw(context) { return officeReadingContextInfo.get(context)?.raw ?? context; }\nfunction officeReadingPaletteOf(context) { return officeReadingContextInfo.get(context)?.palette ?? null; }\nfunction officeReadingOriginal(context, paint) {\n    const raw = officeReadingRaw(context);\n    if (raw === context) return paint(raw);\n    raw.save();\n    try { return paint(raw); } finally { raw.restore(); }\n}\nfunction officeReadingContext(context, value) {\n    const palette = officeReadingNormalize(value);\n    if (!palette) return officeReadingRaw(context);\n    if (officeReadingPaletteOf(context) === palette) return context;\n    const raw = officeReadingRaw(context), styles = ['fillStyle', 'strokeStyle', 'shadowColor'];\n    let authored = Object.fromEntries(styles.map(key => [key, raw[key]]));\n    const saved = [], methods = new Map(), colors = new Map();\n    const color = value => {\n        if (typeof value !== 'string') return value;\n        if (colors.has(value)) return colors.get(value);\n        const result = officeReadingColor(value, palette);\n        if (colors.size < 512) colors.set(value, result);\n        return result;\n    };\n    const proxy = new Proxy(raw, {\n        get(target, key) {\n            if (styles.includes(key)) return authored[key];\n            const value = Reflect.get(target, key, target);\n            if (typeof value !== 'function') return value;\n            if (!methods.has(key)) {\n                if (key === 'save') methods.set(key, () => { target.save(); saved.push({...authored}); });\n                else if (key === 'restore') methods.set(key, () => { target.restore(); if (saved.length) authored = saved.pop(); });\n                else if (key === 'createLinearGradient' || key === 'createRadialGradient') methods.set(key, (...args) => {\n                    const gradient = value.apply(target, args), add = gradient.addColorStop.bind(gradient);\n                    Object.defineProperty(gradient, 'addColorStop', {value: (offset, ink) => add(offset, color(ink))});\n                    return gradient;\n                });\n                else methods.set(key, value.bind(target));\n            }\n            return methods.get(key);\n        },\n        set(target, key, value) {\n            if (styles.includes(key)) {\n                target[key] = color(value);\n                // Invalid CSS assignments are ignored by Canvas; retain its accepted state.\n                authored[key] = typeof value === 'string' && !officeReadingRgba(value) ? target[key] : value;\n                return true;\n            }\n            return Reflect.set(target, key, value, target);\n        }\n    });\n    officeReadingContextInfo.set(proxy, {raw, palette});\n    return proxy;\n}\nfunction officeReadingShapeIsArtwork(shape) {\n    // Only plain rectangular paper/text has an unambiguous reading role here.\n    // Retain colored/custom/picture-filled/effect-bearing artwork and its labels.\n    if (shape.custGeom?.length || shape.shadow || shape.reflection || shape.glow || shape.softEdge || shape.innerShadow || shape.scene3d || shape.sp3d) return true;\n    if (shape.textBody?.paragraphs?.some(paragraph => paragraph.runs?.some(run => run.shadow || run.reflection || run.glow || run.softEdge || run.outline || run.fill || run.patternFill))) return true;\n    // _o receives shapes with geometry; prstGeom belongs to the picture path.\n    const geometry = typeof shape.geometry === 'string' ? shape.geometry.toLowerCase() : null, fill = shape.fill;\n    if (geometry !== 'rect') return true;\n    if (!fill || fill.fillType === 'none') return !shape.textBody;\n    const rgba = fill.fillType === 'solid' && typeof fill.color === 'string' ? officeReadingRgba(fill.color.startsWith('#') ? fill.color : '#' + fill.color) : null;\n    return !rgba || rgba[3] !== 1 || Math.min(...rgba.slice(0, 3)) < 235 || Math.max(...rgba.slice(0, 3)) - Math.min(...rgba.slice(0, 3)) > 8;\n}\nfunction officeReadingMath(context, image, x, y, width, height) {\n    const palette = officeReadingPaletteOf(context);\n    if (!palette) return context.drawImage(image, x, y, width, height);\n    // Math is a semantic glyph mask, never an ordinary document image. Preserve\n    // its intrinsic alpha and existing destination geometry without reading pixels.\n    const w = image.width, h = image.height;\n    // Na/Ws admit long, narrow glyph rasters (including 8192x28). Keep those\n    // sides and downsample only when the area exceeds 262144 pixels (1 MiB\n    // RGBA). One synchronous scratch avoids alpha seams between scaled tiles.\n    if (!Number.isSafeInteger(w) || !Number.isSafeInteger(h) || w <= 0 || h <= 0) throw RangeError('Invalid Office math source');\n    const ratio = Math.min(1, Math.sqrt(262144 / (w * h)));\n    const sw = Math.max(1, Math.min(32767, 262144, Math.floor(w * ratio)));\n    const sh = Math.max(1, Math.min(32767, Math.floor(262144 / sw), Math.floor(h * ratio)));\n    const canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(sw, sh) : context.canvas.ownerDocument.createElement('canvas');\n    canvas.width = sw; canvas.height = sh;\n    try {\n        const paint = canvas.getContext('2d');\n        if (!paint) throw Error('Office reading math context unavailable');\n        paint.drawImage(image, 0, 0, sw, sh);\n        paint.globalCompositeOperation = 'source-in';\n        paint.fillStyle = officeReadingColor('#000000', palette);\n        paint.fillRect(0, 0, sw, sh);\n        return context.drawImage(canvas, x, y, width, height);\n    } finally { canvas.width = canvas.height = 0; }\n}\n\n// Bounded completion is separate from paint admission. Cancellation never means\n// committed; timer/signal cleanup is independent of RAF and scheduler idle.\nfunction officeReadingWait(viewer, key, committed, subscribe, options = {}) {\n    viewer.officeReadingCancel?.('superseded');\n    let finish;\n    const promise = new Promise(resolve => {\n        let stop = () => {}, timer, closed = false;\n        const signal = options.signal;\n        const close = (status, error) => {\n            if (closed) return;\n            closed = true; stop(); clearTimeout(timer);\n            signal?.removeEventListener('abort', abort);\n            if (viewer.officeReadingCancel === close) { viewer.officeReadingCancel = null; viewer.officeReadingPending = null; }\n            resolve({status, key, ...error ? {error} : {}});\n        };\n        const abort = () => close(options.paused ? 'paused' : 'cancelled');\n        const done = () => {\n            if (viewer._destroyed) close('destroyed');\n            else if (key !== viewer.officeReadingKey) close('superseded');\n            else if (options.paused || viewer._scroller?.interacting) close('paused');\n            else if (committed()) close('committed');\n        };\n        finish = close;\n        viewer.officeReadingCancel = close;\n        signal?.addEventListener('abort', abort, {once: true});\n        if (signal?.aborted) abort(); else done();\n        if (!closed) {\n            stop = subscribe(done, error => close('failed', error)) || stop;\n            const ms = Number.isFinite(options.timeoutMs) ? Math.max(1, Math.min(650, options.timeoutMs)) : 500;\n            timer = setTimeout(() => { done(); if (!closed) close('timeout'); }, ms);\n            done();\n        }\n    });\n    // A synchronous result must not leave a resolved promise registered as work.\n    if (viewer.officeReadingCancel === finish) viewer.officeReadingPending = promise;\n    return promise;\n}\n\nvar e=Object.defineProperty,t=(e",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "assets/render-worker-Bye3wDV9.js",
+      "sha256": "916931fca5a86658e6da3c697f0a019f7a786702d273977ee69ce303628f3af4",
+      "replacements": [
+        {
+          "before": "let b=[],x=0;if(i)for(let e of t",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => jK(officeRaw, t, n, r, i, a, o, s, c, l, u, d, f, p, m, h, g, _, v, y));\nlet b=[],x=0;if(i)for(let e of t",
+          "count": 1
+        },
+        {
+          "before": "let D=E?.surface??`#f8f9fa`,O=E?",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => AK(officeRaw, t, n, r, i, a, o, s, c, l, u, d, f, p, m, h, g, _, v, y, b, x, S, C, w, T, E));\nlet D=E?.surface??`#f8f9fa`,O=E?",
+          "count": 1
+        },
+        {
+          "before": "const officeData = officeWorkshe",
+          "after": "e = officeReadingContext(e, i.officeReadingPalette);\nconst officeData = officeWorkshe",
+          "count": 1
+        },
+        {
+          "before": "let{values:r}=n;if(r.length===0|",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => wI(officeRaw, t, n));\nlet{values:r}=n;if(r.length===0|",
+          "count": 1
+        },
+        {
+          "before": "\n// NimarkoGram: bounded XLSX wo",
+          "after": "// Modifications Copyright (C) 2026 Ettacent.\n// Per-render semantic paints. Images, masks, drawing artwork and chrome use the\n// original context. No canvas prototype hooks, pixel reads or source mutation.\nconst officeReadingContextInfo = new WeakMap();\nfunction officeReadingNormalize(value) {\n    if (!value || value.dark !== true) return null;\n    const matrix = value.matrix;\n    if (!Array.isArray(matrix) || matrix.length !== 20 || !matrix.every(n => Number.isFinite(n) && Math.abs(n) <= 4)\n            || matrix.slice(15).some((n, i) => n !== (i === 3 ? 1 : 0))) throw TypeError('Invalid Office reading palette');\n    if (value.officeReadingVersion === 1 && Object.isFrozen(value) && Object.isFrozen(matrix)) return value;\n    return Object.freeze({officeReadingVersion: 1, dark: true, matrix: Object.freeze(matrix.slice())});\n}\nfunction officeReadingRgba(value) {\n    if (typeof value !== 'string') return null;\n    const color = value.trim().toLowerCase();\n    if (color === 'transparent') return [0, 0, 0, 0];\n    if (color === 'black') return [0, 0, 0, 1];\n    if (color === 'white') return [255, 255, 255, 1];\n    const hex = /^#([\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})$/.exec(color);\n    if (hex) {\n        let s = hex[1];\n        if (s.length <= 4) s = [...s].map(c => c + c).join('');\n        return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16), s.length === 8 ? parseInt(s.slice(6), 16) / 255 : 1];\n    }\n    const rgb = /^rgba?\\(\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)\\s*,\\s*([\\d.+-]+)(?:\\s*,\\s*([\\d.+-]+))?\\s*\\)$/.exec(color);\n    if (!rgb) return null;\n    const channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3]), rgb[4] === undefined ? 1 : Number(rgb[4])];\n    return channels.every(Number.isFinite) && channels.slice(0, 3).every(n => n >= 0 && n <= 255) && channels[3] >= 0 && channels[3] <= 1 ? channels : null;\n}\nfunction officeReadingColor(value, palette) {\n    if (!palette) return value;\n    const rgba = officeReadingRgba(value);\n    if (!rgba || rgba[3] === 0) return value;\n    const matrix = palette.matrix, input = [rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3], 1];\n    const rgb = [0, 1, 2].map(row => Math.max(0, Math.min(255, matrix.slice(row * 5, row * 5 + 5).reduce((sum, n, i) => sum + n * input[i], 0) * 255)));\n    return `rgba(${rgb.join(',')},${rgba[3]})`;\n}\nfunction officeReadingRaw(context) { return officeReadingContextInfo.get(context)?.raw ?? context; }\nfunction officeReadingPaletteOf(context) { return officeReadingContextInfo.get(context)?.palette ?? null; }\nfunction officeReadingOriginal(context, paint) {\n    const raw = officeReadingRaw(context);\n    if (raw === context) return paint(raw);\n    raw.save();\n    try { return paint(raw); } finally { raw.restore(); }\n}\nfunction officeReadingContext(context, value) {\n    const palette = officeReadingNormalize(value);\n    if (!palette) return officeReadingRaw(context);\n    if (officeReadingPaletteOf(context) === palette) return context;\n    const raw = officeReadingRaw(context), styles = ['fillStyle', 'strokeStyle', 'shadowColor'];\n    let authored = Object.fromEntries(styles.map(key => [key, raw[key]]));\n    const saved = [], methods = new Map(), colors = new Map();\n    const color = value => {\n        if (typeof value !== 'string') return value;\n        if (colors.has(value)) return colors.get(value);\n        const result = officeReadingColor(value, palette);\n        if (colors.size < 512) colors.set(value, result);\n        return result;\n    };\n    const proxy = new Proxy(raw, {\n        get(target, key) {\n            if (styles.includes(key)) return authored[key];\n            const value = Reflect.get(target, key, target);\n            if (typeof value !== 'function') return value;\n            if (!methods.has(key)) {\n                if (key === 'save') methods.set(key, () => { target.save(); saved.push({...authored}); });\n                else if (key === 'restore') methods.set(key, () => { target.restore(); if (saved.length) authored = saved.pop(); });\n                else if (key === 'createLinearGradient' || key === 'createRadialGradient') methods.set(key, (...args) => {\n                    const gradient = value.apply(target, args), add = gradient.addColorStop.bind(gradient);\n                    Object.defineProperty(gradient, 'addColorStop', {value: (offset, ink) => add(offset, color(ink))});\n                    return gradient;\n                });\n                else methods.set(key, value.bind(target));\n            }\n            return methods.get(key);\n        },\n        set(target, key, value) {\n            if (styles.includes(key)) {\n                target[key] = color(value);\n                // Invalid CSS assignments are ignored by Canvas; retain its accepted state.\n                authored[key] = typeof value === 'string' && !officeReadingRgba(value) ? target[key] : value;\n                return true;\n            }\n            return Reflect.set(target, key, value, target);\n        }\n    });\n    officeReadingContextInfo.set(proxy, {raw, palette});\n    return proxy;\n}\nfunction officeReadingShapeIsArtwork(shape) {\n    // Only plain rectangular paper/text has an unambiguous reading role here.\n    // Retain colored/custom/picture-filled/effect-bearing artwork and its labels.\n    if (shape.custGeom?.length || shape.shadow || shape.reflection || shape.glow || shape.softEdge || shape.innerShadow || shape.scene3d || shape.sp3d) return true;\n    if (shape.textBody?.paragraphs?.some(paragraph => paragraph.runs?.some(run => run.shadow || run.reflection || run.glow || run.softEdge || run.outline || run.fill || run.patternFill))) return true;\n    // _o receives shapes with geometry; prstGeom belongs to the picture path.\n    const geometry = typeof shape.geometry === 'string' ? shape.geometry.toLowerCase() : null, fill = shape.fill;\n    if (geometry !== 'rect') return true;\n    if (!fill || fill.fillType === 'none') return !shape.textBody;\n    const rgba = fill.fillType === 'solid' && typeof fill.color === 'string' ? officeReadingRgba(fill.color.startsWith('#') ? fill.color : '#' + fill.color) : null;\n    return !rgba || rgba[3] !== 1 || Math.min(...rgba.slice(0, 3)) < 235 || Math.max(...rgba.slice(0, 3)) - Math.min(...rgba.slice(0, 3)) > 8;\n}\nfunction officeReadingMath(context, image, x, y, width, height) {\n    const palette = officeReadingPaletteOf(context);\n    if (!palette) return context.drawImage(image, x, y, width, height);\n    // Math is a semantic glyph mask, never an ordinary document image. Preserve\n    // its intrinsic alpha and existing destination geometry without reading pixels.\n    const w = image.width, h = image.height;\n    // Na/Ws admit long, narrow glyph rasters (including 8192x28). Keep those\n    // sides and downsample only when the area exceeds 262144 pixels (1 MiB\n    // RGBA). One synchronous scratch avoids alpha seams between scaled tiles.\n    if (!Number.isSafeInteger(w) || !Number.isSafeInteger(h) || w <= 0 || h <= 0) throw RangeError('Invalid Office math source');\n    const ratio = Math.min(1, Math.sqrt(262144 / (w * h)));\n    const sw = Math.max(1, Math.min(32767, 262144, Math.floor(w * ratio)));\n    const sh = Math.max(1, Math.min(32767, Math.floor(262144 / sw), Math.floor(h * ratio)));\n    const canvas = typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(sw, sh) : context.canvas.ownerDocument.createElement('canvas');\n    canvas.width = sw; canvas.height = sh;\n    try {\n        const paint = canvas.getContext('2d');\n        if (!paint) throw Error('Office reading math context unavailable');\n        paint.drawImage(image, 0, 0, sw, sh);\n        paint.globalCompositeOperation = 'source-in';\n        paint.fillStyle = officeReadingColor('#000000', palette);\n        paint.fillRect(0, 0, sw, sh);\n        return context.drawImage(canvas, x, y, width, height);\n    } finally { canvas.width = canvas.height = 0; }\n}\n\n// Bounded completion is separate from paint admission. Cancellation never means\n// committed; timer/signal cleanup is independent of RAF and scheduler idle.\nfunction officeReadingWait(viewer, key, committed, subscribe, options = {}) {\n    viewer.officeReadingCancel?.('superseded');\n    let finish;\n    const promise = new Promise(resolve => {\n        let stop = () => {}, timer, closed = false;\n        const signal = options.signal;\n        const close = (status, error) => {\n            if (closed) return;\n            closed = true; stop(); clearTimeout(timer);\n            signal?.removeEventListener('abort', abort);\n            if (viewer.officeReadingCancel === close) { viewer.officeReadingCancel = null; viewer.officeReadingPending = null; }\n            resolve({status, key, ...error ? {error} : {}});\n        };\n        const abort = () => close(options.paused ? 'paused' : 'cancelled');\n        const done = () => {\n            if (viewer._destroyed) close('destroyed');\n            else if (key !== viewer.officeReadingKey) close('superseded');\n            else if (options.paused || viewer._scroller?.interacting) close('paused');\n            else if (committed()) close('committed');\n        };\n        finish = close;\n        viewer.officeReadingCancel = close;\n        signal?.addEventListener('abort', abort, {once: true});\n        if (signal?.aborted) abort(); else done();\n        if (!closed) {\n            stop = subscribe(done, error => close('failed', error)) || stop;\n            const ms = Number.isFinite(options.timeoutMs) ? Math.max(1, Math.min(650, options.timeoutMs)) : 500;\n            timer = setTimeout(() => { done(); if (!closed) close('timeout'); }, ms);\n            done();\n        }\n    });\n    // A synchronous result must not leave a resolved promise registered as work.\n    if (viewer.officeReadingCancel === finish) viewer.officeReadingPending = promise;\n    return promise;\n}\n\n\n// NimarkoGram: bounded XLSX wo",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "document-pull-client-CHpz0Q1p.js",
+      "sha256": "c4590633054f4513caa12b9a2514a6f9d0819918ee6803e79da38fd2b5c26a5b",
+      "replacements": [
+        {
+          "before": "onDiagnostic: r.onDiagnostic,\n\t\t",
+          "after": "officeReadingPalette: r.officeReadingPalette, onDiagnostic: r.onDiagnostic,\n\t\t",
+          "count": 1
+        },
+        {
+          "before": "ctx: d,\n\t\t\t\tscale: p,\n\t\t\t\tdpr: _",
+          "after": "officeReadingPalette: r.officeReadingPalette, ctx: d,\n\t\t\t\tscale: p,\n\t\t\t\tdpr: _",
+          "count": 1
+        },
+        {
+          "before": "scale: p,\n\t\t\t\tdpr: _,\n\t\t\t\tregion",
+          "after": "officeReadingPalette: r.officeReadingPalette, scale: p,\n\t\t\t\tdpr: _,\n\t\t\t\tregion",
+          "count": 1
+        },
+        {
+          "before": ".x, -r.region.y), d.fillStyle = \"#ffffff\", d.fillRect(0, 0, m, h);\n\t\t};\n\t",
+          "after": ".x, -r.region.y), d.fillStyle = officeReadingColor('#ffffff', officeReadingNormalize(r.officeReadingPalette)), d.fillRect(0, 0, m, h);\n\t\t};\n\t",
+          "count": 1
+        },
+        {
+          "before": "Ct(o, i.descriptor.model, {\n\t\t\t\tx: a.xPt,\n\t\t\t\ty: a.yPt,\n\t\t\t\tw: a.widthPt,\n\t\t\t\th: a.heightPt\n\t\t\t}, 1, 0, e, t, n, r)",
+          "after": "officeReadingOriginal(o, officeRaw => Ct(officeRaw, i.descriptor.model, {\n\t\t\t\tx: a.xPt,\n\t\t\t\ty: a.yPt,\n\t\t\t\tw: a.widthPt,\n\t\t\t\th: a.heightPt\n\t\t\t}, 1, 0, e, t, n, r))",
+          "count": 1
+        },
+        {
+          "before": "n.drawImage(r, t.xPt, t.yPt, t.widthPt, t.heightPt)",
+          "after": "officeReadingMath(n, r, t.xPt, t.yPt, t.widthPt, t.heightPt)",
+          "count": 1
+        },
+        {
+          "before": "ctx: o,\n\t\t\tscale: r.scale,\n\t\t\tdp",
+          "after": "officeReadingPalette: r.officeReadingPalette, ctx: o,\n\t\t\tscale: r.scale,\n\t\t\tdp",
+          "count": 1
+        },
+        {
+          "before": "let n = t.ctx.getTransform?.() ?",
+          "after": "t = {...t, ctx: officeReadingContext(t.ctx, t.officeReadingPalette)};\nlet n = t.ctx.getTransform?.() ?",
+          "count": 1
+        },
+        {
+          "before": "for (let n of e.commands) {\n\t\tif",
+          "after": "if (officeReadingRaw(t.ctx) !== t.ctx) return officeReadingOriginal(t.ctx, officeRaw => vx(e, {...t, ctx: officeRaw}));\nfor (let n of e.commands) {\n\t\tif",
+          "count": 1
+        },
+        {
+          "before": "import { Ao as e, Dr as t, Eo as",
+          "after": "import { officeReadingNormalize, officeReadingContext, officeReadingRaw, officeReadingOriginal, officeReadingPaletteOf, officeReadingColor, officeReadingShapeIsArtwork, officeReadingMath, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\nimport { Ao as e, Dr as t, Eo as",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "slide-pull-client-43mS9T70.js",
+      "sha256": "27a8592e33c9f1af531b10302d63bfd4ce4765093b543cdbbbd26f239026e1a7",
+      "replacements": [
+        {
+          "before": "Uo(I, a.dim, f, p)",
+          "after": "officeReadingOriginal(I, officeRaw => Uo(officeRaw, a.dim, f, p))",
+          "count": 1
+        },
+        {
+          "before": "Lt(I, r.chart, {\n\t\t\t\t\tx: Z(r.x, d),\n\t\t\t\t\ty: Z(r.y, d),\n\t\t\t\t\tw: Z(r.width, d),\n\t\t\t\t\th: Z(r.height, d)\n\t\t\t\t}, e, r.rotation, a.threeD, a.regionMap, ce(P, {\n\t\t\t\t\trotation: r.rotation,\n\t\t\t\t\tflipH: r.flipH,\n\t\t\t\t\tflipV: r.flipV\n\t\t\t\t}), a.chartEx)",
+          "after": "officeReadingOriginal(I, officeRaw => Lt(officeRaw, r.chart, {\n\t\t\t\t\tx: Z(r.x, d),\n\t\t\t\t\ty: Z(r.y, d),\n\t\t\t\t\tw: Z(r.width, d),\n\t\t\t\t\th: Z(r.height, d)\n\t\t\t\t}, e, r.rotation, a.threeD, a.regionMap, ce(P, {\n\t\t\t\t\trotation: r.rotation,\n\t\t\t\t\tflipH: r.flipH,\n\t\t\t\t\tflipV: r.flipV\n\t\t\t\t}), a.chartEx))",
+          "count": 1
+        },
+        {
+          "before": "n];\n\t\t\tif (e && (ue(I, L, () => e.paint(I)), e.failure)) throw e.failure.e",
+          "after": "n];\n\t\t\tif (e && (ue(I, L, () => officeReadingOriginal(I, officeRaw => e.paint(officeRaw))), e.failure)) throw e.failure.e",
+          "count": 1
+        },
+        {
+          "before": "\t}\n\tif (c()) return e;\n\tlet I = b();\n\tfor (let e of k) if (e.paint(",
+          "after": "\t}\n\tif (c()) return e;\n\tlet I = officeReadingContext(b(), a.officeReadingPalette);\n\tfor (let e of k) if (e.paint(",
+          "count": 1
+        },
+        {
+          "before": "A(t.stroke?.fill) && (e = re(e));\n\tlet c = Z(t.x, n), l = Z(t.y,",
+          "after": "if (officeReadingRaw(e) !== e && officeReadingShapeIsArtwork(t)) return officeReadingOriginal(e, officeRaw => _o(officeRaw, t, n, r, i, a, o, s));\nA(t.stroke?.fill) && (e = re(e));\n\tlet c = Z(t.x, n), l = Z(t.y,",
+          "count": 1
+        },
+        {
+          "before": "o > 0) if (a) e.drawImage(Pe(a, t.color), n, r, i.width, o);\n\telse if (",
+          "after": "o > 0) if (a) e.drawImage(Pe(a, officeReadingColor(t.color, officeReadingPaletteOf(e))), n, r, i.width, o);\n\telse if (",
+          "count": 1
+        },
+        {
+          "before": "import { $r as e, Aa as t, Ao as",
+          "after": "import { officeReadingNormalize, officeReadingContext, officeReadingRaw, officeReadingOriginal, officeReadingPaletteOf, officeReadingColor, officeReadingShapeIsArtwork, officeReadingMath, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\nimport { $r as e, Aa as t, Ao as",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "renderer-DFDF48zw.js",
+      "sha256": "91f91070e5d06ef0f35e6f081a8d1a4220e543ced528927d7639b935f5be8b59",
+      "replacements": [
+        {
+          "before": "let b = [], x = 0;\n\tif (i) for (",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => es(officeRaw, t, n, r, i, a, o, s, c, l, u, d, f, p, m, h, g, _, v, y));\nlet b = [], x = 0;\n\tif (i) for (",
+          "count": 1
+        },
+        {
+          "before": "let O = D?.surface ?? \"#f8f9fa\",",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => $o(officeRaw, t, n, r, i, a, o, s, c, l, u, d, f, p, m, h, _, v, y, b, x, S, C, w, T, E, D));\nlet O = D?.surface ?? \"#f8f9fa\",",
+          "count": 1
+        },
+        {
+          "before": "const officeData = officeWorkshe",
+          "after": "e = officeReadingContext(e, i.officeReadingPalette);\nconst officeData = officeWorkshe",
+          "count": 1
+        },
+        {
+          "before": "let { values: r } = n;\n\tif (r.le",
+          "after": "if (officeReadingRaw(e) !== e) return officeReadingOriginal(e, officeRaw => Ze(officeRaw, t, n));\nlet { values: r } = n;\n\tif (r.le",
+          "count": 1
+        },
+        {
+          "before": "\n// NimarkoGram: bounded XLSX wo",
+          "after": "import { officeReadingNormalize, officeReadingContext, officeReadingRaw, officeReadingOriginal, officeReadingPaletteOf, officeReadingColor, officeReadingShapeIsArtwork, officeReadingMath, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\n\n// NimarkoGram: bounded XLSX wo",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "7eeff4a6da3161775bfb323753687b79d5dcb41740189a3bc53ebc9f4767cda5",
+      "replacements": [
+        {
+          "before": "};\nfunction Hr(e) {\n\tlet t = [];",
+          "after": "\n\tsetOfficeReadingPalette(value, wait = {}) {\n        const palette = officeReadingNormalize(value), key = JSON.stringify(palette);\n        if (this._destroyed) return Promise.resolve({status: 'destroyed', key});\n        const resource = this._doc || this._pres;\n        const changed = this.officeReadingKey !== key;\n        if (!changed && this.officeReadingPending) return this.officeReadingPending;\n        if (changed) {\n        this._opts.officeReadingPalette = palette;\n        this.officeReadingCancel?.('superseded');\n        this.officeReadingKey = key;\n        this._renderEpoch++;\n        const scheduler = this._scroller;\n        scheduler.renderEpoch++;\n        for (const job of scheduler.renderQueue.values()) job.resolve();\n        scheduler.renderQueue.clear();\n        for (const entry of scheduler.staged.values()) entry.dispose();\n        scheduler.staged.clear();\n        for (const slot of this._slots.values()) {\n            slot.dispatcher.begin(); slot.needsRender = true;\n            for (const old of slot.wrapper.querySelectorAll('[data-office-quality-preview], [data-office-detail]')) {\n                old.remove(); old.width = old.height = 0;\n            }\n        }\n        }\n        if (resource) resource.officeReadingPalette = this._opts.officeReadingPalette;\n        const scheduler = this._scroller;\n        // The existing scheduler serializes old in-flight work before new paints.\n        if (!wait.paused && !wait.signal?.aborted && !scheduler.interacting) for (const [unit, slot] of this._slots) {\n            if (!slot.needsRender && slot.officeReadingKey === key) continue;\n            if (this._mode === 'worker') this._renderSlotBitmap(unit, slot);\n            else this._main.settleReading(unit, slot);\n        }\n        if (!wait.paused && !wait.signal?.aborted) scheduler.pump();\n        return officeReadingWait(this, key,\n            () => this._slots.size > 0 && [...this._slots.values()].every(slot => !slot.needsRender && slot.officeReadingKey === key),\n            done => scheduler.observeDetailIdle(done), wait);\n    }\n    cancelOfficeReading(status = 'cancelled') {\n        this.officeReadingCancel?.(status);\n    }\n};\nfunction Hr(e) {\n\tlet t = [];",
+          "count": 1
+        },
+        {
+          "before": "this._destroyed || (this._destroyed = !0, this._pendingLoadAbort?.abort(), this._pendingLoadAbort = null, this._pendingViewChanged = null, this._findRequestGeneration++, this._errorRouter.close(), this._layout.unbind(), this._layoutViewGeneration++, this._",
+          "after": "this.officeReadingCancel?.('destroyed');\nthis._destroyed || (this._destroyed = !0, this._pendingLoadAbort?.abort(), this._pendingLoadAbort = null, this._pendingViewChanged = null, this._findRequestGeneration++, this._errorRouter.close(), this._layout.unbind(), this._layoutViewGeneration++, this._",
+          "count": 1
+        },
+        {
+          "before": "if (t.textLayer && (a && this._c",
+          "after": "t.officeReadingKey = this.officeReadingKey;\nif (t.textLayer && (a && this._c",
+          "count": 1
+        },
+        {
+          "before": "if (e.tagName === \"CANVAS\") thro",
+          "after": "t.officeReadingPalette = officeReadingNormalize(t.officeReadingPalette); this.officeReadingKey = JSON.stringify(t.officeReadingPalette);\nif (e.tagName === \"CANVAS\") thro",
+          "count": 1
+        },
+        {
+          "before": "imageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._currentDate,\n\t\t\t...this._showTrackedChanges ? { showTrackedChanges: !0 } : {},\n\t\t\tonTextRun: i\n\t\t}),\n\t\tcommitRuns: (e, t, n, r, i, a, o) => t",
+          "after": "officeReadingPalette: this._opts.officeReadingPalette,\n\t\t\timageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._currentDate,\n\t\t\t...this._showTrackedChanges ? { showTrackedChanges: !0 } : {},\n\t\t\tonTextRun: i\n\t\t}),\n\t\tcommitRuns: (e, t, n, r, i, a, o) => t",
+          "count": 1
+        },
+        {
+          "before": "imageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._currentDate,\n\t\t\t...this._showTrackedChanges ? { showTrackedChanges: !0 } : {},\n\t\t\tonTextRun: i\n\t\t}),\n\t\tcommitBitmap: (e, t, n, r, i, a) => n.",
+          "after": "officeReadingPalette: this._opts.officeReadingPalette,\n\t\t\timageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._currentDate,\n\t\t\t...this._showTrackedChanges ? { showTrackedChanges: !0 } : {},\n\t\t\tonTextRun: i\n\t\t}),\n\t\tcommitBitmap: (e, t, n, r, i, a) => n.",
+          "count": 1
+        },
+        {
+          "before": "imageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._opts.currentD",
+          "after": "officeReadingPalette: this._opts.officeReadingPalette,\n\t\t\timageResources: this._opts.imageResources,\n\t\t\tdefaultTextColor: this._opts.defaultTextColor,\n\t\t\tcurrentDate: this._opts.currentD",
+          "count": 1
+        },
+        {
+          "before": "...this._withActiveView(r),",
+          "after": "officeReadingPalette: this.officeReadingPalette,\n\t\t\t...this._withActiveView(r),",
+          "count": 1
+        },
+        {
+          "before": "...this._withActiveView(n),",
+          "after": "officeReadingPalette: this.officeReadingPalette,\n\t\t\t...this._withActiveView(n),",
+          "count": 1
+        },
+        {
+          "before": "import { t as e } from \"./chunk-",
+          "after": "import { officeReadingNormalize, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\nimport { t as e } from \"./chunk-",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "pptx-CLyebeF_.js",
+      "sha256": "50c7c5c5e96d9238e38dde09b949553d3479b3358b0f3d345ada39a902bfbb94",
+      "replacements": [
+        {
+          "before": "}, En = /* @__PURE__ */ e({\n\tOox",
+          "after": "\n\tsetOfficeReadingPalette(value, wait = {}) {\n        const palette = officeReadingNormalize(value), key = JSON.stringify(palette);\n        if (this._destroyed) return Promise.resolve({status: 'destroyed', key});\n        const resource = this._doc || this._pres;\n        const changed = this.officeReadingKey !== key;\n        if (!changed && this.officeReadingPending) return this.officeReadingPending;\n        if (changed) {\n        this._opts.officeReadingPalette = palette;\n        this.officeReadingCancel?.('superseded');\n        this.officeReadingKey = key;\n        this._renderEpoch++;\n        const scheduler = this._scroller;\n        scheduler.renderEpoch++;\n        for (const job of scheduler.renderQueue.values()) job.resolve();\n        scheduler.renderQueue.clear();\n        for (const entry of scheduler.staged.values()) entry.dispose();\n        scheduler.staged.clear();\n        for (const slot of this._slots.values()) {\n            slot.dispatcher.begin(); slot.needsRender = true;\n            for (const old of slot.wrapper.querySelectorAll('[data-office-quality-preview], [data-office-detail]')) {\n                old.remove(); old.width = old.height = 0;\n            }\n        }\n        }\n        if (resource) resource.officeReadingPalette = this._opts.officeReadingPalette;\n        const scheduler = this._scroller;\n        // The existing scheduler serializes old in-flight work before new paints.\n        if (!wait.paused && !wait.signal?.aborted && !scheduler.interacting) for (const [unit, slot] of this._slots) {\n            if (!slot.needsRender && slot.officeReadingKey === key) continue;\n            if (this._mode === 'worker') this._renderSlotBitmap(unit, slot);\n            else this._main.settleReading(unit, slot);\n        }\n        if (!wait.paused && !wait.signal?.aborted) scheduler.pump();\n        return officeReadingWait(this, key,\n            () => this._slots.size > 0 && [...this._slots.values()].every(slot => !slot.needsRender && slot.officeReadingKey === key),\n            done => scheduler.observeDetailIdle(done), wait);\n    }\n    cancelOfficeReading(status = 'cancelled') {\n        this.officeReadingCancel?.(status);\n    }\n}, En = /* @__PURE__ */ e({\n\tOox",
+          "count": 1
+        },
+        {
+          "before": "this._destroyed || (this._destro",
+          "after": "this.officeReadingCancel?.('destroyed');\nthis._destroyed || (this._destro",
+          "count": 1
+        },
+        {
+          "before": "t.textLayer && (a && this._clear",
+          "after": "t.officeReadingKey = this.officeReadingKey;\nt.textLayer && (a && this._clear",
+          "count": 1
+        },
+        {
+          "before": "if (e.tagName === \"CANVAS\") thro",
+          "after": "t.officeReadingPalette = officeReadingNormalize(t.officeReadingPalette); this.officeReadingKey = JSON.stringify(t.officeReadingPalette);\nif (e.tagName === \"CANVAS\") thro",
+          "count": 1
+        },
+        {
+          "before": "imageResources: this._opts.imageResources },\n\t\t\tonTextRun: i\n\t\t}",
+          "after": "officeReadingPalette: this._opts.officeReadingPalette,\n\t\t\timageResources: this._opts.imageResources },\n\t\t\tonTextRun: i\n\t\t}",
+          "count": 1
+        },
+        {
+          "before": "...a ? {} : {",
+          "after": "...a && !officeReading ? {} : {",
+          "count": 1
+        },
+        {
+          "before": "render: (e, t, n, r, i, a, current) => Q(",
+          "after": "render: (e, t, n, r, i, a, current, officeReading = false) => Q(",
+          "count": 1
+        },
+        {
+          "before": "imageResources: this._opts.imageResources,\n\t\t\tonTextRun: i\n\t\t}),",
+          "after": "officeReadingPalette: this._opts.officeReadingPalette,\n\t\t\timageResources: this._opts.imageResources,\n\t\t\tonTextRun: i\n\t\t}),",
+          "count": 1
+        },
+        {
+          "before": "imageResources: t.imageResources,\n\t\t\t\tskipMediaControls: t.skipM",
+          "after": "officeReadingPalette: t.officeReadingPalette, imageResources: t.imageResources,\n\t\t\t\tskipMediaControls: t.skipM",
+          "count": 1
+        },
+        {
+          "before": "imageResources: t.imageResources,\n\t\t\t\t\tskipMediaControls: t.skip",
+          "after": "officeReadingPalette: t.officeReadingPalette, imageResources: t.imageResources,\n\t\t\t\t\tskipMediaControls: t.skip",
+          "count": 1
+        },
+        {
+          "before": "async renderSlideToBitmap(e, t = {}) {",
+          "after": "async renderSlideToBitmap(e, t = {}) {\n\t\tt = {officeReadingPalette: this.officeReadingPalette, ...t};",
+          "count": 1
+        },
+        {
+          "before": "officeIsCurrent: n.officeIsCurrent,",
+          "after": "officeReadingPalette: n.officeReadingPalette,\n\t\t\t\t\tofficeIsCurrent: n.officeIsCurrent,",
+          "count": 1
+        },
+        {
+          "before": "async renderSlide(e, t, n = {}) {",
+          "after": "async renderSlide(e, t, n = {}) {\n\t\tn = {officeReadingPalette: this.officeReadingPalette, ...n};",
+          "count": 1
+        },
+        {
+          "before": "import { t as e } from \"./chunk-",
+          "after": "import { officeReadingNormalize, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\nimport { t as e } from \"./chunk-",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "696a251c93cfe36cdd31df129f31b012d113dba7bf04fe6c9cf170c36dc58a0c",
+      "replacements": [
+        {
+          "before": "if (this._destroyed) return;\n\t\tif (this.officeActiveTask) { this",
+          "after": "this.officeReadingCancel?.('destroyed');\nif (this._destroyed) return;\n\t\tif (this.officeActiveTask) { this",
+          "count": 1
+        },
+        {
+          "before": "officeTaskId: this.officeActiveTask?.id,",
+          "after": "officeReadingPalette: this.opts.officeReadingPalette,\n\t\t\tofficeTaskId: this.officeActiveTask?.id,",
+          "count": 1
+        },
+        {
+          "before": "frame.key = JSON.stringify([frame.sheet, frame.generation, frame.dataRevision, frame.revision, frame.fonts, frame.colors, frame.highlight,",
+          "after": "frame.key = JSON.stringify([frame.sheet, frame.generation, frame.dataRevision, frame.revision, frame.fonts, frame.colors, frame.highlight, frame.reading,",
+          "count": 1
+        },
+        {
+          "before": "fonts: this.fontBindingGeneration, colors: JSON.stringify(this.chromeColors),",
+          "after": "reading: this.officeReadingKey ?? JSON.stringify(officeReadingNormalize(this.opts.officeReadingPalette)),\n\t\t\tfonts: this.fontBindingGeneration, colors: JSON.stringify(this.chromeColors),",
+          "count": 1
+        },
+        {
+          "before": "\tofficeOwner() {",
+          "after": "\tsetOfficeReadingPalette(value, wait = {}) {\n        const palette = officeReadingNormalize(value), key = JSON.stringify(palette);\n        if (this._destroyed) return Promise.resolve({status: 'destroyed', key});\n        const changed = this.officeReadingKey !== key;\n        if (!changed && this.officeReadingPending) return this.officeReadingPending;\n        if (changed) {\n        this.officeReadingCancel?.('superseded');\n        this.officeReadingKey = key;\n        this.opts.officeReadingPalette = palette;\n        this.renderDispatcher.begin();\n        if (this.officeActiveTask) {\n            this.officeActiveTask.cancelled = true;\n            this.officeActiveTask.workbook.cancelOfficeViewport(this.officeActiveTask.id);\n        }\n        this.officeClearBackdrop();\n        this.officePaint = null;\n        this.officeDesired = this.officeWanted = null;\n        }\n        return officeReadingWait(this, key,\n            () => this.officePaint?.reading === key && this.officeOwns(this.officePaint) && this.officeCovered(this.officePaint, this.officeView()),\n            (done, failed) => {\n                if (!wait.paused && !wait.signal?.aborted) this.renderCurrentSheet().then(done, failed);\n            }, wait);\n    }\n    cancelOfficeReading(status = 'cancelled') {\n        this.officeReadingCancel?.(status);\n    }\n\tofficeOwner() {",
+          "count": 1
+        },
+        {
+          "before": "this.container = e, this.hostDoc",
+          "after": "t.officeReadingPalette = officeReadingNormalize(t.officeReadingPalette); this.officeReadingKey = JSON.stringify(t.officeReadingPalette);\nthis.container = e, this.hostDoc",
+          "count": 1
+        },
+        {
+          "before": "import { t as e } from \"./chunk-",
+          "after": "import { officeReadingNormalize, officeReadingWait } from \"./plot-area-frame-D3JtHvov.js\";\nimport { t as e } from \"./chunk-",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "018f92995c0e1c86cc4fd30ef3878dd4f99d9209b908c800b790889253d5dad6",
+      "replacements": [
+        {
+          "before": "}, K = class {\n\thooks;\n\tslots = ",
+          "after": "\n    settleReading(unit, slot) {\n        return this.hooks.scheduler.run(unit, slot, current => {\n            const width = this.hooks.width(unit);\n            const dpr = this.hooks.scheduler.reserveDpr(width, this.hooks.height(unit), this.hooks.dpr());\n            return this.settleNow(unit, slot, width, dpr, current, true);\n        });\n    }\n}, K = class {\n\thooks;\n\tslots = ",
+          "count": 1
+        },
+        {
+          "before": ");\n\t\t} catch (n) {\n\t\t\tthis.isCur",
+          "after": ", officeReading);\n\t\t} catch (n) {\n\t\t\tthis.isCur",
+          "count": 1
+        },
+        {
+          "before": ") {\n\t\tlet i = this.hooks.scale()",
+          "after": ", officeReading = false) {\n\t\tlet i = this.hooks.scale()",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

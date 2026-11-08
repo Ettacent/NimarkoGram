@@ -29,6 +29,7 @@ import org.telegram.messenger.WebFile;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_wallet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.LayoutHelper;
@@ -39,6 +40,7 @@ import org.telegram.ui.Components.UniversalRecyclerView;
 
 import java.util.Objects;
 
+import java.util.HashSet;
 public class CollectibleCell extends FrameLayout implements Theme.Colorable {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -129,11 +131,15 @@ public class CollectibleCell extends FrameLayout implements Theme.Colorable {
         final int thumbColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
         final Drawable thumbIcon = getContext().getResources().getDrawable(R.drawable.wallet_nft_placeholder).mutate();
         thumbIcon.setColorFilter(new PorterDuffColorFilter(thumbColor, PorterDuff.Mode.SRC_IN));
+        final Drawable thumbBackground = Theme.createRoundRectDrawable(dp(grid ? 11 : 8), Theme.multAlpha(thumbColor, 0.10f));
         final CombinedDrawable thumb = new CombinedDrawable(
-            Theme.createRoundRectDrawable(dp(grid ? 11 : 8), Theme.multAlpha(thumbColor, 0.10f)),
+            thumbBackground,
             thumbIcon
         );
 
+        thumbIconDrawable = thumbIcon;
+        thumbBackgroundDrawable = thumbBackground;
+        thumbThemedColor = thumbColor;
         if (image != null && grid) {
             final ImageLocation small = item.image_small != null && item.image != null ? getImage(item, true) : null;
             thumbView.setImage(image, "160_160", small, "100_100", thumb, null, 0, 0, item);
@@ -169,6 +175,12 @@ public class CollectibleCell extends FrameLayout implements Theme.Colorable {
     }
 
     @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_windowBackgroundWhiteBlackText);
+        colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+    }
+
+    @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(
                 MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY),
@@ -176,9 +188,27 @@ public class CollectibleCell extends FrameLayout implements Theme.Colorable {
         );
     }
 
+    private Drawable thumbIconDrawable, thumbBackgroundDrawable;
+    private int thumbThemedColor;
+
+    private void checkThumbColors() {
+        if (thumbIconDrawable == null || thumbBackgroundDrawable == null) {
+            return;
+        }
+        final int thumbColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
+        if (thumbColor != thumbThemedColor) {
+            thumbThemedColor = thumbColor;
+            thumbIconDrawable.setColorFilter(new PorterDuffColorFilter(thumbColor, PorterDuff.Mode.SRC_IN));
+            Theme.setDrawableColor(thumbBackgroundDrawable, Theme.multAlpha(thumbColor, 0.10f));
+            if (thumbView != null) {
+                thumbView.invalidate();
+            }
+        }
+    }
     @Override
     protected void onDraw(android.graphics.Canvas canvas) {
         super.onDraw(canvas);
+        checkThumbColors();
         if (needDivider) {
             canvas.drawRect(
                     LocaleController.isRTL ? 0 : dp(71),

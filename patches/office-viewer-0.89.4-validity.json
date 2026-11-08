@@ -1,0 +1,43 @@
+{
+  "version": "0.89.4",
+  "attribution": "Modifications Copyright (C) 2026 Ettacent",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "6776d64b21bc36e19dab904324c4096b7be6571c9473cf94b3f15788a5a7c360",
+      "replacements": [
+        {
+          "before": "t.canvas.setAttribute(\"data-office-painted-unit\", String(e)), f = !0;",
+          "after": "t.canvas.setAttribute(\"data-office-painted-unit\", String(e)), t.canvas.setAttribute(\"data-office-painted-scale\", String(i)), t.canvas.setAttribute(\"data-office-valid-unit\", String(e)), f = !0;",
+          "count": 1
+        },
+        {
+          "before": "u.setAttribute(\"data-office-painted-unit\", String(e)));",
+          "after": "u.setAttribute(\"data-office-painted-unit\", String(e)), u.setAttribute(\"data-office-painted-scale\", String(l)), u.setAttribute(\"data-office-valid-unit\", String(e)));",
+          "count": 1
+        },
+        {
+          "before": "o.setAttribute(\"data-office-painted-unit\", String(e));",
+          "after": "o.setAttribute(\"data-office-painted-unit\", String(e)), o.setAttribute(\"data-office-painted-scale\", String(i)), o.setAttribute(\"data-office-valid-unit\", String(e));",
+          "count": 1
+        },
+        {
+          "before": "t.canvas.removeAttribute(\"data-office-painted-unit\"), t.wrapper.removeAttribute(\"data-office-unit\");",
+          "after": "t.canvas.removeAttribute(\"data-office-valid-unit\"), t.canvas.removeAttribute(\"data-office-painted-scale\"), t.canvas.removeAttribute(\"data-office-painted-unit\"), t.wrapper.removeAttribute(\"data-office-unit\");",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "5594af92ec29810d4323eb4361cc4380d15b6f2a93c297aeedc1dc845afb549e",
+      "replacements": [
+        {
+          "before": "this.renderGutters(), this.firstPreviewRender = !1, this.committedFrameCount++;",
+          "after": "this.renderGutters(), this.firstPreviewRender = !1, this.committedFrameCount++;\n\t\tthis.canvas.setAttribute(\"data-office-painted-sheet\", String(this.currentSheet)), this.canvas.setAttribute(\"data-office-painted-scale\", String(i)), this.canvas.setAttribute(\"data-office-painted-width\", String(n)), this.canvas.setAttribute(\"data-office-painted-height\", String(r));",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

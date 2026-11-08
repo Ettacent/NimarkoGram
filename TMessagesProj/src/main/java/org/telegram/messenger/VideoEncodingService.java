@@ -99,6 +99,7 @@ public class VideoEncodingService extends Service implements NotificationCenter.
 
     @Override
     public void onTimeout(int startId, int fgsType) {
+        FileLog.d("VideoEncodingService timeout, type = " + fgsType);
         stopEncodingService();
     }
 

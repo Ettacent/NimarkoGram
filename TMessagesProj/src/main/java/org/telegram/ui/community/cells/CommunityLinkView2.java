@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.community.cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -32,6 +34,7 @@ import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.LayoutHelper;
 
+import java.util.HashSet;
 @SuppressLint("ViewConstructor")
 public class CommunityLinkView2 extends FrameLayout implements Theme.Colorable {
 
@@ -119,4 +122,8 @@ public class CommunityLinkView2 extends FrameLayout implements Theme.Colorable {
         titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
         subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
     }
-}
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+        colors.add(Theme.key_windowBackgroundWhiteBlackText);
+}}

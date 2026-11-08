@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.postdrawcompat;
 
 import android.content.Context;
@@ -13,7 +15,7 @@ import me.vkryl.core.reference.ReferenceList;
 class ViewOnPostDraw extends View {
 
     private final ReferenceList<OnPostDrawListener> callbacks = new ReferenceList<>();
-    private final ViewTreeObserver.OnDrawListener onDrawListener = this::forceLayout;
+    private final ViewTreeObserver.OnDrawListener onDrawListener = this::dispatchOnDrawListeners;
     private ViewTreeObserver observer;
 
     public ViewOnPostDraw(Context context) {
@@ -43,6 +45,17 @@ class ViewOnPostDraw extends View {
         dispatchOnPostDrawListeners();
     }
 
+    private void dispatchOnDrawListeners() {
+        Trace.beginSection("OnDraw");
+        try {
+            for (OnPostDrawListener callback : callbacks) {
+                callback.onDraw();
+            }
+        } finally {
+            Trace.endSection();
+            forceLayout();
+        }
+    }
     private void dispatchOnPostDrawListeners() {
         Trace.beginSection("OnPostDraw");
         try {

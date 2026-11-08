@@ -334,6 +334,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private int param;
     private Object currentParentObject;
     private boolean canceledLoading;
+    private boolean keepOnlyPreviewAfterCancel;
     private static PorterDuffColorFilter selectedColorFilter = new PorterDuffColorFilter(0xffdddddd, PorterDuff.Mode.MULTIPLY);
     private static PorterDuffColorFilter selectedGroupColorFilter = new PorterDuffColorFilter(0xffbbbbbb, PorterDuff.Mode.MULTIPLY);
     private boolean forceLoding;
@@ -447,6 +448,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     private byte crossfadeAlpha = 1;
     private boolean manualAlphaAnimator;
     private boolean crossfadeOnReady;
+    private boolean crossfadeOnReadyWithPreview;
     private Drawable crossfadeOnReadyDrawable;
     private boolean crossfadeFromImage;
     private boolean drawWithoutLoadFade;
@@ -481,10 +483,34 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void cancelLoadImage() {
+        cancelLoadImage(false);
+    }
+
+    public void cancelLoadImage(boolean keepPreviewOnly) {
+        currentGuid++;
         resetLoadingPresentation();
         forceLoding = false;
         ImageLoader.getInstance().cancelLoadingForImageReceiver(this, true);
         canceledLoading = true;
+        if (keepPreviewOnly && !keepOnlyPreviewAfterCancel) {
+            keepOnlyPreviewAfterCancel = true;
+            if (currentMediaLocation == null) {
+                currentImageLocation = null;
+                currentImageFilter = null;
+            }
+            currentMediaLocation = null;
+            currentMediaFilter = null;
+            currentSize = 0;
+            if (setImageBackup != null) {
+                if (setImageBackup.mediaLocation == null) {
+                    setImageBackup.imageLocation = null;
+                    setImageBackup.imageFilter = null;
+                }
+                setImageBackup.mediaLocation = null;
+                setImageBackup.mediaFilter = null;
+                setImageBackup.size = 0;
+            }
+        }
     }
 
     public void setForceLoading(boolean value) {
@@ -701,6 +727,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setImage(ImageLocation mediaLocation, String mediaFilter, ImageLocation imageLocation, String imageFilter, ImageLocation thumbLocation, String thumbFilter, Drawable thumb, long size, String ext, Object parentObject, int cacheType) {
+        keepOnlyPreviewAfterCancel = false;
         if (allowLoadingOnAttachedOnly && !attachedToWindow) {
             if (setImageBackup != null && setImageBackup.isSet()
                     && (!sameLoadingLocation(imageLocation, parentObject, setImageBackup.imageLocation, setImageBackup.parentObject)
@@ -1203,6 +1230,16 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     public void setCrossfadeOnReadyWithOldImage(boolean value) {
         crossfadeOnReadyWithOldImage = value;
     }
+    public void setCrossfadeOnReadyWithPreview(boolean value) {
+        crossfadeOnReadyWithPreview = value;
+    }
+
+    private boolean hasReadyFadePreview() {
+        return crossfadeOnReady && crossfadeOnReadyWithPreview
+                && (currentMediaDrawable != null && currentImageDrawable != null && isDrawableReadyForDraw(currentImageDrawable)
+                || currentMediaLocation == null && currentImageDrawable != null
+                && currentThumbDrawable != null && isDrawableReadyForDraw(currentThumbDrawable));
+    }
     private boolean canCrossfadeOnReady() {
         return crossfadeOnReady && canAnimateLoadingTransition();
     }
@@ -1244,6 +1281,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         if (crossfadeOnReadyDrawable != null) {
             if (hasRoundVideoPreview()) return;
             if (hasOutgoingGifPreview()) return;
+            if (hasReadyFadePreview()) return;
             currentAlpha = 0;
             if (type != TYPE_IMAGE || !isDrawableReadyForDraw(drawable)) {
                 previousAlpha = 1f;
@@ -1279,7 +1317,12 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             if (crossfadeFromImage || roundPreviewFromThumb) {
                 roundPreviewPreviousAlpha = previousAlpha;
                 roundPreviewWithThumb = crossfadeWithThumb;
-                previousAlpha = isRoundVideo || isOutgoingGifReadyFade() ? currentAlpha : 1f;
+                previousAlpha = isRoundVideo || crossfadeOnReadyWithPreview || isOutgoingGifReadyFade() ? currentAlpha : 1f;
+                crossfadeWithThumb = true;
+            } else if (crossfadeOnReadyWithPreview && currentMediaLocation == null
+                    && crossfadeOnReadyDrawable == currentImageDrawable && currentThumbDrawable != null
+                    && isDrawableReadyForDraw(currentThumbDrawable)) {
+                previousAlpha = currentAlpha;
                 crossfadeWithThumb = true;
             }
             crossfadeOnReadyDrawable = null;
@@ -1324,7 +1367,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         final boolean drawsFallbackBitmap = crossfadeImage != null && !crossfadingWithThumb
                 || currentThumbDrawable != null || staticThumbDrawable instanceof BitmapDrawable;
         final boolean skipAlpha = animationNotReady && !drawsImagePreview
-                && !hasRoundVideoPreview() && !hasOutgoingGifPreview()
+                && !hasRoundVideoPreview() && !hasOutgoingGifPreview() && !hasReadyFadePreview()
                 && (crossfadeWithThumb || !drawsFallbackBitmap);
         checkAlphaAnimation(startedReadyFade || startedImageHandoff || skipAlpha);
         return animationNotReady;
@@ -1513,6 +1556,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setImageBitmap(Drawable bitmap) {
+        keepOnlyPreviewAfterCancel = false;
         resetLoadingPresentation();
         ImageLoader.getInstance().cancelLoadingForImageReceiver(this, true);
 
@@ -2463,7 +2507,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
 
     private void checkAlphaAnimation(boolean skip) {
         if (manualAlphaAnimator || crossfadeOnReadyDrawable != null) {
-            if (manualAlphaAnimator || !hasRoundVideoPreview() && !hasOutgoingGifPreview()) return;
+            if (manualAlphaAnimator || !hasRoundVideoPreview() && !hasOutgoingGifPreview() && !hasReadyFadePreview()) return;
         }
         if (currentAlpha != 1) {
             if (!skip) {
@@ -2582,6 +2626,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             boolean animationNotReady;
             boolean crossfadeFromImage;
             boolean outgoingGifReadyFade;
+            boolean readyPreviewFade;
             boolean hasMediaRequest;
             PreviewAppearance appearance;
             ColorFilter colorFilter;
@@ -2612,6 +2657,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 animationNotReady = backgroundThreadDrawHolder.animationNotReady;
                 crossfadeFromImage = backgroundThreadDrawHolder.crossfadeFromImage;
                 outgoingGifReadyFade = backgroundThreadDrawHolder.outgoingGifReadyFade;
+                readyPreviewFade = backgroundThreadDrawHolder.readyPreviewFade;
                 hasMediaRequest = backgroundThreadDrawHolder.hasMediaRequest;
                 appearance = backgroundThreadDrawHolder.previewAppearance;
                 overrideAlpha = backgroundThreadDrawHolder.overrideAlpha;
@@ -2633,9 +2679,10 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 crossfadingWithThumb = this.crossfadingWithThumb;
                 crossfadeImage = this.crossfadeImage;
                 staticThumbDrawable = this.staticThumbDrawable;
-                currentAlpha = crossfadeOnReadyDrawable != null && !hasRoundVideoPreview() && !hasOutgoingGifPreview() ? 1f : this.currentAlpha;
+                currentAlpha = crossfadeOnReadyDrawable != null && !hasRoundVideoPreview() && !hasOutgoingGifPreview() && !hasReadyFadePreview() ? 1f : this.currentAlpha;
                 crossfadeFromImage = this.crossfadeFromImage;
                 outgoingGifReadyFade = isOutgoingGifReadyFade();
+                readyPreviewFade = crossfadeOnReady && crossfadeOnReadyWithPreview;
                 hasMediaRequest = currentMediaLocation != null;
                 appearance = previewAppearance;
                 previousAlpha = this.previousAlpha;
@@ -2690,7 +2737,8 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 invert = imageInvert;
             } else if (currentThumbDrawable != null) {
                 drawable = currentThumbDrawable;
-                if ((crossfadeOnReady && isRoundVideo || outgoingGifReadyFade && currentMediaDrawable != null) && isDrawableReadyForDraw(currentThumbDrawable)) {
+                if ((crossfadeOnReady && isRoundVideo || outgoingGifReadyFade && currentMediaDrawable != null
+                        || readyPreviewFade && !hasMediaRequest) && isDrawableReadyForDraw(currentThumbDrawable)) {
                     animationNotReady = false;
                 }
                 shaderToUse = thumbShader;
@@ -3909,11 +3957,16 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
 
             boolean mediaOwnsFade = currentMediaDrawable != null
                     && isDrawableReadyForDraw(currentMediaDrawable) && !forcePreview;
+            final boolean readyPreviewOwnsFade = canCrossfadeOnReady() && crossfadeOnReadyWithPreview
+                    && currentMediaLocation == null && currentThumbDrawable != null
+                    && isDrawableReadyForDraw(currentThumbDrawable)
+                    && (!memCache || !isDrawableReadyForDraw(drawable)
+                    || loadingPlaceholderGeneration == loadingPresentationGeneration);
             final boolean presentedLoadingContent = canAnimateLoadingTransition()
                     && loadingPlaceholderGeneration == loadingPresentationGeneration;
             final boolean presentedBlank = presentedLoadingContent
                     && loadingBlankGeneration == loadingPresentationGeneration;
-            if (!mediaOwnsFade && allowCrossFade && isVisible && ((!memCache || presentedLoadingContent) && !forcePreview || forceCrossfade) && crossfadeDuration != 0) {
+            if (!mediaOwnsFade && !readyPreviewOwnsFade && allowCrossFade && isVisible && ((!memCache || presentedLoadingContent) && !forcePreview || forceCrossfade) && crossfadeDuration != 0) {
                 boolean allowCrossfade = true;
                 if (currentMediaDrawable instanceof RLottieDrawable && isDrawableReadyForDraw(currentMediaDrawable)) {
                     allowCrossfade = false;
@@ -3932,7 +3985,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                     lastUpdateAlphaTime = SystemClock.uptimeMillis();
                     crossfadeWithThumb = crossfadeImage != null || currentThumbDrawable != null || staticThumbDrawable != null;
                 }
-            } else if (!mediaOwnsFade) {
+            } else if (!mediaOwnsFade && !readyPreviewOwnsFade) {
                 currentAlpha = 1.0f;
                 previousAlpha = 1f;
             }
@@ -4020,8 +4073,8 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             updateDrawableRadius(drawable);
 
             final boolean fadeLateDocumentThumb = canAnimateLoadingTransition()
-                    && currentParentObject instanceof MessageObject
-                    && ((MessageObject) currentParentObject).type == MessageObject.TYPE_FILE
+                    && (crossfadeOnReady && crossfadeOnReadyWithPreview || currentParentObject instanceof MessageObject
+                    && ((MessageObject) currentParentObject).type == MessageObject.TYPE_FILE)
                     && loadingPlaceholderGeneration == loadingPresentationGeneration;
             if ((!memCache || fadeLateDocumentThumb) && crossfadeAlpha != 2) {
                 if (currentParentObject instanceof MessageObject && ((MessageObject) currentParentObject).isRoundVideo() && ((MessageObject) currentParentObject).isSending()) {
@@ -4393,7 +4446,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         holder.crossfadeWithOldImage = crossfadeWithOldImage;
         holder.retainedReadyFade = crossfadeOnReadyWithOldImage && crossfadeOnReady;
         holder.crossfadeWithThumb = crossfadeWithThumb;
-        holder.currentAlpha = crossfadeOnReadyDrawable != null && !hasRoundVideoPreview() && !hasOutgoingGifPreview() ? 1f : currentAlpha;
+        holder.currentAlpha = crossfadeOnReadyDrawable != null && !hasRoundVideoPreview() && !hasOutgoingGifPreview() && !hasReadyFadePreview() ? 1f : currentAlpha;
         holder.previousAlpha = previousAlpha;
         holder.roundPreviewPreviousAlpha = roundPreviewPreviousAlpha;
         holder.roundPreviewWithThumb = roundPreviewWithThumb;
@@ -4402,6 +4455,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         holder.animationNotReady = animationNotReady;
         holder.crossfadeFromImage = crossfadeFromImage;
         holder.outgoingGifReadyFade = isOutgoingGifReadyFade();
+        holder.readyPreviewFade = crossfadeOnReady && crossfadeOnReadyWithPreview;
         holder.imageX = imageX;
         holder.imageY = imageY;
         holder.imageW = imageW;
@@ -4463,6 +4517,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         private boolean crossfadingWithThumb;
         private boolean crossfadeFromImage;
         private boolean outgoingGifReadyFade;
+        private boolean readyPreviewFade;
         private Drawable crossfadeImage;
         public RectF drawRegion = new RectF();
         public ColorFilter colorFilter;

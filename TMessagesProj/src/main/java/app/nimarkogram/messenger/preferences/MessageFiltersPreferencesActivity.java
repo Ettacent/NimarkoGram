@@ -360,7 +360,6 @@ public class MessageFiltersPreferencesActivity extends BaseFragment {
                     && !Objects.equals(view.getTag(), RecyclerListView.TAG_NOT_SECTION),
             dp(12),
             dp(16),
-            listView::drawBackgroundRect,
             true
         );
         actionBar.setAdaptiveBackground(listView);

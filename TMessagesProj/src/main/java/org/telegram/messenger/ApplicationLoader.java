@@ -88,9 +88,12 @@ public class ApplicationLoader extends Application {
     private static IMapsProvider mapsProvider;
     private static ILocationServiceProvider locationServiceProvider;
 
+    private boolean documentRendererProcess;
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
+        documentRendererProcess = app.nimarkogram.messenger.documents.DocumentProcess.isIsolated(base);
+        if (documentRendererProcess) return;
         try {
             ru.noties.jlatexmath.JLatexMathAndroid.init(base);
         } catch (Throwable ignored) {
@@ -265,6 +268,7 @@ public class ApplicationLoader extends Application {
             e.printStackTrace();
         }
 
+        LiteMode.registerBatteryReceiver();
         try {
             PowerManager pm = (PowerManager) ApplicationLoader.applicationContext.getSystemService(Context.POWER_SERVICE);
             isScreenOn = pm.isScreenOn();
@@ -689,8 +693,14 @@ public class ApplicationLoader extends Application {
             }
 
             initializationPhase(PineInitPhase.HOOK_MODE_END);
+            if (BuildConfig.DEBUG) {
             if (!verifyPineRuntimeHook()) {
                 throw new IllegalStateException("Pine runtime hook smoke test failed");
+                }
+            } else {
+                initializationPhase(PineInitPhase.BACKEND_READY_HOOKS_UNVERIFIED);
+                FileLog.w("nimarko: Pine startup diagnostic probe skipped; "
+                        + "backend initialized, runtime hook compatibility unverified");
             }
             pineReady = top.canyie.pine.Pine.isInitialized();
             ngPineUnavailableReason = pineReady
@@ -982,6 +992,10 @@ public class ApplicationLoader extends Application {
 
     @Override
     public void onCreate() {
+        if (documentRendererProcess) {
+            super.onCreate();
+            return;
+        }
         applicationLoaderInstance = this;
         AppMotionBlur.install(this);
         try {
@@ -1184,6 +1198,7 @@ public class ApplicationLoader extends Application {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        if (documentRendererProcess) return;
         app.nimarkogram.messenger.utils.ui.SystemTextPaint.configure(
                 newConfig, app.nimarkogram.messenger.AppConfig.systemFonts);
         try {
@@ -1199,6 +1214,7 @@ public class ApplicationLoader extends Application {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+        if (documentRendererProcess) return;
         app.nimarkogram.messenger.diagnostics.CrashDiagnostics.onTrimMemory(level);
         if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
                 || (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW

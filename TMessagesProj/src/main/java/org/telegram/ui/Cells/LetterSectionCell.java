@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -19,6 +21,7 @@ import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.LayoutHelper;
 
 public class LetterSectionCell extends FrameLayout {
@@ -32,7 +35,7 @@ public class LetterSectionCell extends FrameLayout {
         textView = new TextView(getContext());
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
         textView.setTypeface(AndroidUtilities.bold());
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText4));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteGrayText4);
         textView.setGravity(Gravity.CENTER);
         addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 12, 0, 0, 0));
     }
@@ -41,6 +44,17 @@ public class LetterSectionCell extends FrameLayout {
         textView.setText(letter.toUpperCase());
     }
 
+    public void setLetterTextSize(float sizeDp) {
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sizeDp);
+    }
+
+    public void setLetterProgress(float progress) {
+        textView.setAlpha(progress);
+        final float scale = 0.6f + 0.4f * progress;
+        textView.setScaleX(scale);
+        textView.setScaleY(scale);
+        textView.setTranslationX(-dp(10) * (1f - progress));
+    }
     public void setCellHeight(int height) {
         setLayoutParams(new ViewGroup.LayoutParams(dp(54), height));
     }

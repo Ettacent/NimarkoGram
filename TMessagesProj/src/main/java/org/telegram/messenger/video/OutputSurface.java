@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 6.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -16,6 +18,7 @@ import android.opengl.EGLDisplay;
 import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.view.Surface;
 
 import org.telegram.messenger.FileLog;
@@ -42,11 +45,14 @@ public class OutputSurface implements SurfaceTexture.OnFrameAvailableListener {
     private boolean mFrameAvailable;
     private TextureRenderer mTextureRender;
 
+    private HandlerThread frameAvailableThread;
     public OutputSurface(MediaController.SavedFilterState savedFilterState, String imagePath, String paintPath, String blurPath, ArrayList<VideoEditedInfo.MediaEntity> mediaEntities, MediaController.CropState cropState, int w, int h, int originalW, int originalH, int rotation, float fps, boolean photo, Integer gradientTopColor, Integer gradientBottomColor, StoryEntry.HDRInfo hdrInfo, MediaCodecVideoConvertor.ConvertVideoParams params) {
         mTextureRender = new TextureRenderer(savedFilterState, imagePath, paintPath, blurPath, mediaEntities, cropState, w, h, originalW, originalH, rotation, fps, photo, gradientTopColor, gradientBottomColor, hdrInfo, params);
         mTextureRender.surfaceCreated();
         mSurfaceTexture = new SurfaceTexture(mTextureRender.getTextureId());
-        mSurfaceTexture.setOnFrameAvailableListener(this);
+        frameAvailableThread = new HandlerThread("VideoFrameAvailable");
+        frameAvailableThread.start();
+        mSurfaceTexture.setOnFrameAvailableListener(this, new Handler(frameAvailableThread.getLooper()));
         mSurface = new Surface(mSurfaceTexture);
     }
 
@@ -114,6 +120,10 @@ public class OutputSurface implements SurfaceTexture.OnFrameAvailableListener {
             mTextureRender.release();
         }
         mSurface.release();
+        if (frameAvailableThread != null) {
+            frameAvailableThread.quitSafely();
+            frameAvailableThread = null;
+        }
         mEGLDisplay = null;
         mEGLContext = null;
         mEGLSurface = null;

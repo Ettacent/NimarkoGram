@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3;
 
 import android.os.Build;
@@ -8,9 +10,8 @@ import androidx.annotation.Nullable;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
-import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import org.telegram.utils.glass.source.GlassSource;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
 import org.telegram.utils.glass.GlassEngine;
 import java.lang.ref.WeakReference;
@@ -22,40 +23,55 @@ public class BlurredBackgroundDrawableViewFactory {
     private static final ReferenceList<BlurredBackgroundDrawableViewFactory> factories = new ReferenceList<>();
     private final ReferenceList<BlurredBackgroundDrawable> createdDrawables = new ReferenceList<>();
     private final WeakHashMap<BlurredBackgroundDrawable, WeakReference<View>> drawableViews = new WeakHashMap<>();
-    private final BlurredBackgroundSource source;
+    private final GlassSource glassSource;
+    private final GlassSource frostedSource;
+    private final GlassSource staticSource;
     private int outsetX, outsetY;
 
-    public BlurredBackgroundDrawableViewFactory(BlurredBackgroundSource source) {
-        this.source = source;
-        factories.add(this);
+    public BlurredBackgroundDrawableViewFactory(GlassSource source) {
+        this(source, source, source);
     }
     public static void invalidateGlassSettings() {
         for (BlurredBackgroundDrawableViewFactory factory : factories) {
             for (BlurredBackgroundDrawable drawable : factory.createdDrawables) {
                 drawable.updateColors();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-                        && drawable instanceof BlurredBackgroundDrawableRenderNode) {
-                    ((BlurredBackgroundDrawableRenderNode) drawable).invalidateDisplayList();
-                }
+                drawable.invalidateDisplayList();
                 drawable.invalidateSelf();
                 final WeakReference<View> viewRef = factory.drawableViews.get(drawable);
                 final View view = viewRef != null ? viewRef.get() : null;
                 if (view != null) view.invalidate();
             }
             factory.invalidateAllLinkedViews();
-            factory.source.dispatchOnDrawablesRelativePositionChange();
+            factory.dispatchSourcePositionChange();
             if (factory.engine != null) {
                 factory.engine.invalidate();
             }
         }
     }
     public static boolean isLiquidGlassEnabled() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                && LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)
-                && SharedConfig.chatBlurEnabled();
+        return GlassEngine.getCurrentGlassSettings().isLiquidGlassEnabled;
     }
 
-    public BlurredBackgroundDrawableViewFactory(ViewPositionWatcher watcher, ViewGroup parent, BlurredBackgroundSource source) {
+    public BlurredBackgroundDrawableViewFactory(GlassSource glassSource, GlassSource frostedSource, GlassSource staticSource) {
+        this.glassSource = glassSource;
+        this.frostedSource = frostedSource;
+        this.staticSource = staticSource;
+        factories.add(this);
+    }
+
+    public GlassSource getSource() {
+        return glassSource;
+    }
+
+    public GlassSource getFrostedSource() {
+        return frostedSource;
+    }
+
+    public GlassSource getStaticSource() {
+        return staticSource;
+    }
+
+    public BlurredBackgroundDrawableViewFactory(ViewPositionWatcher watcher, ViewGroup parent, GlassSource source) {
         this(source);
         setSourceRootView(watcher, parent);
     }
@@ -108,7 +124,18 @@ public class BlurredBackgroundDrawableViewFactory {
         if (linkedDrawables != null) linkedDrawables.remove(drawable);
         drawable.setAlpha(0);
         drawable.setCallback(null);
-        source.dispatchOnDrawablesRelativePositionChange();
+        dispatchSourcePositionChange();
+        if (engine != null) engine.invalidate();
+    }
+
+    private void dispatchSourcePositionChange() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        if (glassSource instanceof org.telegram.utils.glass.source.GlassSourceRenderNode) {
+            ((org.telegram.utils.glass.source.GlassSourceRenderNode) glassSource).dispatchOnDrawablesRelativePositionChange();
+        }
+        if (frostedSource != glassSource && frostedSource instanceof org.telegram.utils.glass.source.GlassSourceRenderNode) {
+            ((org.telegram.utils.glass.source.GlassSourceRenderNode) frostedSource).dispatchOnDrawablesRelativePositionChange();
+        }
     }
 
     private boolean isLiquidGlassEffectAllowed;
@@ -118,7 +145,7 @@ public class BlurredBackgroundDrawableViewFactory {
     }
     public boolean supportsLiquidGlass() {
         return isLiquidGlassEffectAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                && source instanceof org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
+                && glassSource instanceof DrawableOwner;
     }
 
     public BlurredBackgroundDrawable create() {
@@ -129,6 +156,41 @@ public class BlurredBackgroundDrawableViewFactory {
         return create(view, null);
     }
 
+    public interface DrawableOwner {
+        BlurredBackgroundDrawable createDrawable();
+
+        default void attachDrawable(BlurredBackgroundDrawable drawable) {
+
+        }
+    }
+
+    public static BlurredBackgroundDrawable createDrawable(GlassSource source) {
+        if (source instanceof DrawableOwner) {
+            return ((DrawableOwner) source).createDrawable();
+        }
+        return new BlurredBackgroundDrawable(source);
+    }
+
+    private BlurredBackgroundDrawable createDrawable() {
+        if (glassSource == frostedSource && frostedSource == staticSource) {
+            return createDrawable(glassSource);
+        }
+        final BlurredBackgroundDrawable drawable = new BlurredBackgroundDrawable(glassSource, frostedSource, staticSource);
+        attach(glassSource, drawable);
+        if (frostedSource != glassSource) {
+            attach(frostedSource, drawable);
+        }
+        if (staticSource != glassSource && staticSource != frostedSource) {
+            attach(staticSource, drawable);
+        }
+        return drawable;
+    }
+
+    private static void attach(GlassSource source, BlurredBackgroundDrawable drawable) {
+        if (source instanceof DrawableOwner) {
+            ((DrawableOwner) source).attachDrawable(drawable);
+        }
+    }
     public BlurredBackgroundDrawable create(View view, boolean multiwindow) {
         return create(view, null, multiwindow);
     }
@@ -143,16 +205,17 @@ public class BlurredBackgroundDrawableViewFactory {
     public BlurredBackgroundDrawable createForOverlay(View view, BlurredBackgroundColorProvider provider) {
         return create(view, provider, false, false);
     }
+    protected BlurredBackgroundDrawable decorateDrawable(View view, BlurredBackgroundDrawable drawable) {
+        return drawable;
+    }
     private BlurredBackgroundDrawable create(View view, BlurredBackgroundColorProvider provider, boolean multiwindow, boolean trackPosition) {
-        final BlurredBackgroundDrawable drawable = source.createDrawable();
+        final BlurredBackgroundDrawable drawable = decorateDrawable(view, createDrawable());
         createdDrawables.add(drawable);
         if (view != null) {
             drawableViews.put(drawable, new WeakReference<>(view));
         }
-        if (isLiquidGlassEffectAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (drawable instanceof BlurredBackgroundDrawableRenderNode) {
-                ((BlurredBackgroundDrawableRenderNode) drawable).setLiquidGlassEffectAllowed();
-            }
+        if (isLiquidGlassEffectAllowed) {
+            drawable.setLiquidGlassEffectAllowed();
         }
 
         drawable.setColorProvider(provider);
@@ -162,8 +225,12 @@ public class BlurredBackgroundDrawableViewFactory {
             linkedViews.add(view);
         }
 
-        if (trackPosition && !multiwindow && engine != null && view != null) {
+        if (!multiwindow && engine != null && view != null) {
+            if (trackPosition) {
             engine.registerDrawable(view, drawable);
+            } else {
+                engine.registerDrawableWithExplicitSourceOffset(view, drawable);
+            }
         }
         if (trackPosition && (engine == null || multiwindow) && viewPositionWatcher != null && parent != null && view != null) {
             viewPositionWatcher.subscribe(view, parent, (v, pos) -> {

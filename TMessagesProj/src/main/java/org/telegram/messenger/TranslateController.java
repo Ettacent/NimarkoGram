@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -167,6 +169,7 @@ public class TranslateController extends BaseController {
             !messageObject.isOutOwner() &&
             !messageObject.isRestrictedMessage &&
             !messageObject.isSponsored() &&
+            !(MessageObject.getMedia(messageObject) instanceof TLRPC.TL_messageMediaWidget) &&
             (
                 messageObject.type == MessageObject.TYPE_TEXT ||
                 messageObject.type == MessageObject.TYPE_VIDEO ||

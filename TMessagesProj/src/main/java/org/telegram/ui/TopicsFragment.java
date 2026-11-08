@@ -94,7 +94,9 @@ import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.SimpleActionBarMenuOverlay;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Adapters.DialogsAdapter;
 import org.telegram.ui.Adapters.FiltersView;
@@ -144,8 +146,8 @@ import org.telegram.ui.Components.blur3.capture.IBlur3Capture;
 import org.telegram.ui.Components.blur3.capture.IBlur3Hash;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
+import org.telegram.utils.glass.source.GlassSourceColor;
+import org.telegram.utils.glass.source.GlassSourceRenderNode;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
 import org.telegram.ui.Components.voip.VoIPHelper;
 import org.telegram.ui.Delegates.ChatActivityMemberRequestsDelegate;
@@ -328,12 +330,12 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         topicsController = getMessagesController().getTopicsController();
         canShowProgress = !getUserConfig().getPreferences().getBoolean("topics_end_reached_" + chatId, false);
 
-        iBlur3SourceColor = new BlurredBackgroundSourceColor();
+        iBlur3SourceColor = new GlassSourceColor();
         iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
-            iBlur3SourceGlassFrosted = new BlurredBackgroundSourceRenderNode(null);
-            iBlur3SourceGlass = new BlurredBackgroundSourceRenderNode(null);
+            iBlur3SourceGlassFrosted = new GlassSourceRenderNode(null);
+            iBlur3SourceGlass = new GlassSourceRenderNode(null);
             iBlur3FactoryLiquidGlass = new BlurredBackgroundDrawableViewFactory(iBlur3SourceGlass);
             iBlur3FactoryLiquidGlass.setLiquidGlassEffectAllowed(true);
         } else {
@@ -489,7 +491,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 for (int i = 0; i < getChildCount(); i++) {
                     View child = getChildAt(i);
                     if (!(child instanceof ActionBar)) {
-                        if (child.getFitsSystemWindows()) {
+                        if (child instanceof SimpleActionBarMenuOverlay || child.getFitsSystemWindows()) {
                             measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0);
                         } else {
                             measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, actionBarHeight);
@@ -565,7 +567,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                             case Gravity.TOP:
                             default:
                                 childTop = parentTop + lp.topMargin;
-                                if (!(child instanceof ActionBar) && !isInPreviewMode()) {
+                                if (!(child instanceof ActionBar) && !(child instanceof SimpleActionBarMenuOverlay) && !isInPreviewMode()) {
                                     childTop += actionBar.getTop() + actionBar.getMeasuredHeight();
                                 }
                         }
@@ -653,7 +655,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
         };
 
-        contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        ThemeBind.backgroundColor(contentView, Theme.key_windowBackgroundWhite, getResourceProvider());
         actionBar.setAddToContainer(false);
         actionBar.setCastShadows(false);
         actionBar.setClipContent(true);
@@ -951,6 +953,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 iBlur3FactoryLiquidGlass,
                 BlurredBackgroundProviderImpl.topPanelChatActivity(resourceProvider),
                 true);
+        actionBar.setMenuGlass(iBlur3FactoryLiquidGlass, null,
+                BlurredBackgroundProviderImpl.simpleActionBar(resourceProvider));
         iBlur3Capture = new ViewGroupPartRenderer(recyclerListView, parentDialogsActivity != null ? (ViewGroup) parentDialogsActivity.getFragmentView() : contentView, recyclerListView::drawChild);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableViewNoiseSuppressor != null) {
             // Match ChatActivity's event-driven blur pipeline. Rebuilding the
@@ -1502,7 +1506,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         closeReportSpam.setImageResource(R.drawable.miniplayer_close);
         closeReportSpam.setContentDescription(getString(R.string.Close));
         closeReportSpam.setBackground(Theme.AdaptiveRipple.circle(getThemedColor(Theme.key_chat_topPanelClose)));
-        closeReportSpam.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_topPanelClose), PorterDuff.Mode.MULTIPLY));
+        ThemeBind.colorFilter(closeReportSpam, Theme.key_chat_topPanelClose, getResourceProvider(), PorterDuff.Mode.MULTIPLY);
         closeReportSpam.setScaleType(ImageView.ScaleType.CENTER);
         bottomOverlayContainer.addView(closeReportSpam, LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, 0, 6, 2, 0));
         closeReportSpam.setOnClickListener(v -> {
@@ -1540,7 +1544,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         searchContainer.setVisibility(View.GONE);
         fullscreenView.addView(searchContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 44, 0, 0));
 
-        searchContainer.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        ThemeBind.backgroundColor(searchContainer, Theme.key_windowBackgroundWhite, getResourceProvider());
 
         getMessagesStorage().loadChatInfo(chatId, true, null, true, false, 0);
 
@@ -1824,6 +1828,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     }
 
     public void setParentDialogsActivity(DialogsActivity parentDialogsActivity) {
+        setSimpleMenuOverlayHost(parentDialogsActivity);
         this.parentDialogsActivity = parentDialogsActivity;
     }
 
@@ -2520,7 +2525,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         alertDialog.show();
         TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(getThemedColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold, getResourceProvider());
         }
     }
 
@@ -2653,8 +2658,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (ChatObject.canDeleteTopic(currentAccount, getCurrentChat(), topic)) {
             ActionBarMenuSubItem deleteItem = new ActionBarMenuSubItem(getParentActivity(), false, true);
             deleteItem.setTextAndIcon(LocaleController.getPluralString("DeleteTopics", 1), R.drawable.msg_delete);
-            deleteItem.setIconColor(getThemedColor(Theme.key_text_RedRegular));
-            deleteItem.setTextColor(getThemedColor(Theme.key_text_RedBold));
+            deleteItem.setColorKeys(Theme.key_text_RedBold, Theme.key_text_RedRegular);
             deleteItem.setMinimumWidth(160);
             deleteItem.setOnClickListener(e -> {
                 HashSet<Integer> hashSet = new HashSet();
@@ -2700,7 +2704,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (searchTabsView == null) {
             searchTabsView = searchContainer.createTabsView(false, 8);
             if (parentDialogsActivity != null) {
-                searchTabsView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                ThemeBind.backgroundColor(searchTabsView, Theme.key_windowBackgroundWhite, getResourceProvider());
             }
             fullscreenView.addView(searchTabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44));
             updateSearchTopInset();
@@ -2758,20 +2762,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         hideFloatingButton(!canShowCreateTopic, animated);
     }
 
+    private boolean searchProgressColorsApplied;
     private void updateSearchProgress(float value) {
         value = Utilities.clamp01(value);
         searchAnimationProgress = value;
         actionBar.setSearchFactor(value);
-        int color1 = getThemedColor(Theme.key_actionBarDefaultIcon);
-        actionBar.setItemsColor(ColorUtils.blendARGB(color1, getThemedColor(Theme.key_actionBarActionModeDefaultIcon), searchAnimationProgress), false);
-        actionBar.setItemsColor(ColorUtils.blendARGB(getThemedColor(Theme.key_actionBarActionModeDefaultIcon), getThemedColor(Theme.key_actionBarActionModeDefaultIcon), searchAnimationProgress), true);
-
-        color1 = getThemedColor(Theme.key_actionBarDefaultSelector);
-        int color2 = getThemedColor(Theme.key_actionBarActionModeDefaultSelector);
-        actionBar.setItemsBackgroundColor(ColorUtils.blendARGB(color1, color2, searchAnimationProgress), false);
-
-        // Fade the complete identity island; fading only text left its avatar
-        // floating above the expanded search field.
+        updateSearchProgressColors();
+        searchProgressColorsApplied = true;
         avatarContainer.setAlpha(1f - value);
         if (searchTabsView != null) {
             searchTabsView.setAlpha(value);
@@ -2801,6 +2798,19 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         if (searchContainer != null) {
             searchContainer.setTranslationY(translationY);
         }
+    }
+
+    private void updateSearchProgressColors() {
+        int color1 = getThemedColor(Theme.key_actionBarDefaultIcon);
+        actionBar.setItemsColor(ColorUtils.blendARGB(color1, getThemedColor(Theme.key_actionBarActionModeDefaultIcon), searchAnimationProgress), false);
+        actionBar.setItemsColor(ColorUtils.blendARGB(getThemedColor(Theme.key_actionBarActionModeDefaultIcon), getThemedColor(Theme.key_actionBarActionModeDefaultIcon), searchAnimationProgress), true);
+
+        color1 = getThemedColor(Theme.key_actionBarDefaultSelector);
+        int color2 = getThemedColor(Theme.key_actionBarActionModeDefaultSelector);
+        actionBar.setItemsBackgroundColor(ColorUtils.blendARGB(color1, color2, searchAnimationProgress), false);
+
+        // Fade the complete identity island; fading only text left its avatar
+        // floating above the expanded search field.
     }
 
     private ArrayList<TLRPC.TL_forumTopic> getSelectedTopics() {
@@ -3327,19 +3337,19 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     @Override
     public boolean onFragmentCreate() {
         getMessagesController().loadFullChat(chatId, 0, true);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.storiesUpdated);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.chatWasBoostedByUser);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.chatInfoDidLoad);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.topicsDidLoaded);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.updateInterfaces);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.dialogsNeedReload);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.groupCallUpdated);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.notificationsSettingsUpdated);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.chatSwitchedForum);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.closeChats);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.openedChatChanged);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.didUpdateConnectionState);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.dialogsUnreadCounterChanged);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storiesUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatWasBoostedByUser);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatInfoDidLoad);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.topicsDidLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.updateInterfaces);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.dialogsNeedReload);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.groupCallUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.notificationsSettingsUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatSwitchedForum);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.closeChats);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.openedChatChanged);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.didUpdateConnectionState);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.dialogsUnreadCounterChanged);
 
         updateTopicsList(false, false);
 
@@ -4112,6 +4122,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
         }
 
+        @Override
+        public void updateColors() {
+            super.updateColors();
+            try {
+                if (hidden != null) {
+                    setHiddenT();
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
         private void setHiddenT() {
             if (forumIcon instanceof ForumUtilities.GeneralTopicDrawable) {
                 ((ForumUtilities.GeneralTopicDrawable) forumIcon).setColor(
@@ -4167,7 +4188,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             textView.setText(spannableStringBuilder);
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             textView.setLayerType(LAYER_TYPE_HARDWARE, null);
-            textView.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteGrayText));
+            ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteGrayText, TopicsFragment.this.getResourceProvider());
             addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, LocaleController.isRTL ? 72 : 32, 0, LocaleController.isRTL ? 32 : 72, 32));
         }
 
@@ -5006,6 +5027,11 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public boolean onBackPressed(boolean invoked) {
+        if (hasShownSheet()) {
+            if (invoked) closeSheet();
+            return false;
+        }
+        if (handleMenuOverlayBack(invoked)) return false;
         if (!selectedTopics.isEmpty()) {
             if (invoked) clearSelectedTopics();
             return false;
@@ -5179,42 +5205,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public ArrayList<ThemeDescription> getThemeDescriptions() {
-        ThemeDescription.ThemeDescriptionDelegate cellDelegate = () -> {
-            for (int b = 0; b < 2; b++) {
-                RecyclerListView list = null;
-                if (b == 0) {
-                    list = recyclerListView;
-                } else if (searchContainer != null) {
-                    list = searchContainer.recyclerView;
-                }
-                if (list == null) {
-                    continue;
-                }
-                int count = list.getChildCount();
-                for (int a = 0; a < count; a++) {
-                    View child = list.getChildAt(a);
-                    if (child instanceof ProfileSearchCell) {
-                        ((ProfileSearchCell) child).update(0);
-                    } else if (child instanceof DialogCell) {
-                        ((DialogCell) child).update(0);
-                    } else if (child instanceof UserCell) {
-                        ((UserCell) child).update(0);
-                    }
-                }
-            }
-            if (actionBar != null) {
-                actionBar.setPopupBackgroundColor(getThemedColor(Theme.key_actionBarDefaultSubmenuBackground), true);
-                actionBar.setPopupItemsColor(getThemedColor(Theme.key_actionBarDefaultSubmenuItem), false, true);
-                actionBar.setPopupItemsColor(getThemedColor(Theme.key_actionBarDefaultSubmenuItemIcon), true, true);
-                actionBar.setPopupItemsSelectorColor(getThemedColor(Theme.key_dialogButtonSelector), true);
-            }
-            if (blurredView != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    blurredView.setForeground(new ColorDrawable(ColorUtils.setAlphaComponent(getThemedColor(Theme.key_windowBackgroundWhite), 100)));
-                }
-            }
-            updateColors();
-        };
+        ThemeDescription.ThemeDescriptionDelegate cellDelegate = this::cellDelegateThemeColors;
 
         ArrayList<ThemeDescription> arrayList = new ArrayList<>();
 
@@ -5265,9 +5256,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     /* Blur */
 
     private final @Nullable DownscaleScrollableNoiseSuppressor scrollableViewNoiseSuppressor;
-    private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlassFrosted;
-    private final @Nullable BlurredBackgroundSourceRenderNode iBlur3SourceGlass;
-    private final @NonNull BlurredBackgroundSourceColor iBlur3SourceColor;
+    private final @Nullable GlassSourceRenderNode iBlur3SourceGlassFrosted;
+    private final @Nullable GlassSourceRenderNode iBlur3SourceGlass;
+    private final @NonNull GlassSourceColor iBlur3SourceColor;
     private final @NonNull BlurredBackgroundDrawableViewFactory iBlur3FactoryLiquidGlass;
 
     private IBlur3Capture iBlur3Capture;
@@ -5319,16 +5310,89 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     }
 
     @Override
-    public BlurredBackgroundSourceRenderNode getGlassSource() {
+    public GlassSourceRenderNode getGlassSource() {
         return iBlur3SourceGlass;
     }
 
-    public BlurredBackgroundSourceRenderNode getFrostedGlassSource() {
+    @Override
+    public GlassSourceRenderNode getFrostedGlassSource() {
         return iBlur3SourceGlassFrosted;
     }
 
     @Override
     public void onParentScrollToTop() {
         recyclerListView.smoothScrollToPosition(0);
+    }
+    private int closeReportSpamRippleColor;
+
+    @Override
+    public void onThemeColorsChanged() {
+        super.onThemeColorsChanged();
+        if (iBlur3SourceColor != null) {
+            iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
+        }
+        if (closeReportSpam != null) {
+            final int rippleColor = Theme.AdaptiveRipple.calcRippleColor(getThemedColor(Theme.key_chat_topPanelClose));
+            if (rippleColor != closeReportSpamRippleColor) {
+                closeReportSpamRippleColor = rippleColor;
+                Theme.setSelectorDrawableColor(closeReportSpam.getBackground(), rippleColor, true);
+            }
+        }
+        cellDelegateThemeColors();
+        updateThemeColorsExtra();
+    }
+
+    private void updateThemeColorsExtra() {
+        try {
+            if (actionBar != null) {
+                actionBar.setActionModeColor(getThemedColor(Theme.key_actionBarActionModeDefault));
+            }
+            if (pullForegroundDrawable != null) {
+                pullForegroundDrawable.updateColors();
+            }
+            if (actionBar != null && searchProgressColorsApplied) {
+                updateSearchProgressColors();
+            }
+            if (searchItem != null && searchItem.getSearchField() != null) {
+                searchItem.getSearchField().setCursorColor(getThemedColor(Theme.key_actionBarDefaultSearch));
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private void cellDelegateThemeColors() {
+        for (int b = 0; b < 2; b++) {
+            RecyclerListView list = null;
+            if (b == 0) {
+                list = recyclerListView;
+            } else if (searchContainer != null) {
+                list = searchContainer.recyclerView;
+            }
+            if (list == null) {
+                continue;
+            }
+        }
+        if (actionBar != null) {
+            actionBar.setPopupBackgroundColor(getThemedColor(Theme.key_actionBarDefaultSubmenuBackground), true);
+            actionBar.setPopupItemsColor(getThemedColor(Theme.key_actionBarDefaultSubmenuItem), false, true);
+            actionBar.setPopupItemsColor(getThemedColor(Theme.key_actionBarDefaultSubmenuItemIcon), true, true);
+            actionBar.setPopupItemsSelectorColor(getThemedColor(Theme.key_dialogButtonSelector), true);
+        }
+        if (blurredView != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && blurredView.getForeground() instanceof ColorDrawable) {
+                ((ColorDrawable) blurredView.getForeground()).setColor(ColorUtils.setAlphaComponent(getThemedColor(Theme.key_windowBackgroundWhite), 100));
+            }
+        }
+        updateColors();
+    }
+
+    @Override
+    public void addThemeColorKeys(HashSet<Integer> keys) {
+        super.addThemeColorKeys(keys);
+        keys.add(Theme.key_actionBarDefaultSelector);
+        keys.add(Theme.key_actionBarDefaultTitle);
+        keys.add(Theme.key_actionBarDefaultIcon);
+        keys.add(Theme.key_actionBarDefault);
     }
 }

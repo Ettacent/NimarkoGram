@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Business;
 
 import static org.telegram.messenger.LocaleController.formatString;
@@ -459,6 +461,7 @@ public class BusinessRecipientsHelper {
         final UsersSelectActivity fragment = new UsersSelectActivity(include, arrayList, getFlags()).asPrivateChats();
         fragment.noChatTypes = bot && !exclude && !include;
         fragment.allowSelf = false;
+        fragment.allowBots = bot;
         fragment.doNotNewChats = !include && doNotExcludeNewChats;
         fragment.setDelegate((ids, flags) -> {
             if (include) {

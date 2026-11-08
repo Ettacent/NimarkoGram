@@ -1072,6 +1072,7 @@ public class BottomSheetTabsOverlay extends View {
                 final float y = clipRect.top - dp(50) * (1f - dismissProgress);
                 rect.set(clipRect.left, y, clipRect.right, y + dp(50));
                 tabsView.setupTab(dismissingTab);
+                dismissingTab.setExpandProgress(1f - clamp01(dismissProgress));
                 dismissingTab.draw(canvas, rect, radius, dismissProgress, 1f);
                 canvas.restore();
             }

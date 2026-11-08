@@ -24,12 +24,14 @@ import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ChatActivity;
 
+import org.telegram.ui.Components.Forum.ForumUtilities;
 public class TopicSeparator {
 
     private final int currentAccount;
@@ -41,6 +43,7 @@ public class TopicSeparator {
     public final AvatarDrawable avatarDrawable = new AvatarDrawable();
     public final ImageReceiver image;
     public AnimatedEmojiDrawable emojiImage;
+    private ForumUtilities.GeneralTopicDrawable generalTopicDrawable;
     private final Path path = new Path();
     private int pathParentWidth, pathWidth;
     private boolean pathWithDots, pathWithCenter;
@@ -81,6 +84,7 @@ public class TopicSeparator {
         }
         pathWidth = 0;
         topicId = 0;
+        generalTopicDrawable = null;
         if (messageObject == null) {
             text = null;
             topicId = 0;
@@ -108,7 +112,7 @@ public class TopicSeparator {
                     return false;
                 }
                 if (topicId == 1) {
-                    image.setImageBitmap(createGeneralTopicDrawable(cell.getContext(), 0.75f, Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), false, false));
+                    image.setImageBitmap(generalTopicDrawable = createGeneralTopicDrawable(cell.getContext(), 0.75f, Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), false, false));
                 } else if (topic != null && topic.icon_emoji_id != 0) {
                     emojiImage = new AnimatedEmojiDrawable(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, currentAccount, topic.icon_emoji_id);
                     image.onDetachedFromWindow();
@@ -203,11 +207,14 @@ public class TopicSeparator {
                 emojiImage.setAlpha((int) (0xFF * alpha));
                 emojiImage.draw(canvas);
             } else {
+                if (generalTopicDrawable != null) {
+                    generalTopicDrawable.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider));
+                }
                 image.setImageCoords(sideMenuWidth / 2f + left + dp(2.66f), top + dp(6.5f), dp(20), dp(20));
                 image.setAlpha(alpha);
                 image.draw(canvas);
             }
-            final int textColor = Theme.getColor(Theme.key_chat_serviceText, resourcesProvider);
+            final int textColor = Theme.getColor(Theme.isCompactMode(resourcesProvider) ? Theme.key_chat_compact_topicSeparatorText : Theme.key_chat_serviceText, resourcesProvider);
             text.draw(canvas, sideMenuWidth / 2f + left + dp(27.66f), top + dp(16.5f), textColor, alpha);
 
             canvas.save();

@@ -1,11 +1,15 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.graphics.Rect;
 import android.view.View;
 import android.view.ViewTreeObserver;
 
+import java.util.function.BooleanSupplier;
 import org.telegram.messenger.SharedConfig;
 
 import org.telegram.ui.ActionBar.MaterialSharedAxisMotion;
@@ -18,6 +22,23 @@ final class ProfileContentFade {
     private ViewTreeObserver pendingObserver;
     private ViewTreeObserver.OnPreDrawListener pendingDraw;
     private int generation;
+    private final Rect visibleRect = new Rect();
+
+    static boolean isPresentationVisible(View view, Rect visibleRect, boolean includeOwnAlpha) {
+        if (!view.isAttachedToWindow() || !view.isShown() || !view.hasWindowFocus()
+                || view.getWindowVisibility() != View.VISIBLE || view.getWidth() <= 0 || view.getHeight() <= 0
+                || !view.getGlobalVisibleRect(visibleRect)) return false;
+        View ancestor = includeOwnAlpha ? view
+                : view.getParent() instanceof View ? (View) view.getParent() : null;
+        for (; ancestor != null; ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null) {
+            if (ancestor.getVisibility() != View.VISIBLE || ancestor.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    boolean wasPresented() {
+        return presented;
+    }
     void markPresented() {
         View view = pendingView != null ? pendingView : animatingView;
         clearPending();
@@ -32,6 +53,10 @@ final class ProfileContentFade {
     }
 
     void start(View view) {
+        start(view, null);
+    }
+
+    void start(View view, BooleanSupplier mayPresent) {
         if (!SharedConfig.animationsEnabled()) {
             reset(view);
             presented = true;
@@ -45,9 +70,14 @@ final class ProfileContentFade {
         final int expectedGeneration = generation;
         pendingDraw = () -> {
             if (generation != expectedGeneration || pendingView != view) return true;
-            if (!view.isAttachedToWindow() || !view.isShown() || view.getWidth() <= 0
-                    || view.getHeight() <= 0 || view.isLayoutRequested()) return true;
+            if (view.isLayoutRequested() || !isPresentationVisible(view, visibleRect, false)
+                    || mayPresent != null && !mayPresent.getAsBoolean()) return true;
             clearPending();
+            if (!SharedConfig.animationsEnabled()) {
+                presented = true;
+                view.setAlpha(1f);
+                return true;
+            }
             begin(view);
             return true;
         };

@@ -18,6 +18,7 @@ import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
@@ -43,11 +44,16 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
     private ListAdapter adapter;
 
     @Override
+    protected boolean useSimpleActionBar() {
+        return true;
+    }
+
+    @Override
     public View createView(Context context) {
-        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-        actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.getString(R.string.AudioRecorderSettings));
-        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
+        setHasOwnBackground(true);
+        simpleActionBar.setBackButtonImage(R.drawable.ic_ab_back);
+        simpleActionBar.setTitle(LocaleController.getString(R.string.AudioRecorderSettings));
+        simpleActionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
@@ -57,12 +63,11 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
         });
 
         FrameLayout frameLayout = new FrameLayout(context);
-        frameLayout.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
         fragmentView = frameLayout;
 
         listView = new RecyclerListView(context);
+        listView.setSectionsDrawBackground(true);
         listView.setSections();
-        actionBar.setAdaptiveBackground(listView);
         listView.setLayoutManager(new LinearLayoutManager(context));
         listView.setVerticalScrollBarEnabled(false);
         listView.setAdapter(adapter = new ListAdapter(context));
@@ -76,11 +81,11 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
 
     private void onRowClicked(int position) {
         if (position == ROW_ENABLED) {
-            SharedSettings.audioRecorderV2Enabled.set(!MediaController.getInstance().isAudioRecorderV2Enabled(currentAccount));
+            SharedSettings.audioRecorderV2Enabled.set(!MediaController.shouldUseAudioRecorderV2(currentAccount));
             adapter.notifyDataSetChanged();
             return;
         }
-        if (!MediaController.getInstance().isAudioRecorderV2Enabled(currentAccount)) {
+        if (!MediaController.shouldUseAudioRecorderV2(currentAccount)) {
             return;
         }
         if (position == ROW_NOISE_SUPPRESSION) {
@@ -130,7 +135,7 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
             if (position == ROW_ENABLED) {
                 return true;
             }
-            return MediaController.getInstance().isAudioRecorderV2Enabled(currentAccount)
+            return MediaController.shouldUseAudioRecorderV2(currentAccount)
                     && position == ROW_NOISE_SUPPRESSION;
         }
 
@@ -158,7 +163,7 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
 
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            boolean enabled = MediaController.getInstance().isAudioRecorderV2Enabled(currentAccount);
+            boolean enabled = MediaController.shouldUseAudioRecorderV2(currentAccount);
             if (holder.getItemViewType() == TYPE_HEADER) {
                 ((HeaderCell) holder.itemView).setText(
                         LocaleController.getString(R.string.AudioRecorderGeneral)
@@ -200,5 +205,13 @@ public class AudioRecorderSettingsActivity extends BaseFragment {
             }
             return TYPE_INFO;
         }
+    }
+    @Override
+    protected RecyclerListView getListViewForSimpleGlass() {
+        return listView;
+}
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
     }
 }

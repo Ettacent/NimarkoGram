@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.os.Looper;
@@ -20,7 +22,7 @@ public class FilePathDatabase {
 
     public final static int FLAG_LOCALLY_CREATED = 1; //file is locally created, skip file size check in FileLoader
 
-    private DispatchQueue dispatchQueue;
+    private DispatchQueue2 dispatchQueue;
     private final int currentAccount;
 
     private SQLiteDatabase database;
@@ -177,7 +179,7 @@ public class FilePathDatabase {
             }
             return path;
         }
-        if (dispatchQueue != null && dispatchQueue.getHandler() != null && Thread.currentThread() == dispatchQueue.getHandler().getLooper().getThread()) {
+        if (dispatchQueue != null && Thread.currentThread() == dispatchQueue) {
             useQueue = false;
         }
         if (useQueue) {
@@ -451,7 +453,7 @@ public class FilePathDatabase {
         return path.replace("'","").replace("\"","");
     }
 
-    public DispatchQueue getQueue() {
+    public DispatchQueue2 getQueue() {
         ensureQueueExist();
         return dispatchQueue;
     }
@@ -519,7 +521,7 @@ public class FilePathDatabase {
         if (dispatchQueue == null) {
             synchronized (this) {
                 if (dispatchQueue == null) {
-                    dispatchQueue = new DispatchQueue("files_database_queue_" + currentAccount);
+                    dispatchQueue = new DispatchQueue2("files_database_queue_" + currentAccount);
                     dispatchQueue.setPriority(Thread.MAX_PRIORITY);
                 }
             }

@@ -1,9 +1,17 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include <jni.h>
 #include <android/bitmap.h>
 #include <cstdint>
+#include <atomic>
+#include <algorithm>
+#include <cerrno>
 #include <limits>
+#include <memory>
+#include <new>
 #include <string>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <linux/stat.h>
 #include <asm/fcntl.h>
 #include <fcntl.h>
@@ -46,6 +54,24 @@ jmethodID jclass_AnimatedFileDrawableStream_getFinishedFilePath;
 struct OffsetIOContext;
 struct VideoInfo;
 static void freeOffsetIO(VideoInfo *info);
+static bool isStreamCanceled(VideoInfo *info);
+
+struct DecoderJniEnv {
+    JNIEnv *env = nullptr;
+    bool attached = false;
+
+    DecoderJniEnv() {
+        int status = javaVm->GetEnv((void **) &env, JNI_VERSION_1_6);
+        if (status == JNI_EDETACHED) {
+            JavaVMAttachArgs args{};
+            args.version = JNI_VERSION_1_6;
+            if (javaVm->AttachCurrentThread(&env, &args) == JNI_OK) attached = true;
+            else env = nullptr;
+        } else if (status != JNI_OK) env = nullptr;
+    }
+
+    ~DecoderJniEnv() { if (attached) javaVm->DetachCurrentThread(); }
+};
 
 typedef struct VideoInfo {
 
@@ -67,22 +93,10 @@ typedef struct VideoInfo {
             src = nullptr;
         }
         if (stream != nullptr) {
-            JNIEnv *jniEnv = nullptr;
-            JavaVMAttachArgs jvmArgs;
-            jvmArgs.version = JNI_VERSION_1_6;
-
-            bool attached;
-            if (JNI_EDETACHED == javaVm->GetEnv((void **) &jniEnv, JNI_VERSION_1_6)) {
-                javaVm->AttachCurrentThread(&jniEnv, &jvmArgs);
-                attached = true;
-            } else {
-                attached = false;
-            }
+            DecoderJniEnv access;
             DEBUG_DELREF("gifvideo.cpp stream");
-            jniEnv->DeleteGlobalRef(stream);
-            if (attached) {
-                javaVm->DetachCurrentThread();
-            }
+            if (access.env != nullptr) access.env->DeleteGlobalRef(stream);
+            else LOGE("JNI environment unavailable for decoder reference cleanup");
             stream = nullptr;
         }
         if (ioContext != nullptr) {
@@ -94,7 +108,7 @@ typedef struct VideoInfo {
         }
         freeOffsetIO(this);
         if (fd >= 0) {
-            close(fd);
+            if (close(fd) != 0) LOGE("decoder fd close failed: %d", errno);
             fd = -1;
         }
 
@@ -111,8 +125,8 @@ typedef struct VideoInfo {
     AVCodecContext *video_dec_ctx = nullptr;
     // Borrows fmt_ctx and video_dec_ctx; must be deleted before them (see dtor).
     VideoFrameReader *reader = nullptr;
-    bool stopped = false;
-    bool seeking = false;
+    std::atomic<bool> stopped{false};
+    std::atomic<bool> seeking{false};
     bool afterEof = false;
     bool isSingleFrame = false;
 
@@ -129,7 +143,34 @@ typedef struct VideoInfo {
     int fd = -1;
     int64_t file_size = 0;
     int64_t last_seek_p = 0;
+    bool timed = false;
+    bool snapshot = false;
+    std::atomic<int64_t> cancelIntent{1};
+    int64_t activeIntent = 1;
+    int64_t nextFrameId = 0;
+    int64_t pendingId = 0;
+    int64_t lastResolvedId = 0;
+    int lastDisposition = 0;
+    bool materialized = false;
+    bool readFailed = false;
+    bool protocolFailed = false;
 };
+
+enum TimedOutcome {
+    TIMED_ACQUIRED = 1, TIMED_EOF = 2, TIMED_AGAIN = 3, TIMED_YIELD = 4,
+    TIMED_CANCELLED = 5, TIMED_WRITE_ERROR = 6, TIMED_READ_ERROR = 7,
+    TIMED_PROTOCOL_ERROR = 8, TIMED_MATERIALIZED = 9, TIMED_COMMITTED = 10,
+    TIMED_DISCARDED = 11, TIMED_SEEKED = 12
+};
+
+static bool timedCancelled(VideoInfo *info) {
+    return info->protocolFailed || info->cancelIntent.load() != info->activeIntent || isStreamCanceled(info);
+}
+
+static int timedInterrupt(void *opaque) {
+    auto *info = static_cast<VideoInfo *>(opaque);
+    return info->cancelIntent.load() != info->activeIntent;
+}
 
 void custom_log(void *ptr, int level, const char* fmt, va_list vl){
     va_list vl2;
@@ -186,7 +227,12 @@ int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVFormatContex
             return ret;
         }
 
-        av_dict_set(&opts, "refcounted_frames", "1", 0);
+        if (st->time_base.num > 0 && st->time_base.den > 0) {
+            (*dec_ctx)->pkt_timebase = st->time_base;
+        }
+
+        ret = av_dict_set(&opts, "refcounted_frames", "1", 0);
+        if (ret < 0) { av_dict_free(&opts); return ret; }
         ret = avcodec_open2(*dec_ctx, dec, &opts);
         av_dict_free(&opts);   // frees leftover (unconsumed) options on all paths
         if (ret < 0) {
@@ -200,41 +246,89 @@ int open_codec_context(int *stream_idx, AVCodecContext **dec_ctx, AVFormatContex
 }
 
 void requestFd(VideoInfo *info) {
-    JNIEnv *jniEnv = nullptr;
-
-    JavaVMAttachArgs jvmArgs;
-    jvmArgs.version = JNI_VERSION_1_6;
-
-    bool attached;
-    if (JNI_EDETACHED == javaVm->GetEnv((void **) &jniEnv, JNI_VERSION_1_6)) {
-        javaVm->AttachCurrentThread(&jniEnv, &jvmArgs);
-        attached = true;
-    } else {
-        attached = false;
+    if (info->protocolFailed) return;
+    DecoderJniEnv access;
+    JNIEnv *jniEnv = access.env;
+    if (jniEnv == nullptr || jniEnv->ExceptionCheck() || info->stream == nullptr) {
+        info->protocolFailed = true;
+        return;
     }
     jniEnv->CallIntMethod(info->stream, jclass_AnimatedFileDrawableStream_read, (jint) 0, (jint) 1);
+    if (jniEnv->ExceptionCheck()) { info->protocolFailed = true; return; }
     jboolean loaded = jniEnv->CallBooleanMethod(info->stream, jclass_AnimatedFileDrawableStream_isFinishedLoadingFile);
+    if (jniEnv->ExceptionCheck()) { info->protocolFailed = true; return; }
     if (loaded) {
-        delete[] info->src;
         jstring src = (jstring) jniEnv->CallObjectMethod(info->stream, jclass_AnimatedFileDrawableStream_getFinishedFilePath);
-        char const *srcString = jniEnv->GetStringUTFChars(src, 0);
-        size_t len = strlen(srcString);
-        info->src = new char[len + 1];
-        memcpy(info->src, srcString, len);
-        info->src[len] = '\0';
-        if (srcString != 0) {
-            jniEnv->ReleaseStringUTFChars(src, srcString);
+        if (jniEnv->ExceptionCheck() || src == nullptr) {
+            if (src != nullptr) jniEnv->DeleteLocalRef(src);
+            info->protocolFailed = true;
+            return;
         }
+        char const *srcString = jniEnv->GetStringUTFChars(src, 0);
+        if (jniEnv->ExceptionCheck() || srcString == nullptr) {
+            if (srcString != nullptr) jniEnv->ReleaseStringUTFChars(src, srcString);
+            jniEnv->DeleteLocalRef(src);
+            info->protocolFailed = true;
+            return;
+        }
+        size_t len = strlen(srcString);
+        char *replacement = len > 0 ? new (std::nothrow) char[len + 1] : nullptr;
+        if (replacement != nullptr) {
+            memcpy(replacement, srcString, len);
+            replacement[len] = '\0';
+        }
+        jniEnv->ReleaseStringUTFChars(src, srcString);
+        jniEnv->DeleteLocalRef(src);
+        if (replacement == nullptr || jniEnv->ExceptionCheck()) {
+            delete[] replacement;
+            info->protocolFailed = true;
+            return;
+        }
+        char *previous = info->src;
+        info->src = replacement;
+        delete[] previous;
     }
-
-    if (attached) {
-        javaVm->DetachCurrentThread();
+    if (info->src == nullptr || info->src[0] == '\0') {
+        info->protocolFailed = true;
+        return;
     }
     info->fd = open(info->src, O_RDONLY, S_IRUSR);
 }
 
 int readCallback(void *opaque, uint8_t *buf, int buf_size) {
     VideoInfo *info = (VideoInfo *) opaque;
+    if (info->timed) {
+        if (timedCancelled(info)) return AVERROR_EXIT;
+        if (buf_size <= 0 || info->last_seek_p < 0) return AVERROR(EINVAL);
+        if (info->last_seek_p >= info->file_size) return AVERROR_EOF;
+        if (info->fd < 0 && !info->snapshot) requestFd(info);
+        if (timedCancelled(info)) return AVERROR_EXIT;
+        if (info->fd < 0) return AVERROR(EIO);
+        int wanted = static_cast<int>(std::min<int64_t>(buf_size, info->file_size - info->last_seek_p));
+        if (info->stream != nullptr) {
+            DecoderJniEnv access;
+            JNIEnv *jniEnv = access.env;
+            if (jniEnv == nullptr || jniEnv->ExceptionCheck()) {
+                info->protocolFailed = true;
+                return AVERROR(EIO);
+            }
+            int available = jniEnv->CallIntMethod(info->stream, jclass_AnimatedFileDrawableStream_read,
+                    static_cast<jint>(info->last_seek_p), static_cast<jint>(wanted));
+            bool failed = jniEnv->ExceptionCheck();
+            if (failed) { info->protocolFailed = true; return AVERROR(EIO); }
+            if (timedCancelled(info)) return AVERROR_EXIT;
+            if (available <= 0 || available > wanted) return AVERROR(EIO);
+            wanted = available;
+        }
+        static_assert(sizeof(off64_t) >= 8, "snapshot offsets require 64 bits");
+        ssize_t got = pread64(info->fd, buf, static_cast<size_t>(wanted), static_cast<off64_t>(info->last_seek_p));
+        const int readError = errno;
+        if (timedCancelled(info)) return AVERROR_EXIT;
+        if (got < 0) return AVERROR(readError == EINTR ? EAGAIN : readError);
+        if (got == 0) return AVERROR(EIO);
+        info->last_seek_p += got;
+        return static_cast<int>(got);
+    }
     if (!info->stopped) {
         if (info->fd < 0) {
             requestFd(info);
@@ -278,6 +372,21 @@ int readCallback(void *opaque, uint8_t *buf, int buf_size) {
 
 int64_t seekCallback(void *opaque, int64_t offset, int whence) {
     VideoInfo *info = (VideoInfo *) opaque;
+    if (info->timed) {
+        if (timedCancelled(info)) return AVERROR_EXIT;
+        if (whence & AVSEEK_SIZE) return info->file_size;
+        whence &= ~AVSEEK_FORCE;
+        int64_t base;
+        if (whence == SEEK_SET) base = 0;
+        else if (whence == SEEK_CUR) base = info->last_seek_p;
+        else if (whence == SEEK_END) base = info->file_size;
+        else return AVERROR(EINVAL);
+        if (offset < -base || (offset > 0 && offset > INT64_MAX - base)) return AVERROR(EINVAL);
+        int64_t position = base + offset;
+        if (position > info->file_size) return AVERROR(EINVAL);
+        info->last_seek_p = position;
+        return position;
+    }
     if (!info->stopped) {
         if (info->fd < 0) {
             requestFd(info);
@@ -317,13 +426,52 @@ struct OffsetIOContext {
 
 static int offsetRead(void *opaque, uint8_t *buf, int size) {
     OffsetIOContext *ctx = (OffsetIOContext *)opaque;
-    return read(ctx->fd, buf, size);
+    if (ctx == nullptr || ctx->offset < 0 || buf == nullptr || size <= 0) return AVERROR(EINVAL);
+    int64_t current = lseek64(ctx->fd, 0, SEEK_CUR);
+    if (current < 0) return AVERROR(errno);
+    if (current < ctx->offset) return AVERROR(EINVAL);
+    ssize_t ret;
+    do {
+        ret = read(ctx->fd, buf, size);
+    } while (ret < 0 && errno == EINTR);
+    if (ret == 0) return AVERROR_EOF;
+    return ret < 0 ? AVERROR(errno) : (int) ret;
 }
 
 static int64_t offsetSeek(void *opaque, int64_t pos, int whence) {
     OffsetIOContext *ctx = (OffsetIOContext *)opaque;
-    if (whence == AVSEEK_SIZE) return -1;  // unknown size, FFmpeg handles this
-    return lseek(ctx->fd, ctx->offset + pos, whence);
+    if (ctx == nullptr || ctx->offset < 0) return AVERROR(EINVAL);
+    whence &= ~AVSEEK_FORCE;
+    int64_t base;
+    switch (whence) {
+        case AVSEEK_SIZE:
+        case SEEK_END: {
+            struct stat64 st;
+            if (fstat64(ctx->fd, &st) < 0) return AVERROR(errno);
+            if (st.st_size < ctx->offset) return AVERROR(EINVAL);
+            base = st.st_size - ctx->offset;
+            if (whence == AVSEEK_SIZE) return base;
+            break;
+        }
+        case SEEK_CUR: {
+            int64_t current = lseek64(ctx->fd, 0, SEEK_CUR);
+            if (current < 0) return AVERROR(errno);
+            if (current < ctx->offset) return AVERROR(EINVAL);
+            base = current - ctx->offset;
+            break;
+        }
+        case SEEK_SET:
+            base = 0;
+            break;
+        default:
+            return AVERROR(EINVAL);
+    }
+    if (pos < -base) return AVERROR(EINVAL);
+    if (pos > INT64_MAX - base) return AVERROR(EOVERFLOW);
+    int64_t target = base + pos;
+    if (target > INT64_MAX - ctx->offset) return AVERROR(EOVERFLOW);
+    int64_t ret = lseek64(ctx->fd, ctx->offset + target, SEEK_SET);
+    return ret < 0 ? AVERROR(errno) : ret - ctx->offset;
 }
 
 // Frees the custom AVIO built for the fileOffset path (see nGetVideoInfo).
@@ -374,63 +522,74 @@ int getVideoRotation(const AVStream *stream) {
 
 
 extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nGetVideoInfo(JNIEnv *env, jclass clazz, jstring src, jintArray data, jlong fileOffset) {
-    VideoInfo *info = new VideoInfo();
+    if (env == nullptr || env->ExceptionCheck() || src == nullptr || data == nullptr) return;
+    jsize dataLength = env->GetArrayLength(data);
+    if (env->ExceptionCheck() || dataLength < PARAM_NUM_COUNT) return;
+
+    std::unique_ptr<VideoInfo> info(new (std::nothrow) VideoInfo());
+    if (info == nullptr) return;
 
     char const *srcString = env->GetStringUTFChars(src, 0);
-    size_t len = strlen(srcString);
-    info->src = new char[len + 1];
-    memcpy(info->src, srcString, len);
-    info->src[len] = '\0';
-    if (srcString != nullptr) {
-        env->ReleaseStringUTFChars(src, srcString);
+    if (env->ExceptionCheck() || srcString == nullptr) {
+        if (srcString != nullptr) env->ReleaseStringUTFChars(src, srcString);
+        return;
     }
+    size_t len = strlen(srcString);
+    if (len != std::numeric_limits<size_t>::max()) {
+        info->src = new (std::nothrow) char[len + 1];
+        if (info->src != nullptr) {
+            memcpy(info->src, srcString, len);
+            info->src[len] = '\0';
+        }
+    }
+    env->ReleaseStringUTFChars(src, srcString);
+    if (env->ExceptionCheck() || info->src == nullptr) return;
 
+    try {
     int ret;
     if (fileOffset > 0) {
+        info->offsetIoOpaque = new (std::nothrow) OffsetIOContext{-1, fileOffset};
+        if (info->offsetIoOpaque == nullptr) return;
         int fd = open(info->src, O_RDONLY);
+        info->offsetIoOpaque->fd = fd;
         if (fd < 0) {
             LOGE("can't open source file %s", info->src);
-            delete info;
             return;
         }
-        if (lseek(fd, fileOffset, SEEK_SET) < 0) {
+        if (lseek64(fd, fileOffset, SEEK_SET) < 0) {
             LOGE("can't seek to offset %lld in file %s", (long long)fileOffset, info->src);
-            close(fd);
-            delete info;
             return;
         }
 
-        OffsetIOContext *ioCtx = new OffsetIOContext{fd, fileOffset};
         uint8_t *ioBuf = (uint8_t *)av_malloc(32 * 1024);
-        AVIOContext *avio = avio_alloc_context(ioBuf, 32 * 1024, 0, ioCtx, offsetRead, nullptr, offsetSeek);
-
-        // Owned by info from here on: ~VideoInfo -> freeOffsetIO frees avio, its
-        // buffer, ioCtx and its fd. avformat_close_input won't free a custom pb.
-        info->offsetIoContext = avio;
-        info->offsetIoOpaque = ioCtx;
+        if (ioBuf == nullptr) return;
+        info->offsetIoContext = avio_alloc_context(ioBuf, 32 * 1024, 0, info->offsetIoOpaque, offsetRead, nullptr, offsetSeek);
+        if (info->offsetIoContext == nullptr) {
+            av_freep(&ioBuf);
+            return;
+        }
 
         info->fmt_ctx = avformat_alloc_context();
-        info->fmt_ctx->pb = avio;
+        if (info->fmt_ctx == nullptr) return;
+        info->fmt_ctx->pb = info->offsetIoContext;
 
         if ((ret = avformat_open_input(&info->fmt_ctx, nullptr, nullptr, nullptr)) < 0) {
             LOGE("can't open source file at offset %s (offset=%lld), %s", info->src, fileOffset, av_err2str(ret));
-            info->fmt_ctx = nullptr;
-            delete info;
             return;
         }
     } else {
         if ((ret = avformat_open_input(&info->fmt_ctx, info->src, nullptr, nullptr)) < 0) {
             LOGE("can't open source file %s, %s", info->src, av_err2str(ret));
-            delete info;
             return;
         }
     }
+    if (env->ExceptionCheck()) return;
 
     if ((ret = avformat_find_stream_info(info->fmt_ctx, NULL)) < 0) {
         LOGE("can't find stream information %s, %s", info->src, av_err2str(ret));
-        delete info;
         return;
     }
+    if (env->ExceptionCheck()) return;
 
     if ((ret = av_find_best_stream(info->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0)) >= 0) {
         info->video_stream = info->fmt_ctx->streams[ret];
@@ -442,11 +601,14 @@ extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
 
     if (info->video_stream == nullptr) {
         LOGE("can't find video stream in the input, aborting %s", info->src);
-        delete info;
         return;
     }
 
     jint *dataArr = env->GetIntArrayElements(data, 0);
+    if (env->ExceptionCheck()) {
+        if (dataArr != nullptr) env->ReleaseIntArrayElements(data, dataArr, JNI_ABORT);
+        return;
+    }
     if (dataArr != nullptr) {
         //https://developer.android.com/guide/topics/media/media-formats
         dataArr[PARAM_NUM_SUPPORTED_VIDEO_CODEC] =
@@ -498,7 +660,9 @@ extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
         }
         dataArr[PARAM_NUM_DURATION] = (int32_t) (info->fmt_ctx->duration * 1000 / AV_TIME_BASE);
         env->ReleaseIntArrayElements(data, dataArr, 0);
-        delete info;
+    }
+    } catch (const std::bad_alloc &) {
+        return;
     }
 }
 
@@ -506,100 +670,137 @@ static bool isStreamCanceled(VideoInfo *info) {
     if (info->stream == nullptr) {
         return false;
     }
-    JNIEnv *jniEnv = nullptr;
-    JavaVMAttachArgs jvmArgs;
-    jvmArgs.version = JNI_VERSION_1_6;
-
-    bool attached = false;
-    if (JNI_EDETACHED == javaVm->GetEnv((void **) &jniEnv, JNI_VERSION_1_6)) {
-        javaVm->AttachCurrentThread(&jniEnv, &jvmArgs);
-        attached = true;
+    DecoderJniEnv access;
+    JNIEnv *jniEnv = access.env;
+    if (jniEnv == nullptr) {
+        info->protocolFailed = true;
+        return true;
     }
-    jboolean canceled = jniEnv->CallBooleanMethod(
-            info->stream, jclass_AnimatedFileDrawableStream_isCanceled);
-    if (attached) {
-        javaVm->DetachCurrentThread();
+    jboolean canceled = false;
+    if (!jniEnv->ExceptionCheck()) {
+        canceled = jniEnv->CallBooleanMethod(info->stream, jclass_AnimatedFileDrawableStream_isCanceled);
+    }
+    if (jniEnv->ExceptionCheck()) {
+        info->protocolFailed = true;
+        canceled = true;
     }
     return canceled;
 }
 
-extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nCreateDecoder(JNIEnv *env, jclass clazz, jstring src, jintArray data, jint account, jlong streamFileSize, jobject stream, jboolean preview) {
-    VideoInfo *info = new VideoInfo();
+static bool initVideoReader(VideoInfo *info) {
+    if (open_codec_context(&info->video_stream_idx, &info->video_dec_ctx, info->fmt_ctx, AVMEDIA_TYPE_VIDEO) < 0) return false;
+    if (info->timed && info->protocolFailed) return false;
+    info->video_stream = info->fmt_ctx->streams[info->video_stream_idx];
+    info->reader = new (std::nothrow) VideoFrameReader(info->fmt_ctx, info->video_dec_ctx, info->video_stream_idx);
+    if (info->reader == nullptr || !info->reader->valid()) return false;
+    try {
+        info->reader->shouldAbort = [info]() {
+            return info->stopped || info->seeking || (info->timed ? timedCancelled(info) : isStreamCanceled(info));
+        };
+    } catch (const std::bad_alloc &) { return false; }
+    return true;
+}
+
+static VideoInfo *failedDecoderOpen(JNIEnv *env, VideoInfo *info) {
+    info->protocolFailed = true;
+    if (info->stream != nullptr) {
+        env->DeleteGlobalRef(info->stream);
+        info->stream = nullptr;
+    }
+    delete info;
+    return nullptr;
+}
+
+static VideoInfo *openDecoderMode(JNIEnv *env, jstring src, jintArray data, jint account, jlong streamFileSize, jobject stream, jboolean preview, bool timed) {
+    if (env->ExceptionCheck() || src == nullptr) return nullptr;
+    VideoInfo *info = new (std::nothrow) VideoInfo();
+    if (info == nullptr) return nullptr;
+    info->timed = timed;
 
     char const *srcString = env->GetStringUTFChars(src, 0);
+    if (env->ExceptionCheck() || srcString == nullptr) {
+        if (srcString != nullptr) env->ReleaseStringUTFChars(src, srcString);
+        return failedDecoderOpen(env, info);
+    }
     size_t len = strlen(srcString);
-    info->src = new char[len + 1];
+    info->src = len > 0 ? new (std::nothrow) char[len + 1] : nullptr;
+    if (info->src == nullptr) {
+        env->ReleaseStringUTFChars(src, srcString);
+        return failedDecoderOpen(env, info);
+    }
     memcpy(info->src, srcString, len);
     info->src[len] = '\0';
     if (srcString != 0) {
         env->ReleaseStringUTFChars(src, srcString);
     }
+    if (env->ExceptionCheck()) return failedDecoderOpen(env, info);
 
+    try {
     int ret;
     if (streamFileSize != 0) {
         info->file_size = streamFileSize;
         DEBUG_REF("gifvideo.cpp new stream");
         info->stream = env->NewGlobalRef(stream);
+        if (env->ExceptionCheck() || info->stream == nullptr) return failedDecoderOpen(env, info);
         info->account = account;
         info->fd = open(info->src, O_RDONLY, S_IRUSR);
 
         info->ioBuffer = (unsigned char *) av_malloc(64 * 1024);
+        if (info->ioBuffer == nullptr) return failedDecoderOpen(env, info);
         info->ioContext = avio_alloc_context(info->ioBuffer, 64 * 1024, 0, info, readCallback, nullptr, seekCallback);
         if (info->ioContext == nullptr) {
             // avio didn't take ownership of the buffer; free it here. After a
             // successful alloc the buffer lives in ioContext->buffer and is
             // freed by the destructor (and may be reallocated by FFmpeg).
             av_freep(&info->ioBuffer);
-            delete info;
-            return 0;
+            return failedDecoderOpen(env, info);
         }
 
         info->fmt_ctx = avformat_alloc_context();
+        if (info->fmt_ctx == nullptr) return failedDecoderOpen(env, info);
         info->fmt_ctx->pb = info->ioContext;
+        if (timed) info->fmt_ctx->interrupt_callback = {timedInterrupt, info};
 
         AVDictionary *options = NULL;
-        av_dict_set(&options, "usetoc", "1", 0);
+        ret = av_dict_set(&options, "usetoc", "1", 0);
+        if (ret < 0) { av_dict_free(&options); return failedDecoderOpen(env, info); }
         ret = avformat_open_input(&info->fmt_ctx, "http://localhost/file", NULL, &options);
         av_dict_free(&options);
+        if (env->ExceptionCheck() || info->protocolFailed) return failedDecoderOpen(env, info);
         if (ret < 0) {
             LOGE("can't open source file %s, %s", info->src, av_err2str(ret));
-            delete info;
-            return 0;
+            return failedDecoderOpen(env, info);
         }
         info->fmt_ctx->flags |= AVFMT_FLAG_FAST_SEEK;
         if (preview) {
             info->fmt_ctx->flags |= AVFMT_FLAG_NOBUFFER;
         }
     } else {
+        if (timed) {
+            info->fmt_ctx = avformat_alloc_context();
+            if (info->fmt_ctx == nullptr) return failedDecoderOpen(env, info);
+            info->fmt_ctx->interrupt_callback = {timedInterrupt, info};
+        }
         if ((ret = avformat_open_input(&info->fmt_ctx, info->src, NULL, NULL)) < 0) {
             LOGE("can't open source file %s, %s", info->src, av_err2str(ret));
-            delete info;
-            return 0;
+            return failedDecoderOpen(env, info);
         }
+        if (env->ExceptionCheck() || info->protocolFailed) return failedDecoderOpen(env, info);
     }
 
-    if ((ret = avformat_find_stream_info(info->fmt_ctx, NULL)) < 0) {
+    ret = avformat_find_stream_info(info->fmt_ctx, NULL);
+    if (env->ExceptionCheck() || info->protocolFailed) return failedDecoderOpen(env, info);
+    if (ret < 0) {
         LOGE("can't find stream information %s, %s", info->src, av_err2str(ret));
-        delete info;
-        return 0;
+        return failedDecoderOpen(env, info);
     }
 
-    if (open_codec_context(&info->video_stream_idx, &info->video_dec_ctx, info->fmt_ctx, AVMEDIA_TYPE_VIDEO) >= 0) {
-        info->video_stream = info->fmt_ctx->streams[info->video_stream_idx];
-    }
-
-    if (info->video_stream == nullptr) {
+    if (!initVideoReader(info)) {
         LOGE("can't find video stream in the input, aborting %s", info->src);
-        delete info;
-        return 0;
+        return failedDecoderOpen(env, info);
     }
-
-    info->reader = new VideoFrameReader(info->fmt_ctx, info->video_dec_ctx, info->video_stream_idx);
-    VideoInfo *self = info;
-    info->reader->shouldAbort = [self]() {
-        // Covers nStopDecoder (stopped), nPrepareToSeek (seeking) and stream cancel.
-        return self->stopped || self->seeking || isStreamCanceled(self);
-    };
+    if (env->ExceptionCheck() || info->protocolFailed) return failedDecoderOpen(env, info);
+    if (timed) return info;
 
     jint *dataArr = env->GetIntArrayElements(data, 0);
     if (dataArr != nullptr) {
@@ -636,7 +837,15 @@ extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileN
 
     //LOGD("successfully opened file %s", info->src);
 
-    return (jlong) (intptr_t) info;
+    if (env->ExceptionCheck()) return failedDecoderOpen(env, info);
+    return info;
+    } catch (const std::bad_alloc &) {
+        return failedDecoderOpen(env, info);
+    }
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nCreateDecoder(JNIEnv *env, jclass clazz, jstring src, jintArray data, jint account, jlong streamFileSize, jobject stream, jboolean preview) {
+    return reinterpret_cast<jlong>(openDecoderMode(env, src, data, account, streamFileSize, stream, preview, false));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nDestroyDecoder(JNIEnv *env, jclass clazz, jlong ptr) {
@@ -732,21 +941,22 @@ extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
     }
 }
 
-static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *frame, jintArray data, jobject bitmap) {
+static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *frame, jintArray data, jobject bitmap, bool timed = false) {
     if (env->IsSameObject(bitmap, NULL)) {
+        if (timed) return false;
         push_time(env, info, frame, data);
         return true;
     }
-    if (data == nullptr || env->GetArrayLength(data) < 4) {
+    if (!timed && (data == nullptr || env->GetArrayLength(data) < 4)) {
         return false;
     }
-    jint *dataArr = env->GetIntArrayElements(data, 0);
-    if (dataArr == nullptr) {
+    jint *dataArr = timed ? nullptr : env->GetIntArrayElements(data, 0);
+    if (!timed && dataArr == nullptr) {
         return false;
     }
-    const int32_t wantedWidth = dataArr[0];
-    const int32_t wantedHeight = dataArr[1];
-    env->ReleaseIntArrayElements(data, dataArr, JNI_ABORT);
+    const int32_t wantedWidth = timed ? frame->width : dataArr[0];
+    const int32_t wantedHeight = timed ? frame->height : dataArr[1];
+    if (!timed) env->ReleaseIntArrayElements(data, dataArr, JNI_ABORT);
 
     AndroidBitmapInfo bitmapInfo{};
     if (AndroidBitmap_getInfo(env, bitmap, &bitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS ||
@@ -757,6 +967,9 @@ static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
     int32_t bitmapWidth = bitmapInfo.width;
     int32_t bitmapHeight = bitmapInfo.height;
     int32_t bitmapStride = bitmapInfo.stride;
+    if (timed && (bitmapInfo.width > (INT32_MAX - 16) / 4 || bitmapInfo.height > INT32_MAX ||
+                  bitmapInfo.stride > INT32_MAX || bitmapInfo.stride < bitmapInfo.width * 4 ||
+                  static_cast<uint64_t>(bitmapInfo.stride) * bitmapInfo.height > SIZE_MAX)) return false;
 
     if (!(wantedWidth == frame->width && wantedHeight == frame->height || wantedWidth == frame->height && wantedHeight == frame->width)) {
         return false;
@@ -863,8 +1076,10 @@ static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
     } else if (sws_ctx != nullptr && ((intptr_t) pixels) % 16 != 0) {
         // fallback if pixels not aligned
         int alignedStride = FFALIGN(bitmapWidth * 4, 16);
-        int bufSize = alignedStride * bitmapHeight;
-        uint8_t *alignedBuf = (uint8_t *) av_malloc(bufSize);
+        uint64_t alignedBytes = static_cast<uint64_t>(alignedStride) * bitmapHeight;
+        size_t bufSize = static_cast<size_t>(alignedBytes);
+        uint8_t *alignedBuf = alignedBytes <= SIZE_MAX ? (uint8_t *) av_malloc(bufSize) : nullptr;
+        if (timed && alignedBuf == nullptr) info->protocolFailed = true;
         if (alignedBuf != nullptr) {
             uint8_t *dst_data[1] = { alignedBuf };
             int32_t dst_stride[1] = { alignedStride };
@@ -896,6 +1111,7 @@ static inline bool writeFrameToBitmap(JNIEnv *env, VideoInfo *info, AVFrame *fra
     if (!written || unlockResult != ANDROID_BITMAP_RESULT_SUCCESS) {
         return false;
     }
+    if (timed) return !env->ExceptionCheck();
     // Timestamp/opacity describe a completed bitmap, never an attempted write.
     dataArr = env->GetIntArrayElements(data, 0);
     if (dataArr == nullptr) {
@@ -991,7 +1207,7 @@ extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
 
     if (st == VideoFrameReader::Status::Eof || pastEnd) {
         if (!loop) {
-            return 0;
+            return 2;
         }
         if (!info->reader->seek(startPts)) {
             return 0;
@@ -1020,6 +1236,195 @@ extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNa
     }
     push_time(env, info, frame, data);
     return 1;
+}
+
+static bool timedSource(JNIEnv *env, VideoInfo *info, jlongArray source) {
+    if (env->ExceptionCheck() || source == nullptr || info->video_stream == nullptr) return false;
+    jsize sourceLength = env->GetArrayLength(source);
+    if (env->ExceptionCheck() || sourceLength != 14) return false;
+    AVStream *stream = info->video_stream;
+    AVRational tb = stream->time_base;
+    if (tb.num <= 0 || tb.den <= 0) return false;
+    AVRational nominal = stream->avg_frame_rate;
+    jlong flags = 1;
+    if (nominal.num > 0 && nominal.den > 0) flags |= 2;
+    else {
+        nominal = stream->r_frame_rate;
+        if (nominal.num > 0 && nominal.den > 0) flags |= 4;
+        else nominal = {0, 0};
+    }
+    if (stream->start_time != AV_NOPTS_VALUE) flags |= 8;
+    if (stream->duration != AV_NOPTS_VALUE && stream->duration > 0) flags |= 16;
+    if (info->fmt_ctx->start_time != AV_NOPTS_VALUE) flags |= 32;
+    if (info->fmt_ctx->duration != AV_NOPTS_VALUE && info->fmt_ctx->duration > 0) flags |= 64;
+    jlong values[14] = {1, info->video_stream_idx, info->video_dec_ctx->width, info->video_dec_ctx->height,
+        static_cast<jlong>(getVideoRotation(stream)), tb.num, tb.den,
+        nominal.num > 0 ? nominal.num : AV_NOPTS_VALUE, nominal.den > 0 ? nominal.den : AV_NOPTS_VALUE,
+        flags, stream->start_time, (flags & 16) ? stream->duration : AV_NOPTS_VALUE,
+        info->fmt_ctx->start_time, (flags & 64) ? info->fmt_ctx->duration : AV_NOPTS_VALUE};
+    env->SetLongArrayRegion(source, 0, 14, values);
+    if (env->ExceptionCheck()) return false;
+    info->timed = true;
+    info->fmt_ctx->interrupt_callback = {timedInterrupt, info};
+    return true;
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nCreateTimedPath(
+        JNIEnv *env, jclass clazz, jstring path, jint account, jlong length, jobject stream, jboolean preview, jlongArray source) {
+    if (env->ExceptionCheck() || path == nullptr || source == nullptr || length < 0 ||
+            (stream == nullptr ? length != 0 : length <= 0 || length > INT32_MAX)) return 0;
+    jsize sourceLength = env->GetArrayLength(source);
+    if (env->ExceptionCheck() || sourceLength != 14) return 0;
+    VideoInfo *info = openDecoderMode(env, path, nullptr, account, length, stream, preview, true);
+    if (info == nullptr) return 0;
+    if (!timedSource(env, info, source)) { failedDecoderOpen(env, info); return 0; }
+    return reinterpret_cast<jlong>(info);
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nCreateTimedSnapshot(
+        JNIEnv *env, jclass, jint fd, jlong length, jlongArray source) {
+    if (fd < 0 || length <= 0 || source == nullptr || env->GetArrayLength(source) != 14) return 0;
+    auto *info = new (std::nothrow) VideoInfo();
+    if (info == nullptr) return 0;
+    info->timed = true;
+    info->snapshot = true;
+    info->file_size = length;
+    info->fd = dup(fd);
+    if (info->fd < 0) { delete info; return 0; }
+    info->ioBuffer = static_cast<unsigned char *>(av_malloc(64 * 1024));
+    if (info->ioBuffer == nullptr) { delete info; return 0; }
+    info->ioContext = avio_alloc_context(info->ioBuffer, 64 * 1024, 0, info, readCallback, nullptr, seekCallback);
+    if (info->ioContext == nullptr) {
+        av_freep(&info->ioBuffer);
+        delete info;
+        return 0;
+    }
+    info->fmt_ctx = avformat_alloc_context();
+    if (info->fmt_ctx == nullptr) { delete info; return 0; }
+    info->fmt_ctx->pb = info->ioContext;
+    info->fmt_ctx->interrupt_callback = {timedInterrupt, info};
+    if (avformat_open_input(&info->fmt_ctx, nullptr, nullptr, nullptr) < 0 ||
+            avformat_find_stream_info(info->fmt_ctx, nullptr) < 0 || !initVideoReader(info) ||
+            !timedSource(env, info, source)) { delete info; return 0; }
+    return reinterpret_cast<jlong>(info);
+}
+
+static bool timedCurrent(VideoInfo *info, jlong intent) {
+    return info != nullptr && info->timed && intent > 0 && info->cancelIntent.load() == intent;
+}
+
+static int timedState(VideoInfo *info, jlong intent, bool adopt = false) {
+    if (info->protocolFailed) return TIMED_PROTOCOL_ERROR;
+    if (!timedCurrent(info, intent) || (!adopt && info->activeIntent != intent)) return TIMED_CANCELLED;
+    bool cancelled = isStreamCanceled(info);
+    return info->protocolFailed ? TIMED_PROTOCOL_ERROR : (cancelled ? TIMED_CANCELLED : 0);
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nCancelTimed(JNIEnv *, jclass, jlong ptr) {
+    auto *info = reinterpret_cast<VideoInfo *>(ptr);
+    if (info == nullptr || !info->timed) return 0;
+    int64_t old = info->cancelIntent.load();
+    for (;;) {
+        int64_t next = old == INT64_MAX || old == 0 ? 0 : old + 1;
+        if (info->cancelIntent.compare_exchange_weak(old, next)) return next;
+    }
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nAcquireTimed(
+        JNIEnv *env, jclass, jlong ptr, jlong intent, jlongArray descriptor, jint steps, jlong budgetUs) {
+    auto *info = reinterpret_cast<VideoInfo *>(ptr);
+    if (info == nullptr || !info->timed || descriptor == nullptr || env->GetArrayLength(descriptor) != 4 || steps <= 0 || budgetUs <= 0) return TIMED_PROTOCOL_ERROR;
+    int state = timedState(info, intent);
+    if (state != 0) return state;
+    if (info->readFailed) return TIMED_READ_ERROR;
+    if (info->pendingId == 0) {
+        if (info->nextFrameId == INT64_MAX) return TIMED_PROTOCOL_ERROR;
+        VideoFrameReader::Budget budget{steps, budgetUs};
+        VideoFrameReader::Status status = info->reader->getNextFrame(&budget);
+        if (status == VideoFrameReader::Status::Ok) {
+            info->pendingId = ++info->nextFrameId;
+            info->materialized = false;
+        }
+        state = timedState(info, intent);
+        if (state != 0) return state;
+        switch (status) {
+            case VideoFrameReader::Status::Ok: break;
+            case VideoFrameReader::Status::Eof: return TIMED_EOF;
+            case VideoFrameReader::Status::Again: return TIMED_AGAIN;
+            case VideoFrameReader::Status::Yield: return TIMED_YIELD;
+            case VideoFrameReader::Status::Aborted:
+            case VideoFrameReader::Status::Error: info->readFailed = true; return TIMED_READ_ERROR;
+        }
+    }
+    AVFrame *frame = info->reader->frame();
+    jlong flags = frame->best_effort_timestamp != AV_NOPTS_VALUE ? 1 : 0;
+    if (frame->duration > 0) flags |= 2;
+    if (frame->format == AV_PIX_FMT_YUV420P || frame->format == AV_PIX_FMT_YUVJ420P || frame->format == AV_PIX_FMT_YUV444P) flags |= 4;
+    jlong values[4] = {info->pendingId, frame->best_effort_timestamp, frame->duration > 0 ? frame->duration : AV_NOPTS_VALUE, flags};
+    env->SetLongArrayRegion(descriptor, 0, 4, values);
+    if (env->ExceptionCheck()) return TIMED_PROTOCOL_ERROR;
+    state = timedState(info, intent);
+    return state != 0 ? state : TIMED_ACQUIRED;
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nMaterializeTimed(
+        JNIEnv *env, jclass, jlong ptr, jlong intent, jlong id, jobject bitmap) {
+    auto *info = reinterpret_cast<VideoInfo *>(ptr);
+    if (info == nullptr || !info->timed) return TIMED_PROTOCOL_ERROR;
+    int state = timedState(info, intent);
+    if (state != 0) return state;
+    if (id <= 0 || info->pendingId != id) return TIMED_PROTOCOL_ERROR;
+    info->materialized = false;
+    bool written = bitmap != nullptr && writeFrameToBitmap(env, info, info->reader->frame(), nullptr, bitmap, true);
+    if (!timedCurrent(info, intent)) return TIMED_CANCELLED;
+    if (env->ExceptionCheck()) return TIMED_WRITE_ERROR;
+    state = timedState(info, intent);
+    if (state != 0) return state;
+    if (!written) return TIMED_WRITE_ERROR;
+    info->materialized = true;
+    return TIMED_MATERIALIZED;
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nResolveTimed(
+        JNIEnv *, jclass, jlong ptr, jlong intent, jlong id, jint disposition) {
+    auto *info = reinterpret_cast<VideoInfo *>(ptr);
+    if (info == nullptr || !info->timed || id <= 0 || (disposition != 1 && disposition != 2)) return TIMED_PROTOCOL_ERROR;
+    int state = timedState(info, intent);
+    if (state != 0) return state;
+    if (id == info->lastResolvedId) return disposition == info->lastDisposition ?
+            (disposition == 1 ? TIMED_COMMITTED : TIMED_DISCARDED) : TIMED_PROTOCOL_ERROR;
+    if (id != info->pendingId || (disposition == 1 && !info->materialized)) return TIMED_PROTOCOL_ERROR;
+    info->lastResolvedId = id;
+    info->lastDisposition = disposition;
+    info->pendingId = 0;
+    info->materialized = false;
+    return info->cancelIntent.load() != intent ? TIMED_CANCELLED : (disposition == 1 ? TIMED_COMMITTED : TIMED_DISCARDED);
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nSeekTimed(
+        JNIEnv *, jclass, jlong ptr, jlong intent, jlong rawTicks) {
+    auto *info = reinterpret_cast<VideoInfo *>(ptr);
+    if (info == nullptr || !info->timed || rawTicks == AV_NOPTS_VALUE) return TIMED_PROTOCOL_ERROR;
+    int state = timedState(info, intent, true);
+    if (state != 0) return state;
+    info->activeIntent = intent;
+    info->pendingId = 0;
+    info->lastResolvedId = 0;
+    info->lastDisposition = 0;
+    info->materialized = false;
+    if (info->ioContext != nullptr) {
+        info->ioContext->error = 0;
+        info->ioContext->eof_reached = 0;
+    }
+    bool ok = info->reader->seek(rawTicks);
+    info->readFailed = !ok;
+    state = timedState(info, intent);
+    if (state != 0) return state;
+    return ok ? TIMED_SEEKED : TIMED_READ_ERROR;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_org_telegram_ui_Components_AnimatedFileNative_nDestroyTimed(JNIEnv *, jclass, jlong ptr) {
+    delete reinterpret_cast<VideoInfo *>(ptr);
 }
 
 extern "C" jint videoOnJNILoad(JavaVM *vm, JNIEnv *env) {

@@ -76,7 +76,7 @@ import org.telegram.messenger.support.fingerprint.FingerprintManagerCompat;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProviderBuilder;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
+import org.telegram.utils.glass.source.GlassSourceBitmap;
 import org.telegram.ui.QrShare.QrGlass;
 import org.telegram.ui.QrShare.QrRender;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
@@ -103,6 +103,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
         } else if (id == NotificationCenter.passcodeDismissed && isAppLock()) {
             if (args[0] != this) {
                 setVisibility(GONE);
+                onHidden();
             }
         }
     }
@@ -481,7 +482,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
     private int keyboardHeight = 0;
 
     private static final int GLASS_WIDTH = 54;
-    private final BlurredBackgroundSourceBitmap glassSource = new BlurredBackgroundSourceBitmap();
+    private final GlassSourceBitmap glassSource = new GlassSourceBitmap();
     private final BlurredBackgroundDrawableViewFactory glassFactory = new BlurredBackgroundDrawableViewFactory(glassSource);
     private final ReferenceList<View> glassViews = new ReferenceList<>();
     private @Nullable Bitmap glassBitmap;
@@ -1289,8 +1290,8 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
         super.onAttachedToWindow();
 
         if (isAppLock()) {
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didGenerateFingerprintKeyPair);
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.passcodeDismissed);
+            NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.didGenerateFingerprintKeyPair);
+            NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.passcodeDismissed);
 
         }
         if (keyboardNotifier == null && getParent() instanceof View) {

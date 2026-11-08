@@ -15,6 +15,9 @@ import static org.telegram.ui.Stars.StarGiftSheet.isMineWithActions;
 
 import android.app.Activity;
 import android.content.Context;
+import org.telegram.ui.Components.blur3.utils.Blur3Utils;
+import org.telegram.utils.glass.GlassEngine;
+import android.graphics.RectF;
 import android.content.DialogInterface;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
@@ -67,6 +70,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stars;
@@ -77,6 +81,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AnimatedColor;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
@@ -103,11 +108,8 @@ import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 import org.telegram.ui.Components.ViewPagerFixed;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
-import org.telegram.ui.Components.blur3.ViewGroupPartRenderer;
-import org.telegram.ui.Components.blur3.capture.IBlur3Capture;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceColor;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PeerColorActivity;
 import org.telegram.ui.ProfileActivity;
@@ -162,20 +164,64 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
     private int externalPaddingTop;
 
+    private int overscanTop, overscanBottom;
     public void setPaddingTop(int paddingTop) {
         if (externalPaddingTop != paddingTop) {
             externalPaddingTop = paddingTop;
 
-            View[] pages = viewPager.getViewPages();
-            for (View view : pages) {
-                if (view instanceof Page) {
-                    Page page = (Page) view;
-                    page.profilePadding.apply(dp(9), externalPaddingTop, dp(9), dp(30 + 56));
-                }
-            }
+            updatePagesPadding();
 
             updateTabsY();
             updateButton();
+        }
+    }
+
+    public void setOverscan(int top, int bottom) {
+        if (overscanTop != top || overscanBottom != bottom) {
+            overscanTop = top;
+            overscanBottom = bottom;
+            setClipChildren(top == 0 && bottom == 0);
+            viewPager.setClipChildren(top == 0 && bottom == 0);
+            updatePagesPadding();
+        }
+    }
+
+    private void updatePagesPadding() {
+        for (View view : viewPager.getViewPages()) {
+            if (view instanceof Page) {
+                final Page page = (Page) view;
+                page.updatePadding();
+            }
+        }
+    }
+
+    private @Nullable GlassEngine glassEngine;
+
+    public void setGlassEngine(GlassEngine engine) {
+        glassEngine = engine;
+        engine.addScrolledView(viewPager);
+        for (View view : viewPager.getViewPages()) {
+            if (view instanceof Page) {
+                engine.addScrolledView(((Page) view).listView);
+            }
+        }
+    }
+
+    public void capturePages(Canvas canvas, RectF position, ViewGroup root) {
+        if (!isShown() || getAlpha() <= 0 || viewPager.getAlpha() <= 0) return;
+        for (View view : viewPager.getViewPages()) {
+            if (view instanceof Page && view.getVisibility() == VISIBLE && view.getAlpha() > 0) {
+                final RecyclerListView listView = ((Page) view).listView;
+                if (listView.getVisibility() != VISIBLE || listView.getAlpha() <= 0) continue;
+                float alpha = getAlpha() * viewPager.getAlpha() * view.getAlpha() * listView.getAlpha();
+                View ancestor = getParent() instanceof View ? (View) getParent() : null;
+                while (ancestor != null && ancestor != root) {
+                    alpha *= ancestor.getAlpha();
+                    ancestor = ancestor.getParent() instanceof View ? (View) ancestor.getParent() : null;
+                }
+                Blur3Utils.captureRelativeParent(listView, canvas, position, listView, root,
+                        Math.round(255 * Utilities.clamp01(alpha)));
+            }
         }
     }
 
@@ -192,7 +238,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
         private final UniversalRecyclerView listView;
         private final ItemTouchHelper reorder;
-        public @Nullable IBlur3Capture iBlur3Capture;
 
         private boolean reordering;
 
@@ -250,10 +295,10 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             listView.adapter.setApplyBackground(false);
             listView.setSelectorType(9);
             listView.setSelectorDrawableColor(0);
-            listView.setPadding(dp(9), parent.externalPaddingTop, dp(9), dp(30 + 56));
             listView.setClipToPadding(false);
             listView.setClipChildren(false);
             addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
+            updatePadding();
             listView.addOnScrollListener(new RecyclerView.OnScrollListener() {
                 @Override
                 public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
@@ -451,7 +496,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starUserGiftsLoaded);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.starUserGiftsLoaded);
         }
 
         @Override
@@ -514,13 +559,13 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 emptyView1Title = new TextView(getContext());
                 emptyView1Title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17);
                 emptyView1Title.setTypeface(AndroidUtilities.bold());
-                emptyView1Title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+                ThemeBind.textColor(emptyView1Title, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
                 emptyView1Title.setText(LocaleController.getString(R.string.ProfileGiftsNotFoundTitle));
                 emptyView1Layout.addView(emptyView1Title, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 12, 0, 0));
 
                 emptyView1Button = new TextView(getContext());
                 emptyView1Button.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-                emptyView1Button.setTextColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+                ThemeBind.textColor(emptyView1Button, Theme.key_featuredStickers_addButton, resourcesProvider);
                 emptyView1Button.setText(LocaleController.getString(R.string.ProfileGiftsNotFoundButton));
                 emptyView1Button.setOnClickListener(v -> {
                     if (list != null) {
@@ -528,7 +573,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     }
                 });
                 emptyView1Button.setPadding(dp(10), dp(4), dp(10), dp(4));
-                emptyView1Button.setBackground(Theme.createRadSelectorDrawable(Theme.multAlpha(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), .10f), 4, 4));
+                ThemeBind.selectorBackground(emptyView1Button, Theme.createRadSelectorDrawable(Theme.multAlpha(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), .10f), 4, 4), null, ThemeBind.multAlpha(Theme.key_featuredStickers_addButton, .10f), resourcesProvider);
                 ScaleStateListAnimator.apply(emptyView1Button);
                 emptyView1Layout.addView(emptyView1Button, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
 
@@ -549,13 +594,13 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 emptyView2Title = new TextView(getContext());
                 emptyView2Title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
                 emptyView2Title.setTypeface(AndroidUtilities.bold());
-                emptyView2Title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+                ThemeBind.textColor(emptyView2Title, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
                 emptyView2Title.setText(getString(R.string.Gift2CollectionEmptyTitle));
                 emptyView2Layout.addView(emptyView2Title, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 0, 0, 0));
 
                 emptyView2Subtitle = new TextView(getContext());
                 emptyView2Subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-                emptyView2Subtitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+                ThemeBind.textColor(emptyView2Subtitle, Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
                 emptyView2Subtitle.setText(getString(R.string.Gift2CollectionEmptyText));
                 emptyView2Layout.addView(emptyView2Subtitle, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
 
@@ -623,17 +668,28 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             parent.updateTabsY();
         }
 
+        private void updatePadding() {
+            setClipChildren(parent.overscanTop == 0);
+            final MarginLayoutParams lp = (MarginLayoutParams) listView.getLayoutParams();
+            if (lp.topMargin != -parent.overscanTop || lp.bottomMargin != -parent.overscanBottom) {
+                lp.topMargin = -parent.overscanTop;
+                lp.bottomMargin = -parent.overscanBottom;
+                listView.setLayoutParams(lp);
+            }
+            profilePadding.apply(dp(9), parent.overscanTop + parent.externalPaddingTop, dp(9), parent.overscanBottom + dp(30 + 56));
+        }
         public float getTabsHeight() {
+            final float listTop = listView.getY();
             for (int i = 0; i < listView.getChildCount(); ++i) {
                 final View child = listView.getChildAt(i);
                 final int position = listView.getChildAdapterPosition(child);
                 if (child instanceof GiftSheet.GiftCell) {
                     if (position == 0) {
-                        return Math.max(0, child.getY());
+                        return Math.max(0, listTop + child.getY());
                     }
                 } else {
                     if (position == 0) {
-                        return Math.max(0, child.getY() + child.getHeight() * child.getAlpha());
+                        return Math.max(0, listTop + child.getY() + child.getHeight() * child.getAlpha());
                     }
                 }
             }
@@ -671,7 +727,10 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             if (parent.list == list) {
                 items.add(UItem.asSpace(dp(20)));
                 if (parent.dialogId == UserConfig.getInstance(currentAccount).getClientUserId()) {
-                    items.add(TextFactory.asText(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider), Gravity.CENTER, 14, LocaleController.getString(R.string.ProfileGiftsInfo), false, dp(24), 0));
+                    final UItem infoItem = TextFactory.asText(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider), Gravity.CENTER, 14, LocaleController.getString(R.string.ProfileGiftsInfo), false, dp(24), 0);
+                    infoItem.object = resourcesProvider;
+                    infoItem.object2 = Theme.key_windowBackgroundWhiteGrayText2;
+                    items.add(infoItem);
                 }
                 items.add(UItem.asSpace(dp(24 + 48 + 10)));
             } else if (!items.isEmpty()) {
@@ -775,8 +834,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                     if (parent.collections.getCollections().size() + 1 < MessagesController.getInstance(currentAccount).config.stargiftsCollectionsLimit.get()) {
                         final ActionBarMenuSubItem subitem = new ActionBarMenuSubItem(getContext(), false, false, resourcesProvider);
                         subitem.setPadding(dp(18), 0, dp(18), 0);
-                        subitem.setColors(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider), Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider));
-                        subitem.setSelectorColor(Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider), .12f));
+                        subitem.setColorKeys(Theme.key_actionBarDefaultSubmenuItem, Theme.key_actionBarDefaultSubmenuItemIcon);
+                        subitem.setSelectorColorKey(Theme.key_actionBarDefaultSubmenuItem, .12f);
                         subitem.setTextAndIcon(getString(R.string.Gift2NewCollection), R.drawable.menu_folder_add);
                         subitem.setOnClickListener(v -> {
                             o.dismiss();
@@ -807,8 +866,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                         final ActionBarMenuSubItem subitem = new ActionBarMenuSubItem(getContext(), 2, false, false, resourcesProvider);
                         subitem.setChecked(contains);
                         subitem.setPadding(dp(18), 0, dp(18), 0);
-                        subitem.setColors(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider), Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider));
-                        subitem.setSelectorColor(Theme.multAlpha(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider), .12f));
+                        subitem.setColorKeys(Theme.key_actionBarDefaultSubmenuItem, Theme.key_actionBarDefaultSubmenuItemIcon);
+                        subitem.setSelectorColorKey(Theme.key_actionBarDefaultSubmenuItem, .12f);
                         if (collection.icon != null) {
                             AnimatedEmojiDrawable drawable = new AnimatedEmojiDrawable(AnimatedEmojiDrawable.CACHE_TYPE_ALERT_PREVIEW, currentAccount, collection.icon) {
                                 @Override
@@ -1007,7 +1066,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             if (emptyView1 != null) {
                 emptyView1Title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
                 emptyView1Button.setTextColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
-                emptyView1Button.setBackground(Theme.createRadSelectorDrawable(Theme.multAlpha(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), .10f), 4, 4));
             } else {
                 emptyView2Title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
                 emptyView2Subtitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
@@ -1027,7 +1085,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         Context context,
         int currentAccount,
         long did,
-        Theme.ResourcesProvider resourcesProvider
+        Theme.ResourcesProvider resourcesProvider,
+        BlurredBackgroundDrawableViewFactory buttonGlassFactory
     ) {
         super(context);
         this.fragment = fragment;
@@ -1110,7 +1169,11 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
                 if (viewType == -1) {
                     return null;
                 }
-                return new Page(ProfileGiftsContainer.this, currentAccount, resourcesProvider);
+                final Page page = new Page(ProfileGiftsContainer.this, currentAccount, resourcesProvider);
+                if (glassEngine != null) {
+                    glassEngine.addScrolledView(page.listView);
+                }
+                return page;
             }
 
             @Override
@@ -1313,11 +1376,8 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 //        tabsView.setBackgroundColor(backgroundColor);
         addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 42, Gravity.TOP));
 
-        BlurredBackgroundSourceColor source = new BlurredBackgroundSourceColor();
-        source.setColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
-        BlurredBackgroundDrawableViewFactory factory = new BlurredBackgroundDrawableViewFactory(source);
         ProfileActivity.Button2 button2 = new ProfileActivity.Button2(context);
-        BlurredBackgroundDrawable drawable = factory.create(button2, new BlurredBackgroundColorProviderThemed(resourcesProvider, Theme.key_windowBackgroundWhite));
+        BlurredBackgroundDrawable drawable = buttonGlassFactory.create(button2, new BlurredBackgroundColorProviderThemed(resourcesProvider, Theme.key_windowBackgroundWhite));
         drawable.setPadding(dp(8));
         drawable.setRadius(dp(22));
         button2.setBackground(drawable);
@@ -1338,7 +1398,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         checkboxLayout.setPadding(dp(12), dp(8), dp(12), dp(8));
         checkboxLayout.setClipToPadding(false);
         checkboxLayout.setOrientation(LinearLayout.HORIZONTAL);
-        checkboxLayout.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 24, 24));
+        ThemeBind.selectorBackground(checkboxLayout, Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 24, 24), null, ThemeBind.of(Theme.key_listSelector), resourcesProvider);
         checkbox = new CheckBox2(context, 24, resourcesProvider);
         checkbox.setColor(Theme.key_radioBackgroundChecked, Theme.key_checkboxDisabled, Theme.key_checkboxCheck);
         checkbox.setDrawUnchecked(true);
@@ -1346,7 +1406,7 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         checkbox.setDrawBackgroundAsArc(10);
         checkboxLayout.addView(checkbox, LayoutHelper.createLinear(26, 26, Gravity.CENTER_VERTICAL, 0, 0, 0, 0));
         checkboxTextView = new TextView(context);
-        checkboxTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(checkboxTextView, Theme.key_dialogTextBlack, resourcesProvider);
         checkboxTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         checkboxTextView.setText(LocaleController.getString(R.string.Gift2ChannelNotify));
         checkboxLayout.addView(checkboxTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 9, 0, 0, 0));
@@ -1571,28 +1631,28 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 
     public void updateButton() {
         if (viewPager == null) return;
-        float ty;
+        final float hide;
         if (viewPager.getCurrentPosition() == viewPager.getNextPosition()) {
-            final float hide = shouldHideButton(viewPager.getCurrentPosition()) ? 1.0f : 0.0f;
-            ty = (dp(10 + 48 + 10) + 2) * hide;
+            hide = shouldHideButton(viewPager.getCurrentPosition()) ? 1.0f : 0.0f;
         } else {
-            final float hide = (
+            hide = (
                 (shouldHideButton(viewPager.getCurrentPosition()) ? 1.0f : 0.0f) * viewPager.getCurrentPositionAlpha() +
                 (shouldHideButton(viewPager.getNextPosition()) ? 1.0f : 0.0f) * viewPager.getNextPositionAlpha()
             );
-            ty = (dp(10 + 48 + 10) + 2) * hide;
         }
-        ty += -buttonContainer.getTop() + visibleHeight - dp(buttonContainerHeightDp) - 1;
+        float ty = -buttonContainer.getTop() + visibleHeight - dp(buttonContainerHeightDp) - 1;
+        final float bulletinTy = ty + (dp(10 + 48 + 10) + 2) * hide;
 
         animatorBottomButtonVisibility.setValue(visibleHeight > dp(184), true);
 
         final float factor = animatorBottomButtonVisibility.getFloatValue();
-        ty = lerp(ty + dp(60), ty, factor);
+        ty = lerp(ty + dp(60), ty + dp(16) * hide, factor);
+        final float alpha = factor * (1f - hide);
 
-        bulletinContainer.setTranslationY(ty - dp(200));
+        bulletinContainer.setTranslationY(lerp(bulletinTy + dp(60), bulletinTy, factor) - dp(200));
         buttonContainer.setTranslationY(ty - buttonContainerOffset);
-        buttonContainer.setAlpha(factor);
-        buttonContainer.setVisibility(factor > 0 ? View.VISIBLE : View.INVISIBLE);
+        buttonContainer.setAlpha(alpha);
+        buttonContainer.setVisibility(alpha > 0 ? View.VISIBLE : View.INVISIBLE);
         button.setText(!collections.isMine() || viewPager.getPositionAnimated() < 0.5f ? sendGiftsToFriendsText : addGiftsText, true);
         Bulletin.updateCurrentPosition();
     }
@@ -1679,9 +1739,9 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starUserGiftsLoaded);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starUserGiftCollectionsLoaded);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.updateInterfaces);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.starUserGiftsLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.starUserGiftCollectionsLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.updateInterfaces);
         final Page currentPage = getCurrentPage();
         if (currentPage != null) {
             currentPage.update(false);
@@ -1839,7 +1899,12 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
             final LinkSpanDrawable.LinksTextView textView = (LinkSpanDrawable.LinksTextView) view;
             textView.setGravity(item.intValue);
+            if (item.object2 instanceof Integer) {
+                ThemeBind.textColor(textView, (Integer) item.object2, item.object instanceof Theme.ResourcesProvider ? (Theme.ResourcesProvider) item.object : null);
+            } else {
+                ThemeBind.clear(textView);
             textView.setTextColor((int) item.longValue);
+            }
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, item.floatValue);
             textView.setTypeface(item.accent ? AndroidUtilities.bold() : null);
             textView.setPadding(item.pad, 0, item.pad, item.iconResId);
@@ -1871,7 +1936,15 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
 //        setBackgroundColor(backgroundColor = Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider));
 //        tabsView.setBackgroundColor(backgroundColor);
         button.updateColors();
-        button.setBackground(Theme.createRoundRectDrawable(dp(19), processColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider))));
+        final int buttonColor = processColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+        if (button.getBackground() instanceof android.graphics.drawable.ShapeDrawable) {
+            if (((android.graphics.drawable.ShapeDrawable) button.getBackground()).getPaint().getColor() != buttonColor) {
+                Theme.setDrawableColor(button.getBackground(), buttonColor);
+                button.invalidate();
+            }
+        } else {
+            button.setBackground(Theme.createRoundRectDrawable(dp(19), buttonColor));
+        }
         View[] pages = viewPager.getViewPages();
         if (pages != null) {
             for (int i = 0; i < pages.length; ++i) {
@@ -1881,7 +1954,6 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
             }
         }
         checkboxTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        checkboxLayout.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 24, 24));
     }
 
     public static class UnpinSheet extends BottomSheet {
@@ -2050,12 +2122,12 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         });
         MediaDataController.getInstance(currentAccount).fetchNewEmojiKeywords(AndroidUtilities.getCurrentKeyboardLanguage(), true);
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        editText.setHintColor(Theme.getColor(Theme.key_groupcreate_hintText, resourcesProvider));
+        ThemeBind.textColor(editText, Theme.key_dialogTextBlack, resourcesProvider);
+        ThemeBind.editHintColor(editText, Theme.key_groupcreate_hintText, resourcesProvider);
         editText.setHintText(getString(R.string.Gift2NewCollectionHint));
         editText.setFocusable(true);
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        editText.setLineColors(Theme.getColor(Theme.key_windowBackgroundWhiteInputField, resourcesProvider), Theme.getColor(Theme.key_windowBackgroundWhiteInputFieldActivated, resourcesProvider), Theme.getColor(Theme.key_text_RedRegular, resourcesProvider));
+        ThemeBind.lineColors(editText, Theme.key_windowBackgroundWhiteInputField, Theme.key_windowBackgroundWhiteInputFieldActivated, Theme.key_text_RedRegular, resourcesProvider);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
         editText.setBackgroundDrawable(null);
         editText.setPadding(0, dp(6), 0, dp(6));
@@ -2188,23 +2260,4 @@ public class ProfileGiftsContainer extends FrameLayout implements NotificationCe
         });
     }
 
-    public @Nullable IBlur3Capture iBlur3Capture;
-    private ViewGroup iBlur3CaptureParent;
-
-    public void initBlurCapture(ViewGroup parent) {
-        iBlur3CaptureParent = parent;
-
-        iBlur3Capture = (canvas, position) -> {
-            View[] pages = viewPager.getViewPages();
-            for (View view : pages) {
-                if (view instanceof Page && view.getVisibility() == VISIBLE) {
-                    Page page = (Page) view;
-                    if (page.iBlur3Capture == null) {
-                        page.iBlur3Capture = new ViewGroupPartRenderer(page.listView, iBlur3CaptureParent, page.listView::drawChild);
-                    }
-                    page.iBlur3Capture.capture(canvas, position);
-                }
-            }
-        };
-    }
 }

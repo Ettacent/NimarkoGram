@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.RelayRegion;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -71,6 +72,7 @@ public final class VoipRelayAuth {
             new AtomicLong();
     private static final Object authGenerationLock = new Object();
 
+    private static final ConcurrentHashMap<Integer, Long> lastAllocationRefresh = new ConcurrentHashMap<>();
     public static boolean isAuthAllowed() {
         return VoipBypassConfig.isVoipRelayRequiredFresh();
     }
@@ -102,6 +104,21 @@ public final class VoipRelayAuth {
     }
 
     public static void prefetchAsync(final int account) {
+        prefetchAsync(account, false);
+    }
+
+    public static void refreshAfterAllocationFailure(final int account) {
+        synchronized (authGenerationLock) {
+            if (!isAuthAllowed() || uidOf(account) <= 0) return;
+            long now = SystemClock.elapsedRealtime();
+            Long previous = lastAllocationRefresh.get(account);
+            if (previous != null && now - previous < 60_000L) return;
+            lastAllocationRefresh.put(account, now);
+        }
+        prefetchAsync(account, true);
+    }
+
+    private static void prefetchAsync(final int account, boolean forceRefresh) {
         if (!isAuthAllowed()) return;
 
         RelayRegion.invalidate();
@@ -110,7 +127,7 @@ public final class VoipRelayAuth {
         long uid = uidOf(account);
         if (uid <= 0) return;
 
-        if (c != null && c.uid == uid && isFresh(c, now)) return;
+        if (!forceRefresh && c != null && c.uid == uid && isFresh(c, now)) return;
 
         final PrefetchOwner owner = new PrefetchOwner(authGeneration.get(), uidOf(account));
         if (owner.uid <= 0 || !claimPrefetchOwner(account, owner)) return;
@@ -184,6 +201,7 @@ public final class VoipRelayAuth {
             Long previousDeadline = authDeadlineMs.get();
             authDeadlineMs.set(SystemClock.elapsedRealtime() + AUTH_FLOW_BUDGET_MS);
             try {
+                final InlineAuth.EnablePredicate freshPermit = freshWorkPermit(permit);
                 long now = nowSeconds(account);
                 Credential old = memoryOrDisk(account);
                 if (old != null && old.uid != ownerUid) old = null;
@@ -195,16 +213,16 @@ public final class VoipRelayAuth {
                 if (uid <= 0 || uid != ownerUid) return null;
                 InlineAuth.Backend backend = backendFor(uid);
                 if (!isAuthAllowed()) {
-                    return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
+                    return usableFallback(account, ownerUid, old, permit);
                 }
                 String token = InlineAuth.ensureToken(
-                        account, uid, lock, backend, permit);
-                if (token == null || !permit.isEnabled()) {
-                    return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
+                        account, uid, lock, backend, freshPermit);
+                if (token == null || !freshPermit.isEnabled()) {
+                    return usableFallback(account, ownerUid, old, permit);
                 }
                 int[] status = new int[1];
                 Credential fresh = fetchCredential(token, status);
-                if (fresh == null && (status[0] == 401 || status[0] == 403)) {
+                if (fresh == null && status[0] == 401) {
 
                     final String rejectedToken = token;
                     final AtomicBoolean tokenInvalidated =
@@ -218,30 +236,30 @@ public final class VoipRelayAuth {
                             tokenInvalidated.set(true);
                         }
                     }) || !tokenInvalidated.get()) {
-                        return uidOf(account) == ownerUid
-                                && isUsable(old, now) && permit.isEnabled() ? old : null;
+                        return usableFallback(account, ownerUid, old, permit);
                     }
-                    token = authRemainingMs() > 0 && permit.isEnabled()
+                    token = authRemainingMs() > 0 && freshPermit.isEnabled()
                             ? InlineAuth.ensureToken(
-                                    account, uid, lock, backend, permit) : null;
+                                    account, uid, lock, backend, freshPermit) : null;
                     if (token == null) {
-                        return uidOf(account) == ownerUid && isUsable(old, now) ? old : null;
+                        return usableFallback(account, ownerUid, old, permit);
                     }
                     fresh = fetchCredential(token, status);
                 }
-                if (fresh != null && fresh.uid == uid) {
+                if (fresh != null && fresh.uid == uid && isUsable(fresh, nowSeconds(account))) {
                     final Credential credential = fresh;
                     final AtomicBoolean committed =
                             new AtomicBoolean(false);
-                    if (!permit.runIfEnabled(() -> {
-
-                        if (UserConfig.getInstance(account).getClientUserId() == credential.uid) {
+                    if (!freshPermit.runIfEnabled(() -> {
+                        if (UserConfig.getInstance(account).getClientUserId() == credential.uid
+                                && isUsable(credential, nowSeconds(account))) {
                             cached.put(account, credential);
                             saveCredentialToDisk(account, credential);
                             committed.set(true);
                         }
-                    }) || !committed.get()
-                            || UserConfig.getInstance(account).getClientUserId() != credential.uid) {
+                    }) || !committed.get() || !freshPermit.isEnabled()
+                            || UserConfig.getInstance(account).getClientUserId() != credential.uid
+                            || !isUsable(credential, nowSeconds(account))) {
                         cached.remove(account, credential);
                         fresh = null;
                     }
@@ -249,8 +267,7 @@ public final class VoipRelayAuth {
                     fresh = null;
                 }
                 return fresh != null ? fresh
-                        : (permit.isEnabled() && uidOf(account) == ownerUid
-                        && isUsable(old, now) ? old : null);
+                        : usableFallback(account, ownerUid, old, permit);
             } finally {
                 if (previousDeadline == null) authDeadlineMs.remove();
                 else authDeadlineMs.set(previousDeadline);
@@ -258,14 +275,33 @@ public final class VoipRelayAuth {
         }
     }
 
+    private static Credential usableFallback(int account, long ownerUid, Credential old,
+                                             InlineAuth.EnablePredicate permit) {
+        return permit.isEnabled() && uidOf(account) == ownerUid
+                && isUsable(old, nowSeconds(account)) ? old : null;
+    }
     public static void invalidateCredential(int account) {
-        boolean invalidated;
+        invalidateCredential(account, null);
+    }
+
+    public static void invalidateCredential(int account, Credential rejected) {
+        boolean invalidated = false;
         synchronized (authGenerationLock) {
-            invalidated = uidOf(account) > 0;
+            long uid = uidOf(account);
+            if (uid <= 0 || rejected != null && rejected.uid != uid) return;
+            Credential current = memoryOrDiskLocked(account);
+            if (rejected == null || current == null || sameCredential(current, rejected)) {
             cached.remove(account);
             saveCredentialToDiskLocked(account, null);
+                invalidated = true;
+            }
         }
         if (invalidated) prefetchAsync(account);
+    }
+
+    private static boolean sameCredential(Credential a, Credential b) {
+        return a != null && b != null && a.expiry == b.expiry && a.uid == b.uid
+                && Arrays.equals(a.hmac, b.hmac);
     }
 
     private static Credential memoryOrDisk(int account) {
@@ -316,17 +352,23 @@ public final class VoipRelayAuth {
         if (!isAuthAllowed()) return reg;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/voip/register?user_id=" + uid);
             con = (HttpURLConnection) url.openConnection();
             if (!registerConnection(con, generation)) return reg;
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
-            if (con.getResponseCode() != 200) return reg;
-            JSONObject o = new JSONObject(readBody(con));
+            checkAuthDeadline();
+            int rc = con.getResponseCode();
+            checkAuthDeadline();
+            if (rc != 200) return reg;
+            JSONObject o = readJson(con);
             reg.code = o.getString("code");
             reg.botUsername = o.getString("bot_username");
+            checkAuthDeadline();
             reg.ok = true;
         } catch (Throwable t) {
             Log.e(TAG, "register failed: " + t);
@@ -341,6 +383,7 @@ public final class VoipRelayAuth {
         if (!isAuthAllowed() || authRemainingMs() <= 0) return InlineAuth.GIVE_UP;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/voip/poll?user_id=" + uid
                     + "&code=" + URLEncoder.encode(code, "UTF-8"));
             con = (HttpURLConnection) url.openConnection();
@@ -348,18 +391,22 @@ public final class VoipRelayAuth {
             con.setRequestMethod("POST");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
+            checkAuthDeadline();
             int rc = con.getResponseCode();
+            checkAuthDeadline();
             if (rc == 200) {
-                JSONObject o = new JSONObject(readBody(con));
+                JSONObject o = readJson(con);
                 String token = o.optString("token", "");
+                checkAuthDeadline();
                 return token.isEmpty() ? null : token;
             }
             if (rc == 202) return null;
             return InlineAuth.GIVE_UP;
         } catch (Throwable t) {
             Log.e(TAG, "poll failed: " + t);
-            return null;
+            return authRemainingMs() <= 0 ? InlineAuth.GIVE_UP : null;
         } finally {
             if (con != null) { activeConnections.remove(con); con.disconnect(); }
         }
@@ -371,6 +418,7 @@ public final class VoipRelayAuth {
         if (!isAuthAllowed()) return null;
         HttpURLConnection con = null;
         try {
+            checkAuthDeadline();
             URL url = new URL(API_URL + "/api/v1/voip/credential");
             con = (HttpURLConnection) url.openConnection();
             if (!registerConnection(con, generation)) return null;
@@ -379,20 +427,24 @@ public final class VoipRelayAuth {
             con.setRequestProperty("Content-Type", "application/json");
             configureTimeouts(con);
             con.setDoOutput(true);
+            checkAuthDeadline();
             con.getOutputStream().close();
 
+            checkAuthDeadline();
             int rc = con.getResponseCode();
             if (outStatus != null) outStatus[0] = rc;
+            checkAuthDeadline();
             if (rc != 200) {
                 Log.e(TAG, "fetchCredential http " + rc);
                 return null;
             }
-            JSONObject o = new JSONObject(readBody(con));
+            JSONObject o = readJson(con);
             long expiry = o.getLong("expiry");
             long uid = o.getLong("uid");
             byte[] hmac = hexToBytes(o.getString("hmac"));
             if (uid <= 0 || expiry <= 0
                     || hmac == null || hmac.length != 32) return null;
+            checkAuthDeadline();
             return new Credential(expiry, uid, hmac);
         } catch (Throwable t) {
             Log.e(TAG, "fetchCredential failed: " + t);
@@ -402,17 +454,55 @@ public final class VoipRelayAuth {
         }
     }
 
+    private static InlineAuth.EnablePredicate freshWorkPermit(
+            final InlineAuth.EnablePredicate lifetimePermit) {
+        final Long deadline = authDeadlineMs.get();
+        return new InlineAuth.EnablePredicate() {
+            @Override public boolean isEnabled() {
+                return lifetimePermit.isEnabled()
+                        && (deadline == null || SystemClock.elapsedRealtime() < deadline);
+            }
+            @Override public boolean runIfEnabled(Runnable action) {
+                synchronized (authGenerationLock) {
+                    if (!isEnabled()) return false;
+                    action.run();
+                    return true;
+                }
+            }
+        };
+    }
+
+    private static void checkAuthDeadline() throws SocketTimeoutException {
+        Long deadline = authDeadlineMs.get();
+        if (deadline != null && SystemClock.elapsedRealtime() >= deadline) {
+            throw new SocketTimeoutException("relay auth deadline exceeded");
+        }
+    }
+
+    private static JSONObject readJson(HttpURLConnection con) throws Exception {
+        String body = readBody(con);
+        checkAuthDeadline();
+        JSONObject result = new JSONObject(body);
+        checkAuthDeadline();
+        return result;
+    }
     private static String readBody(HttpURLConnection con) throws Exception {
+        checkAuthDeadline();
         StringBuilder sb = new StringBuilder();
         try (BufferedReader r = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                if (sb.length() + line.length() > MAX_RESPONSE_CHARS) {
+            while (true) {
+                checkAuthDeadline();
+                int c = r.read();
+                checkAuthDeadline();
+                if (c == -1) break;
+                if (c == '\r' || c == '\n') continue;
+                if (sb.length() >= MAX_RESPONSE_CHARS) {
                     throw new IOException("auth response too large");
                 }
-                sb.append(line);
+                sb.append((char) c);
             }
         }
+        checkAuthDeadline();
         return sb.toString();
     }
 

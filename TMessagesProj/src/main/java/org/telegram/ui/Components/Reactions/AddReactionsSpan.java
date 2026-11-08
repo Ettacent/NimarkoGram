@@ -35,7 +35,9 @@ public class AddReactionsSpan extends ReplacementSpan {
     private int alpha;
     private ValueAnimator alphaAnimator;
 
+    private final Theme.ResourcesProvider resourcesProvider;
     public AddReactionsSpan(float textSize, Theme.ResourcesProvider resourcesProvider) {
+        this.resourcesProvider = resourcesProvider;
         textPaint.setTextSize(dp(textSize));
         textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText5, resourcesProvider));
     }
@@ -57,6 +59,7 @@ public class AddReactionsSpan extends ReplacementSpan {
     @Override
     public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end, float _x, int top, int _y, int bottom, @NonNull Paint paint) {
         makeLayout();
+        textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText5, resourcesProvider));
         rectF.set(canvas.getClipBounds());
         canvas.saveLayerAlpha(rectF, alpha, ALL_SAVE_FLAG);
         float transY = (top + (bottom - top) / 2f - height / 2f);

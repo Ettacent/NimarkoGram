@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Modifications Copyright (C) 2026 Ettacent
+
 # Build static FFmpeg libraries for Android using prebuilt libvpx, dav1d and Opus.
 # Configuration is kept equivalent to build_ffmpeg_libvpx_dav1d_android_ndk27_merged.sh.
 #
@@ -37,9 +39,11 @@ unset CFLAGS CXXFLAGS
 require_ndk
 require_command make
 require_command pkg-config
+require_command patch
 
 PROJECT_ROOT="$JNI_DIR"
 FFMPEG_SOURCE_DIR="${FFMPEG_SOURCE_DIR:-$JNI_DIR/third_party/ffmpeg}"
+FFMPEG_PATCH_DIR="${FFMPEG_PATCH_DIR:-$SCRIPT_DIR/patches/ffmpeg}"
 LIBVPX_SOURCE_DIR="${LIBVPX_SOURCE_DIR:-$JNI_DIR/third_party/libvpx}"
 DAV1D_SOURCE_DIR="${DAV1D_SOURCE_DIR:-$JNI_DIR/third_party/dav1d}"
 OPUS_SOURCE_DIR="${OPUS_SOURCE_DIR:-$JNI_DIR/third_party/xiph/opus}"
@@ -163,6 +167,28 @@ COMMON_CFLAGS_BASE+=" -g0 -fno-ident"
 COMMON_CFLAGS_BASE="${COMMON_CFLAGS_BASE# }"
 COMMON_CFLAGS="$COMMON_CFLAGS_BASE"
 [[ "$ADDRSIG" == "1" ]] && COMMON_CFLAGS+=" -faddrsig"
+
+prepare_patched_source() {
+    local source_dir="$1" destination="$2"
+    local version patch_file patch_count=0
+
+    version="$(git -C "$source_dir" describe --tags --always 2>/dev/null || cat "$source_dir/RELEASE")"
+    mkdir -p "$destination"
+    tar -C "$source_dir" --exclude=.git -cf - . | tar -C "$destination" -xf -
+
+    for patch_file in "$FFMPEG_PATCH_DIR"/*.patch; do
+        [[ -f "$patch_file" ]] || continue
+        echo "==> Applying $(basename "$patch_file")"
+        if ! patch -d "$destination" -p1 -N -F0 -s -i "$patch_file"; then
+            error "FFmpeg patch does not apply: $patch_file"
+            return 1
+        fi
+        patch_count=$((patch_count + 1))
+    done
+
+    [[ "$patch_count" == "0" ]] || version+="-tg$patch_count"
+    printf '%s\n' "$version" > "$destination/VERSION"
+}
 
 write_opus_pkgconfig() {
     local abi="$1" destination_dir="$2"
@@ -455,6 +481,8 @@ echo "FFmpeg flags: $COMMON_CFLAGS"
 
 rm -rf "$BUILD_ROOT"
 mkdir -p "$WORK_DIR" "$INSTALL_DIR"
+prepare_patched_source "$FFMPEG_SOURCE_DIR" "$WORK_DIR/source"
+FFMPEG_SOURCE_DIR="$WORK_DIR/source"
 for abi in $ABIS; do
     build_ffmpeg_for_abi "$abi"
 done

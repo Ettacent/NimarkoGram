@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 package org.telegram.ui.Cells;
 
+import org.telegram.messenger.FileLog;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -25,7 +28,9 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 
-public class GroupCallTextCell extends FrameLayout {
+import org.telegram.ui.ActionBar.ThemeBind;
+
+public class GroupCallTextCell extends FrameLayout implements Theme.Colorable {
 
     private SimpleTextView textView;
     private SimpleTextView valueTextView;
@@ -51,14 +56,14 @@ public class GroupCallTextCell extends FrameLayout {
         leftPadding = left;
 
         textView = new SimpleTextView(context);
-        textView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(textView, dialog ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText);
         textView.setTextSize(16);
         textView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
         textView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         addView(textView);
 
         valueTextView = new SimpleTextView(context);
-        valueTextView.setTextColor(Theme.getColor(dialog ? Theme.key_dialogTextBlue2 : Theme.key_windowBackgroundWhiteValueText));
+        ThemeBind.textColor(valueTextView, dialog ? Theme.key_dialogTextBlue2 : Theme.key_windowBackgroundWhiteValueText);
         valueTextView.setTextSize(16);
         valueTextView.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
         valueTextView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -66,7 +71,7 @@ public class GroupCallTextCell extends FrameLayout {
 
         imageView = new ImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
-        imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+        ThemeBind.colorFilter(imageView, dialog ? Theme.key_dialogIcon : Theme.key_windowBackgroundWhiteGrayIcon, PorterDuff.Mode.MULTIPLY);
         addView(imageView);
 
         valueImageView = new ImageView(context);
@@ -135,19 +140,22 @@ public class GroupCallTextCell extends FrameLayout {
     }
 
     public void setTextColor(int color) {
+        ThemeBind.clear(textView);
         textView.setTextColor(color);
     }
 
     public void setColorsByKey(int icon, int text) {
-        textView.setTextColor(Theme.getColor(text));
+        ThemeBind.textColor(textView, text);
         textView.setTag(text);
         if (icon >= 0) {
-            imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(icon), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.colorFilter(imageView, icon, PorterDuff.Mode.MULTIPLY);
             imageView.setTag(icon);
         }
     }
 
     public void setColors(int icon, int text) {
+        ThemeBind.clear(textView);
+        ThemeBind.clear(imageView);
         textView.setTextColor(text);
         textView.setTag(null);
         imageView.setColorFilter(new PorterDuffColorFilter(icon, PorterDuff.Mode.MULTIPLY));
@@ -247,6 +255,16 @@ public class GroupCallTextCell extends FrameLayout {
             } else {
                 info.setText(text);
             }
+        }
+    }
+    @Override
+    public void updateColors() {
+        try {
+            dividerPaint.setColor(Theme.getColor(Theme.key_voipgroup_actionBar));
+            invalidate();
+
+        } catch (Exception e) {
+            FileLog.e(e);
         }
     }
 }

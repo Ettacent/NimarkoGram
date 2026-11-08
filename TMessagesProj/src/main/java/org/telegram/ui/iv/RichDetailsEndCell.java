@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.iv;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -13,6 +15,7 @@ import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
+import java.util.HashSet;
 public class RichDetailsEndCell extends View implements Theme.Colorable {
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -36,6 +39,10 @@ public class RichDetailsEndCell extends View implements Theme.Colorable {
     @Override
     public void updateColors() {
         paint.setColor(Theme.getColor(Theme.key_chat_inArticleDetailsLine, resourcesProvider));
+    }
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_chat_inArticleDetailsLine);
     }
 
     @Override

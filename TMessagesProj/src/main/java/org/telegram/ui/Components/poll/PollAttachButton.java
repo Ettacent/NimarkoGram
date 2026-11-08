@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.poll;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -14,6 +16,7 @@ import androidx.annotation.NonNull;
 
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 
 import me.vkryl.android.animator.BoolAnimator;
@@ -36,7 +39,7 @@ public class PollAttachButton extends View {
         this.size = size;
 
         attachDrawable = context.getResources().getDrawable(R.drawable.outline_poll_attach_24).mutate();
-        attachDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_pollCreateIcons), PorterDuff.Mode.SRC_IN));
+        ThemeBind.drawableColorFilter(this, attachDrawable, Theme.key_pollCreateIcons, PorterDuff.Mode.SRC_IN);
     }
 
     @Override

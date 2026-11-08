@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -2630,5 +2632,8 @@ public class ChatObject {
 
     public static boolean areTabsEnabled(TLRPC.Chat chat) {
         return SharedConfig.forceForumTabs || chat != null && chat.forum_tabs;
+    }
+    public static boolean isSidebarEnabled(TLRPC.Chat chat) {
+        return chat != null && (chat.forum && chat.forum_sidebar || chat.monoforum);
     }
 }

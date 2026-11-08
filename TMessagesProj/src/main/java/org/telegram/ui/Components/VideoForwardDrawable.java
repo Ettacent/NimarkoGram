@@ -20,7 +20,7 @@ import app.nimarkogram.messenger.icons.IconResources;
 public class VideoForwardDrawable extends Drawable {
 
     private Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final MediaActionDrawable.PackIconRenderer packIconRenderer = new MediaActionDrawable.PackIconRenderer();
+    private final BoundedPackIconRenderer packIconRenderer = new BoundedPackIconRenderer(false);
     private TextPaint textPaint = new SystemTextPaint(Paint.ANTI_ALIAS_FLAG);
     private Path path1 = new Path();
     private boolean leftSide;
@@ -138,7 +138,7 @@ public class VideoForwardDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
         IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
-        IconResources.PreparedIcon play = MediaActionDrawable.PackIconRenderer.get(icons, R.drawable.ic_action_play);
+        boolean playReady = packIconRenderer.prepare(icons, R.drawable.ic_action_play);
         android.graphics.Rect rect = getBounds();
 
         int x = rect.left + (rect.width() - getIntrinsicWidth()) / 2;
@@ -201,7 +201,7 @@ public class VideoForwardDrawable extends Drawable {
                a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            drawPlayGlyph(canvas, play);
+            drawPlayGlyph(canvas, playReady);
         }
         canvas.translate(AndroidUtilities.dp(18), 0);
         if (animationProgress >= 0.2f && animationProgress <= 0.8f) {
@@ -216,7 +216,7 @@ public class VideoForwardDrawable extends Drawable {
                 a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            drawPlayGlyph(canvas, play);
+            drawPlayGlyph(canvas, playReady);
         }
         canvas.translate(AndroidUtilities.dp(18), 0);
         if (animationProgress >= 0.4f && animationProgress <= 1.0f) {
@@ -231,7 +231,7 @@ public class VideoForwardDrawable extends Drawable {
                 a = (int) (a * enterAnimationProgress);
             }
             paint.setAlpha(a);
-            drawPlayGlyph(canvas, play);
+            drawPlayGlyph(canvas, playReady);
         }
         canvas.restore();
 
@@ -282,12 +282,14 @@ public class VideoForwardDrawable extends Drawable {
         }
     }
 
-    private void drawPlayGlyph(Canvas canvas, IconResources.PreparedIcon play) {
-        if (play == null) {
+    private void drawPlayGlyph(Canvas canvas, boolean playReady) {
+        if (!playReady) {
             canvas.drawPath(path1, paint);
         } else {
-            packIconRenderer.draw(canvas, play, paint, AndroidUtilities.dp(18), AndroidUtilities.dp(16),
-                    AndroidUtilities.dp(18), paint.getAlpha() / 255f, 0);
+            float left = AndroidUtilities.dp(playPath[0]), right = AndroidUtilities.dp(playPath[2]);
+            float top = AndroidUtilities.dp(playPath[1]), bottom = AndroidUtilities.dp(playPath[5]);
+            packIconRenderer.draw(canvas, paint, (left + right) / 2f, (top + bottom) / 2f,
+                    right - left, bottom - top, 1f, false);
         }
     }
     public void setShowing(boolean showing) {

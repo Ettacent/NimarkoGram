@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.animation.Animator;
@@ -736,7 +738,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
                                     } else {
                                         index++;
                                     }
-                                    spannableStringBuilder.setSpan(new ForegroundColorSpan(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4)), index, index + len, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                                    spannableStringBuilder.setSpan(new ForegroundColorSpanThemable(Theme.key_windowBackgroundWhiteBlueText4), index, index + len, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                                 }
                                 username = spannableStringBuilder;
                             } catch (Exception e) {
@@ -1238,7 +1240,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
 
     public void setDelegate(InviteMembersBottomSheetDelegate inviteMembersBottomSheetDelegate, ArrayList<Long> selectedDialogs) {
         dialogsDelegate = inviteMembersBottomSheetDelegate;
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.dialogsNeedReload);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.dialogsNeedReload);
         dialogsServerOnly = new ArrayList<>(MessagesController.getInstance(currentAccount).dialogsServerOnly);
         updateRows();
     }

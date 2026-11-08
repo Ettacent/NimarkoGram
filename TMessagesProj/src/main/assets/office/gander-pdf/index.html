@@ -1,0 +1,230 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<!DOCTYPE html>
+<html data-office-renderer="gander-pdf">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>PDF document</title>
+<link rel="stylesheet" href="engine/gander/app.css">
+<link rel="stylesheet" href="engine/gander/pdf-pages.css">
+<style>
+  body { background: #48443D; }
+
+  html { touch-action: manipulation; }
+
+  :root { --pg-gap: 8px; }
+
+  #pages {
+    box-sizing: border-box;
+    padding: 8px 0;
+    min-height: 100vh;
+    min-height: calc(100vh - var(--vw-top, 0px));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  #pages > .pg { flex: none; }
+
+  html.vw-night .pg:last-child {
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour),
+                0 var(--pg-edge) 0 var(--pg-edge-colour);
+  }
+  html.vw-night .vw-status { background: #2D2A23; color: #E7E2D9; }
+  html.vw-night .vw-status.vw-error { background: #8C1D18; color: #F9DEDC; }
+  html.vw-night .vw-ask-input { background: #17130A; color: #E7E2D9; border-color: #6B6250; }
+  html.vw-night .vw-ask-alert { color: #F9DEDC; }
+  html.vw-night .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
+
+  #vw-filters {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    visibility: hidden;
+    contain: strict;
+    z-index: -1;
+  }
+  .pg {
+    max-width: 100%;
+    aspect-ratio: var(--pg-ratio, 0.7071);
+  }
+
+  .pg > .vw-gap {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: var(--pg-gap);
+    user-select: text;
+  }
+
+  .pg > canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .pg > canvas.tile {
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .textLayer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    line-height: 1;
+    text-align: initial;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 0;
+
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+
+  .textLayer span,
+  .textLayer br {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform:
+      rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+
+  .textLayer .markedContent { display: contents; }
+
+  .textLayer ::selection {
+    background: rgba(33, 150, 243, 0.35);
+  }
+  .textLayer br::selection { background: transparent; }
+
+  .textLayer span[role="img"] { user-select: none; cursor: default; }
+
+  .hiddenCanvasElement {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    display: none;
+    letter-spacing: normal;
+    word-spacing: normal;
+  }
+
+  ::highlight(vw-find) {
+    background-color: rgba(255, 213, 79, 0.45);
+  }
+  ::highlight(vw-find-active) {
+    background-color: rgba(255, 145, 0, 0.62);
+  }
+
+  :root { --vw-zoom: 2.75; }
+
+  .vw-ask { text-align: left; }
+  .vw-ask-title { font-weight: 600; margin-bottom: calc(6px * var(--vw-zoom)); }
+  .vw-ask-label {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  .vw-ask-alert {
+    display: block;
+    font-size: calc(13px * var(--vw-zoom));
+    color: #8c1d18;
+    margin-bottom: calc(10px * var(--vw-zoom));
+  }
+  .vw-ask-row { display: flex; gap: calc(8px * var(--vw-zoom)); }
+  .vw-ask-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    font: inherit;
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(10px * var(--vw-zoom));
+    border: calc(1px * var(--vw-zoom)) solid #CFC5B2;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #fff;
+    color: #1E1B15;
+  }
+  .vw-ask-btn {
+    flex: 0 0 auto;
+    font: inherit;
+    box-sizing: border-box;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #AF2D18;
+    color: #fff;
+  }
+
+  .vw-simple-btn {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    margin-top: calc(14px * var(--vw-zoom));
+    font: inherit;
+    font-weight: 500;
+    box-sizing: border-box;
+    min-height: 48px;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 16px;
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: 6px;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #AF2D18;
+    color: #fff;
+  }
+  .vw-simple-btn:disabled { opacity: 0.6; }
+  .vw-simple-caveat {
+    margin-top: 8px;
+    margin-top: calc(8px * var(--vw-zoom));
+    font-size: 13px;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+  }
+  @media (prefers-color-scheme: dark) {
+    .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
+  }
+</style>
+<link rel="stylesheet" href="host.css">
+</head>
+<body>
+<div id="vw-filters" aria-hidden="true">
+  <svg width="0" height="0"><defs>
+    <filter id="vw-invert" color-interpolation-filters="sRGB">
+      <feColorMatrix id="office-night-matrix" type="matrix" values="
+         0.574 -1.430 -0.144 0 1
+        -0.426 -0.430 -0.144 0 1
+        -0.426 -1.430  0.856 0 1
+         0      0      0     1 0"/>
+    </filter>
+  </defs></svg>
+</div>
+<div id="vw-status" class="vw-status vw-wait">Rendering document…</div>
+<div id="pages"></div>
+<script src="engine/gander/app.js"></script>
+<script src="pdf-setup.js"></script>
+
+<script src="viewer.js"></script>
+</body>
+</html>

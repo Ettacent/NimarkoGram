@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import android.content.Context;
@@ -12,6 +14,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class CreationTextCell extends FrameLayout {
 
     private SimpleTextView textView;
@@ -30,7 +33,7 @@ public class CreationTextCell extends FrameLayout {
         textView = new SimpleTextView(context);
         textView.setTextSize(16);
         textView.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2, resourcesProvider));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlueText2, resourcesProvider);
         textView.setTag(Theme.key_windowBackgroundWhiteBlueText2);
         addView(textView);
 

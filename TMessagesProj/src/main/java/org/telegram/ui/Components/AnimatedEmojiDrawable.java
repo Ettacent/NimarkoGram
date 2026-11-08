@@ -14,6 +14,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.LongSparseArray;
@@ -25,6 +26,7 @@ import android.view.ViewParent;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
 import org.telegram.SQLite.SQLiteException;
@@ -1194,8 +1196,16 @@ public class AnimatedEmojiDrawable extends Drawable {
 
     private ColorFilter colorFilterToSet;
 
+    private ColorFilter lastColorFilter;
+
+    @Nullable
+    @Override
+    public ColorFilter getColorFilter() {
+        return lastColorFilter;
+    }
     @Override
     public void setColorFilter(@Nullable ColorFilter colorFilter) {
+        lastColorFilter = colorFilter;
         if (imageReceiver == null || document == null) {
             colorFilterToSet = colorFilter;
         } else if (canOverrideColor()) {
@@ -1374,6 +1384,9 @@ public class AnimatedEmojiDrawable extends Drawable {
         private boolean hasPendingParticles;
         private boolean pendingParticles;
         private StarsReactionsSheet.Particles particles;
+        private static final long PARTICLE_DRAW_TIMEOUT_MS = 250L;
+        private long lastParticleDrawAtMs;
+        private boolean particleCallbackScheduled;
         public void setParticles(boolean show, boolean animated) {
             if (animated && waitingForReady) {
                 hasPendingParticles = true;
@@ -1464,11 +1477,14 @@ public class AnimatedEmojiDrawable extends Drawable {
                 particles.process();
                 particles.draw(canvas, Theme.multAlpha(lastColor == null ? 0xFFFFFFFF : lastColor,
                         particlesAlpha * alpha / 255f));
-                if (attached) {
-                    Choreographer60FpsContent.getInstance().addFrameCallback(invalidateRunnable, 15);
+                if (canAnimateParticles()) {
+                    lastParticleDrawAtMs = SystemClock.uptimeMillis();
+                    setParticleCallbackScheduled(true);
+                } else {
+                    setParticleCallbackScheduled(false);
                 }
             } else {
-                Choreographer60FpsContent.getInstance().removeFrameCallback(invalidateRunnable);
+                setParticleCallbackScheduled(false);
             }
             final boolean mix = transitioning && progress < 1 && !outgoingDrawables.isEmpty();
             int blendSave = -1;
@@ -1602,6 +1618,11 @@ public class AnimatedEmojiDrawable extends Drawable {
             return drawable != null && !transitioning;
         }
 
+        public boolean hasPendingTransition() {
+            return transitioning || waitingForReady || hasPendingParticles
+                    || changeProgress.isInProgress() || particlesAlpha.isInProgress()
+                    || particlesAlpha.get() != (hasParticles ? 1f : 0f);
+        }
         public boolean set(long documentId, int cacheType, boolean animated) {
             return setDrawable(documentId == 0 ? null : AnimatedEmojiDrawable.make(
                     account != null ? account : UserConfig.selectedAccount, cacheType, documentId), animated);
@@ -1729,7 +1750,7 @@ public class AnimatedEmojiDrawable extends Drawable {
             applyPendingParticles(false);
             changeProgress.set(1, true);
             particlesAlpha.set(hasParticles, true);
-            Choreographer60FpsContent.getInstance().removeFrameCallback(invalidateRunnable);
+            setParticleCallbackScheduled(false);
         }
 
         public void attach() {
@@ -1770,7 +1791,42 @@ public class AnimatedEmojiDrawable extends Drawable {
             return PixelFormat.TRANSPARENT;
         }
 
-        private final Runnable invalidateRunnable = this::invalidate;
+        private boolean canAnimateParticles() {
+            if (!attached || alpha <= 0 || !isVisible() || UiAnimationClock.isPaused()) return false;
+            return parentView == null && secondParent == null
+                    || isParticleHostVisible(parentView) || isParticleHostVisible(secondParent);
+        }
+
+        private static boolean isParticleHostVisible(View view) {
+            if (view == null || !view.isAttachedToWindow() || !view.isShown()
+                    || view.getWindowVisibility() != View.VISIBLE) return false;
+            while (view != null) {
+                if (view.getAlpha() <= 0f) return false;
+                ViewParent parent = view.getParent();
+                view = parent instanceof View ? (View) parent : null;
+            }
+            return true;
+        }
+
+        private void setParticleCallbackScheduled(boolean scheduled) {
+            if (particleCallbackScheduled == scheduled) return;
+            particleCallbackScheduled = scheduled;
+            if (scheduled) {
+                Choreographer60FpsContent.getInstance().addFrameCallback(invalidateRunnable, 15);
+            } else {
+                Choreographer60FpsContent.getInstance().removeFrameCallback(invalidateRunnable);
+            }
+        }
+
+        private final Runnable invalidateRunnable = () -> {
+            if (!canAnimateParticles() || particles == null
+                    || !hasParticles && particlesAlpha.get() <= 0
+                    || SystemClock.uptimeMillis() - lastParticleDrawAtMs >= PARTICLE_DRAW_TIMEOUT_MS) {
+                setParticleCallbackScheduled(false);
+                return;
+            }
+            invalidate();
+        };
         @Override
         public void invalidate() {
             if (parentView != null) {

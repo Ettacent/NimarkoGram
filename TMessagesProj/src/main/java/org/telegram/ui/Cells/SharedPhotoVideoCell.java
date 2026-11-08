@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 2.0.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 package org.telegram.ui.Cells;
 
+import org.telegram.messenger.FileLog;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
@@ -39,12 +42,13 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.PhotoViewer;
 
-public class SharedPhotoVideoCell extends FrameLayout {
+public class SharedPhotoVideoCell extends FrameLayout implements Theme.Colorable {
 
     private PhotoVideoView[] photoVideoViews;
     private MessageObject[] messageObjects;
@@ -429,5 +433,15 @@ public class SharedPhotoVideoCell extends FrameLayout {
             itemWidth = (AndroidUtilities.displaySize.x - (itemsCount - 1) * AndroidUtilities.dp(2)) / itemsCount;
         }
         return itemWidth;
+    }
+    @Override
+    public void updateColors() {
+        try {
+            backgroundPaint.setColor(Theme.getColor(Theme.key_sharedMedia_photoPlaceholder));
+            invalidate();
+
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 }

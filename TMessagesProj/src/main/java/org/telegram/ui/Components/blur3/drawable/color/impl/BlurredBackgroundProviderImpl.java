@@ -215,9 +215,53 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider topPanelChatActivity(Theme.ResourcesProvider resourcesProvider) {
-        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+        return topPanelChatActivity(UserConfig.selectedAccount, resourcesProvider);
+    }
+
+    public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider) {
+                @Override
+                public int getStrokeColorTop() {
+                    return compactGlassStroke(super.getStrokeColorTop(), resourcesProvider);
+                }
+
+                @Override
+                public int getStrokeColorBottom() {
+                    return compactGlassStroke(super.getStrokeColorBottom(), resourcesProvider);
+                }
+
+                @Override
+                public int getShadowColor() {
+                    return Theme.isCompactMode(resourcesProvider) ? Theme.getColor(Theme.key_chat_compact_glassShadow, resourcesProvider) : super.getShadowColor();
+                }
+
+                @Override
+                public float getShadowRadius() {
+                    return Theme.isCompactMode(resourcesProvider) ? dpf2(2.25f) : super.getShadowRadius();
+                }
+
+                @Override
+                public float getShadowDy() {
+                    return Theme.isCompactMode(resourcesProvider) ? dpf2(1) : super.getShadowDy();
+                }
+
+                @Override
+                public int getOutlineShadowColor() {
+                    return Theme.isCompactMode(resourcesProvider) ? Theme.getColor(Theme.key_chat_compact_glassHairline, resourcesProvider) : 0;
+                }
+
+                @Override
+                public int getOutlineColor() {
+                    return Theme.isCompactMode(resourcesProvider) ? Theme.getColor(Theme.key_chat_compact_glassOutline, resourcesProvider) : 0;
+                }
+
+                @Override
+                public float getOutlineWidth() {
+                    return dpf2(0.6f);
+                }
+            }
                 .setBackgroundColor((r, isDark) -> {
-                    if (!checkBlurEnabled(resourcesProvider)) {
+                    if (!checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                     }
@@ -231,6 +275,38 @@ public class BlurredBackgroundProviderImpl {
                 .setShadowColor(0x20000000, 0)
                 //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
                 .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
+                .build();
+    }
+
+    private static int compactGlassStroke(int color, Theme.ResourcesProvider resourcesProvider) {
+        if (!Theme.isCompactMode(resourcesProvider)) return color;
+        return Color.alpha(Theme.getColor(Theme.key_chat_compact_glassOutline, resourcesProvider)) != 0 ? 0 : color;
+    }
+
+    public static BlurredBackgroundProvider simpleActionBar(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setBackgroundColor((r, isDark) -> {
+                final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.80f;
+                final int colorBg = Theme.getColor(Theme.key_windowBackgroundGray, r);
+                final int colorTarget = Theme.getColor(Theme.key_windowBackgroundWhite, r);
+                return solveSrcColor(colorBg, colorTarget, alpha);
+            })
+            .setStrokeColorTop(0xFFFFFFFF, 0x20FFFFFF)
+            .setStrokeColorBottom(0xFFFFFFFF, 0x14FFFFFF)
+            .setShadowColor(0x16333333, 0)
+            .setShadowLayer(dpf2(24 / 3f), 0, dpf2(7f / 3f))
+            .setStrokeWidth(dpf2(0.55f), dpf2(0.55f))
+            .build();
+    }
+
+    public static BlurredBackgroundProvider frostedSheet(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setBackgroundColor((r, isDark) -> Theme.multAlpha(Theme.getColor(Theme.key_dialogBackground, r), isDark ? 0.82f : 0.78f))
+            .setStrokeColorTop(0xFFFFFFFF, 0x20FFFFFF)
+            .setStrokeColorBottom(0, 0)
+            .setShadowColor(0x16333333, 0)
+            .setShadowLayer(dpf2(24 / 3f), 0, -dpf2(2f / 3f))
+            .setStrokeWidth(dpf2(0.55f), 0)
                 .build();
     }
 
@@ -281,6 +357,22 @@ public class BlurredBackgroundProviderImpl {
             //.setShadowColor(0x20000000, 0)
             //.setShadowLayer(dpf2(10 / 3f), 0, dpf2(2 / 3f))
             .setStrokeWidth(dpf2(0.5f), dpf2(0.5f))
+            .build();
+    }
+
+    public static BlurredBackgroundProvider hint(Theme.ResourcesProvider resourcesProvider) {
+        return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setBackgroundColor((r, isDark) -> {
+                final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.82f : 0.76f;
+                final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
+                final int colorTarget = 0xFF282828;
+                return isDark ? Theme.multAlpha(0xFF111111, 0.9f) : solveSrcColor(colorBg, colorTarget, alpha);
+            })
+            .setStrokeColorTop(0x33FFFFFF, 0x33FFFFFF)
+            .setStrokeColorBottom(0x1AFFFFFF, 0x1AFFFFFF)
+            .setShadowColor(0x30333333, 0x30000000)
+            .setShadowLayer(dpf2(6f), 0, 0)
+            .setStrokeWidth(1, 1)
             .build();
     }
 

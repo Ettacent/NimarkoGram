@@ -51,6 +51,7 @@ import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Adapters.DialogsSearchAdapter;
 import org.telegram.ui.ChatActivity;
+import org.telegram.utils.twidget.WidgetMedia;
 import org.telegram.ui.Components.Forum.ForumUtilities;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.Reactions.ReactionsUtils;
@@ -80,7 +81,7 @@ import me.vkryl.core.BitwiseUtils;
 
 public class MessagesStorage extends BaseController {
 
-    private DispatchQueue storageQueue;
+    private DispatchQueue2 storageQueue;
     private SQLiteDatabase database;
     private File cacheFile;
     private File walCacheFile;
@@ -120,7 +121,7 @@ public class MessagesStorage extends BaseController {
         }
     }
 
-    public final static int LAST_DB_VERSION = 179;
+    public final static int LAST_DB_VERSION = 181;
     private boolean databaseMigrationInProgress;
     public boolean showClearDatabaseAlert;
 
@@ -233,16 +234,17 @@ public class MessagesStorage extends BaseController {
 
     public MessagesStorage(int instance) {
         super(instance);
-        storageQueue = new DispatchQueue("storageQueue_" + instance, false);
+        storageQueue = new DispatchQueue2("storageQueue_" + instance, false);
         storageQueue.setPriority(8);
-        storageQueue.start(() -> openDatabase(1));
+        storageQueue.postRunnable(() -> openDatabase(1));
+        storageQueue.start();
     }
 
     public SQLiteDatabase getDatabase() {
         return database;
     }
 
-    public DispatchQueue getStorageQueue() {
+    public DispatchQueue2 getStorageQueue() {
         return storageQueue;
     }
 
@@ -301,6 +303,7 @@ public class MessagesStorage extends BaseController {
     private Exception databaseOpenError;
 
     private void openDatabase(int openTries, boolean notifyOpened) {
+        if (database != null) invalidateWidgetState();
         databaseOpenError = null;
         if (!NativeLoader.loaded()) {
             int tryCount = 0;
@@ -453,7 +456,7 @@ public class MessagesStorage extends BaseController {
             }
         });
         loadDialogFilters();
-        loadUnreadMessages();
+        loadUnreadMessages(request == null ? currentCleanup.get() : request);
         loadPendingTasks();
         try {
             openSync.countDown();
@@ -576,7 +579,9 @@ public class MessagesStorage extends BaseController {
             "emoji_groups",
             "poll_votes_mentions",
             "poll_votes_mentions_topics",
-            "ephemeral_messages"
+            "ephemeral_messages",
+            "widget_state",
+            "widget_heights"
     };
 
     public static void createTables(SQLiteDatabase database) throws SQLiteException {
@@ -817,6 +822,8 @@ public class MessagesStorage extends BaseController {
         database.executeFast("CREATE TABLE ephemeral_messages (id INTEGER, dialog_id INTEGER, topic_id INTEGER, date INTEGER, data BLOB, PRIMARY KEY(dialog_id, id));").stepThis().dispose();
         database.executeFast("CREATE INDEX IF NOT EXISTS ephemeral_messages_date_idx ON ephemeral_messages(date);").stepThis().dispose();
 
+        database.executeFast("CREATE TABLE widget_state(uid INTEGER, mid INTEGER, local TEXT, PRIMARY KEY(uid, mid));").stepThis().dispose();
+        database.executeFast("CREATE TABLE widget_heights(uid INTEGER, mid INTEGER, width INTEGER, height INTEGER, date INTEGER, anchor INTEGER default 0, PRIMARY KEY(uid, mid, width));").stepThis().dispose();
         database.executeFast("PRAGMA user_version = " + MessagesStorage.LAST_DB_VERSION).stepThis().dispose();
 
     }
@@ -843,6 +850,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private void cleanupInternal(boolean deleteFiles) throws Exception {
+        invalidateWidgetState();
         try {
             if (database != null) {
                 database.closeForDestruction();
@@ -902,6 +910,97 @@ public class MessagesStorage extends BaseController {
 
     private final AtomicReference<CleanupRequest> currentCleanup = new AtomicReference<>();
 
+    private final AtomicReference<Object> unreadMessagesGeneration = new AtomicReference<>(new Object());
+    private final AtomicLong widgetGeneration = new AtomicLong();
+
+    public void invalidateWidgetState() {
+        widgetGeneration.incrementAndGet();
+        WidgetMedia.onAccountCleanup(currentAccount);
+    }
+
+    public WidgetStateToken getWidgetStateToken() {
+        return new WidgetStateToken();
+    }
+
+    public final class WidgetStateToken {
+        private final long generation = widgetGeneration.get();
+        private final long userId = getUserConfig().getClientUserId();
+        private final CleanupRequest cleanupRequest = currentCleanup.get();
+        private final int attempt;
+
+        private WidgetStateToken() {
+            if (cleanupRequest == null) {
+                attempt = 0;
+            } else {
+                synchronized (cleanupRequest) {
+                    attempt = cleanupRequest.attempt;
+                }
+            }
+        }
+
+        public String cachePrefix() {
+            return currentAccount + "/" + userId + "/" + generation + "/";
+        }
+
+        public boolean isCurrent() {
+            if (userId == 0 || generation != widgetGeneration.get()
+                    || userId != getUserConfig().getClientUserId()
+                    || cleanupRequest != currentCleanup.get()) return false;
+            if (cleanupRequest == null) return true;
+            synchronized (cleanupRequest) {
+                return cleanupRequest == currentCleanup.get()
+                        && attempt == cleanupRequest.attempt && !cleanupRequest.running
+                        && (cleanupRequest.login ? cleanupRequest.loginFinished : cleanupRequest.succeeded);
+            }
+        }
+
+        private boolean isCurrent(MessagesStorage storage) {
+            return storage == MessagesStorage.this && isCurrent();
+        }
+    }
+
+    void invalidateUnreadMessages() {
+        unreadMessagesGeneration.set(new Object());
+    }
+
+    public final class UnreadMessagesToken {
+        private final Object generation = unreadMessagesGeneration.get();
+        private final long userId = getUserConfig().getClientUserId();
+        private final CleanupRequest cleanupRequest;
+        private final int attempt;
+
+        private UnreadMessagesToken(CleanupRequest cleanupRequest) {
+            this.cleanupRequest = cleanupRequest;
+            if (cleanupRequest == null) {
+                attempt = 0;
+            } else {
+                synchronized (cleanupRequest) {
+                    attempt = cleanupRequest.attempt;
+                }
+            }
+        }
+
+        boolean isCurrent(MessagesStorage storage) {
+            return storage == MessagesStorage.this && isCurrent();
+        }
+
+        boolean isCurrent() {
+            if (generation != unreadMessagesGeneration.get()
+                    || userId != getUserConfig().getClientUserId()
+                    || cleanupRequest != currentCleanup.get()) {
+                return false;
+            }
+            if (cleanupRequest == null) {
+                return true;
+            }
+            synchronized (cleanupRequest) {
+                return cleanupRequest == currentCleanup.get()
+                        && attempt == cleanupRequest.attempt
+                        && !cleanupRequest.running
+                        && (cleanupRequest.login ? cleanupRequest.loginFinished : cleanupRequest.succeeded);
+            }
+        }
+    }
     public final class CleanupRequest {
         private final boolean login;
         private final boolean fullReset;
@@ -1017,6 +1116,7 @@ public class MessagesStorage extends BaseController {
     private CleanupRequest startCleanup(boolean login, boolean fullReset, Consumer<CleanupResult> completion) {
         CleanupRequest request = new CleanupRequest(login, fullReset, completion);
         currentCleanup.set(request);
+        invalidateWidgetState();
         request.retry(0);
         return request;
     }
@@ -1570,27 +1670,82 @@ public class MessagesStorage extends BaseController {
     }
 
     public void putStoryPushMessage(NotificationsController.StoryNotification push) {
+        putStoryPushMessage(push, push.unreadMessagesToken);
+    }
+
+    private static final class StoryPushRow {
+        private final int id;
+        private final long date;
+        private final long expireDate;
+
+        private StoryPushRow(int id, long date, long expireDate) {
+            this.id = id;
+            this.date = date;
+            this.expireDate = expireDate;
+        }
+    }
+
+    private static final class StoryPushSnapshot {
+        private final long dialogId;
+        private final String localName;
+        private final boolean hidden;
+        private final StoryPushRow[] rows;
+
+        private StoryPushSnapshot(NotificationsController.StoryNotification push) {
+            dialogId = push.dialogId;
+            localName = push.localName == null ? "" : push.localName;
+            hidden = push.hidden;
+            rows = new StoryPushRow[push.dateByIds.size()];
+            int index = 0;
+            for (Map.Entry<Integer, Pair<Long, Long>> entry : push.dateByIds.entrySet()) {
+                rows[index++] = new StoryPushRow(entry.getKey(), entry.getValue().first, entry.getValue().second);
+            }
+        }
+    }
+
+    public void putStoryPushMessage(NotificationsController.StoryNotification push, UnreadMessagesToken token) {
+        final StoryPushSnapshot snapshot = new StoryPushSnapshot(push);
         storageQueue.postRunnable(() -> {
+            if (token != null && !token.isCurrent(this)) {
+                return;
+            }
             try {
-                database.executeFast("DELETE FROM story_pushes WHERE uid = " + push.dialogId).stepThis().dispose();
-                SQLitePreparedStatement state = database.executeFast("REPLACE INTO story_pushes VALUES(?, ?, ?, ?, ?, ?)");
-                for (Map.Entry<Integer, Pair<Long, Long>> e : push.dateByIds.entrySet()) {
-                    int id = e.getKey();
-                    long date = e.getValue().first;
-                    long expire_date = e.getValue().second;
+                SQLitePreparedStatement state = null;
+                Throwable failure = null;
+                try {
+                    state = database.executeFast("DELETE FROM story_pushes WHERE uid = " + snapshot.dialogId);
+                    state.step();
+                    SQLitePreparedStatement deleteState = state;
+                    state = null;
+                    deleteState.dispose();
+                    state = database.executeFast("REPLACE INTO story_pushes VALUES(?, ?, ?, ?, ?, ?)");
+                    for (StoryPushRow row : snapshot.rows) {
                     state.requery();
-                    state.bindLong(1, push.dialogId);
-                    state.bindInteger(2, id);
-                    state.bindLong(3, date);
-                    if (push.localName == null) {
-                        push.localName = "";
-                    }
-                    state.bindString(4, push.localName);
-                    state.bindInteger(5, push.hidden ? 1 : 0);
-                    state.bindLong(6, expire_date);
+                        state.bindLong(1, snapshot.dialogId);
+                        state.bindInteger(2, row.id);
+                        state.bindLong(3, row.date);
+                        state.bindString(4, snapshot.localName);
+                        state.bindInteger(5, snapshot.hidden ? 1 : 0);
+                        state.bindLong(6, row.expireDate);
                     state.step();
                 }
-                state.dispose();
+                } catch (Throwable e) {
+                    failure = e;
+                    throw e;
+                } finally {
+                    if (state != null) {
+                        try {
+                            state.dispose();
+                        } catch (Throwable cleanupError) {
+                            if (failure == null) {
+                                throw cleanupError;
+                            }
+                            if (failure != cleanupError) {
+                                failure.addSuppressed(cleanupError);
+                            }
+                        }
+                    }
+                }
             } catch (Exception e) {
                 checkSQLException(e);
             }
@@ -1598,7 +1753,14 @@ public class MessagesStorage extends BaseController {
     }
 
     public void deleteStoryPushMessage(long dialogId) {
+        deleteStoryPushMessage(dialogId, null);
+    }
+
+    public void deleteStoryPushMessage(long dialogId, UnreadMessagesToken token) {
         storageQueue.postRunnable(() -> {
+            if (token != null && !token.isCurrent(this)) {
+                return;
+            }
             try {
                 database.executeFast("DELETE FROM story_pushes WHERE uid = " + dialogId).stepThis().dispose();
             } catch (Exception e) {
@@ -1676,8 +1838,110 @@ public class MessagesStorage extends BaseController {
         });
     }
 
+    public Object[] getWidgetState(WidgetStateToken token, long dialogId, int messageId) {
+        SQLiteCursor cursor = null;
+        String local = null;
+        ArrayList<int[]> heights = new ArrayList<>();
+        if (!token.isCurrent(this)) return new Object[]{null, heights};
+        try {
+            cursor = database.queryFinalized(String.format(Locale.US, "SELECT local FROM widget_state WHERE uid = %d AND mid = %d", dialogId, messageId));
+            if (cursor.next() && !cursor.isNull(0)) {
+                local = cursor.stringValue(0);
+            }
+            cursor.dispose();
+            cursor = database.queryFinalized(String.format(Locale.US, "SELECT width, height, anchor FROM widget_heights WHERE uid = %d AND mid = %d ORDER BY date DESC", dialogId, messageId));
+            while (cursor.next()) {
+                heights.add(new int[]{cursor.intValue(0), cursor.intValue(1), cursor.intValue(2)});
+            }
+        } catch (Exception e) {
+            checkSQLException(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return new Object[]{local, heights};
+    }
+
+    public void putWidgetStorage(WidgetStateToken token, long dialogId, int messageId, String local) {
+        storageQueue.postRunnable(() -> {
+            if (!token.isCurrent(this)) return;
+            SQLitePreparedStatement state = null;
+            try {
+                if (local.isEmpty()) {
+                    database.executeFast(String.format(Locale.US, "DELETE FROM widget_state WHERE uid = %d AND mid = %d", dialogId, messageId)).stepThis().dispose();
+                    return;
+                }
+                state = database.executeFast("REPLACE INTO widget_state VALUES(?, ?, ?)");
+                state.bindLong(1, dialogId);
+                state.bindInteger(2, messageId);
+                state.bindString(3, local);
+                state.step();
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                if (state != null) {
+                    state.dispose();
+                }
+            }
+        });
+    }
+
+    public void moveWidgetState(WidgetStateToken token, long dialogId, int oldId, int newId) {
+        storageQueue.postRunnable(() -> {
+            if (!token.isCurrent(this)) return;
+            try {
+                database.executeFast(String.format(Locale.US, "UPDATE OR REPLACE widget_state SET mid = %d WHERE uid = %d AND mid = %d", newId, dialogId, oldId)).stepThis().dispose();
+                database.executeFast(String.format(Locale.US, "UPDATE OR REPLACE widget_heights SET mid = %d WHERE uid = %d AND mid = %d", newId, dialogId, oldId)).stepThis().dispose();
+            } catch (Exception e) {
+                checkSQLException(e);
+            }
+        });
+    }
+
+    public void putWidgetHeight(WidgetStateToken token, long dialogId, int messageId, int width, int height, int anchor, int keep) {
+        storageQueue.postRunnable(() -> {
+            if (!token.isCurrent(this)) return;
+            SQLitePreparedStatement state = null;
+            try {
+                state = database.executeFast("REPLACE INTO widget_heights VALUES(?, ?, ?, ?, ?, ?)");
+                state.bindLong(1, dialogId);
+                state.bindInteger(2, messageId);
+                state.bindInteger(3, width);
+                state.bindInteger(4, height);
+                state.bindLong(5, System.currentTimeMillis());
+                state.bindInteger(6, anchor);
+                state.step();
+                state.dispose();
+                state = null;
+                database.executeFast(String.format(Locale.US,
+                        "DELETE FROM widget_heights WHERE uid = %d AND mid = %d AND width NOT IN (SELECT width FROM widget_heights WHERE uid = %d AND mid = %d ORDER BY date DESC LIMIT %d)",
+                        dialogId, messageId, dialogId, messageId, keep)).stepThis().dispose();
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                if (state != null) {
+                    state.dispose();
+                }
+            }
+        });
+    }
+
+    public void clearWidgetHeights() {
+        WidgetStateToken token = getWidgetStateToken();
+        storageQueue.postRunnable(() -> {
+            if (!token.isCurrent(this)) return;
+            try {
+                database.executeFast("DELETE FROM widget_heights").stepThis().dispose();
+            } catch (Exception e) {
+                checkSQLException(e);
+            }
+            WidgetMedia.onHeightsCleared(currentAccount, token);
+        });
+    }
     public void clearLocalDatabase() {
         storageQueue.postRunnable(() -> {
+            WidgetMedia.onStateCleared(currentAccount);
             SQLiteCursor cursor = null;
             SQLitePreparedStatement state5 = null;
             SQLitePreparedStatement state6 = null;
@@ -1686,6 +1950,8 @@ public class MessagesStorage extends BaseController {
                 ArrayList<Long> dialogsToCleanup = new ArrayList<>();
 
                 database.executeFast("DELETE FROM ephemeral_messages").stepThis().dispose();
+                database.executeFast("DELETE FROM widget_state").stepThis().dispose();
+                database.executeFast("DELETE FROM widget_heights").stepThis().dispose();
                 database.executeFast("DELETE FROM poll_votes_mentions").stepThis().dispose();
                 database.executeFast("DELETE FROM poll_votes_mentions_topics").stepThis().dispose();
                 database.executeFast("DELETE FROM reaction_mentions").stepThis().dispose();
@@ -2025,6 +2291,9 @@ public class MessagesStorage extends BaseController {
                     if ((flags & TopicsController.TOPIC_FLAG_ICON) != 0) {
                         topicToUpdate.icon_emoji_id = fromTopic.icon_emoji_id;
                         topicToUpdate.flags |= 1;
+                        if (fromTopic.icon_color != 0) {
+                            topicToUpdate.icon_color = fromTopic.icon_color;
+                        }
                     }
                     if ((flags & TopicsController.TOPIC_FLAG_PIN) != 0) {
                         topicToUpdate.pinned = fromTopic.pinned;
@@ -4085,7 +4354,15 @@ public class MessagesStorage extends BaseController {
     }
 
     public void loadUnreadMessages() {
+        loadUnreadMessages(currentCleanup.get());
+    }
+
+    private void loadUnreadMessages(CleanupRequest cleanupRequest) {
+        final UnreadMessagesToken token = new UnreadMessagesToken(cleanupRequest);
         storageQueue.postRunnable(() -> {
+            if (!token.isCurrent()) {
+                return;
+            }
             SQLiteCursor cursor = null;
             int magic = 0;
             try {
@@ -4316,7 +4593,11 @@ public class MessagesStorage extends BaseController {
                     getChatsInternal(TextUtils.join(",", chatsToLoad), chats);
                 }
 
-                AndroidUtilities.runOnUIThread(() -> getNotificationsController().processLoadedUnreadMessages(pushDialogs, messages, pushMessages, users, chats, encryptedChats, storyPushes.values()));
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (token.isCurrent()) {
+                        getNotificationsController().processLoadedUnreadMessages(pushDialogs, messages, pushMessages, users, chats, encryptedChats, storyPushes.values(), token);
+                    }
+                });
             } catch (Exception e) {
                 checkSQLException(e);
             } finally {
@@ -4778,6 +5059,8 @@ public class MessagesStorage extends BaseController {
                         cursor2 = null;
 
                         database.executeFast("DELETE FROM messages_v2 WHERE uid = " + did + " AND mid != " + last_mid_i + " AND mid != " + last_mid).stepThis().dispose();
+                        database.executeFast("DELETE FROM widget_state WHERE uid = " + did + " AND mid != " + last_mid_i + " AND mid != " + last_mid).stepThis().dispose();
+                        database.executeFast("DELETE FROM widget_heights WHERE uid = " + did + " AND mid != " + last_mid_i + " AND mid != " + last_mid).stepThis().dispose();
                         database.executeFast("DELETE FROM messages_topics WHERE uid = " + did + " AND mid != " + last_mid_i + " AND mid != " + last_mid).stepThis().dispose();
                         database.executeFast("DELETE FROM messages_holes WHERE uid = " + did).stepThis().dispose();
                         database.executeFast("DELETE FROM bot_keyboard WHERE uid = " + did).stepThis().dispose();
@@ -4805,6 +5088,8 @@ public class MessagesStorage extends BaseController {
 
                 database.executeFast("UPDATE dialogs SET unread_count = 0, unread_count_i = 0 WHERE did = " + did).stepThis().dispose();
                 database.executeFast("DELETE FROM messages_v2 WHERE uid = " + did).stepThis().dispose();
+                database.executeFast("DELETE FROM widget_state WHERE uid = " + did).stepThis().dispose();
+                database.executeFast("DELETE FROM widget_heights WHERE uid = " + did).stepThis().dispose();
                 database.executeFast("DELETE FROM messages_topics WHERE uid = " + did).stepThis().dispose();
                 database.executeFast("DELETE FROM bot_keyboard WHERE uid = " + did).stepThis().dispose();
                 database.executeFast("DELETE FROM bot_keyboard_topics WHERE uid = " + did).stepThis().dispose();
@@ -4922,6 +5207,8 @@ public class MessagesStorage extends BaseController {
                 database.executeFast("DELETE FROM dialogs WHERE did IN " + ids).stepThis().dispose();
                 database.executeFast("DELETE FROM messages_v2 WHERE uid IN " + ids).stepThis().dispose();
                 database.executeFast("DELETE FROM polls_v2 WHERE 1").stepThis().dispose();
+                database.executeFast("DELETE FROM widget_state WHERE uid IN " + ids).stepThis().dispose();
+                database.executeFast("DELETE FROM widget_heights WHERE uid IN " + ids).stepThis().dispose();
                 database.executeFast("DELETE FROM bot_keyboard WHERE uid IN " + ids).stepThis().dispose();
                 database.executeFast("DELETE FROM bot_keyboard_topics WHERE uid IN " + ids).stepThis().dispose();
                 database.executeFast("DELETE FROM media_v4 WHERE uid IN " + ids).stepThis().dispose();
@@ -5550,6 +5837,60 @@ public class MessagesStorage extends BaseController {
                 }
                 if (cursor_groups != null) {
                     cursor_groups.dispose();
+                }
+            }
+        });
+    }
+
+    public void updateMessageWidgetData(WidgetStateToken token, long dialogId, int msgId, String publicData, long publicDataHash, String chatData) {
+        storageQueue.postRunnable(() -> {
+            if (!token.isCurrent(this)) return;
+            SQLiteCursor cursor = null;
+            try {
+                database.beginTransaction();
+                for (int i = 0; i < 2; i++) {
+                    cursor = database.queryFinalized(String.format(Locale.US, "SELECT data FROM %s WHERE mid = %d AND uid = %d", i == 0 ? "messages_v2" : "messages_topics", msgId, dialogId));
+                    if (cursor.next()) {
+                        NativeByteBuffer data = cursor.byteBufferValue(0);
+                        if (data != null) {
+                            TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                            if (message != null) {
+                                message.readAttachPath(data, getUserConfig().clientUserId);
+                            }
+                            data.reuse();
+                            if (message != null && message.media instanceof TLRPC.TL_messageMediaWidget) {
+                                TLRPC.TL_messageMediaWidget media = (TLRPC.TL_messageMediaWidget) message.media;
+                                if (publicData != null) {
+                                    media.public_data = publicData.isEmpty() ? null : publicData;
+                                    media.public_data_hash = publicDataHash;
+                                }
+                                if (chatData != null) media.chat_data = chatData.isEmpty() ? null : chatData;
+                                SQLitePreparedStatement state = database.executeFast(String.format(Locale.US, "UPDATE %s SET data = ? WHERE mid = ? AND uid = ?", i == 0 ? "messages_v2" : "messages_topics"));
+                                MessageObject.normalizeFlags(message);
+                                NativeByteBuffer data2 = new NativeByteBuffer(message.getObjectSize());
+                                message.serializeToStream(data2);
+                                state.requery();
+                                state.bindByteBuffer(1, data2);
+                                state.bindInteger(2, msgId);
+                                state.bindLong(3, dialogId);
+                                state.step();
+                                data2.reuse();
+                                state.dispose();
+                            }
+                        }
+                    }
+                    cursor.dispose();
+                    cursor = null;
+                }
+                database.commitTransaction();
+            } catch (Exception e) {
+                checkSQLException(e);
+            } finally {
+                if (database != null) {
+                    database.commitTransaction();
+                }
+                if (cursor != null) {
+                    cursor.dispose();
                 }
             }
         });
@@ -15328,6 +15669,8 @@ public class MessagesStorage extends BaseController {
                     database.executeFast(String.format(Locale.US, "DELETE FROM messages_v2 WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
                     database.executeFast(String.format(Locale.US, "DELETE FROM messages_topics WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
                     database.executeFast(String.format(Locale.US, "DELETE FROM polls_v2 WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
+                    database.executeFast(String.format(Locale.US, "DELETE FROM widget_state WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
+                    database.executeFast(String.format(Locale.US, "DELETE FROM widget_heights WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
                     database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
                     database.executeFast(String.format(Locale.US, "DELETE FROM bot_keyboard_topics WHERE mid IN(%s) AND uid = %d", ids, did)).stepThis().dispose();
                     if (unknownMessages.isEmpty()) {
@@ -15870,6 +16213,8 @@ public class MessagesStorage extends BaseController {
             }
 
             database.executeFast(String.format(Locale.US, "DELETE FROM messages_v2 WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
+            database.executeFast(String.format(Locale.US, "DELETE FROM widget_state WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
+            database.executeFast(String.format(Locale.US, "DELETE FROM widget_heights WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
             database.executeFast(String.format(Locale.US, "DELETE FROM messages_topics WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
             database.executeFast(String.format(Locale.US, "DELETE FROM media_v4 WHERE uid = %d AND mid <= %d", -channelId, mid)).stepThis().dispose();
             database.executeFast(String.format(Locale.US, "UPDATE media_counts_v2 SET old = 1 WHERE uid = %d", -channelId)).stepThis().dispose();

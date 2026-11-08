@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -45,6 +47,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
@@ -61,6 +64,7 @@ import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.AvatarSpan;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.Forum.ForumUtilities;
@@ -76,7 +80,7 @@ import me.vkryl.android.animator.FactorAnimator;
 import me.vkryl.core.BitwiseUtils;
 
 @SuppressLint("ViewConstructor")
-public class TopicsTabsView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target {
+public class TopicsTabsView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target, Theme.Colorable {
     public static final int ANIMATOR_ID_TOPICS_VISIBILITY = 0;
 
     public static final int TOP_TABS_HEIGHT = 36;
@@ -85,6 +89,11 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private final BoolAnimator animatorTopicsVisibility = new BoolAnimator(ANIMATOR_ID_TOPICS_VISIBILITY,
         this, CubicBezierInterpolator.EASE_OUT_QUINT, 380L, true);
 
+    public static final int ANIMATOR_ID_TABS_HIDDEN = 1;
+    private final BoolAnimator animatorTabsHidden = new BoolAnimator(ANIMATOR_ID_TABS_HIDDEN,
+        this, CubicBezierInterpolator.EASE_OUT_QUINT, 380L, false);
+    private boolean tabsEnabled;
+    private boolean movingToTop;
     private final int currentAccount;
     private final long dialogId;
     private final Theme.ResourcesProvider resourcesProvider;
@@ -107,10 +116,11 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private long lastSelectedTopicId;
     private long animateFromSelectedTopicId;
 
-    public TopicsTabsView(Context context, BaseFragment fragment, int currentAccount, long dialogId, Theme.ResourcesProvider resourcesProvider) {
+    public TopicsTabsView(Context context, BaseFragment fragment, int currentAccount, long dialogId, boolean tabsEnabled, Theme.ResourcesProvider resourcesProvider) {
         super(context);
 
         this.fragment = fragment;
+        this.tabsEnabled = tabsEnabled;
         this.currentAccount = currentAccount;
         this.dialogId = dialogId;
         this.resourcesProvider = resourcesProvider;
@@ -362,13 +372,15 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         MessagesController.getInstance(currentAccount).getTopicsController().loadTopics(-dialogId, false, TopicsController.LOAD_TYPE_HASH_CHECK);
 
         SharedPreferences sp = MessagesController.getInstance(currentAccount).getMainSettings();
-        if (sp.getBoolean("topicssidetabs" + dialogId, false)) {
+        if (tabsEnabled && sp.getBoolean("topicssidetabs" + dialogId, false)) {
             sidemenuT = 1.0f;
             sidemenuEnabled = true;
         }
-        topicBottom = sp.getBoolean("topicssidetabsb" + dialogId, false);
+        topicBottom = tabsEnabled && sp.getBoolean("topicssidetabsb" + dialogId, false);
         toggleButtonSide.setImageResource(topicBottom ? R.drawable.menu_sidebar_top : R.drawable.menu_sidebar_bottom);
 
+        updateTabsHidden(false);
+        updateToggleButtonTopIcon();
         checkTopicsVisibility(false);
         checkUi_closeButtonVisibility();
         updateSidemenuPosition();
@@ -381,7 +393,53 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     }
 
     private void onSideMenuButtonClick(View v) {
+        if (!sidemenuEnabled && topicBottom && pendingSidemenu == null && !sidemenuAnimating) {
+            moveToTop();
+            return;
+        }
         animateSidemenuTo(pendingSidemenu != null ? !pendingSidemenu : !sidemenuEnabled);
+    }
+
+    private void updateToggleButtonTopIcon() {
+        toggleButtonTop.setImageResource(!topicBottom ? R.drawable.menu_sidebar_left : R.drawable.menu_sidebar_top);
+    }
+
+    public boolean areTabsEnabled() {
+        return tabsEnabled;
+    }
+
+    public boolean hasTopics() {
+        return animatorTopicsVisibility.getValue();
+    }
+
+    public void setTabsEnabled(boolean enabled) {
+        if (tabsEnabled == enabled) return;
+        tabsEnabled = enabled;
+        if (!enabled) {
+            animateSidemenuTo(false);
+        }
+        updateTabsHidden(true);
+    }
+
+    private void updateTabsHidden(boolean animated) {
+        animatorTabsHidden.setValue(!tabsEnabled || movingToTop, animated);
+    }
+
+    private void moveToTop() {
+        if (movingToTop) return;
+        movingToTop = true;
+        updateTabsHidden(true);
+    }
+
+    private void onMovedOutOfSight() {
+        movingToTop = false;
+        topicBottom = false;
+        updateToggleButtonTopIcon();
+        toggleButtonSide.setImageResource(R.drawable.menu_sidebar_bottom);
+        MessagesController.getInstance(currentAccount).getMainSettings().edit()
+            .putBoolean("topicssidetabsb" + dialogId, false)
+            .apply();
+        updateTabsHidden(true);
     }
 
     private void onCloseButtonClick(View v) {
@@ -535,6 +593,39 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private boolean sidemenuEnabled;
     private float sidemenuT = 0.0f;
     private boolean sidemenuAnimating;
+    private boolean toggleColorsApplied;
+    private int toggleTopColor, toggleSideColor;
+
+    private void applyToggleButtonColors() {
+        final int gray = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider);
+        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
+        final int topColor = ColorUtils.blendARGB(gray, accent, 1f - sidemenuT);
+        final int sideColor = ColorUtils.blendARGB(gray, accent, sidemenuT);
+        final boolean force = !toggleColorsApplied;
+        toggleColorsApplied = true;
+        if (toggleButtonTop != null && (force || topColor != toggleTopColor)) {
+            toggleButtonTop.setColorFilter(new PorterDuffColorFilter(topColor, PorterDuff.Mode.SRC_IN));
+        }
+        toggleTopColor = topColor;
+        if (toggleButtonSide != null && (force || sideColor != toggleSideColor)) {
+            toggleButtonSide.setColorFilter(new PorterDuffColorFilter(sideColor, PorterDuff.Mode.SRC_IN));
+        }
+        toggleSideColor = sideColor;
+    }
+
+    @Override
+    public void updateColors() {
+        try {
+            applyToggleButtonColors();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+    }
     public void updateSidemenuPosition() {
         if (onUpdateSideMenuPosition != null) {
             onUpdateSideMenuPosition.run();
@@ -546,37 +637,16 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         sideTabsContainer.setTranslationX(lerp(-dp(64 + 7 + 7), 0, leftTabsVisibility));
         sideTabsContainer.setVisibility(leftTabsVisibility > 0 ? VISIBLE : GONE);
 
-        toggleButtonTop.setColorFilter(new PorterDuffColorFilter(
-            ColorUtils.blendARGB(
-                Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider),
-                Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
-                1f - sidemenuT
-            ),
-            PorterDuff.Mode.SRC_IN
-        ));
-        toggleButtonSide.setColorFilter(new PorterDuffColorFilter(
-                ColorUtils.blendARGB(
-                        Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider),
-                        Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
-                        sidemenuT
-                ),
-                PorterDuff.Mode.SRC_IN
-        ));
-        closeButtonTop.setColorFilter(new PorterDuffColorFilter(
-            Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
-            PorterDuff.Mode.SRC_IN
-        ));
-        closeButtonSide.setColorFilter(new PorterDuffColorFilter(
-                Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
-                PorterDuff.Mode.SRC_IN
-        ));
+        applyToggleButtonColors();
+        ThemeBind.colorFilter(closeButtonTop, Theme.key_featuredStickers_addButton, resourcesProvider, PorterDuff.Mode.SRC_IN);
+        ThemeBind.colorFilter(closeButtonSide, Theme.key_featuredStickers_addButton, resourcesProvider, PorterDuff.Mode.SRC_IN);
 
         invalidate();
     }
 
     private void checkUi_topicsVerticalPosition() {
         topTabsContainer.setAlpha(lerp(1.0f, 0.85f, sidemenuT));
-        topTabsContainer.setVisibility(((1f - sidemenuT) * animatorTopicsVisibility.getFloatValue()) > 0 ? View.VISIBLE : View.GONE);
+        topTabsContainer.setVisibility(((1f - sidemenuT) * animatorTopicsVisibility.getFloatValue() * (1f - animatorTabsHidden.getFloatValue())) > 0 ? View.VISIBLE : View.GONE);
         if (topicBottom) {
             topTabsContainer.setTranslationY(getMeasuredHeight() - dp(TOP_TABS_HEIGHT + 7 + 7) - sideMenuBackgroundMarginBottom + lerp(dp(TOP_TABS_HEIGHT + 7), 0, getTabsVisibility(Position.BOTTOM)));
         } else {
@@ -615,6 +685,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                     updateSidemenuPosition();
                     sidemenuAnimating = false;
                     toggleButtonSide.setImageResource(topicBottom ? R.drawable.menu_sidebar_top : R.drawable.menu_sidebar_bottom);
+                    updateToggleButtonTopIcon();
                     animator = null;
                     MessagesController.getInstance(currentAccount).getMainSettings().edit()
                         .putBoolean("topicssidetabs" + dialogId, sidemenuEnabled)
@@ -704,8 +775,8 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private void setAttached(boolean attach) {
         if (notificationsAttached == attach) return;
         if (notificationsAttached = attach) {
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.topicsDidLoaded);
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.updateInterfaces);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.topicsDidLoaded);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.updateInterfaces);
             MessagesController.getInstance(currentAccount).getTopicsController().onTopicFragmentResume(-dialogId);
         } else {
             MessagesController.getInstance(currentAccount).getTopicsController().onTopicFragmentPause(-dialogId);
@@ -834,7 +905,13 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     private boolean onTabLongClick(UItem item, View view, int position, float x, float y) {
         if (sideTabs.isReorderAllowed() || topTabs.isReorderAllowed()) return false;
         if (item.object instanceof TLRPC.TL_forumTopic) {
-            final TLRPC.TL_forumTopic topic = (TLRPC.TL_forumTopic) item.object;
+            return showTopicOptions((TLRPC.TL_forumTopic) item.object, view, false);
+        }
+        return false;
+    }
+
+    public boolean showTopicOptions(TLRPC.TL_forumTopic topic, View view, boolean fromSidePanel) {
+        {
             final MessagesController messagesController = MessagesController.getInstance(currentAccount);
             final TLRPC.Chat currentChat = dialogId < 0 ? messagesController.getChat(-dialogId) : null;
             final TLRPC.User currentUser = dialogId > 0 ? messagesController.getUser(dialogId) : null;
@@ -871,9 +948,9 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                     options.add(R.drawable.msg_remove, getString(R.string.BanUserMonoforum), null);
                     ActionBarMenuSubItem subitem = options.getLast();
                     subitem.setVisibility(View.GONE);
-                    MessagesController.getInstance(currentAccount).checkIsInChat(true, channel, user, (isInChat, currentAdminRights, rank) -> {
+                    MessagesController.getInstance(currentAccount).getChannelParticipant(channel, user, participant -> {
                         AndroidUtilities.runOnUIThread(() -> {
-                            final boolean banned = !isInChat;
+                            final boolean banned = participant instanceof TLRPC.TL_channelParticipantBanned && participant.banned_rights != null && participant.banned_rights.view_messages;
                             subitem.setVisibility(View.VISIBLE);
                             subitem.setText(getString(banned ? R.string.UnbanUserMonoforum : R.string.BanUserMonoforum));
                             subitem.setOnClickListener(v -> {
@@ -914,7 +991,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                             }
                     );
 
-                    if (topic.pinned) {
+                    if (topic.pinned && !fromSidePanel) {
                         options.add(
                                 R.drawable.tabs_reorder,
                                 getString(R.string.FilterReorder),
@@ -1006,13 +1083,15 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                     }
                 });
                 options.translate(dp(16), 0);
+            } else if (fromSidePanel) {
+                options.setScrimViewBackground(Theme.createRoundRectDrawable(dp(16), Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider)));
+                options.setGravity(Gravity.RIGHT);
             } else {
                 options.setScrimViewBackground(Theme.createRoundRectDrawable(0, dp(5), dp(5), 0, Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider)));
             }
             options.show();
             return true;
         }
-        return false;
     }
 
     public TLRPC.TL_forumTopic getTopic(long id) {
@@ -1064,7 +1143,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         onDialogSelected = listener;
     }
 
-    public static class VerticalTabView extends FrameLayout {
+    public static class VerticalTabView extends FrameLayout implements Theme.Colorable {
 
         private final int currentAccount;
         private final Theme.ResourcesProvider resourcesProvider;
@@ -1075,6 +1154,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         private final AnimatedTextView.AnimatedTextDrawable counterText;
         private final FrameLayout imageLayoutView;
         private final BackupImageView imageView;
+        private BotNewTopicDrawable botNewTopicDrawable;
         private final AvatarDrawable avatarDrawable;
         private final TextView textView;
         private final View lineView;
@@ -1181,7 +1261,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
             layout.setPadding(0, 0, 0, dp(4));
 
             lineView = new ImageView(context);
-            lineView.setBackground(Theme.createRoundRectDrawable(dp(2.33f), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)));
+            ThemeBind.fillBackground(lineView, Theme.createRoundRectDrawable(dp(2.33f), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)), ThemeBind.of(Theme.key_featuredStickers_addButton), resourcesProvider);
             addView(lineView, LayoutHelper.createFrame(6, LayoutHelper.MATCH_PARENT, Gravity.FILL_VERTICAL | Gravity.LEFT, -3, 3, 0, 3));
             lineView.setTranslationX(-dp(3));
             lineView.setVisibility(View.GONE);
@@ -1294,8 +1374,10 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
                 BotNewTopicDrawable drawable = new BotNewTopicDrawable(getContext());
                 drawable.setColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
                 imageView.setImageDrawable(drawable);
+                botNewTopicDrawable = drawable;
             } else {
                 imageView.setImageResource(R.drawable.other_chats);
+                botNewTopicDrawable = null;
             }
             imageView.setScaleX(1f);
             imageView.setScaleY(1f);
@@ -1403,12 +1485,52 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
             updateState();
         }
 
+        @Override
+        public void updateColors() {
+            try {
+                if (textView != null) {
+                    textView.setTextColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), isAdd ? 1.0f : selectT));
+                }
+                if (imageView != null) {
+                    final int color = ColorUtils.blendARGB(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), isAdd ? 1.0f : selectT);
+                    if (!imageColorApplied || color != imageColor || staticImage != imageColorStatic) {
+                        updateImageColor();
+                    }
+                }
+                if (botNewTopicDrawable != null) {
+                    botNewTopicDrawable.setColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+                    if (imageView != null) {
+                        imageView.invalidate();
+                    }
+                }
+                if (loadingDrawable != null) {
+                    final int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider);
+                    loadingDrawable.setColors(
+                        Theme.multAlpha(textColor, .15f),
+                        Theme.multAlpha(textColor, .5f),
+                        Theme.multAlpha(textColor, .6f),
+                        Theme.multAlpha(textColor, .15f)
+                    );
+                    loadingDrawable.stroke = false;
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+        }
         private void updateImageColor() {
             final int color = ColorUtils.blendARGB(
                 Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider),
                 Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
                 isAdd ? 1.0f : selectT
             );
+            imageColorApplied = true;
+            imageColor = color;
+            imageColorStatic = staticImage;
             if (!staticImage) {
                 imageView.setColorFilter(null);
             } else {
@@ -1418,6 +1540,8 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
             imageView.invalidate();
         }
 
+        private boolean imageColorApplied, imageColorStatic;
+        private int imageColor;
         public void setMf(TLRPC.TL_forumTopic dialog, boolean selected) {
             setLayout(true);
             this.isAdd = false;
@@ -1562,7 +1686,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         }
     }
 
-    public static class HorizontalTabView extends FrameLayout {
+    public static class HorizontalTabView extends FrameLayout implements Theme.Colorable {
 
         private final int currentAccount;
         private final Theme.ResourcesProvider resourcesProvider;
@@ -1687,7 +1811,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
             imageView.layout(ix, iy, ix + imageView.getMeasuredWidth(), iy + imageView.getMeasuredHeight());
             textView.layout(dp(11), h / 2 - textView.getMeasuredHeight() / 2, dp(11) + textView.getMeasuredWidth(), h / 2 + textView.getMeasuredHeight() / 2);
             if (counterText.getAnimateToWidth() > 0) {
-                counterView.layout(w - dp(11) - counterView.getMeasuredWidth(), h / 2 - counterView.getMeasuredHeight() / 2, w - dp(11), h / 2 + counterView.getMeasuredHeight() / 2);
+                counterView.layout(w - dp(11) - addW - counterView.getMeasuredWidth(), h / 2 - counterView.getMeasuredHeight() / 2, w - dp(11) - addW, h / 2 + counterView.getMeasuredHeight() / 2);
             } else {
                 counterView.layout(dp(11) + textView.getMeasuredWidth() + dp(4.66f), h / 2 - counterView.getMeasuredHeight() / 2, dp(11) + textView.getMeasuredWidth() + dp(4.66f) + counterView.getMeasuredWidth(), h / 2 + counterView.getMeasuredHeight() / 2);
             }
@@ -1801,6 +1925,26 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
             setPinned(topic.pinned, animated);
         }
 
+        @Override
+        public void updateColors() {
+            try {
+                if (textView != null && counterView != null) {
+                    updateTextColor();
+                }
+                if (imageView != null && imageView.getDrawable() instanceof BotNewTopicDrawable) {
+                    ((BotNewTopicDrawable) imageView.getDrawable()).setColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
+                    imageView.invalidate();
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            colors.add(Theme.key_windowBackgroundWhiteGrayText2);
+            colors.add(Theme.key_featuredStickers_addButton);
+        }
         private void updateTextColor() {
             final int color = getTextColor();
             textView.setTextColor(color);
@@ -2091,7 +2235,7 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
         alertDialog.show();
         TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -2166,8 +2310,11 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     }
 
 
+    public boolean isSideMenuChosen() {
+        return sidemenuEnabled;
+    }
     private float getTabsVisibility(Position position) {
-        final float visibility = animatorTopicsVisibility.getFloatValue();
+        final float visibility = animatorTopicsVisibility.getFloatValue() * (1f - animatorTabsHidden.getFloatValue());
 
         if (position == Position.LEFT) {
             return sidemenuT * visibility;
@@ -2192,5 +2339,11 @@ public class TopicsTabsView extends FrameLayout implements NotificationCenter.No
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
         updateSidemenuPosition();
+    }
+    @Override
+    public void onFactorChangeFinished(int id, float finalFactor, FactorAnimator callee) {
+        if (id == ANIMATOR_ID_TABS_HIDDEN && finalFactor == 1f && movingToTop) {
+            onMovedOutOfSight();
+        }
     }
 }

@@ -47,9 +47,29 @@ import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import org.telegram.ui.ActionBar.ThemeBind;
 import java.util.Locale;
 
-public class NumberPicker extends LinearLayout {
+public class NumberPicker extends LinearLayout implements Theme.Colorable {
+
+    private boolean customSelectorColor;
+
+    @Override
+    public void updateColors() {
+        try {
+            if (!customSelectorColor && mSelectionDivider != null) {
+                mSelectionDivider.setColor(getThemedColor(Theme.key_featuredStickers_addButton));
+                invalidate();
+            }
+        } catch (Exception e) {
+            org.telegram.messenger.FileLog.e(e);
+        }
+    }
+
+    @Override
+    public void addColorKeys(java.util.HashSet<Integer> colors) {
+        colors.add(Theme.key_featuredStickers_addButton);
+    }
 
     public static final int DEFAULT_SIZE_PER_COUNT = 42;
     private int SELECTOR_WHEEL_ITEM_COUNT = 3;
@@ -181,7 +201,7 @@ public class NumberPicker extends LinearLayout {
         mInputText = new TextView(getContext());
         mInputText.setGravity(Gravity.CENTER);
         mInputText.setSingleLine(true);
-        mInputText.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(mInputText, Theme.key_dialogTextBlack, resourcesProvider);
         mInputText.setBackgroundResource(0);
         mInputText.setTextSize(TypedValue.COMPLEX_UNIT_PX, mTextSize);
         mInputText.setVisibility(INVISIBLE);
@@ -245,11 +265,13 @@ public class NumberPicker extends LinearLayout {
     }
 
     public void setTextColor(int color) {
+        ThemeBind.clear(mInputText);
         mInputText.setTextColor(color);
         mSelectorWheelPaint.setColor(color);
     }
 
     public void setSelectorColor(int color) {
+        customSelectorColor = true;
         mSelectionDivider.setColor(color);
     }
 

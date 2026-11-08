@@ -1,0 +1,20 @@
+diff --git a/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java b/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
+--- a/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
++++ b/libraries/decoder/src/main/java/androidx/media3/decoder/SimpleDecoder.java
+@@ -198,9 +198,16 @@
+       released = true;
+       lock.notify();
+     }
++    boolean interrupted = false;
++    while (true) {
+     try {
+       decodeThread.join();
++        break;
+     } catch (InterruptedException e) {
++        interrupted = true;
++      }
++    }
++    if (interrupted) {
+       Thread.currentThread().interrupt();
+     }
+   }

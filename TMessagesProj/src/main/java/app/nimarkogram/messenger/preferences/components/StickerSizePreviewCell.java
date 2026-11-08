@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.preferences.components;
 
 import android.view.View;
@@ -36,7 +36,7 @@ import java.util.ArrayList;
 public class StickerSizePreviewCell extends LinearLayout {
 
     private static final String PREVIEW_PACK = "pack7_by_Pascal_Stickers_bot";
-    private static final int PREVIEW_STICKER_INDEX = 32; 
+    private static final int PREVIEW_STICKER_INDEX = 32;
 
     private BackgroundGradientDrawable.Disposable backgroundGradientDisposable;
     private BackgroundGradientDrawable.Disposable oldBackgroundGradientDisposable;
@@ -95,7 +95,7 @@ public class StickerSizePreviewCell extends LinearLayout {
             TLRPC.Document d = set.documents.get(PREVIEW_STICKER_INDEX);
             if (d != null && d.id != 0) return d;
         }
-        return set.documents.get(0); 
+        return set.documents.get(0);
     }
 
     private void loadPreviewPackAsync() {
@@ -207,7 +207,7 @@ public class StickerSizePreviewCell extends LinearLayout {
             cells[a].requestLayout();
             cells[a].invalidate();
         }
-        
+
         requestLayout();
         if (getParent() instanceof View) {
             ((View) getParent()).requestLayout();
@@ -224,17 +224,28 @@ public class StickerSizePreviewCell extends LinearLayout {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        
+
         canvas.save();
         canvas.clipRect(0, 0, getMeasuredWidth(), getMeasuredHeight());
         Drawable newDrawable = Theme.getCachedWallpaperNonBlocking();
         if (newDrawable != backgroundDrawable && newDrawable != null) {
             if (Theme.isAnimatingColor()) {
+                if (oldBackgroundGradientDisposable != null && oldBackgroundGradientDisposable != backgroundGradientDisposable) {
+                    oldBackgroundGradientDisposable.dispose();
+                }
                 oldBackgroundDrawable = backgroundDrawable;
                 oldBackgroundGradientDisposable = backgroundGradientDisposable;
-            } else if (backgroundGradientDisposable != null) {
+                backgroundGradientDisposable = null;
+            } else {
+                if (backgroundGradientDisposable != null) {
                 backgroundGradientDisposable.dispose();
                 backgroundGradientDisposable = null;
+                }
+                if (oldBackgroundGradientDisposable != null) {
+                    oldBackgroundGradientDisposable.dispose();
+                    oldBackgroundGradientDisposable = null;
+                }
+                oldBackgroundDrawable = null;
             }
             backgroundDrawable = newDrawable;
         }
@@ -253,7 +264,11 @@ public class StickerSizePreviewCell extends LinearLayout {
                 drawable.setBounds(0, 0, getMeasuredWidth(), getMeasuredHeight());
                 if (drawable instanceof BackgroundGradientDrawable) {
                     final BackgroundGradientDrawable backgroundGradientDrawable = (BackgroundGradientDrawable) drawable;
+                    if (a == 0) {
+                        oldBackgroundGradientDisposable = backgroundGradientDrawable.drawExactBoundsSize(canvas, this);
+                    } else {
                     backgroundGradientDisposable = backgroundGradientDrawable.drawExactBoundsSize(canvas, this);
+                    }
                 } else {
                     drawable.draw(canvas);
                 }

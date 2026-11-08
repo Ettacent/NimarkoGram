@@ -7,7 +7,6 @@ import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.NetworkRequest;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -16,6 +15,7 @@ public final class VpnDetector {
 
     private static volatile boolean started;
     private static volatile boolean callbackRegistered;
+    private static volatile boolean callbackRegistrationPending;
     private static volatile boolean vpnActive;
     private static final long VPN_LOSS_CONFIRM_DELAY_MS = 1200L;
     private static final Object VPN_LOSS_LOCK = new Object();
@@ -69,22 +69,20 @@ public final class VpnDetector {
         try {
             ConnectivityManager cm = cm();
             if (cm == null) return null;
-            for (Network n : cm.getAllNetworks()) {
-                NetworkCapabilities caps = cm.getNetworkCapabilities(n);
-                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                    return Boolean.TRUE;
-                }
-            }
+            Network active = cm.getActiveNetwork();
+            if (active == null) return null;
+            NetworkCapabilities caps = cm.getNetworkCapabilities(active);
+            if (caps == null) return null;
+            return caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN);
         } catch (Throwable ignored) {
             return null;
         }
-        return Boolean.FALSE;
     }
 
     public static void start() {
-        if (started) return;
+        if (started || callbackRegistrationPending) return;
         synchronized (VpnDetector.class) {
-            if (started) return;
+            if (started || callbackRegistrationPending) return;
             try {
                 ConnectivityManager cm = cm();
                 if (cm == null) return;
@@ -94,24 +92,30 @@ public final class VpnDetector {
                     updateVpnState(initial, 0L, false, false);
                 }
 
-                NetworkRequest req = new NetworkRequest.Builder()
-                        .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
-                        .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                        .build();
-                cm.registerNetworkCallback(req, new ConnectivityManager.NetworkCallback() {
-                    @Override public void onAvailable(Network network) { setVpnActive(true); }
+                callbackRegistrationPending = true;
+                new Thread(() -> registerCallback(cm), "ng-vpn-callback").start();
+            } catch (Throwable ignored) {
+                callbackRegistrationPending = false;
+            }
+        }
+    }
+
+    private static void registerCallback(ConnectivityManager cm) {
+        try {
+            cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) { recheck(); }
                     @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
-                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                            setVpnActive(true);
-                        }
+                    recheck();
                     }
                     @Override public void onLost(Network network) { recheck(); }
                 });
+            recheck();
                 callbackRegistered = true;
                 started = true;
             } catch (Throwable ignored) {
 
-            }
+        } finally {
+            callbackRegistrationPending = false;
         }
     }
 

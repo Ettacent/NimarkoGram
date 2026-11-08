@@ -54,6 +54,7 @@ import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeColors;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
@@ -696,9 +697,9 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
         this.fragment = fragment;
 
         if (type == ThemeActivity.THEME_TYPE_OTHER) {
-            setBackgroundColor(Theme.getColor(Theme.key_dialogBackground));
+            ThemeBind.backgroundColor(this, Theme.key_dialogBackground);
         } else {
-            setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            ThemeBind.backgroundColor(this, Theme.key_windowBackgroundWhite);
         }
         setItemAnimator(null);
         setLayoutAnimation(null);
@@ -714,7 +715,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
         setLayoutManager(horizontalLayoutManager);
         setAdapter(adapter = new ThemesListAdapter(context));
         setOnItemClickListener((view1, position) -> {
-            selectTheme(((InnerThemeView) view1).themeInfo);
+            selectTheme(((InnerThemeView) view1).themeInfo, view1);
             int left = view1.getLeft();
             int right = view1.getRight();
             if (left < 0) {
@@ -731,6 +732,10 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
     }
 
     public void selectTheme(Theme.ThemeInfo themeInfo) {
+        selectTheme(themeInfo, null);
+    }
+
+    public void selectTheme(Theme.ThemeInfo themeInfo, View from) {
         if (themeInfo.info != null) {
             if (!themeInfo.themeLoaded) {
                 return;
@@ -761,7 +766,7 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
             }
             pendingThemeInfo = themeInfo;
             updateCurrentThemeChecks();
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, null, themeInfo.currentAccentId);
+            Theme.switchThemeWithReveal(themeInfo, false, themeInfo.currentAccentId, from);
         }
         updateRows();
         updateCurrentThemeChecks();
@@ -815,8 +820,8 @@ public class ThemesHorizontalListCell extends RecyclerListView implements Notifi
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.needSetDayNightTheme);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.fileLoaded);
-            NotificationCenter.getInstance(a).addObserver(this, NotificationCenter.fileLoadFailed);
+            NotificationCenter.getInstance(a).addWeakObserver(this, NotificationCenter.fileLoaded);
+            NotificationCenter.getInstance(a).addWeakObserver(this, NotificationCenter.fileLoadFailed);
         }
     }
 

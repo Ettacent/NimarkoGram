@@ -131,7 +131,10 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         long expires = WlAccess.accessExpiresAt(account);
         if (expires == 0 && subscription != null) expires = subscription.expiresAt;
         items.add(asPlainSettingsRowWithSubtitle(EXPIRY, text(R.string.NM_WL_Expiry),
-                expires > 0 ? LocaleController.formatDate(expires) : text(R.string.NM_WL_NoSubscription))
+                expires > 0 ? LocaleController.formatDate(expires)
+                        : text(subscription == null
+                        ? (busy ? R.string.NM_WL_Checking : R.string.NM_WL_AuthRequired)
+                        : R.string.NM_WL_NoSubscription))
                 .setEnabled(false));
         items.add(asPlainSettingsRowWithSubtitle(PRICE, text(R.string.NM_WL_Price),
                 priceString()).setEnabled(false));
@@ -376,13 +379,14 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
                 && UserConfig.getInstance(account).getClientUserId() == owner
                 && WlAccess.accountEpoch(account) == ownerEpoch
                 && subscription != null && "approved".equals(subscription.status)
-                && subscription.expiresAt > 0
+                && subscription.expiresAt > WlAccess.currentTime(account)
                 && (!waitingPayment || orderCurrent() && (paymentConfirmed || subscription.expiresAt > startingExpiry));
     }
     private int statusString() {
         if ("blocked".equals(status)) return R.string.NM_WL_Blocked;
         if ("account_changed".equals(status)) return R.string.NM_WL_AccountChanged;
-        if (hasConfirmedSubscription()) return R.string.NM_WL_Approved;
+        if (WlAccess.cached() != null) return WlAccess.hasAccountGrant(account)
+                ? R.string.NM_WL_Approved : R.string.NM_WL_OtherAccount;
         if ("checkout".equals(status)) return R.string.NM_WL_Checkout;
         if ("loading".equals(status)) return R.string.NM_WL_Checking;
         if ("completed".equals(status)) return R.string.NM_WL_PaymentCompleted;
@@ -392,10 +396,12 @@ public final class WlPreferencesActivity extends BasePreferencesActivity {
         if ("error".equals(status)) return R.string.NM_WL_Error;
         if ("busy".equals(status)) return R.string.NM_WL_Busy;
         if ("authentication_required".equals(status)) return R.string.NM_WL_AuthRequired;
-        if (WlAccess.cached() != null) return WlAccess.hasAccountGrant(account)
-                ? R.string.NM_WL_Approved : R.string.NM_WL_OtherAccount;
+        if ("device_verification_required".equals(status)) return R.string.NM_WL_AuthRequired;
         if ("expired".equals(status)) return R.string.NM_WL_Expired;
-        return R.string.NM_WL_PaymentRequired;
+        if ("payment_required".equals(status)) return R.string.NM_WL_PaymentRequired;
+        if (busy) return R.string.NM_WL_Checking;
+        if (hasConfirmedSubscription()) return R.string.NM_WL_ActivationPending;
+        return R.string.NM_WL_AuthRequired;
     }
 
     private static String text(int id) { return LocaleController.getString(id); }

@@ -43,8 +43,10 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.tl.TL_account;
+import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.RadioColorCell;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
@@ -60,6 +62,7 @@ import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalFragment;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
+import org.telegram.utils.glass.BaseFragmentSimpleGlass;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -79,7 +82,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
     @Override
     public boolean onFragmentCreate() {
         loadSizes();
-        getNotificationCenter().addObserver(this, NotificationCenter.webBrowserSettingsUpdate);
+        getNotificationCenter().addWeakObserver(this, NotificationCenter.webBrowserSettingsUpdate);
         return super.onFragmentCreate();
     }
 
@@ -161,6 +164,39 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
         });
     }
 
+    private int lastAddIconBgColor, lastAddIconColor;
+
+    @Override
+    public void onThemeColorsChanged() {
+        super.onThemeColorsChanged();
+        try {
+            if (addIcon instanceof CombinedDrawable) {
+                final CombinedDrawable combinedDrawable = (CombinedDrawable) addIcon;
+                final int bgColor = getThemedColor(Theme.key_switchTrackChecked);
+                final int iconColor = getThemedColor(Theme.key_checkboxCheck);
+                if (bgColor != lastAddIconBgColor || iconColor != lastAddIconColor) {
+                    lastAddIconBgColor = bgColor;
+                    lastAddIconColor = iconColor;
+                    if (combinedDrawable.getBackground() != null) {
+                        combinedDrawable.getBackground().setColorFilter(new PorterDuffColorFilter(bgColor, PorterDuff.Mode.MULTIPLY));
+                    }
+                    if (combinedDrawable.getIcon() != null) {
+                        combinedDrawable.getIcon().setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
+                    }
+                    if (listView != null) {
+                        listView.invalidateViews();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    protected boolean useSimpleActionBar() {
+        return true;
+    }
     @Override
     public View createView(Context context) {
 
@@ -175,6 +211,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
 //            actionBar.setCastShadows(true);
 //        }
 
+        setHasOwnBackground(true);
         Drawable drawable1 = context.getResources().getDrawable(R.drawable.poll_add_circle).mutate();
         Drawable drawable2 = context.getResources().getDrawable(R.drawable.poll_add_plus).mutate();
         drawable1.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_switchTrackChecked), PorterDuff.Mode.MULTIPLY));
@@ -190,13 +227,18 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
         fragmentView = super.createView(context);
 
         listView.setSections();
-        actionBar.setAdaptiveBackground(listView);
+        listView.setSectionsDrawBackground(true);
 
         // ((ViewGroup) fragmentView).addView(actionBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
         // listView.setPadding(0, AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight(), 0, 0);
         // actionBar.setAddToContainer(false);
 
         return fragmentView;
+    }
+
+    @Override
+    protected RecyclerListView getListViewForSimpleGlass() {
+        return listView;
     }
 
     @Override
@@ -471,7 +513,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
                 cell.setPadding(dp(4), 0, dp(4), 0);
                 cell.setCheckColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
                 cell.setTextAndValue(items[index], index == SharedConfig.searchEngineType);
-                cell.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_ALL));
+                ThemeBind.selectorBackground(cell, Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_ALL), null, ThemeBind.of(Theme.key_listSelector));
                 linearLayout.addView(cell);
                 cell.setOnClickListener(v -> {
                     SharedConfig.setSearchEngineType(index);
@@ -507,7 +549,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
         return false;
     }
 
-    public static class WebsiteView extends FrameLayout {
+    public static class WebsiteView extends FrameLayout implements Theme.Colorable {
         public final ImageView imageView;
         public final TextView titleView;
         public final TextView subtitleView;
@@ -520,7 +562,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
             addView(imageView, LayoutHelper.createFrame(32, 32, Gravity.CENTER_VERTICAL | Gravity.LEFT, 16, 0, 0, 0));
 
             titleView = new TextView(context);
-            titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            ThemeBind.textColor(titleView, Theme.key_windowBackgroundWhiteBlackText);
             titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             titleView.setMaxLines(1);
             titleView.setEllipsize(TextUtils.TruncateAt.END);
@@ -533,7 +575,7 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
                     subtitleView.setPivotY(getMeasuredHeight() / 2f);
                 }
             };
-            subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+            ThemeBind.textColor(subtitleView, Theme.key_windowBackgroundWhiteGrayText);
             subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             subtitleView.setMaxLines(1);
             subtitleView.setEllipsize(TextUtils.TruncateAt.END);
@@ -543,13 +585,31 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
             optionsView = new ImageView(context);
             optionsView.setScaleType(ImageView.ScaleType.CENTER);
             optionsView.setImageResource(R.drawable.ic_ab_other);
-            optionsView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(optionsView, Theme.key_windowBackgroundWhiteGrayText3, PorterDuff.Mode.SRC_IN);
             addView(optionsView, LayoutHelper.createFrame(32, 32, Gravity.CENTER_VERTICAL | Gravity.RIGHT, 0, 0, 18, 0));
         }
 
         private AnimatedEmojiDrawable animatedEmojiDrawable;
+        private boolean attached;
         private String domain;
         private boolean needDivider;
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            attached = true;
+            if (animatedEmojiDrawable != null) {
+                animatedEmojiDrawable.addView(imageView);
+            }
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            attached = false;
+            if (animatedEmojiDrawable != null) {
+                animatedEmojiDrawable.removeView(imageView);
+            }
+        }
         public void set(
             CharSequence title,
             String domain,
@@ -571,17 +631,22 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
             String s = (TextUtils.isEmpty(title) ? domain.isEmpty() || TextUtils.isEmpty(domain) ? "" : domain : title).toString();
 
             if (animatedEmojiDrawable != null) {
+                if (attached) {
                 animatedEmojiDrawable.removeView(imageView);
+                }
                 animatedEmojiDrawable = null;
             }
 
+            letterBackground = null;
             if (favicon != 0) {
                 animatedEmojiDrawable = AnimatedEmojiDrawable.make(UserConfig.selectedAccount, AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES_LARGE, favicon);
+                if (attached) {
                 animatedEmojiDrawable.addView(imageView);
+                }
                 imageView.setImageDrawable(animatedEmojiDrawable);
             } else {
                 CombinedDrawable drawable = new CombinedDrawable(
-                    Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), .1f)),
+                    letterBackground = Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), .1f)),
                     new Drawable() {
                         private final Text text = Text.ui(s.substring(0, !s.isEmpty() ? 1 : 0), 14, AndroidUtilities.bold());
                         @Override
@@ -603,6 +668,22 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
             }
             needDivider = divider;
             invalidate();
+        }
+
+        private Drawable letterBackground;
+
+        @Override
+        public void updateColors() {
+            try {
+                if (letterBackground != null) {
+                    Theme.setDrawableColor(letterBackground, Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), .1f));
+                    if (imageView != null) {
+                        imageView.invalidate();
+                    }
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
         }
 
         @Override
@@ -699,10 +780,4 @@ public class WebBrowserSettings extends UniversalFragment implements Notificatio
         return true;
     }
 
-    @Override
-    public void onInsets(int left, int top, int right, int bottom) {
-        super.onInsets(left, top, right, bottom);
-        listView.setPadding(0, listView.getPaddingTop(), 0, bottom);
-        listView.setClipToPadding(false);
-    }
 }

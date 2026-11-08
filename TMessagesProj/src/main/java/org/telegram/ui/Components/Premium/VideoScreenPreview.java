@@ -525,7 +525,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
         attached = true;
         updateAttachState();
             checkVideo();
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileLoaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.fileLoaded);
     }
 
     @Override

@@ -69,6 +69,7 @@ public final class WlAccess {
     private static final ConcurrentHashMap<Long, Grant> GRANTS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Subscription> SUBSCRIPTIONS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Long> EPOCHS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, ServerClock> CLOCKS = new ConcurrentHashMap<>();
     private static final AtomicBoolean WARMING = new AtomicBoolean();
     private static final AtomicBoolean FOREGROUND_REQUESTED = new AtomicBoolean();
     private static final ThreadLocal<Boolean> BACKGROUND_WARM = new ThreadLocal<>();
@@ -158,13 +159,72 @@ public final class WlAccess {
         final long uid, expires, paidUntil;
         final String token;
         final PrivateKey key;
+        final String alias, keyId;
         Grant(long uid, long expires, String token, PrivateKey key) {
             this(uid, expires, token, key, 0);
         }
         Grant(long uid, long expires, String token, PrivateKey key, long paidUntil) {
+            this(uid, expires, token, key, paidUntil, "", "");
+        }
+        Grant(long uid, long expires, String token, PrivateKey key, long paidUntil, String alias, String keyId) {
             this.uid = uid; this.expires = expires; this.token = token; this.key = key;
             this.paidUntil = paidUntil;
+            this.alias = alias; this.keyId = keyId;
         }
+    }
+
+    private static final class ServerClock {
+        final long seconds, elapsed;
+        ServerClock(long seconds, long elapsed) { this.seconds = seconds; this.elapsed = elapsed; }
+        long now() { return seconds + Math.max(0L, SystemClock.elapsedRealtime() - elapsed) / 1000L; }
+    }
+
+    public static long currentTime(int account) {
+        ServerClock clock = CLOCKS.get(uid(account));
+        return clock == null ? System.currentTimeMillis() / 1000L : clock.now();
+    }
+
+    private static void learnTime(long owner, JSONObject result, long sent) throws Exception {
+        long received = SystemClock.elapsedRealtime();
+        if (sent > received || received - sent > REQUEST_TIMEOUT_MS + 1000L) throw new IOException("invalid_server_time");
+        long seconds = WlRecoveryProof.serverTime(result) + (received - sent + 999L) / 1000L;
+        if (accountFor(owner) < 0) throw new IOException("account_changed");
+        if (!CLOCKS.containsKey(owner) && CLOCKS.size() >= UserConfig.MAX_ACCOUNT_COUNT) {
+            for (long id : CLOCKS.keySet()) if (accountFor(id) < 0) CLOCKS.remove(id);
+            if (CLOCKS.size() >= UserConfig.MAX_ACCOUNT_COUNT) throw new IOException("account_changed");
+        }
+        CLOCKS.put(owner, new ServerClock(seconds, received));
+    }
+
+    private static final class DeviceBinding {
+        final long owner;
+        final String alias, publicKey, keyId;
+        final PrivateKey key;
+        DeviceBinding(long owner, String alias, KeyStore keys) throws Exception {
+            this.owner = owner; this.alias = alias;
+            key = (PrivateKey) keys.getKey(alias, null);
+            if (key == null || keys.getCertificate(alias) == null) throw new IOException("device_verification_required");
+            publicKey = WlRecoveryProof.publicKey(keys.getCertificate(alias).getPublicKey());
+            keyId = WlRecoveryProof.keyId(publicKey);
+        }
+        boolean matchesKey() {
+            try {
+                KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+                return keys.getKey(alias, null) != null && keys.getCertificate(alias) != null
+                        && publicKey.equals(WlRecoveryProof.publicKey(keys.getCertificate(alias).getPublicKey()));
+            } catch (Exception ignored) { return false; }
+        }
+    }
+
+    private interface BindingGuard { void check() throws Exception; }
+
+    private static void requireBinding(int account, long owner, long epoch, DeviceBinding binding) throws Exception {
+        remainingRequestMillis();
+        if (!current(account, owner, epoch) || !binding.alias.equals(prefs().getString("key_" + owner, ""))
+                || !binding.matchesKey()) throw new IOException("account_changed");
+        if (Boolean.TRUE.equals(BACKGROUND_WARM.get()) && FOREGROUND_REQUESTED.get())
+            throw new IOException("request_cancelled");
+        remainingRequestMillis();
     }
 
     private static SharedPreferences prefs() {
@@ -198,7 +258,7 @@ public final class WlAccess {
     private static Grant accountGrant(int account) {
         long owner = uid(account);
         Grant grant = GRANTS.get(owner);
-        return grant != null && Math.min(grant.expires, grant.paidUntil) > ConnectionsManager.getInstance(account).getCurrentTime() + 60L
+        return grant != null && Math.min(grant.expires, grant.paidUntil) > currentTime(account) + 60L
                 && uid(account) == owner ? grant : null;
     }
     public static boolean hasAccountGrant(int account) { return accountGrant(account) != null; }
@@ -350,12 +410,17 @@ public final class WlAccess {
     }
 
     private static final class DeadlineTask implements Runnable {
-        final long deadline = SystemClock.elapsedRealtime() + REQUEST_TIMEOUT_MS;
+        final long deadline;
         final Runnable job, expired;
         final AtomicBoolean completed = new AtomicBoolean();
         final Runnable timeout;
 
         DeadlineTask(Runnable job, Runnable expired) {
+            this(job, expired, REQUEST_TIMEOUT_MS);
+        }
+
+        DeadlineTask(Runnable job, Runnable expired, long budget) {
+            this.deadline = SystemClock.elapsedRealtime() + budget;
             this.job = job;
             this.expired = expired;
             this.timeout = () -> {
@@ -419,13 +484,16 @@ public final class WlAccess {
                     JSONObject stored = new JSONObject(prefs().getString("grant_" + owner, ""));
                     if (alias.isEmpty() || stored.getLong("uid") != owner
                             || Math.min(stored.getLong("expires"), stored.optLong("paid_expires_at", 0))
-                            <= ConnectionsManager.getInstance(account).getCurrentTime() + 60L) continue;
+                            <= currentTime(account) + 60L) continue;
                     PrivateKey key = (PrivateKey) keys.getKey(alias, null);
                     if (key == null) continue;
+                    DeviceBinding binding = new DeviceBinding(owner, alias, keys);
+                    if (!WlRecoveryProof.token(stored.getString("token"))) continue;
                     Grant grant = new Grant(owner, stored.getLong("expires"), stored.getString("token"), key,
-                            stored.getLong("paid_expires_at"));
+                            stored.getLong("paid_expires_at"), alias, binding.keyId);
                     synchronized (LOCK) {
-                        if (current(account, owner, epoch) && GRANTS.putIfAbsent(owner, grant) == null) changed = true;
+                        requireBinding(account, owner, epoch, binding);
+                        if (GRANTS.putIfAbsent(owner, grant) == null) changed = true;
                     }
                 } catch (Exception ignored) { }
             }
@@ -546,27 +614,162 @@ public final class WlAccess {
         }
     }
 
+    private static DeviceBinding existingBinding(int account, long owner, long epoch) throws Exception {
+        if (!current(account, owner, epoch)) throw new IOException("account_changed");
+        String alias = prefs().getString("key_" + owner, "");
+        if (alias.isEmpty()) return null;
+        KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
+        if (!keys.containsAlias(alias) || keys.getKey(alias, null) == null || keys.getCertificate(alias) == null) return null;
+        DeviceBinding binding = new DeviceBinding(owner, alias, keys);
+        requireBinding(account, owner, epoch, binding);
+        return binding;
+    }
+
+    private static String priorToken(DeviceBinding binding) {
+        Grant active = GRANTS.get(binding.owner);
+        if (active != null && active.alias.equals(binding.alias) && active.keyId.equals(binding.keyId)
+                && WlRecoveryProof.token(active.token)) return active.token;
+        try {
+            JSONObject stored = new JSONObject(prefs().getString("grant_" + binding.owner, ""));
+            String token = stored.getString("token");
+            if (stored.getLong("uid") == binding.owner && WlRecoveryProof.token(token)
+                    && (!stored.has("key_id") || binding.keyId.equals(stored.getString("key_id")))) return token;
+        } catch (Exception ignored) { }
+        return "";
+    }
+
+    private static boolean legacyRecoveryFallback(ApiError error) {
+        return error.code == 404 || error.code == 405
+                || error.code == 403 && "device_verification_required".equals(error.detail);
+    }
+
+    private static JSONObject recover(DeviceBinding binding, String purpose, String prior,
+                                      BindingGuard guard, int account, long epoch) throws Exception {
+        guard.check();
+        byte[] nonceBytes = new byte[24]; RANDOM.nextBytes(nonceBytes);
+        String nonce = b64(nonceBytes);
+        JSONObject start = WlRecoveryProof.start(binding.owner, binding.publicKey, nonce, purpose, binding.key);
+        long sent = SystemClock.elapsedRealtime();
+        JSONObject reply = recoveryCall(WlRecoveryProof.BASE + "/challenge", start);
+        guard.check();
+        WlRecoveryProof.Challenge challenge = new WlRecoveryProof.Challenge(
+                reply, binding.owner, binding.keyId, nonce, purpose);
+        if ("recover".equals(purpose)) {
+            synchronized (LOCK) {
+                requireBinding(account, binding.owner, epoch, binding);
+                learnTime(binding.owner, reply, sent);
+            }
+        }
+        guard.check();
+        JSONObject complete = WlRecoveryProof.complete(challenge, binding.publicKey, prior, binding.key);
+        sent = SystemClock.elapsedRealtime();
+        JSONObject result = recoveryCall(WlRecoveryProof.BASE + "/complete", complete);
+        guard.check();
+        WlRecoveryProof.result(result, binding.owner, binding.keyId, purpose);
+        if ("recover".equals(purpose)) {
+            synchronized (LOCK) {
+                requireBinding(account, binding.owner, epoch, binding);
+                learnTime(binding.owner, result, sent);
+            }
+        }
+        return result;
+    }
+
+    private static void subscriptionReady(int account, long owner, long epoch, Callback callback, String status) {
+        DeadlineTask task = REQUEST.get();
+        if (callback != null && "approved".equals(status)) AndroidUtilities.runOnUIThread(() -> {
+            if ((task == null || SystemClock.elapsedRealtime() < task.deadline)
+                    && current(account, owner, epoch)) callback.done(status);
+        });
+    }
+
+    private static boolean sameGrant(Grant grant, DeviceBinding binding, Grant next) {
+        return grant != null && grant.uid == next.uid && grant.expires == next.expires
+                && grant.paidUntil == next.paidUntil && grant.token.equals(next.token)
+                && grant.alias.equals(binding.alias) && grant.keyId.equals(binding.keyId);
+    }
+
+    private static void installGrant(int account, long owner, long epoch, DeviceBinding binding, Grant next) throws Exception {
+        if (!WlRecoveryProof.token(next.token) || next.expires <= 0 || next.paidUntil <= 0
+                || next.expires > next.paidUntil) throw new IOException("invalid_grant");
+        boolean changed;
+        synchronized (LOCK) {
+            requireBinding(account, owner, epoch, binding);
+            Grant previous = GRANTS.get(owner);
+            if (sameGrant(previous, binding, next)) next = previous;
+            JSONObject stored = new JSONObject().put("uid", owner).put("expires", next.expires)
+                    .put("token", next.token).put("paid_expires_at", next.paidUntil).put("key_id", binding.keyId);
+            remainingRequestMillis();
+            prefs().edit().putString("grant_" + owner, stored.toString()).apply();
+            changed = GRANTS.put(owner, next) != next;
+        }
+        if (changed) notifyChanged();
+    }
+
+    private static String recovered(int account, long owner, long epoch, DeviceBinding binding,
+                                    JSONObject result, Callback callback) throws Exception {
+        long now = WlRecoveryProof.serverTime(result);
+        Subscription subscription = parseSubscription(result, now);
+        if ("error".equals(subscription.status)) throw new IOException("invalid_recovery_response");
+        synchronized (LOCK) {
+            requireBinding(account, owner, epoch, binding);
+            SUBSCRIPTIONS.put(owner, subscription);
+        }
+        if (!"approved".equals(subscription.status)) {
+            boolean changed;
+            synchronized (LOCK) {
+                requireBinding(account, owner, epoch, binding);
+                changed = GRANTS.remove(owner) != null;
+                prefs().edit().remove("grant_" + owner).apply();
+            }
+            if (changed || enabled() && cached() == null) onGrantRemoved();
+            else notifyChanged();
+            return subscription.status;
+        }
+        Grant next = new Grant(owner, WlRecoveryProof.integer(result, "expires"),
+                WlRecoveryProof.string(result, "token"), binding.key, subscription.expiresAt, binding.alias, binding.keyId);
+        installGrant(account, owner, epoch, binding, next);
+        subscriptionReady(account, owner, epoch, callback, subscription.status);
+        return subscription.status;
+    }
     private static String refreshAccount(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
         remainingRequestMillis();
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
+        DeviceBinding existing = existingBinding(account, owner, epoch);
+        if (existing != null) {
+            try {
+                JSONObject result = recover(existing, "recover", priorToken(existing),
+                        () -> requireBinding(account, owner, epoch, existing), account, epoch);
+                return recovered(account, owner, epoch, existing, result, subscriptionCallback);
+            } catch (ApiError error) {
+                requireBinding(account, owner, epoch, existing);
+                if (!legacyRecoveryFallback(error)) throw error;
+            }
+        }
         String auth = bannerToken(account, owner, epoch);
+        if (existing != null) requireBinding(account, owner, epoch, existing);
         JSONObject state;
+        long sent = SystemClock.elapsedRealtime();
         try { state = call(PREFIX + "/status", "GET", auth, null); }
         catch (ApiError e) {
             if (e.code != 401) throw e;
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
             BannerConfig.setAuthToken(account, owner, "");
             auth = bannerToken(account, owner, epoch);
+            sent = SystemClock.elapsedRealtime();
             state = call(PREFIX + "/status", "GET", auth, null);
         }
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
-        long now = state.optLong("server_time", ConnectionsManager.getInstance(account).getCurrentTime());
+        if (existing != null) requireBinding(account, owner, epoch, existing);
+        long now = state.has("server_time") ? WlRecoveryProof.serverTime(state) : currentTime(account);
         Subscription subscription = parseSubscription(state, now);
         String status = subscription.status;
         long paidExpires = subscription.expiresAt;
         if ("error".equals(status)) return status;
         synchronized (LOCK) {
             if (!current(account, owner, epoch)) throw new IOException("account_changed");
+            remainingRequestMillis();
+            if (state.has("server_time")) learnTime(owner, state, sent);
             SUBSCRIPTIONS.put(owner, subscription);
         }
         if ("blocked".equals(status)) return recordBlocked(account, owner, epoch);
@@ -582,16 +785,12 @@ public final class WlAccess {
             return status;
         }
         DeadlineTask task = REQUEST.get();
-        if (subscriptionCallback != null) {
-            AndroidUtilities.runOnUIThread(() -> {
-                if ((task == null || SystemClock.elapsedRealtime() < task.deadline)
-                        && current(account, owner, epoch)) subscriptionCallback.done(status);
-            });
-        }
+        subscriptionReady(account, owner, epoch, subscriptionCallback, status);
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
         String alias = prefs().getString("key_" + owner, "");
         boolean newKey = alias.isEmpty() || !keys.containsAlias(alias);
         if (newKey) {
+            remainingRequestMillis();
             byte[] suffix = new byte[12]; RANDOM.nextBytes(suffix);
             alias = "nimarko_wl_" + owner + "_" + b64(suffix);
             KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
@@ -604,31 +803,40 @@ public final class WlAccess {
                     keys.deleteEntry(alias);
                     throw new IOException("account_changed");
                 }
+                try { remainingRequestMillis(); }
+                catch (IOException error) { keys.deleteEntry(alias); throw error; }
                 prefs().edit().putString("key_" + owner, alias).apply();
             }
         }
-        PrivateKey key = (PrivateKey) keys.getKey(alias, null);
+        DeviceBinding binding = new DeviceBinding(owner, alias, keys);
+        requireBinding(account, owner, epoch, binding);
+        PrivateKey key = binding.key;
         Grant grant = newKey ? null : GRANTS.get(owner);
+        if (grant != null && (!binding.alias.equals(grant.alias) || !binding.keyId.equals(grant.keyId))) grant = null;
         if (grant == null && !newKey) {
             try {
                 JSONObject old = new JSONObject(prefs().getString("grant_" + owner, ""));
-                if (old.getLong("uid") == owner && old.optLong("paid_expires_at", 0) > now)
-                    grant = new Grant(owner, old.getLong("expires"), old.getString("token"), key, paidExpires);
+                if (old.getLong("uid") == owner && old.optLong("paid_expires_at", 0) > now
+                        && (!old.has("key_id") || binding.keyId.equals(old.getString("key_id"))))
+                    grant = new Grant(owner, old.getLong("expires"), old.getString("token"), key, paidExpires, alias, binding.keyId);
             } catch (Exception ignored) { }
         }
         if (grant == null || grant.expires < now + 86400) {
             JSONObject request = new JSONObject().put("uid", owner)
                     .put("public_key", b64(keys.getCertificate(alias).getPublicKey().getEncoded()));
             JSONObject pending = call(PREFIX + "/register", "POST", auth, bytes(request));
+            requireBinding(account, owner, epoch, binding);
             String code = pending.getString("code"), secret = pending.getString("poll_secret");
             JSONObject poll = new JSONObject().put("code", code).put("poll_secret", secret)
                     .put("signature", sign(key, ("nimarko-wl-enroll-v1\n" + code + "\n" + secret).getBytes(StandardCharsets.US_ASCII)));
             InlineAuth.sendInlineVerification(account, "NimarkoBanner_Bot", code,
-                    () -> (task == null || task.active()) && current(account, owner, epoch));
+                    () -> (task == null || task.active()) && current(account, owner, epoch)
+                            && binding.alias.equals(prefs().getString("key_" + owner, "")) && binding.matchesKey());
             JSONObject issued = null;
             for (int attempt = 0; attempt < 15; attempt++) {
-                if (!current(account, owner, epoch)) throw new IOException("account_changed");
+                requireBinding(account, owner, epoch, binding);
                 issued = call(PREFIX + "/poll", "POST", auth, bytes(poll));
+                requireBinding(account, owner, epoch, binding);
                 if (!"verifying".equals(issued.optString("status"))) break;
                 Thread.sleep(Math.min(2000, remainingRequestMillis()));
             }
@@ -638,26 +846,12 @@ public final class WlAccess {
             if (!"approved".equals(issued.optString("status")) || issued.getLong("uid") != owner)
                 throw new IOException("authentication_required");
             issued.put("paid_expires_at", paidExpires);
-            grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key, paidExpires);
-            synchronized (LOCK) {
-                remainingRequestMillis();
-                if (!current(account, owner, epoch)) throw new IOException("account_changed");
-                prefs().edit().putString("grant_" + owner, issued.toString()).apply();
-            }
+            grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key, paidExpires, alias, binding.keyId);
         }
-        if (grant.paidUntil != paidExpires) {
-            grant = new Grant(owner, grant.expires, grant.token, grant.key, paidExpires);
+        if (grant.paidUntil != paidExpires || !grant.alias.equals(alias) || !grant.keyId.equals(binding.keyId)) {
+            grant = new Grant(owner, grant.expires, grant.token, key, paidExpires, alias, binding.keyId);
         }
-        boolean changed;
-        synchronized (LOCK) {
-            remainingRequestMillis();
-            if (!current(account, owner, epoch)) throw new IOException("account_changed");
-            prefs().edit().putString("grant_" + owner, new JSONObject()
-                    .put("uid", owner).put("expires", grant.expires).put("token", grant.token)
-                    .put("paid_expires_at", grant.paidUntil).toString()).apply();
-            changed = GRANTS.put(owner, grant) != grant;
-        }
-        if (changed) notifyChanged();
+        installGrant(account, owner, epoch, binding, grant);
         return "approved";
     }
 
@@ -665,7 +859,7 @@ public final class WlAccess {
         try {
             int account = accountFor(grant.uid);
             if (account < 0 || !isCurrent(grant)) throw new IOException("account_changed");
-            Map<String, String> out = signedHeaders(grant, ConnectionsManager.getInstance(account).getCurrentTime(), method, path, body);
+            Map<String, String> out = signedHeaders(grant, currentTime(account), method, path, body);
             if (!isCurrent(grant)) throw new IOException("account_changed");
             return out;
         } catch (Exception e) { throw new IOException("access_proof_failed", e); }
@@ -698,38 +892,64 @@ public final class WlAccess {
 
     public static void onAccountLoggedOut(int account, long owner) {
         final String oldAlias, oldGrant;
+        final ServerClock oldClock;
         if (owner <= 0) return;
-        final long clockOffset = ConnectionsManager.getInstance(account).getCurrentTime() - System.currentTimeMillis() / 1000L;
         synchronized (LOCK) {
             oldAlias = prefs().getString("key_" + owner, "");
             oldGrant = prefs().getString("grant_" + owner, "");
             EPOCHS.merge(owner, 1L, Long::sum);
             GRANTS.remove(owner);
             SUBSCRIPTIONS.remove(owner);
+            oldClock = CLOCKS.remove(owner);
             prefs().edit().remove("grant_" + owner).remove("key_" + owner).apply();
         }
         notifyChanged();
         Runnable cleanup = () -> {
+            DeadlineTask previous = REQUEST.get();
+            DeadlineTask scope = new DeadlineTask(() -> { }, () -> { }, 5000);
+            REQUEST.set(scope);
             try {
+                if (!ownedAlias(owner, oldAlias)) return;
                 KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
-                Map<String, String> proof = null;
+                if (!keys.containsAlias(oldAlias)) return;
+                DeviceBinding binding = new DeviceBinding(owner, oldAlias, keys);
+                BindingGuard guard = () -> {
+                    remainingRequestMillis();
+                    if (oldAlias.equals(prefs().getString("key_" + owner, "")) || !binding.matchesKey())
+                        throw new IOException("account_changed");
+                };
+                String prior = "";
                 try {
                     JSONObject stored = new JSONObject(oldGrant);
-                    PrivateKey key = (PrivateKey) keys.getKey(oldAlias, null);
-                    if (key != null && stored.getLong("uid") == owner) {
-                        Grant grant = new Grant(owner, stored.getLong("expires"), stored.getString("token"), key);
-                        proof = signedHeaders(grant, System.currentTimeMillis() / 1000L + clockOffset,
+                    if (stored.getLong("uid") == owner && WlRecoveryProof.token(stored.getString("token")))
+                        prior = stored.getString("token");
+                } catch (Exception ignored) { }
+                try {
+                    recover(binding, "forget", prior, guard, -1, 0);
+                } catch (ApiError error) {
+                    if (!legacyRecoveryFallback(error) || prior.isEmpty()) throw error;
+                    guard.check();
+                    Grant grant = new Grant(owner, 0, prior, binding.key);
+                    Map<String, String> proof = signedHeaders(grant,
+                            oldClock == null ? System.currentTimeMillis() / 1000L : oldClock.now(),
                                 "POST", PREFIX + "/forget", EMPTY);
+                    Request.Builder request = new Request.Builder().url(ORIGIN + PREFIX + "/forget").post(RequestBody.create(JSON, EMPTY));
+                    for (Map.Entry<String, String> header : proof.entrySet()) request.header(header.getKey(), header.getValue());
+                    okhttp3.Call call = HTTP.newCall(request.build());
+                    call.timeout().timeout(remainingRequestMillis(), TimeUnit.MILLISECONDS);
+                    try (Response response = call.execute()) { }
                     }
                 } catch (Exception ignored) { }
-                if (!oldAlias.isEmpty()) keys.deleteEntry(oldAlias);
-                if (proof != null) {
-                    Request.Builder request = new Request.Builder().url(ORIGIN + PREFIX + "/forget")
-                            .post(RequestBody.create(JSON, EMPTY));
-                    for (Map.Entry<String, String> header : proof.entrySet()) request.header(header.getKey(), header.getValue());
-                    try (Response response = HTTP.newCall(request.build()).execute()) { }
+            finally {
+                synchronized (LOCK) {
+                    if (ownedAlias(owner, oldAlias) && !oldAlias.equals(prefs().getString("key_" + owner, ""))) {
+                        try { KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null); keys.deleteEntry(oldAlias); }
+                        catch (Exception ignored) { }
+                    }
                 }
-            } catch (Exception ignored) { }
+                scope.completed.set(true);
+                if (previous == null) REQUEST.remove(); else REQUEST.set(previous);
+            }
         };
         try { WORK.execute(cleanup); }
         catch (RejectedExecutionException e) {
@@ -739,6 +959,11 @@ public final class WlAccess {
             WsBypassController.getInstance().stop();
             WsBypassController.getInstance().ensureStarted();
         });
+    }
+
+    private static boolean ownedAlias(long owner, String alias) {
+        String prefix = "nimarko_wl_" + owner + "_";
+        return alias != null && alias.startsWith(prefix) && alias.substring(prefix.length()).matches("[A-Za-z0-9_-]{16}");
     }
 
 
@@ -759,6 +984,19 @@ public final class WlAccess {
 
     private static String accessErrorStatus(int account, long owner, long epoch, Exception error) {
         String status = errorStatus(error);
+        if ("expired".equals(status) || "payment_required".equals(status) || "revoked".equals(status)) {
+            boolean changed;
+            synchronized (LOCK) {
+                if (!current(account, owner, epoch)) return "account_changed";
+                Subscription previous = SUBSCRIPTIONS.get(owner);
+                SUBSCRIPTIONS.put(owner, new Subscription(status, previous == null ? 0 : previous.expiresAt,
+                        previous == null ? -1 : previous.priceCents, previous == null ? "" : previous.priceVersion));
+                changed = GRANTS.remove(owner) != null;
+                prefs().edit().remove("grant_" + owner).apply();
+            }
+            if (changed || enabled() && cached() == null) onGrantRemoved(); else notifyChanged();
+            return status;
+        }
         return "blocked".equals(status) ? recordBlocked(account, owner, epoch) : status;
     }
     private static String errorStatus(Exception error) {
@@ -767,6 +1005,8 @@ public final class WlAccess {
             if (api.code == 429) return "busy";
             if (api.code == 401) return "authentication_required";
             if (api.code >= 400 && api.code < 500 && api.detail.equals("blocked")) return "blocked";
+            if (api.code == 403 && (api.detail.equals("expired") || api.detail.equals("payment_required")
+                    || api.detail.equals("revoked"))) return api.detail;
             if (api.detail.equals("invalid_screenshot")) return "invalid_screenshot";
         }
         if ("file_too_large".equals(error.getMessage())) return "file_too_large";
@@ -841,8 +1081,41 @@ public final class WlAccess {
         okhttp3.Call call = HTTP.newCall(builder.build());
         call.timeout().timeout(remaining, TimeUnit.MILLISECONDS);
         try (Response response = call.execute()) {
+            if (response.handshake() == null) throw new IOException("untrusted_response");
             JSONObject result = read(response);
             remainingRequestMillis();
+            return result;
+        }
+    }
+
+    private static JSONObject recoveryCall(String path, JSONObject body) throws Exception {
+        if (!ORIGIN.equals(WlRecoveryProof.AUTHORITY)
+                || !(path.equals(WlRecoveryProof.BASE + "/challenge") || path.equals(WlRecoveryProof.BASE + "/complete")))
+            throw new IOException("invalid_recovery_authority");
+        byte[] payload = bytes(body);
+        if (payload.length > 8192) throw new IOException("request_too_large");
+        Request request = new Request.Builder().url(ORIGIN + path).post(RequestBody.create(JSON, payload)).build();
+        okhttp3.Call call = HTTP.newCall(request);
+        call.timeout().timeout(remainingRequestMillis(), TimeUnit.MILLISECONDS);
+        try (Response response = call.execute()) {
+            if (response.handshake() == null || response.body() == null) throw new IOException("untrusted_response");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            try (InputStream in = response.body().byteStream()) {
+                byte[] buffer = new byte[2048]; int count;
+                while ((count = in.read(buffer)) != -1) {
+                    if (out.size() + count > 8192) throw new IOException("response_too_large");
+                    out.write(buffer, 0, count);
+                }
+            }
+            remainingRequestMillis();
+            JSONObject result;
+            try { result = WlRecoveryProof.parse(new String(out.toByteArray(), StandardCharsets.UTF_8)); }
+            catch (Exception error) {
+                if (response.code() < 200 || response.code() >= 300) throw new ApiError(response.code(), "error");
+                throw error;
+            }
+            if (response.code() < 200 || response.code() >= 300)
+                throw new ApiError(response.code(), result.optString("detail", "error"));
             return result;
         }
     }

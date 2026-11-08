@@ -56,11 +56,11 @@ public final class RawWebSocket {
     private static final long MAX_WS_FRAME_BYTES = 16L * 1024L * 1024L;
     private static final long MAX_WS_MESSAGE_BYTES = 16L * 1024L * 1024L;
     private static final String WS_ACCEPT_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    
+
     private static final int IDLE_READ_TIMEOUT_MS = 5 * 60 * 1000;
 
     private static final SecureRandom RNG = new SecureRandom();
-    
+
     private static final ExecutorService DNS_EXECUTOR = new ThreadPoolExecutor(
             2, 2, 30L, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(8),
@@ -141,7 +141,7 @@ public final class RawWebSocket {
             raw = openSocket(connectHost.trim(), port, deadlineNanos, permit);
             checkPermit(permit);
             wrapped = wrapTls(raw, sni, port, deadlineNanos, permit);
-            raw = null; 
+            raw = null;
             checkPermit(permit);
             wrapped.setSoTimeout(remainingMillis(deadlineNanos));
 
@@ -178,9 +178,9 @@ public final class RawWebSocket {
             int[] headerBytes = new int[1];
             String statusLine;
             Map<String, String> headers = new HashMap<>();
-            statusLine = readLine(in, headerBytes);
+            statusLine = readLine(in, headerBytes, wrapped, deadlineNanos, permit);
             while (true) {
-                String line = readLine(in, headerBytes);
+                String line = readLine(in, headerBytes, wrapped, deadlineNanos, permit);
                 if (line == null) throw new IOException("unexpected eof in websocket handshake");
                 if (line.isEmpty()) break;
                 int colon = line.indexOf(':');
@@ -213,6 +213,7 @@ public final class RawWebSocket {
                 throw new HandshakeException("unsupported websocket extension", code, null);
             }
             checkPermit(permit);
+            remainingMillis(deadlineNanos);
             wrapped.setSoTimeout(IDLE_READ_TIMEOUT_MS);
             int timeoutSec = Math.max(1, (int) Math.min(Integer.MAX_VALUE,
                     TimeUnit.NANOSECONDS.toSeconds(Math.max(1L, deadlineNanos - System.nanoTime()))));
@@ -268,7 +269,7 @@ public final class RawWebSocket {
             throw e;
         }
         ssl.setUseClientMode(true);
-        
+
         ssl.setSoTimeout(remainingMillis(deadlineNanos));
         try {
             ssl.startHandshake();
@@ -320,7 +321,7 @@ public final class RawWebSocket {
                 lastIoMs = System.currentTimeMillis();
             }
         } catch (IOException e) {
-            
+
             close();
             throw e;
         }
@@ -407,7 +408,7 @@ public final class RawWebSocket {
             if (opcode == OPCODE_PONG) {
                 continue;
             }
-            
+
             if (opcode == OPCODE_CONTINUATION || opcode == OPCODE_TEXT || opcode == OPCODE_BINARY) {
                 if (fin) {
                     fragmentedMessageOpen = false;
@@ -450,7 +451,7 @@ public final class RawWebSocket {
     }
 
     public void close() {
-        
+
         if (!closed.compareAndSet(false, true)) return;
         closeQuietly(sock);
         closeQuietly(reader);
@@ -647,11 +648,21 @@ public final class RawWebSocket {
                 && !lower.startsWith("sec-websocket-");
     }
 
-    private static String readLine(InputStream in, int[] totalBytes) throws IOException {
-        
+    private static String readLine(InputStream in, int[] totalBytes, Socket socket,
+                                   long deadlineNanos, ConnectPermit permit) throws IOException {
+
         ByteArrayOutputStream baos = new ByteArrayOutputStream(128);
+        int previousTimeoutMs = -1;
         while (true) {
+            checkPermit(permit);
+            int timeoutMs = remainingMillis(deadlineNanos);
+            if (timeoutMs != previousTimeoutMs) {
+                socket.setSoTimeout(timeoutMs);
+                previousTimeoutMs = timeoutMs;
+            }
             int b = in.read();
+            checkPermit(permit);
+            remainingMillis(deadlineNanos);
             if (b < 0) {
                 if (baos.size() == 0) return null;
                 break;

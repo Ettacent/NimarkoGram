@@ -1,0 +1,31 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+:root { color-scheme: only light; }
+:root { --office-bottom: 0px; }
+html { touch-action: manipulation; overflow: auto; }
+body { margin: 0; padding-bottom: var(--office-bottom); }
+#container { box-sizing: border-box; }
+.docx-wrapper { min-height: 0 !important; }
+.docx-wrapper > section.docx { scroll-margin-top: var(--vw-top, 0px); }
+#container .docx-wrapper > section.docx,
+html.vw-night #container .docx-wrapper > section.docx:last-child { box-shadow: none !important; }
+html.office-protected, html.office-protected * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+html.vw-night body, html.vw-night #container .docx-wrapper {
+  background: var(--vw-ground) !important;
+}
+html.vw-night #container .docx-wrapper > section.docx {
+  background: var(--office-night-paper, #000) !important;
+  color: var(--office-foreground, #fff) !important;
+}
+::highlight(vw-find) { background: var(--office-find, #e5bf3b); }
+::highlight(vw-find-active) { background: var(--office-find-active, #ff831a); color: var(--office-find-active-ink, #171717); }
+html.vw-night ::highlight(vw-find) { background: var(--office-find, #7d6500); }
+html.vw-night.office-preserve-images #container img,
+html.vw-night.office-preserve-images #container svg image { filter: none !important; }
+html.vw-night.office-night-images #container img,
+html.vw-night.office-night-images #container svg image { filter: invert(1) hue-rotate(180deg) !important; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

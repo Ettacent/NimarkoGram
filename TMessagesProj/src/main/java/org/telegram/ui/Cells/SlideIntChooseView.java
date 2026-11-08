@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -27,6 +29,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ChannelMonetizationLayout;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedTextView;
@@ -38,7 +41,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class SlideIntChooseView extends FrameLayout {
+public class SlideIntChooseView extends FrameLayout implements Theme.Colorable {
+
+    @Override
+    public void updateColors() {
+        try {
+            if (options == null || maxText == null) {
+                return;
+            }
+            maxText.setTextColor(Theme.getColor(value >= options.getMax() ? Theme.key_windowBackgroundWhiteValueText : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider), false);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
 
     private final Theme.ResourcesProvider resourcesProvider;
 
@@ -55,7 +70,7 @@ public class SlideIntChooseView extends FrameLayout {
         minText = new AnimatedTextView(context, true, true, true);
         minText.setAnimationProperties(.3f, 0, 220, CubicBezierInterpolator.EASE_OUT_QUINT);
         minText.setTextSize(dp(13));
-        minText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
+        ThemeBind.textColor(minText, Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
         minText.setGravity(Gravity.LEFT);
         minText.setEmojiCacheType(AnimatedEmojiDrawable.CACHE_TYPE_COLORABLE);
         minText.setEmojiColor(Color.WHITE);
@@ -66,7 +81,7 @@ public class SlideIntChooseView extends FrameLayout {
         valueText.setAnimationProperties(.3f, 0, 220, CubicBezierInterpolator.EASE_OUT_QUINT);
         valueText.setTextSize(dp(13));
         valueText.setGravity(Gravity.CENTER);
-        valueText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText, resourcesProvider));
+        ThemeBind.textColor(valueText, Theme.key_windowBackgroundWhiteValueText, resourcesProvider);
         valueText.setEmojiColor(Color.WHITE);
         valueText.setEmojiCacheType(AnimatedEmojiDrawable.CACHE_TYPE_COLORABLE);
         valueText.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);

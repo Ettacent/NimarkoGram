@@ -35,11 +35,21 @@ import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.opengles.GL11;
 
 
-public class GLIconTextureView extends TextureView implements TextureView.SurfaceTextureListener {
+public class GLIconTextureView extends TextureView implements TextureView.SurfaceTextureListener, org.telegram.ui.ActionBar.Theme.Colorable {
 
     public boolean touched;
     public GLIconRenderer mRenderer;
 
+    @Override
+    public void updateColors() {
+        try {
+            if (mRenderer != null) {
+                mRenderer.updateColors();
+            }
+        } catch (Exception e) {
+            org.telegram.messenger.FileLog.e(e);
+        }
+    }
     private static final int EGL_OPENGL_ES2_BIT = 4;
     private static final int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
 

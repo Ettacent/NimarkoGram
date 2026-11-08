@@ -1,0 +1,14 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
+:root { color-scheme: only light; }
+:root { --office-bottom:0px; --office-paper:#242424; --office-ui-ink:#eee; --office-find:#2481cc66; --office-find-active:#2481cc; --office-find-active-ink:#fff; }
+body { padding-bottom:var(--office-bottom); background:var(--vw-ground) !important; }
+#result { visibility:hidden; }
+html.office-ready #result,html.office-night-measuring #result { visibility:visible; }
+.slide { scroll-margin-top:var(--vw-top,0px); }
+#result > .slides > .slide { border:0; border-radius:0; box-shadow:none; }
+html.office-protected,html.office-protected * { user-select:none !important; -webkit-user-select:none !important; -webkit-touch-callout:none !important; }
+.vw-status { color:var(--office-ui-ink); background:var(--office-paper); }
+::highlight(vw-find) { background:var(--office-find); }
+::highlight(vw-find-active) { background:var(--office-find-active); color:var(--office-find-active-ink); }
+@media (prefers-reduced-motion:reduce) { #result * { animation:none !important; transition:none !important; scroll-behavior:auto !important; } }

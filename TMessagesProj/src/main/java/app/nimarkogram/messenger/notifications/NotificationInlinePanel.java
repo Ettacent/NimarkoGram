@@ -37,6 +37,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
     private int anchorTop;
     private float clipHeight = -1;
     private IntSupplier overlayAnchor;
+    private IntSupplier leadingContentReservation;
     private IntConsumer reservationListener;
     private Runnable reservationLayout;
     private IntConsumer overlayPositionListener;
@@ -73,6 +74,11 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
             height += entry.getVisibility() * (visible + (getPaddingTop() + getPaddingBottom()) * coverage);
         }
         reservationListener.accept(Math.round(height));
+    }
+
+    public NotificationInlinePanel withLeadingContentReservation(IntSupplier reservation) {
+        if (!released) leadingContentReservation = reservation;
+        return this;
     }
     public NotificationInlinePanel withOverlayAnchor(IntSupplier anchor) {
         if (!released) overlayAnchor = anchor;
@@ -135,6 +141,7 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
         reservationListener = null;
         reservationLayout = null;
         overlayAnchor = null;
+        leadingContentReservation = null;
         restoreContentInsets();
         if (positionListener != null) positionListener.accept(-1);
         if (heightListener != null) heightListener.accept(0);
@@ -184,7 +191,8 @@ public final class NotificationInlinePanel extends AnimatedLinearLayout implemen
                 continue;
             }
             if (listInsets[i] != null) {
-                changed |= listInsets[i].apply(next, anchorTop, getLayoutVisibility());
+                changed |= listInsets[i].apply(next, anchorTop, getLayoutVisibility(),
+                        leadingContentReservation == null ? 0 : leadingContentReservation.getAsInt());
                 continue;
             }
             if (scrollInsets[i] != null) {

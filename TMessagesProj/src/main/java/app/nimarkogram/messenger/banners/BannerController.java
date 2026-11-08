@@ -126,7 +126,14 @@ public final class BannerController {
     private final Object localBannerLock = new Object();
     private final Map<Scope, Long> indexRevisions = new HashMap<>();
     private long statusRevision;
+    private long moderationRevision, hideAvatarRevision;
     private long statusActivityRevision;
+    private boolean hideAvatarWorkerRunning;
+    private Scope hideAvatarPendingScope;
+    private boolean hideAvatarPendingValue;
+    private long hideAvatarRequestSerial;
+    private Scope hideAvatarReconcileScope;
+    private int hideAvatarReconcileAttemptsLeft;
     private volatile long localBannerGeneration;
     private final Gson gson = new Gson();
 
@@ -196,6 +203,13 @@ public final class BannerController {
         }
     }
 
+    public synchronized void onAppVisibilityChanged() {
+        if (ApplicationLoader.mainInterfacePaused) {
+            setPollingEnabled(false);
+        } else if (started) {
+            startStatusLoop();
+        }
+    }
     public synchronized void setSettingsReloader(Runnable r) { settingsReloader = r; }
     public synchronized void clearSettingsReloader(Runnable r) {
         if (settingsReloader == r) settingsReloader = null;
@@ -244,7 +258,13 @@ public final class BannerController {
             if (next.equals(previous)) return;
             synchronized (statusStateLock) {
                 statusRevision++;
+                moderationRevision++;
+                hideAvatarRevision++;
                 statusActivityRevision++;
+                hideAvatarPendingScope = null;
+                hideAvatarReconcileScope = null;
+                hideAvatarReconcileAttemptsLeft = 0;
+                hideAvatarRequestSerial++;
                 myStatus = "none";
                 myStatusRaw = null;
                 statusEverFetched = false;
@@ -783,11 +803,12 @@ public final class BannerController {
         } catch (Throwable ignored) {}
     }
 
-    private long beginStatusMutation(Scope scope) {
+    private long beginStatusMutation(Scope scope, boolean moderation) {
         synchronized (statusStateLock) {
             if (!isCurrentScope(scope)) return -1L;
             statusActivityRevision++;
-            return ++statusRevision;
+            statusRevision++;
+            return moderation ? ++moderationRevision : ++hideAvatarRevision;
         }
     }
 
@@ -795,8 +816,9 @@ public final class BannerController {
         return revision >= 0L && isCurrentScope(scope) && statusRevision == revision;
     }
 
-    private long finishStatusMutationLocked(Scope scope, long revision) {
-        if (!statusRevisionMatches(scope, revision)) return -1L;
+    private long finishStatusMutationLocked(Scope scope, long revision, boolean moderation) {
+        long currentRevision = moderation ? moderationRevision : hideAvatarRevision;
+        if (revision < 0L || !isCurrentScope(scope) || revision != currentRevision) return -1L;
         return ++statusRevision;
     }
 
@@ -817,13 +839,16 @@ public final class BannerController {
     }
 
     private int fetchStatus(Scope scope) {
-        if (scope == null || scope.uid == 0L || !statusFetching.add(scope)) return STATUS_SKIPPED;
+        if (scope == null || scope.uid == 0L) return STATUS_SKIPPED;
         final long requestRevision;
         synchronized (statusStateLock) {
-            if (!isCurrentScope(scope)) {
-                statusFetching.remove(scope);
+            if (!isCurrentScope(scope)) return STATUS_SKIPPED;
+            if (hideAvatarWorkerRunning) {
+                hideAvatarReconcileScope = scope;
+                hideAvatarReconcileAttemptsLeft = 2;
                 return STATUS_SKIPPED;
             }
+            if (!statusFetching.add(scope)) return STATUS_SKIPPED;
             statusActivityRevision++;
             requestRevision = statusRevision;
         }
@@ -853,17 +878,25 @@ public final class BannerController {
             return 200;
         } finally {
             statusFetching.remove(scope);
+            requestHideAvatarReconciliation();
         }
     }
 
     private synchronized void startStatusLoop() {
-        if (!BannerConfig.enabled || statusLoopThread != null) return;
+        if (!BannerConfig.enabled || ApplicationLoader.mainInterfacePaused || statusLoopThread != null) return;
         Thread t = new Thread(() -> {
+            try {
             try { Thread.sleep(2000); } catch (InterruptedException ie) { return; }
-            while (Thread.currentThread() == statusLoopThread && BannerConfig.enabled) {
+                while (Thread.currentThread() == statusLoopThread && BannerConfig.enabled
+                        && !ApplicationLoader.mainInterfacePaused) {
                 fetchStatus();
                 reloadSettings();
                 try { Thread.sleep(STATUS_INT); } catch (InterruptedException ie) { return; }
+                }
+            } finally {
+                synchronized (BannerController.this) {
+                    if (Thread.currentThread() == statusLoopThread) statusLoopThread = null;
+                }
             }
         }, "nimarko-banner-status");
         t.setDaemon(true);
@@ -917,7 +950,7 @@ public final class BannerController {
             safeRemove(tmp);
             return;
         }
-        final long operationRevision = beginStatusMutation(operationScope);
+        final long operationRevision = beginStatusMutation(operationScope, true);
         reloadSettings();
         executor.submit(() -> {
             try {
@@ -937,7 +970,7 @@ public final class BannerController {
                 if (r.httpCode == 200) {
                     if (r.success) {
                         synchronized (statusStateLock) {
-                            long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
+                            long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
                             if (committedRevision < 0L) return;
                             myStatus = "pending";
                             statusEverFetched = true;
@@ -956,7 +989,7 @@ public final class BannerController {
                     uiErr(R.string.NM_BAN_RateLimited);
                 } else if (r.httpCode == 403) {
                     synchronized (statusStateLock) {
-                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
+                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
                         if (committedRevision < 0L) return;
                         myStatus = "blocked";
                         statusEverFetched = true;
@@ -965,7 +998,7 @@ public final class BannerController {
                     uiErr(R.string.NM_BAN_BlockedError);
                 } else if (r.httpCode == 409) {
                     synchronized (statusStateLock) {
-                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
+                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
                         if (committedRevision < 0L) return;
                         myStatus = "pending";
                         statusEverFetched = true;
@@ -980,7 +1013,9 @@ public final class BannerController {
                 FileLog.e("nimarko-banner: submitModeration failed", t);
             } finally {
                 moderationSending.remove(operationScope);
+                if (isCurrentScope(operationScope)) invalidate();
                 reloadSettings();
+                requestHideAvatarReconciliation();
             }
         });
     }
@@ -988,27 +1023,154 @@ public final class BannerController {
 
     public void setHideAvatarRemote(boolean v) {
         final Scope operationScope = scope();
-        final long operationRevision = beginStatusMutation(operationScope);
-        executor.submit(() -> {
-            long my = operationScope.uid;
-            if (my == 0 || operationRevision < 0L) { uiErr(R.string.NM_BAN_IdError); return; }
-            int responseCode = BannerHttp.setHideAvatar(my, v);
+        if (operationScope == null || operationScope.uid == 0L) {
+            uiErr(R.string.NM_BAN_IdError);
+            return;
+        }
+        synchronized (statusStateLock) {
+            if (!isCurrentScope(operationScope)) return;
+            statusRevision++;
+            statusActivityRevision++;
+            hideAvatarRequestSerial++;
+            hideAvatarPendingScope = operationScope;
+            hideAvatarPendingValue = v;
+            hideAvatarReconcileScope = operationScope;
+            hideAvatarReconcileAttemptsLeft = 2;
+            if (hideAvatarWorkerRunning) return;
+            hideAvatarWorkerRunning = true;
+        }
+        try {
+            executor.submit(this::drainHideAvatarWrites);
+        } catch (RuntimeException e) {
+            final Scope failedScope;
+            final long failedSerial;
+            synchronized (statusStateLock) {
+                failedScope = hideAvatarPendingScope;
+                failedSerial = hideAvatarRequestSerial;
+                hideAvatarPendingScope = null;
+                hideAvatarWorkerRunning = false;
+                statusRevision++;
+            }
+            FileLog.e("nimarko-banner: hide worker rejected", e);
+            postHideAvatarResult(failedScope, failedSerial, -1);
+            requestHideAvatarReconciliation();
+        }
+    }
+
+    private void drainHideAvatarWrites() {
+        Scope lastScope = null;
+        long lastSerial = -1L;
+        int lastCode = -1;
+        while (true) {
+            final Scope operationScope;
+            final boolean value;
+            final long serial;
+            final long operationRevision;
+            synchronized (statusStateLock) {
+                operationScope = hideAvatarPendingScope;
+                if (operationScope == null || !isCurrentScope(operationScope)) {
+                    hideAvatarPendingScope = null;
+                    hideAvatarWorkerRunning = false;
+                    break;
+                }
+                value = hideAvatarPendingValue;
+                serial = hideAvatarRequestSerial;
+                hideAvatarPendingScope = null;
+                operationRevision = beginStatusMutation(operationScope, false);
+            }
+            int responseCode = -1;
+            try {
+                if (isCurrentScope(operationScope)) {
+                    responseCode = BannerHttp.setHideAvatar(operationScope.uid, value);
+                }
+            } catch (Throwable t) {
+                FileLog.e("nimarko-banner: hide request failed", t);
+            }
+            boolean acknowledged = false;
+            synchronized (statusStateLock) {
+                if (isCurrentScope(operationScope)) {
+                    statusRevision++;
             if (responseCode == 200) {
-                synchronized (statusStateLock) {
-                    long committedRevision = finishStatusMutationLocked(operationScope, operationRevision);
-                    if (committedRevision < 0L) return;
-                    myHideAvatar = v;
+                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, false);
+                        if (committedRevision >= 0L) {
+                            myHideAvatar = value;
                     statusEverFetched = true;
                     persistCurrentStatusLocked(operationScope, committedRevision);
-                }
-                invalidate();
-                uiOk(R.string.NM_BAN_HaUpdated);
-            } else if (responseCode == 429) {
-                uiErr(R.string.NM_BAN_RateLimited);
+                            acknowledged = true;
+                        }
+                    }
             } else {
-                uiErr(R.string.NM_BAN_HaError);
+                    Scope active = currentScope;
+                    if (isCurrentScope(active) && active.account == operationScope.account
+                            && active.uid == operationScope.uid) {
+                        hideAvatarReconcileScope = active;
+                        hideAvatarReconcileAttemptsLeft = 2;
+                    }
+                }
             }
+            if (acknowledged && isCurrentScope(operationScope)) invalidate();
+            lastScope = operationScope;
+            lastSerial = serial;
+            lastCode = responseCode;
+        }
+        postHideAvatarResult(lastScope, lastSerial, lastCode);
             reloadSettings();
+        requestHideAvatarReconciliation();
+    }
+
+    private void requestHideAvatarReconciliation() {
+        final Scope operationScope;
+        final long serial;
+        synchronized (statusStateLock) {
+            operationScope = hideAvatarReconcileScope;
+            if (operationScope == null || hideAvatarWorkerRunning
+                    || !isCurrentScope(operationScope) || statusFetching.contains(operationScope)
+                    || moderationSending.contains(operationScope)
+                    || hideAvatarReconcileAttemptsLeft <= 0) return;
+            serial = hideAvatarRequestSerial;
+            hideAvatarReconcileScope = null;
+            hideAvatarReconcileAttemptsLeft--;
+        }
+        try {
+            executor.submit(() -> {
+                synchronized (statusStateLock) {
+                    if (!isCurrentScope(operationScope) || serial != hideAvatarRequestSerial) return;
+                }
+                int responseCode = fetchStatus(operationScope);
+                if (responseCode == STATUS_SKIPPED) {
+                    synchronized (statusStateLock) {
+                        if (isCurrentScope(operationScope) && serial == hideAvatarRequestSerial
+                                && hideAvatarReconcileAttemptsLeft > 0
+                                && hideAvatarReconcileScope == null) {
+                            hideAvatarReconcileScope = operationScope;
+                        }
+                    }
+                    requestHideAvatarReconciliation();
+                }
+                if (isCurrentScope(operationScope)) reloadSettings();
+            });
+        } catch (RuntimeException e) {
+            FileLog.e("nimarko-banner: hide reconciliation rejected", e);
+        }
+    }
+
+    private void postHideAvatarResult(Scope operationScope, long serial, int responseCode) {
+        AndroidUtilities.runOnUIThread(() -> {
+            synchronized (statusStateLock) {
+                if (!isCurrentScope(operationScope) || serial != hideAvatarRequestSerial
+                        || hideAvatarWorkerRunning || hideAvatarPendingScope != null) return;
+            }
+            try {
+                int message = responseCode == 200 ? R.string.NM_BAN_HaUpdated
+                        : responseCode == 429 ? R.string.NM_BAN_RateLimited : R.string.NM_BAN_HaError;
+                String text = LocaleController.getString(message);
+                BaseFragment fragment = LaunchActivity.getLastFragment();
+                if (fragment != null) {
+                    BulletinFactory.of(fragment).createSimpleBulletin(R.raw.info, text).show();
+                } else {
+                    BulletinFactory.global().createSimpleBulletin(R.raw.info, text).show();
+                }
+            } catch (Throwable ignored) {}
         });
     }
 

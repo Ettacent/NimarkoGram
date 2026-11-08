@@ -1,6 +1,7 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 uniform shader img;
 
-uniform float2 resolution;
 uniform float2 center;
 uniform float2 size;
 uniform float4 radius;
@@ -54,8 +55,9 @@ half4 main(in float2 fragCoord) {
         * clamp(refract_intensity, 0.0, 1.0) * reflection_enabled
         * smoothstep(0.0, 1.0, -sd);
     }
-    uv = clamp(uv, float2(0.5), max(resolution - float2(0.5), float2(0.5)));
   }
+  float2 sampleExtent = max(size - float2(0.5), float2(0.0));
+  uv = clamp(uv, center - sampleExtent, center + sampleExtent);
 
   half4 color = srcOver(half4(foreground_color_premultiplied), img.eval(uv));
   // Preserve coverage, including transparent corners and transition fades.

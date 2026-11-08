@@ -112,7 +112,7 @@ public class NotificationsController extends BaseController implements Notificat
     public static final String EXTRA_VOICE_REPLY = "extra_voice_reply";
     public static String OTHER_NOTIFICATIONS_CHANNEL = null;
 
-    private static final DispatchQueue notificationsQueue = new DispatchQueue("notificationsQueue");
+    private static final DispatchQueue2 notificationsQueue = new DispatchQueue2("notificationsQueue");
     private final ArrayList<MessageObject> pushMessages = new ArrayList<>();
     private final ArrayList<MessageObject> delayedPushMessages = new ArrayList<>();
     private final LongSparseArray<SparseArray<MessageObject>> pushMessagesDict = new LongSparseArray<>();
@@ -299,8 +299,17 @@ public class NotificationsController extends BaseController implements Notificat
             OTHER_NOTIFICATIONS_CHANNEL = "Other" + Utilities.random.nextLong();
             preferences.edit().putString("OtherKey", OTHER_NOTIFICATIONS_CHANNEL).commit();
         }
+        final String channelName = LocaleController.getString(R.string.InternalNotificationsSystemSetting);
+        if (notificationChannel != null && !TextUtils.equals(notificationChannel.getName(), channelName)) {
+            notificationChannel.setName(channelName);
+            try {
+                systemNotificationManager.createNotificationChannel(notificationChannel);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
         if (notificationChannel == null) {
-            notificationChannel = new NotificationChannel(OTHER_NOTIFICATIONS_CHANNEL, "Internal notifications", NotificationManager.IMPORTANCE_DEFAULT);
+            notificationChannel = new NotificationChannel(OTHER_NOTIFICATIONS_CHANNEL, channelName, NotificationManager.IMPORTANCE_DEFAULT);
             notificationChannel.enableLights(false);
             notificationChannel.enableVibration(false);
             notificationChannel.setSound(null, null);
@@ -410,10 +419,13 @@ public class NotificationsController extends BaseController implements Notificat
         return LocaleController.formatString(stringId, name, GramWallet.formatGramsWithUnit(action.amount), action.comment);
     }
     public void cleanup() {
+        getMessagesStorage().invalidateUnreadMessages();
         popupMessages.clear();
         popupReplyMessages.clear();
         channelGroupsCreated = false;
         notificationsQueue.postRunnable(() -> {
+            notificationsQueue.cancelRunnable(notificationDelayRunnable);
+            notificationsQueue.cancelRunnable(checkStoryPushesRunnable);
             notificationManager.cancel("wallet_tonconnect", currentAccount);
             openedDialogId = 0;
             openedTopicId = 0;
@@ -427,6 +439,8 @@ public class NotificationsController extends BaseController implements Notificat
             lastWearNotifiedMessageId.clear();
             openedInBubbleDialogs.clear();
             delayedPushMessages.clear();
+            storyPushMessages.clear();
+            storyPushMessagesDict.clear();
             notifyCheck = false;
             lastBadgeCount = 0;
             try {
@@ -561,6 +575,7 @@ public class NotificationsController extends BaseController implements Notificat
         ArrayList<MessageObject> popupArrayRemove = new ArrayList<>(0);
         notificationsQueue.postRunnable(() -> {
             int old_unread_count = total_unread_count;
+            boolean bannerChanged = false;
             SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
             for (int a = 0; a < deletedMessages.size(); a++) {
                 long key = deletedMessages.keyAt(a);
@@ -607,6 +622,7 @@ public class NotificationsController extends BaseController implements Notificat
 
                         sparseArray.remove(mid);
                         delayedPushMessages.remove(messageObject);
+                        bannerChanged |= invalidateBannerMessage(messageObject);
                         pushMessages.remove(messageObject);
                         if (isPersonalMessage(messageObject)) {
                             personalCount--;
@@ -626,7 +642,7 @@ public class NotificationsController extends BaseController implements Notificat
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
                 });
             }
-            if (old_unread_count != total_unread_count) {
+            if (old_unread_count != total_unread_count || bannerChanged) {
                 if (!notifyCheck) {
                     delayedPushMessages.clear();
                     showOrUpdateNotification(notifyCheck);
@@ -650,6 +666,7 @@ public class NotificationsController extends BaseController implements Notificat
         ArrayList<MessageObject> popupArrayRemove = new ArrayList<>(0);
         notificationsQueue.postRunnable(() -> {
             int old_unread_count = total_unread_count;
+            boolean bannerChanged = false;
             SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
 
             for (int a = 0; a < deletedMessages.size(); a++) {
@@ -673,6 +690,7 @@ public class NotificationsController extends BaseController implements Notificat
                             }
                         }
                         delayedPushMessages.remove(messageObject);
+                        bannerChanged |= invalidateBannerMessage(messageObject);
                         pushMessages.remove(messageObject);
                         c--;
                         if (isPersonalMessage(messageObject)) {
@@ -712,7 +730,7 @@ public class NotificationsController extends BaseController implements Notificat
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
                 });
             }
-            if (old_unread_count != total_unread_count) {
+            if (old_unread_count != total_unread_count || bannerChanged) {
                 if (!notifyCheck) {
                     delayedPushMessages.clear();
                     showOrUpdateNotification(notifyCheck);
@@ -878,7 +896,7 @@ public class NotificationsController extends BaseController implements Notificat
     public void processReadMessages(LongSparseIntArray inbox, long dialogId, int maxDate, int maxId, boolean isPopup) {
         ArrayList<MessageObject> popupArrayRemove = new ArrayList<>(0);
         notificationsQueue.postRunnable(() -> {
-            boolean refreshPendingBanner = pendingBannerDelivery != null;
+            boolean refreshPendingBanner = pendingBannerEvent != null || visibleBannerEvent != null;
             if (inbox != null) {
                 for (int b = 0; b < inbox.size(); b++) {
                     long key = inbox.keyAt(b);
@@ -1130,6 +1148,12 @@ public class NotificationsController extends BaseController implements Notificat
                     long dialogId = messageObject.getDialogId();
                     int id = messageObject.getId();
                     StoryNotification oldNotification = storyPushMessagesDict.get(dialogId);
+                    if (oldNotification != null && oldNotification.unreadMessagesToken != null
+                            && !oldNotification.unreadMessagesToken.isCurrent()) {
+                        storyPushMessages.remove(oldNotification);
+                        storyPushMessagesDict.remove(dialogId);
+                        oldNotification = null;
+                    }
                     StoryNotification notification;
                     if (oldNotification != null) {
                         edited = true;
@@ -1204,7 +1228,9 @@ public class NotificationsController extends BaseController implements Notificat
                         int idxOld = pushMessages.indexOf(oldMessageObject);
                         if (idxOld >= 0) {
                             pushMessages.set(idxOld, messageObject);
-                            replacePendingInAppMessage(oldMessageObject, messageObject);
+                            if (replacePendingInAppMessage(oldMessageObject, messageObject)) {
+                                showOrUpdateNotification(false);
+                            }
                             popup = addToPopupMessages(popupArrayAdd, messageObject, dialogId, isChannel, preferences);
                         }
                         if (isFcm && (edited = messageObject.localEdit)) {
@@ -1569,12 +1595,18 @@ public class NotificationsController extends BaseController implements Notificat
         });
     }
 
-    public void processLoadedUnreadMessages(LongSparseArray<Integer> dialogs, ArrayList<TLRPC.Message> messages, ArrayList<MessageObject> push, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats, ArrayList<TLRPC.EncryptedChat> encryptedChats, Collection<StoryNotification> storyPushes) {
+    public void processLoadedUnreadMessages(LongSparseArray<Integer> dialogs, ArrayList<TLRPC.Message> messages, ArrayList<MessageObject> push, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats, ArrayList<TLRPC.EncryptedChat> encryptedChats, Collection<StoryNotification> storyPushes, MessagesStorage.UnreadMessagesToken token) {
+        if (!token.isCurrent(getMessagesStorage())) {
+            return;
+        }
         getMessagesController().putUsers(users, true);
         getMessagesController().putChats(chats, true);
         getMessagesController().putEncryptedChats(encryptedChats, true);
 
         notificationsQueue.postRunnable(() -> {
+            if (!token.isCurrent(getMessagesStorage())) {
+                return;
+            }
             pushDialogs.clear();
             pushMessages.clear();
             pushMessagesDict.clear();
@@ -1753,6 +1785,7 @@ public class NotificationsController extends BaseController implements Notificat
 
             if (storyPushes != null) {
                 for (StoryNotification notification : storyPushes) {
+                    notification.unreadMessagesToken = token;
                     long dialogId = notification.dialogId;
                     StoryNotification oldNotification = storyPushMessagesDict.get(dialogId);
                     if (oldNotification != null) {
@@ -1765,8 +1798,12 @@ public class NotificationsController extends BaseController implements Notificat
                 Collections.sort(storyPushMessages, Comparator.comparingLong(n -> n.date));
             }
 
+            updateStoryPushesRunnable();
             int pushDialogsCount = pushDialogs.size();
             AndroidUtilities.runOnUIThread(() -> {
+                if (!token.isCurrent(getMessagesStorage())) {
+                    return;
+                }
                 if (total_unread_count == 0) {
                     popupMessages.clear();
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
@@ -1860,6 +1897,10 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     public String getShortStringForMessage(MessageObject messageObject, String[] userName, boolean[] preview) {
+        return getShortStringForMessage(messageObject, userName, preview, null);
+    }
+
+    private String getShortStringForMessage(MessageObject messageObject, String[] userName, boolean[] preview, Boolean contentPreview) {
         if (AndroidUtilities.needShowPasscode() || SharedConfig.isWaitingForPasscodeEnter) {
             return LocaleController.getString(R.string.NotificationHiddenMessage);
         }
@@ -1870,7 +1911,7 @@ public class NotificationsController extends BaseController implements Notificat
             preview[0] = true;
         }
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
-        boolean dialogPreviewEnabled = preferences.getBoolean("content_preview_" + dialogId, true);
+        boolean dialogPreviewEnabled = contentPreview != null ? contentPreview : preferences.getBoolean("content_preview_" + dialogId, true);
         if (messageObject.isFcmMessage()) {
             if (chat_id == 0 && fromId != 0) {
                 if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O_MR1) {
@@ -2468,6 +2509,11 @@ public class NotificationsController extends BaseController implements Notificat
                         }
                     } else if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaToDo) {
                         return LocaleController.getString(R.string.Todo);
+                    } else if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaWidget) {
+                        if (TextUtils.isEmpty(messageObject.messageOwner.message)) {
+                            return LocaleController.getString(R.string.AttachWidget);
+                        }
+                        return replaceSpoilers(messageObject);
                     } else if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaGiveaway) {
                         return LocaleController.getString(R.string.BoostingGiveaway);
                     } else if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaGiveawayResults) {
@@ -4253,13 +4299,63 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private int bannerDeliveryGeneration;
-    private InAppNotifications.Delivery pendingBannerDelivery;
-    private java.util.function.BooleanSupplier pendingBannerValid;
+    private BannerEvent pendingBannerEvent, visibleBannerEvent;
     private final ArrayList<MessageObject> pendingInAppMessages = new ArrayList<>();
 
-    private void replacePendingInAppMessage(MessageObject oldMessage, MessageObject message) {
+    private final class BannerEvent {
+        MessageObject message;
+        final long owner, loginSession, privacy, dialogId, topicId;
+        final boolean previewAllowed;
+        final InAppNotifications.Delivery delivery;
+
+        BannerEvent(MessageObject message, long owner, long loginSession, long privacy) {
+            this.message = message; this.owner = owner; this.loginSession = loginSession; this.privacy = privacy;
+            dialogId = message.getDialogId();
+            topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
+            delivery = new InAppNotifications.Delivery(getInAppChannelHint(message),
+                    () -> privacy == bannerPrivacyRevision.get());
+            previewAllowed = InAppNotifications.canPreview(currentAccount, dialogId, topicId, delivery.channelHint);
+        }
+
+        boolean valid() {
+            return delivery.isActive() && InAppNotifications.isCurrent(currentAccount, owner, loginSession)
+                    && (SharedConfig.showNotificationsForAllAccounts || currentAccount == UserConfig.selectedAccount)
+                    && privacy == bannerPrivacyRevision.get()
+                    && previewAllowed == InAppNotifications.canPreview(currentAccount, dialogId, topicId, delivery.channelHint)
+                    && pushMessages.contains(message)
+                    && InAppNotifications.canNotify(currentAccount, dialogId, topicId, delivery.channelHint)
+                    && (delivery.wasHandled() || isInAppNotificationEligible(message, delivery.channelHint));
+        }
+    }
+
+    private boolean replacePendingInAppMessage(MessageObject oldMessage, MessageObject message) {
         int index = pendingInAppMessages.indexOf(oldMessage);
         if (index >= 0) pendingInAppMessages.set(index, message);
+        boolean owned = pendingBannerEvent != null && pendingBannerEvent.message == oldMessage
+                || visibleBannerEvent != null && visibleBannerEvent.message == oldMessage;
+        replaceBannerMessage(pendingBannerEvent, oldMessage, message);
+        if (visibleBannerEvent != pendingBannerEvent) replaceBannerMessage(visibleBannerEvent, oldMessage, message);
+        return owned;
+    }
+
+    private void replaceBannerMessage(BannerEvent event, MessageObject oldMessage, MessageObject message) {
+        if (event == null || event.message != oldMessage) return;
+        event.message = message;
+        long topic = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
+        if (event.dialogId != message.getDialogId() || event.topicId != topic || !event.valid()
+                || !isInAppNotificationEligible(message, event.delivery.channelHint)) {
+            event.delivery.cancel();
+            return;
+        }
+        try {
+            InAppNotifications.Content content = createInAppNotificationContent(message, event.delivery.channelHint);
+            InAppNotifications.Content previous = event.delivery.getContent();
+            if (previous != null && previous.preview != content.preview) event.delivery.cancel();
+            else event.delivery.setContent(content);
+        } catch (RuntimeException e) {
+            event.delivery.cancel();
+            if (BuildVars.LOGS_ENABLED) FileLog.e(e);
+        }
     }
 
     private MessageObject takePendingInAppMessage() {
@@ -4274,24 +4370,48 @@ public class NotificationsController extends BaseController implements Notificat
         return selected;
     }
 
-    private void cancelBannerDelivery() {
-        ++bannerDeliveryGeneration;
-        pendingBannerValid = null;
-        if (pendingBannerDelivery != null) {
-            if (!pendingBannerDelivery.isComplete()) pendingBannerDelivery.cancel();
-            pendingBannerDelivery = null;
+    private boolean invalidateBannerMessage(MessageObject message) {
+        boolean affected = false;
+        if (pendingBannerEvent != null && pendingBannerEvent.message == message) {
+            pendingBannerEvent.delivery.cancel(); pendingBannerEvent = null; affected = true;
+        }
+        if (visibleBannerEvent != null && visibleBannerEvent.message == message) {
+            visibleBannerEvent.delivery.cancel(); visibleBannerEvent = null; affected = true;
+        }
+        pendingInAppMessages.remove(message);
+        return affected;
+    }
+
+    private void pruneBannerEvents() {
+        if (pendingBannerEvent != null && !pendingBannerEvent.valid()) {
+            pendingBannerEvent.delivery.cancel(); pendingBannerEvent = null;
+        }
+        if (visibleBannerEvent != null && !visibleBannerEvent.valid()) {
+            visibleBannerEvent.delivery.cancel(); visibleBannerEvent = null;
         }
     }
 
+    private void retainVisibleBanner(BannerEvent event) {
+        if (visibleBannerEvent != null && visibleBannerEvent != event) visibleBannerEvent.delivery.cancel();
+        visibleBannerEvent = event;
+        if (pendingBannerEvent == event) pendingBannerEvent = null;
+    }
+    private void cancelBannerDelivery() {
+        ++bannerDeliveryGeneration;
+        if (pendingBannerEvent != null) pendingBannerEvent.delivery.cancel();
+        if (visibleBannerEvent != null) visibleBannerEvent.delivery.cancel();
+        pendingBannerEvent = visibleBannerEvent = null;
+    }
+
     private void showOrUpdateNotification(boolean notifyAboutLast) {
-        if (!notifyAboutLast && pendingBannerDelivery != null) {
-            if (pendingBannerDelivery.isActive() && pendingBannerValid != null && pendingBannerValid.getAsBoolean()) {
-                showOrUpdateNotification(false, null, null);
-                return;
+        pruneBannerEvents();
+        if (notifyAboutLast) {
+            ++bannerDeliveryGeneration;
+            if (pendingBannerEvent != null) {
+                if (pendingBannerEvent.delivery.wasHandled() && pendingBannerEvent.delivery.wasPresented()) retainVisibleBanner(pendingBannerEvent);
+                else { pendingBannerEvent.delivery.cancel(); pendingBannerEvent = null; }
             }
-            pendingBannerDelivery.cancel();
         }
-        cancelBannerDelivery();
         MessageObject bannerMessage = notifyAboutLast ? takePendingInAppMessage() : null;
         showOrUpdateNotification(notifyAboutLast, null, bannerMessage);
     }
@@ -4580,22 +4700,13 @@ public class NotificationsController extends BaseController implements Notificat
                     && isInAppNotificationEligible(bannerMessage)
                     && (bannerMessage == lastMessageObject ? !notifyDisabled
                         : allowInAppSmartNotification(bannerMessage))) {
-                final long bannerDialog = bannerMessage.getDialogId();
-                final long bannerTopic = MessageObject.getTopicId(currentAccount, bannerMessage.messageOwner,
-                        getMessagesController().isForum(bannerMessage));
-                final boolean previewAllowed = InAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic);
-                final InAppNotifications.Delivery delivery = new InAppNotifications.Delivery();
-                pendingBannerDelivery = delivery;
-                pendingBannerValid = () -> InAppNotifications.isCurrent(currentAccount, bannerOwner, bannerSession)
-                        && (SharedConfig.showNotificationsForAllAccounts || currentAccount == UserConfig.selectedAccount)
-                        && bannerPrivacy == bannerPrivacyRevision.get()
-                        && previewAllowed == InAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic)
-                        && pushMessages.contains(bannerMessage)
-                        && InAppNotifications.canNotify(currentAccount, bannerDialog, bannerTopic)
-                        && (delivery.wasHandled() || isInAppNotificationEligible(bannerMessage));
+                final BannerEvent event = new BannerEvent(bannerMessage, bannerOwner, bannerSession, bannerPrivacy);
+                final InAppNotifications.Delivery delivery = event.delivery;
+                pendingBannerEvent = event;
                 final Runnable fallback = () -> {
-                    if (bannerDelivery == bannerDeliveryGeneration && delivery.complete()) {
+                    if (pendingBannerEvent == event && bannerDelivery == bannerDeliveryGeneration && delivery.complete()) {
                         delivery.cancel();
+                        pendingBannerEvent = null;
                         showOrUpdateNotification(false);
                     }
                 };
@@ -4603,28 +4714,27 @@ public class NotificationsController extends BaseController implements Notificat
                     if (!delivery.complete(handled)) return;
                     notificationsQueue.cancelRunnable(fallback);
                     notificationsQueue.postRunnable(() -> {
-                        if (bannerDelivery != bannerDeliveryGeneration
-                                || !InAppNotifications.isCurrent(currentAccount, bannerOwner, bannerSession)
-                                || !SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) {
-                            delivery.cancel();
+                        if (pendingBannerEvent != event || bannerDelivery != bannerDeliveryGeneration) {
+                            if (visibleBannerEvent != event) delivery.cancel();
                             return;
                         }
-                        if (bannerPrivacy != bannerPrivacyRevision.get()
-                                || previewAllowed != InAppNotifications.canPreview(currentAccount, bannerDialog, bannerTopic)
-                                || !pushMessages.contains(bannerMessage) || !isInAppNotificationEligible(bannerMessage)) {
+                        if (!event.valid() || !isInAppNotificationEligible(event.message, delivery.channelHint)) {
                             delivery.cancel();
+                            pendingBannerEvent = null;
                             showOrUpdateNotification(false);
                             return;
                         }
-                        showOrUpdateNotification(notifyAboutLast, handled && InAppNotifications.isAvailable(), bannerMessage);
+                        boolean inApp = handled && InAppNotifications.isAvailable();
+                        if (inApp && delivery.wasPresented()) retainVisibleBanner(event);
+                        else { delivery.cancel(); pendingBannerEvent = null; }
+                        showOrUpdateNotification(notifyAboutLast, inApp, event.message);
                     });
                 })) {
                     notificationsQueue.postRunnable(fallback, 5000);
                     return;
                 }
                 delivery.cancel();
-                pendingBannerDelivery = null;
-                pendingBannerValid = null;
+                if (pendingBannerEvent == event) pendingBannerEvent = null;
             }
             int chatType = TYPE_PRIVATE;
 
@@ -4978,6 +5088,10 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private boolean isInAppNotificationEligible(MessageObject message) {
+        return isInAppNotificationEligible(message, message == null ? null : getInAppChannelHint(message));
+    }
+
+    private boolean isInAppNotificationEligible(MessageObject message, Boolean channelHint) {
         if (!app.nimarkogram.messenger.notifications.InAppNotifications.isAvailable()
                 || !getAccountInstance().getNotificationsSettings().getBoolean("EnableInAppPopup", true)
                 || MediaController.getInstance().isRecordingAudio()
@@ -4991,7 +5105,7 @@ public class NotificationsController extends BaseController implements Notificat
         if (age < -5 || age > 120 || date <= preferences.getInt("dismissDate", 0)
                 || date <= preferences.getInt("dismissDate" + dialogId, 0)) return false;
         long topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
-        if (!InAppNotifications.canNotify(currentAccount, dialogId, topicId)
+        if (!InAppNotifications.canNotify(currentAccount, dialogId, topicId, channelHint)
                 || !preferences.getBoolean("sound_enabled_" + getSharedPrefKey(dialogId, topicId), true)) return false;
         long senderId = message.isFromUser() ? message.getFromChatId() : dialogId > 0 ? dialogId : 0;
         return !AppConfig.silenceNonContacts || senderId <= 0
@@ -5024,12 +5138,14 @@ public class NotificationsController extends BaseController implements Notificat
         return true;
     }
 
-    private boolean offerInAppNotification(MessageObject message, long owner, long loginSession, InAppNotifications.Delivery delivery, java.util.function.Consumer<Boolean> completion) {
-        if (!isInAppNotificationEligible(message)) return false;
+    private Boolean getInAppChannelHint(MessageObject message) {
+        return message.isFcmMessage() ? message.localChannel : null;
+    }
+
+    private InAppNotifications.Content createInAppNotificationContent(MessageObject message, Boolean channelHint) {
         long dialogId = message.getDialogId();
-        try {
             long topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
-            boolean preview = app.nimarkogram.messenger.notifications.InAppNotifications.canPreview(currentAccount, dialogId, topicId)
+        boolean preview = app.nimarkogram.messenger.notifications.InAppNotifications.canPreview(currentAccount, dialogId, topicId, channelHint)
                     && message.messageOwner.rich_message == null
                     && TextUtils.isEmpty(getMessagesController().getRestrictionReason(message.messageOwner.restriction_reason));
             TLRPC.Chat peerChat = dialogId < 0 ? getMessagesController().getChat(-dialogId) : null;
@@ -5041,7 +5157,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (preview) {
                 String[] sender = new String[1];
                 boolean[] hasPreview = new boolean[1];
-                String formatted = getShortStringForMessage(message, sender, hasPreview);
+            String formatted = getShortStringForMessage(message, sender, hasPreview, preview);
                 preview = hasPreview[0] && !TextUtils.isEmpty(formatted);
                 if (preview) {
                     text = app.nimarkogram.messenger.utils.LatexHelper.cleanForPreview(formatted);
@@ -5060,8 +5176,17 @@ public class NotificationsController extends BaseController implements Notificat
             }
             if (title.length() > 128) title = title.substring(0, title.offsetByCodePoints(0, 64)) + "…";
             if (text.length() > 512) text = text.substring(0, text.offsetByCodePoints(0, 256)) + "…";
-            return app.nimarkogram.messenger.notifications.InAppNotifications.offer(currentAccount, owner, loginSession, dialogId,
-                    topicId, message.getId(), message.messageOwner.random_id, title, text, preview, delivery, completion);
+        return new InAppNotifications.Content(message.getId(), message.messageOwner.random_id, title, text, preview);
+    }
+
+    private boolean offerInAppNotification(MessageObject message, long owner, long loginSession, InAppNotifications.Delivery delivery, java.util.function.Consumer<Boolean> completion) {
+        if (!isInAppNotificationEligible(message, delivery.channelHint)) return false;
+        try {
+            InAppNotifications.Content content = createInAppNotificationContent(message, delivery.channelHint);
+            delivery.setContent(content);
+            long topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, getMessagesController().isForum(message));
+            return InAppNotifications.offer(currentAccount, owner, loginSession, message.getDialogId(),
+                    topicId, content.messageId, content.randomId, content.title, content.text, content.preview, delivery, completion);
         } catch (RuntimeException e) {
             if (BuildVars.LOGS_ENABLED) FileLog.e(e);
             return false;
@@ -5133,6 +5258,7 @@ public class NotificationsController extends BaseController implements Notificat
         if (Build.VERSION.SDK_INT >= 26) {
             notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
         }
+        notificationBuilder.setOnlyAlertOnce(isSilent);
         Notification mainNotification = notificationBuilder.build();
         if (Build.VERSION.SDK_INT <= 19) {
             notificationManager.notify(notificationId, mainNotification);
@@ -5913,6 +6039,7 @@ public class NotificationsController extends BaseController implements Notificat
                     .setContentIntent(contentIntent)
                     .extend(wearableExtender)
                     .setSortKey(String.valueOf(Long.MAX_VALUE - date))
+                    .setOnlyAlertOnce(isSilent || dialogId != lastDialogId || topicId != lastTopicId)
                     .setCategory(NotificationCompat.CATEGORY_MESSAGE);
 
             try {
@@ -6716,6 +6843,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     public static class StoryNotification {
+        MessagesStorage.UnreadMessagesToken unreadMessagesToken;
         final long dialogId;
         String localName;
         final HashMap<Integer, Pair<Long, Long>> dateByIds = new HashMap<>();
@@ -6750,6 +6878,15 @@ public class NotificationsController extends BaseController implements Notificat
         final long now = System.currentTimeMillis();
         for (int i = 0; i < storyPushMessages.size(); ++i) {
             StoryNotification push = storyPushMessages.get(i);
+            if (push.unreadMessagesToken != null && !push.unreadMessagesToken.isCurrent()) {
+                storyPushMessages.remove(i--);
+                if (storyPushMessagesDict.get(push.dialogId) == push) {
+                    storyPushMessagesDict.remove(push.dialogId);
+                }
+                changed = true;
+                continue;
+            }
+            boolean rowChanged = false;
             Iterator<Map.Entry<Integer, Pair<Long, Long>>> it = push.dateByIds.entrySet().iterator();
             while (it.hasNext()) {
                 Map.Entry<Integer, Pair<Long, Long>> e = it.next();
@@ -6757,15 +6894,19 @@ public class NotificationsController extends BaseController implements Notificat
                 if (now >= expire_date) {
                     it.remove();
                     changed = true;
+                    rowChanged = true;
                 }
             }
-            if (changed) {
+            if (rowChanged) {
                 if (push.dateByIds.isEmpty()) {
-                    getMessagesStorage().deleteStoryPushMessage(push.dialogId);
+                    getMessagesStorage().deleteStoryPushMessage(push.dialogId, push.unreadMessagesToken);
                     storyPushMessages.remove(i);
+                    if (storyPushMessagesDict.get(push.dialogId) == push) {
+                        storyPushMessagesDict.remove(push.dialogId);
+                    }
                     i--;
                 } else {
-                    getMessagesStorage().putStoryPushMessage(push);
+                    getMessagesStorage().putStoryPushMessage(push, push.unreadMessagesToken);
                 }
             }
         }
@@ -6781,6 +6922,9 @@ public class NotificationsController extends BaseController implements Notificat
         long minChangeTime = Long.MAX_VALUE;
         for (int i = 0; i < storyPushMessages.size(); ++i) {
             StoryNotification push = storyPushMessages.get(i);
+            if (push.unreadMessagesToken != null && !push.unreadMessagesToken.isCurrent()) {
+                continue;
+            }
             for (Pair<Long, Long> d : push.dateByIds.values()) {
                 minChangeTime = Math.min(minChangeTime, d.second);
             }

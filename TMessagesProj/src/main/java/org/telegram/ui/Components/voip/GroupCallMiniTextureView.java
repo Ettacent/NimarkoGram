@@ -4,6 +4,7 @@ package org.telegram.ui.Components.voip;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import org.telegram.messenger.FileLog;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -61,6 +62,7 @@ import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BlobDrawable;
 import org.telegram.ui.Components.CrossOutDrawable;
@@ -566,7 +568,7 @@ public class GroupCallMiniTextureView extends FrameLayout implements GroupCallSt
         noRtmpStreamTextView = new TextView(parentContainer.getContext());
         noRtmpStreamTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         noRtmpStreamTextView.setPadding(dp(21), 0, dp(21), 0);
-        noRtmpStreamTextView.setTextColor(Theme.getColor(Theme.key_voipgroup_lastSeenText));
+        ThemeBind.textColor(noRtmpStreamTextView, Theme.key_voipgroup_lastSeenText);
         noRtmpStreamTextView.setBackground(rippleDrawable);
         noRtmpStreamTextView.setGravity(Gravity.CENTER);
         noRtmpStreamTextView.setAlpha(0f);
@@ -1459,7 +1461,7 @@ public class GroupCallMiniTextureView extends FrameLayout implements GroupCallSt
                     VoIPService.getSharedInstance().setLocalSink(null, participant.presentation);
                 }
             } else {
-                if (VoIPService.getSharedInstance() != null && !RTMPStreamPipOverlay.isVisible()) {
+                if (VoIPService.getSharedInstance() != null) {
                     VoIPService.getSharedInstance().removeRemoteSink(participant.participant, participant.presentation);
                 }
             }
@@ -1619,7 +1621,7 @@ public class GroupCallMiniTextureView extends FrameLayout implements GroupCallSt
         }
     }
 
-    private class NoVideoStubLayout extends View {
+    private class NoVideoStubLayout extends View implements Theme.Colorable {
 
         public ImageReceiver avatarImageReceiver = new ImageReceiver();
         public ImageReceiver backgroundImageReceiver = new ImageReceiver();
@@ -1809,6 +1811,16 @@ public class GroupCallMiniTextureView extends FrameLayout implements GroupCallSt
             super.onDetachedFromWindow();
             avatarImageReceiver.onDetachedFromWindow();
             backgroundImageReceiver.onDetachedFromWindow();
+        }
+        @Override
+        public void updateColors() {
+            try {
+                paint.setColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_voipgroup_listeningText), Theme.getColor(Theme.key_voipgroup_speakingText), speakingProgress));
+                invalidate();
+
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
         }
     }
 

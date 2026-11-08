@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.annotation.SuppressLint;
@@ -66,7 +68,7 @@ public class SMSJobsNotification extends Service {
                         ApplicationLoader.applicationContext.startService(service[currentAccount]);
                     }
                 } catch (RuntimeException startFailure) {
-                    
+
                     FileLog.e(startFailure);
                     service[currentAccount] = null;
                     showNotification = false;
@@ -185,4 +187,12 @@ public class SMSJobsNotification extends Service {
             FileLog.e(e);
         }
     }
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        FileLog.d("SMSJobsNotification timeout, type = " + fgsType);
+        try {
+            stopForeground(true);
+        } catch (Throwable ignore) {}
+        stopSelf();
+}
 }

@@ -331,10 +331,13 @@ public class DownloadController extends BaseController implements NotificationCe
             loadAutoDownloadConfig(false);
         });
 
+        Utilities.globalQueue.postRunnable(() -> {
         BroadcastReceiver networkStateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
+                    if (getUserConfig().isClientActivated()) {
                 checkAutodownloadSettings();
+                    }
             }
         };
         IntentFilter filter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
@@ -344,6 +347,12 @@ public class DownloadController extends BaseController implements NotificationCe
             ApplicationLoader.applicationContext.registerReceiver(networkStateReceiver, filter);
         }
 
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getUserConfig().isClientActivated()) {
+                    checkAutodownloadSettings();
+                }
+            });
+        });
         if (getUserConfig().isClientActivated()) {
             checkAutodownloadSettings();
         }

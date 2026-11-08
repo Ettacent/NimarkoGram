@@ -116,13 +116,14 @@ public class ImageLoader {
     private LinkedList<HttpImageTask> httpTasks = new LinkedList<>();
     private LinkedList<ArtworkLoadTask> artworkTasks = new LinkedList<>();
     private DispatchQueuePriority cacheOutQueue = new DispatchQueuePriority("cacheOutQueue");
-    private DispatchQueue cacheThumbOutQueue = new DispatchQueue("cacheThumbOutQueue");
-    private DispatchQueue thumbGeneratingQueue = new DispatchQueue("thumbGeneratingQueue");
-    private DispatchQueue imageLoadQueue = new DispatchQueue("imageLoadQueue");
+    private DispatchQueue2 cacheThumbOutQueue = new DispatchQueue2("cacheThumbOutQueue");
+    private DispatchQueue2 thumbGeneratingQueue = new DispatchQueue2("thumbGeneratingQueue");
+    private DispatchQueue2 imageLoadQueue = new DispatchQueue2("imageLoadQueue");
     private HashMap<String, String> replacedBitmaps = new HashMap<>();
     private ConcurrentHashMap<String, long[]> fileProgresses = new ConcurrentHashMap<>();
     private HashMap<String, ThumbGenerateTask> thumbGenerateTasks = new HashMap<>();
     private HashMap<String, Integer> forceLoadingImages = new HashMap<>();
+    private static final int MAX_RETAINED_IMAGE_BUFFER_SIZE = 256 * 1024;
     private static ThreadLocal<byte[]> bytesLocal = new ThreadLocal<>();
     private static ThreadLocal<byte[]> bytesThumbLocal = new ThreadLocal<>();
     private static byte[] header = new byte[12];
@@ -161,6 +162,17 @@ public class ImageLoader {
         return false;
     }
 
+    private static byte[] getImageDecodeBuffer(ThreadLocal<byte[]> local, int size) {
+        if (size > MAX_RETAINED_IMAGE_BUFFER_SIZE) {
+            return new byte[size];
+        }
+        byte[] bytes = local.get();
+        if (bytes == null || bytes.length < size) {
+            bytes = new byte[size];
+            local.set(bytes);
+        }
+        return bytes;
+    }
     public static Drawable createStripedBitmap(ArrayList<TLRPC.PhotoSize> thumbs) {
         for (int i = 0; i < thumbs.size(); i++) {
             if (thumbs.get(i) instanceof TLRPC.TL_photoStrippedSize) {
@@ -866,6 +878,7 @@ public class ImageLoader {
 
         @Override
         public void run() {
+            try {
             synchronized (sync) {
                 runningThread = Thread.currentThread();
                 Thread.interrupted();
@@ -874,7 +887,6 @@ public class ImageLoader {
                 }
             }
 
-            try {
                 runInternal();
             } catch (Throwable error) {
                 FileLog.e(error);
@@ -887,6 +899,7 @@ public class ImageLoader {
                 synchronized (sync) {
                     runningThread = null;
                 }
+                Thread.interrupted();
             }
         }
 
@@ -1165,8 +1178,8 @@ public class ImageLoader {
                 if (fistFrame) {
                     Bitmap bitmap = fileDrawable.getFrameAtTime(0, false);
 
-                    fileDrawable.recycle();
                     Thread.interrupted();
+                    fileDrawable.recycle();
                     if (bitmap == null) {
                         onPostExecute(null);
                     } else {
@@ -1269,12 +1282,7 @@ public class ImageLoader {
                                 if (secureDocumentKey != null) {
                                     RandomAccessFile f = new RandomAccessFile(cacheFileFinal, "r");
                                     int len = (int) f.length();
-                                    byte[] bytes = bytesLocal.get();
-                                    byte[] data = bytes != null && bytes.length >= len ? bytes : null;
-                                    if (data == null) {
-                                        bytes = data = new byte[len];
-                                        bytesLocal.set(bytes);
-                                    }
+                                    byte[] data = getImageDecodeBuffer(bytesLocal, len);
                                     f.readFully(data, 0, len);
                                     f.close();
                                     EncryptedFileInputStream.decryptBytesWithKeyFile(data, 0, len, secureDocumentKey);
@@ -1367,12 +1375,7 @@ public class ImageLoader {
                             RandomAccessFile f = new RandomAccessFile(cacheFileFinal, "r");
                             int len = (int) f.length();
                             int offset = 0;
-                            byte[] bytesThumb = bytesThumbLocal.get();
-                            byte[] data = bytesThumb != null && bytesThumb.length >= len ? bytesThumb : null;
-                            if (data == null) {
-                                bytesThumb = data = new byte[len];
-                                bytesThumbLocal.set(bytesThumb);
-                            }
+                            byte[] data = getImageDecodeBuffer(bytesThumbLocal, len);
                             f.readFully(data, 0, len);
                             f.close();
                             boolean error = false;
@@ -1522,12 +1525,7 @@ public class ImageLoader {
                                     RandomAccessFile f = new RandomAccessFile(cacheFileFinal, "r");
                                     int len = (int) f.length();
                                     int offset = 0;
-                                    byte[] bytes = bytesLocal.get();
-                                    byte[] data = bytes != null && bytes.length >= len ? bytes : null;
-                                    if (data == null) {
-                                        bytes = data = new byte[len];
-                                        bytesLocal.set(bytes);
-                                    }
+                                    byte[] data = getImageDecodeBuffer(bytesLocal, len);
                                     f.readFully(data, 0, len);
                                     f.close();
                                     boolean error = false;
@@ -1828,12 +1826,7 @@ public class ImageLoader {
 
         try {
         int len = photoBytes.length - 3 + Bitmaps.header.length + Bitmaps.footer.length;
-        byte[] bytes = bytesLocal.get();
-        byte[] data = bytes != null && bytes.length >= len ? bytes : null;
-        if (data == null) {
-            bytes = data = new byte[len];
-            bytesLocal.set(bytes);
-        }
+            byte[] data = getImageDecodeBuffer(bytesLocal, len);
         System.arraycopy(Bitmaps.header, 0, data, 0, Bitmaps.header.length);
         System.arraycopy(photoBytes, 3, data, Bitmaps.header.length, photoBytes.length - 3);
         System.arraycopy(Bitmaps.footer, 0, data, Bitmaps.header.length + photoBytes.length - 3, Bitmaps.footer.length);

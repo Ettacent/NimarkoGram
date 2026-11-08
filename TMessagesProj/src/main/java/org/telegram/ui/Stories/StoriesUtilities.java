@@ -24,6 +24,7 @@ import android.graphics.drawable.Drawable;
 import android.text.SpannableStringBuilder;
 import android.text.TextPaint;
 import app.nimarkogram.messenger.utils.ui.SystemTextPaint;
+import app.nimarkogram.messenger.utils.ProfileAppearanceMotion;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -39,6 +40,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -48,6 +50,7 @@ import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
@@ -56,6 +59,7 @@ import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AnimatedColor;
 import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.AvatarDrawable;
@@ -875,14 +879,14 @@ public class StoriesUtilities {
             errorGradientTools = new GradientTools();
             errorGradientTools.isDiagonal = true;
             errorGradientTools.isRotate = true;
-            int orange = Theme.getColor(Theme.key_color_orange);
-            final int red = Theme.getColor(Theme.key_text_RedBold);
-            orange = ColorUtils.blendARGB(orange, red, .25f);
-            errorGradientTools.setColors(orange, red);
             errorGradientTools.paint.setStrokeWidth(AndroidUtilities.dpf2(2f));
             errorGradientTools.paint.setStyle(Paint.Style.STROKE);
             errorGradientTools.paint.setStrokeCap(Paint.Cap.ROUND);
         }
+        int errorOrange = Theme.getColor(Theme.key_color_orange);
+        final int errorRed = Theme.getColor(Theme.key_text_RedBold);
+        errorOrange = ColorUtils.blendARGB(errorOrange, errorRed, .25f);
+        errorGradientTools.setColors(errorOrange, errorRed);
         errorGradientTools.setBounds(avatarImage.getImageX(), avatarImage.getImageY(), avatarImage.getImageX2(), avatarImage.getImageY2());
         return errorGradientTools.paint;
     }
@@ -892,14 +896,14 @@ public class StoriesUtilities {
             errorGradientTools = new GradientTools();
             errorGradientTools.isDiagonal = true;
             errorGradientTools.isRotate = true;
-            int orange = Theme.getColor(Theme.key_color_orange);
-            final int red = Theme.getColor(Theme.key_text_RedBold);
-            orange = ColorUtils.blendARGB(orange, red, .25f);
-            errorGradientTools.setColors(orange, red);
             errorGradientTools.paint.setStrokeWidth(AndroidUtilities.dpf2(2f));
             errorGradientTools.paint.setStyle(Paint.Style.STROKE);
             errorGradientTools.paint.setStrokeCap(Paint.Cap.ROUND);
         }
+        int errorOrange = Theme.getColor(Theme.key_color_orange);
+        final int errorRed = Theme.getColor(Theme.key_text_RedBold);
+        errorOrange = ColorUtils.blendARGB(errorOrange, errorRed, .25f);
+        errorGradientTools.setColors(errorOrange, errorRed);
         errorGradientTools.setBounds(rect.left, rect.top, rect.right, rect.bottom);
         return errorGradientTools.paint;
     }
@@ -1598,7 +1602,7 @@ public class StoriesUtilities {
     }
 
     public static class StoryGradientTools {
-        public final int currentAccount = UserConfig.selectedAccount;
+        public final int currentAccount;
 
         private final Runnable invalidate;
         private final boolean isDialogCell;
@@ -1608,10 +1612,19 @@ public class StoriesUtilities {
         private final AnimatedColor animatedColor1, animatedColor2;
 
         public StoryGradientTools(View view, boolean isDialogCell) {
-            this(view::invalidate, isDialogCell);
+            this(UserConfig.selectedAccount, view, isDialogCell);
+        }
+
+        public StoryGradientTools(int currentAccount, View view, boolean isDialogCell) {
+            this(currentAccount, view::invalidate, isDialogCell);
         }
 
         public StoryGradientTools(Runnable invalidate, boolean isDialogCell) {
+            this(UserConfig.selectedAccount, invalidate, isDialogCell);
+        }
+
+        private StoryGradientTools(int currentAccount, Runnable invalidate, boolean isDialogCell) {
+            this.currentAccount = currentAccount;
             this.invalidate = invalidate;
             this.isDialogCell = isDialogCell;
 
@@ -1628,19 +1641,11 @@ public class StoriesUtilities {
         }
 
         public void setUser(TLRPC.User user, boolean animated) {
-            int colorId = -1;
-            if (user != null && user.profile_color != null) {
-                colorId = user.profile_color.color;
-            }
-            setColorId(colorId, animated);
+            setColorId(user == null ? -1 : UserObject.getProfileColorId(user), animated);
         }
 
         public void setChat(TLRPC.Chat chat, boolean animated) {
-            int colorId = -1;
-            if (chat != null && chat.profile_color != null) {
-                colorId = chat.profile_color.color;
-            }
-            setColorId(colorId, animated);
+            setColorId(chat == null ? -1 : ChatObject.getProfileColorId(chat), animated);
         }
 
         public void setColorId(int colorId, boolean animated) {
@@ -1649,9 +1654,15 @@ public class StoriesUtilities {
             setColor(peerColor, animated);
         }
 
+        private boolean colorsFromTheme;
+        private MessagesController.PeerColor currentPeerColor;
+        private int lastThemeGeneration;
         public void setColor(MessagesController.PeerColor peerColor, boolean animated) {
 
+            currentPeerColor = peerColor;
+            lastThemeGeneration = ThemeBind.generation();
             if (peerColor != null && app.nimarkogram.messenger.AppConfig.profileBackgroundColor) {
+                colorsFromTheme = false;
                 setColors(
                     peerColor.getStoryColor1(Theme.isCurrentThemeDark()),
                     peerColor.getStoryColor2(Theme.isCurrentThemeDark()),
@@ -1663,6 +1674,9 @@ public class StoriesUtilities {
         }
 
         private void resetColors(boolean animated) {
+            colorsFromTheme = true;
+            currentPeerColor = null;
+            lastThemeGeneration = ThemeBind.generation();
             if (isDialogCell) {
                 setColors(Theme.getColor(Theme.key_stories_circle_dialog1), Theme.getColor(Theme.key_stories_circle_dialog2), animated);
             } else {
@@ -1671,6 +1685,7 @@ public class StoriesUtilities {
         }
 
         private void setColors(int color1, int color2, boolean animated) {
+            animated = animated && ProfileAppearanceMotion.isEnabled();
             this.color1 = color1;
             this.color2 = color2;
             if (!animated) {
@@ -1682,7 +1697,43 @@ public class StoriesUtilities {
             }
         }
 
+        private void checkThemeColors() {
+            if (lastThemeGeneration == ThemeBind.generation()) {
+                return;
+            }
+            lastThemeGeneration = ThemeBind.generation();
+            try {
+                int c1, c2;
+                if (colorsFromTheme) {
+                    if (isDialogCell) {
+                        c1 = Theme.getColor(Theme.key_stories_circle_dialog1);
+                        c2 = Theme.getColor(Theme.key_stories_circle_dialog2);
+                    } else {
+                        c1 = Theme.getColor(Theme.key_stories_circle1);
+                        c2 = Theme.getColor(Theme.key_stories_circle2);
+                    }
+                } else if (currentPeerColor != null) {
+                    c1 = currentPeerColor.getStoryColor1(Theme.isCurrentThemeDark());
+                    c2 = currentPeerColor.getStoryColor2(Theme.isCurrentThemeDark());
+                } else {
+                    return;
+                }
+                if (c1 != color1 || c2 != color2) {
+                    color1 = c1;
+                    color2 = c2;
+                    animatedColor1.set(c1, true);
+                    animatedColor2.set(c2, true);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
         public Paint getPaint(RectF bounds) {
+            checkThemeColors();
+            if (!ProfileAppearanceMotion.isEnabled()) {
+                animatedColor1.set(color1, true);
+                animatedColor2.set(color2, true);
+            }
             tools.setColors(animatedColor1.set(color1), animatedColor2.set(color2));
             tools.setBounds(bounds.left, bounds.top, bounds.right, bounds.bottom);
             return tools.paint;

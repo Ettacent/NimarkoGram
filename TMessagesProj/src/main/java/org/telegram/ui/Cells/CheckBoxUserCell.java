@@ -22,6 +22,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CombinedDrawable;
@@ -42,7 +43,7 @@ public class CheckBoxUserCell extends FrameLayout {
         super(context);
 
         textView = new SimpleTextView(context);
-        textView.setTextColor(Theme.getColor(alert ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(textView, alert ? Theme.key_dialogTextBlack : Theme.key_windowBackgroundWhiteBlackText);
         textView.setTextSize(16);
         textView.setEllipsizeByGradient(true);
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
@@ -64,6 +65,7 @@ public class CheckBoxUserCell extends FrameLayout {
     }
 
     public void setTextColor(int color) {
+        ThemeBind.clear(textView);
         textView.setTextColor(color);
     }
 

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -17,7 +19,7 @@ import android.view.View;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.Theme;
 
-public class ContextProgressView extends View {
+public class ContextProgressView extends View implements Theme.Colorable {
 
     private Paint innerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Paint outerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -61,6 +63,7 @@ public class ContextProgressView extends View {
         updateColors();
     }
 
+    @Override
     public void updateColors() {
         if (innerKey >= 0) {
             innerPaint.setColor(Theme.getColor(innerKey));

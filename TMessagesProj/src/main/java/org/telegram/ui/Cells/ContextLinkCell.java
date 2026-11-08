@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -85,6 +87,7 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
     private Object parentObject;
     private Theme.ResourcesProvider resourcesProvider;
 
+    private org.telegram.ui.Components.WidgetInlinePreview widgetPreview;
     private boolean needDivider;
     private boolean buttonPressed;
     private boolean needShadow;
@@ -189,6 +192,13 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
             return;
         }
 
+        if (widgetPreview != null) {
+            int viewWidth = MeasureSpec.getSize(widthMeasureSpec);
+            int width = viewWidth - AndroidUtilities.dp(mediaWebpage ? 4 : 16);
+            setMeasuredDimension(viewWidth, widgetPreview.heightPx(width) + AndroidUtilities.dp(mediaWebpage ? 4 : 12) + (needDivider ? 1 : 0));
+            if (isAttachedToWindow()) widgetPreview.show(width);
+            return;
+        }
         int viewWidth = MeasureSpec.getSize(widthMeasureSpec);
         int maxWidth = viewWidth - AndroidUtilities.dp(AndroidUtilities.leftBaseline) - AndroidUtilities.dp(8);
 
@@ -536,6 +546,9 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
         }
         mediaWebpage = media;
         isForceGif = forceGif;
+        if (widgetPreview != null) widgetPreview.hide();
+        widgetPreview = org.telegram.ui.Components.WidgetInlinePreview.supports(contextResult)
+                ? new org.telegram.ui.Components.WidgetInlinePreview(this, currentAccount, contextResult, resourcesProvider) : null;
         setAttachType();
         if (forceGif) {
             documentAttachType = DOCUMENT_ATTACH_TYPE_GIF;
@@ -634,6 +647,7 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
 
         radialProgress.onDetachedFromWindow();
         DownloadController.getInstance(currentAccount).removeLoadingFileObserver(this);
+        if (widgetPreview != null) widgetPreview.hide();
     }
 
     @Override
@@ -643,6 +657,7 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
             updateButtonState(false, false);
         }
         radialProgress.onAttachedToWindow();
+        if (widgetPreview != null && getMeasuredWidth() > 0) widgetPreview.show(getMeasuredWidth() - AndroidUtilities.dp(mediaWebpage ? 4 : 16));
     }
 
     public MessageObject getMessageObject() {
@@ -756,6 +771,13 @@ public class ContextLinkCell extends FrameLayout implements DownloadController.F
 
     @Override
     protected void onDraw(Canvas canvas) {
+        if (widgetPreview != null) {
+            widgetPreview.draw(canvas, AndroidUtilities.dp(mediaWebpage ? 2 : 8), AndroidUtilities.dp(mediaWebpage ? 2 : 6));
+            if (needDivider && !mediaWebpage) {
+                canvas.drawLine(0, getMeasuredHeight() - 1, getMeasuredWidth(), getMeasuredHeight() - 1, Theme.dividerPaint);
+            }
+            return;
+        }
         if (checkBox != null) {
             if (checkBox.isChecked() || !linkImageView.hasBitmapImage() || linkImageView.getCurrentAlpha() != 1.0f || PhotoViewer.isShowingImage((MessageObject) parentObject)) {
                 canvas.drawRect(0, 0, getMeasuredWidth(), getMeasuredHeight(), backgroundPaint);

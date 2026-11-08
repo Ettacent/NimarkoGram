@@ -1,13 +1,18 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.emojiview;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.ShapeDrawable;
 import android.os.Build;
 
 import androidx.core.graphics.ColorUtils;
 
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.utils.ViewOutlineProviderImpl;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -38,7 +43,35 @@ public class FoundStickerPackButton extends ButtonWithCounterView implements Fac
         checkUi_colors();
     }
 
+    private boolean uiColorsApplied;
+
+    @Override
+    public void updateColors() {
+        super.updateColors();
+        if (animatorIsPrimary == null || !uiColorsApplied) {
+            return;
+        }
+        try {
+            final float factor = animatorIsPrimary.getFloatValue();
+            final int color = ColorUtils.blendARGB(
+                getThemedColor(Theme.key_windowBackgroundWhite),
+                getThemedColor(Theme.key_featuredStickers_addButton), factor);
+            final Drawable background = getBackground();
+            if (background instanceof ShapeDrawable) {
+                if (((ShapeDrawable) background).getPaint().getColor() != color) {
+                    ((ShapeDrawable) background).getPaint().setColor(color);
+                    background.invalidateSelf();
+                }
+            }
+            setTextColor(ColorUtils.blendARGB(
+                getThemedColor(Theme.key_text_RedBold),
+                getThemedColor(Theme.key_featuredStickers_buttonText), factor));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
     private void checkUi_colors() {
+        uiColorsApplied = true;
         final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
         final float factor = animatorIsPrimary.getFloatValue();
 

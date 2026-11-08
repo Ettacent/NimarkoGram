@@ -12,6 +12,7 @@ package org.telegram.ui.Cells;
 
 import static org.telegram.messenger.LocaleController.getString;
 
+import org.telegram.messenger.FileLog;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.util.TypedValue;
@@ -27,6 +28,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CheckBox2;
@@ -34,7 +36,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.ProgressButton;
 
 @SuppressLint("ViewConstructor")
-public class InviteUserCell extends FrameLayout {
+public class InviteUserCell extends FrameLayout implements Theme.Colorable {
 
     private final BackupImageView avatarImageView;
     private final SimpleTextView nameTextView;
@@ -62,7 +64,7 @@ public class InviteUserCell extends FrameLayout {
         nameAndButton.addView(namesLayout, LayoutHelper.createLinear(0, 58, 1f));
 
         nameTextView = new SimpleTextView(context);
-        nameTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(nameTextView, Theme.key_windowBackgroundWhiteBlackText);
         nameTextView.setTypeface(AndroidUtilities.bold());
         nameTextView.setTextSize(15);
         nameTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
@@ -86,9 +88,9 @@ public class InviteUserCell extends FrameLayout {
             button = new ProgressButton(context);
             button.setText(getString(R.string.Invite));
             button.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            button.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
+            ThemeBind.textColor(button, Theme.key_featuredStickers_buttonText);
             button.setProgressColor(Theme.getColor(Theme.key_featuredStickers_buttonProgress));
-            button.setBackgroundRoundRect(Theme.getColor(Theme.key_telegram_color), Theme.getColor(Theme.key_featuredStickers_addButtonPressed), 16);
+            ThemeBind.selectorBackground(button, Theme.AdaptiveRipple.filledRect(Theme.getColor(Theme.key_telegram_color), 16), ThemeBind.of(Theme.key_telegram_color), ThemeBind.adaptiveRipple(Theme.key_telegram_color));
             button.setPadding(AndroidUtilities.dp(14), 0, AndroidUtilities.dp(14), 0);
             nameAndButton.addView(button, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 28, 0f, Gravity.CENTER_VERTICAL, 18, 0, 18, 0));
             button.setOnClickListener(v -> InviteUserCell.this.performClick());
@@ -130,7 +132,7 @@ public class InviteUserCell extends FrameLayout {
         }
 
         statusTextView.setTag(Theme.key_windowBackgroundWhiteGrayText);
-        statusTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText));
+        ThemeBind.textColor(statusTextView, Theme.key_windowBackgroundWhiteGrayText);
         if (currentContact.imported > 0) {
             statusTextView.setText(LocaleController.formatPluralString("TelegramContacts", currentContact.imported));
         } else {
@@ -143,5 +145,29 @@ public class InviteUserCell extends FrameLayout {
     @Override
     public boolean hasOverlappingRendering() {
         return false;
+    }
+    private int lastAvatarColorsHash;
+
+    @Override
+    public void updateColors() {
+        try {
+            int hash = Theme.getColor(Theme.key_avatar_text);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundRed);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundOrange);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundViolet);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundGreen);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundCyan);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundBlue);
+            hash = hash * 31 + Theme.getColor(Theme.key_avatar_backgroundPink);
+            if (hash == lastAvatarColorsHash) {
+                return;
+}
+            lastAvatarColorsHash = hash;
+            if (avatarImageView != null) {
+                avatarImageView.invalidate();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 }

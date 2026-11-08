@@ -638,6 +638,18 @@ public class AnimatedTextView extends View {
             if ((gravity | ~Gravity.CENTER_HORIZONTAL) == ~0) return .5f;
             return rtl && !ignoreRTL ? 1f : 0f;
         }
+        private boolean getProfileTextDrawAnchor(float[] out, int left, int top, int width, int height) {
+            if (warmTextSnapshot != null || deferredWarmText != null || currentParts == null
+                    || currentParts.length == 0 || oldParts != null && t != 1f) return false;
+            Part first = currentParts[0];
+            if (first.layout == null || first.layout.getLineCount() != 1) return false;
+            float x = isRTL && !ignoreRTL ? currentWidth - first.offset - first.width : first.offset;
+            x += (width - currentWidth) * getHorizontalAlignment(gravity, isRTL, ignoreRTL);
+            out[0] = left + x - first.left + first.layout.getPrimaryHorizontal(0);
+            out[1] = top + (centerY ? (height - getDrawingHeight(currentHeight)) / 2f : 0f)
+                    + (stableBaseline ? -textPaint.ascent() : getPartsBaseline(currentParts));
+            return Float.isFinite(out[0]) && Float.isFinite(out[1]);
+        }
         @Override
         public void draw(@NonNull Canvas canvas) {
             final boolean hardware = canvas.isHardwareAccelerated();
@@ -1845,6 +1857,11 @@ public class AnimatedTextView extends View {
         drawable.draw(canvas);
     }
 
+    public boolean getProfileTextDrawAnchor(float[] out) {
+        return drawable.getProfileTextDrawAnchor(out, getPaddingLeft(), getPaddingTop(),
+                getMeasuredWidth() - getPaddingLeft() - getPaddingRight(),
+                getMeasuredHeight() - getPaddingTop() - getPaddingBottom());
+    }
     public void setText(CharSequence text) {
         setText(text, true, true);
     }

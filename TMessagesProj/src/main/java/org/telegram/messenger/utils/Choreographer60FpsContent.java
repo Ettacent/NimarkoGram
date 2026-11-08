@@ -40,13 +40,23 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
     private final Choreographer mChoreographer = Choreographer.getInstance();
 
-    private final Set<FrameCallback> mOneShot = new LinkedHashSet<>();
+    private Set<FrameCallback> mOneShot = new LinkedHashSet<>();
+    private Set<FrameCallback> mDispatchOneShot = new LinkedHashSet<>();
 
     private final SparseArray<CallbackGroup> mGroups = new SparseArray<>();
 
-    private final ReferenceList<Drawable> mDrawablesToInvalidate      = new ReferenceList<>();
-    private final ReferenceList<Drawable> mDrawablesToInvalidate30fps = new ReferenceList<>();
-    private final ReferenceList<View>     mViewsToInvalidate          = new ReferenceList<>();
+    private final CallbackGroup[] mDispatchGroups = new CallbackGroup[TARGET_FPS];
+
+    private ReferenceList<Drawable> mDrawablesToInvalidate      = new ReferenceList<>();
+    private ReferenceList<Drawable> mDrawablesToInvalidate30fps = new ReferenceList<>();
+    private ReferenceList<View>     mViewsToInvalidate          = new ReferenceList<>();
+
+    private ReferenceList<Drawable> mDispatchDrawables      = new ReferenceList<>();
+    private ReferenceList<Drawable> mDispatchDrawables30fps = new ReferenceList<>();
+    private ReferenceList<View> mDispatchViews = new ReferenceList<>();
+
+    private boolean mFrameScheduled;
+    private boolean mDispatching;
 
     private long mAccumulatedNs;
 
@@ -61,22 +71,34 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
     public void post(FrameCallback callback) {
         checkMainThread();
+        if (callback != null) {
         mOneShot.add(callback);
+            scheduleFrame();
+        }
     }
 
     public void postInvalidateDrawable(Drawable drawable) {
         checkMainThread();
+        if (drawable != null) {
         mDrawablesToInvalidate.add(drawable);
+            scheduleFrame();
+        }
     }
 
     public void postInvalidateDrawable30fps(Drawable drawable) {
         checkMainThread();
+        if (drawable != null) {
         mDrawablesToInvalidate30fps.add(drawable);
+            scheduleFrame();
+        }
     }
 
     public void postInvalidateView(View view) {
         checkMainThread();
+        if (view != null) {
         mViewsToInvalidate.add(view);
+            scheduleFrame();
+        }
     }
 
     public void addFrameCallback(FrameCallback callback) {
@@ -93,12 +115,13 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             return;
         }
         fps = Math.max(1, Math.min(fps, TARGET_FPS));
-        removeFrameCallbackOnce(callback);
+        removeFrameCallbackOnceInternal(callback);
         CallbackGroup group = getOrCreateGroup(fps);
         if (group.runnableCallbacksOnce == null) {
             group.runnableCallbacksOnce = new ReferenceList<>();
         }
         group.runnableCallbacksOnce.add(callback);
+        scheduleFrame();
     }
 
 
@@ -108,15 +131,36 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             return;
         }
         fps = Math.max(1, Math.min(fps, TARGET_FPS));
-        removeFrameCallback(callback);
-        getOrCreateGroup(fps).runnableCallbacks.add(callback);
+        removeFrameCallbackInternal(callback);
+        CallbackGroup group = getOrCreateGroup(fps);
+        if (mDispatching) {
+            if (group.pendingRunnables == null) {
+                group.pendingRunnables = new ReferenceList<>();
+            }
+            group.pendingRunnables.add(callback);
+        } else {
+            group.runnableCallbacks.add(callback);
+        }
+        scheduleFrame();
     }
 
     public void addFrameCallback(FrameCallback callback, int fps) {
         checkMainThread();
+        if (callback == null) {
+            return;
+        }
         fps = Math.max(1, Math.min(fps, TARGET_FPS));
-        removeFrameCallback(callback);
-        getOrCreateGroup(fps).callbacks.add(callback);
+        removeFrameCallbackInternal(callback);
+        CallbackGroup group = getOrCreateGroup(fps);
+        if (mDispatching) {
+            if (group.pendingCallbacks == null) {
+                group.pendingCallbacks = new ReferenceList<>();
+            }
+            group.pendingCallbacks.add(callback);
+        } else {
+            group.callbacks.add(callback);
+        }
+        scheduleFrame();
     }
 
     public void removeFrameCallback(Runnable callback) {
@@ -124,10 +168,16 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         if (callback == null) {
             return;
         }
+        removeFrameCallbackInternal(callback);
+        updateScheduling();
+    }
+
+    private void removeFrameCallbackInternal(Runnable callback) {
         for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
-            if (group.runnableCallbacks.remove(callback)) {
-                return;
+            group.runnableCallbacks.remove(callback);
+            if (group.pendingRunnables != null) {
+                group.pendingRunnables.remove(callback);
             }
         }
     }
@@ -137,10 +187,18 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         if (callback == null) {
             return;
         }
+        removeFrameCallbackOnceInternal(callback);
+        updateScheduling();
+    }
+
+    private void removeFrameCallbackOnceInternal(Runnable callback) {
         for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
-            if (group.runnableCallbacksOnce != null && group.runnableCallbacksOnce.remove(callback)) {
-                return;
+            if (group.runnableCallbacksOnce != null) {
+                group.runnableCallbacksOnce.remove(callback);
+            }
+            if (group.dispatchOnce != null) {
+                group.dispatchOnce.remove(callback);
             }
         }
     }
@@ -150,21 +208,79 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         if (callback == null) {
             return;
         }
+        removeFrameCallbackInternal(callback);
+        updateScheduling();
+    }
+
+    private void removeFrameCallbackInternal(FrameCallback callback) {
         for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
-            if (group.callbacks.remove(callback)) {
-                return;
+            group.callbacks.remove(callback);
+            if (group.pendingCallbacks != null) {
+                group.pendingCallbacks.remove(callback);
             }
         }
     }
 
 
     private Choreographer60FpsContent() {
+    }
+
+    private static boolean hasLiveReferences(ReferenceList<?> list) {
+        list.isEmpty();
+        boolean live = false;
+        for (Object ignored : list) {
+            live = true;
+        }
+        if (!live) {
+            list.clear();
+        }
+        return live;
+    }
+
+    private void scheduleFrame() {
+        if (!mDispatching && !mFrameScheduled) {
+            mFrameScheduled = true;
         mChoreographer.postFrameCallback(this);
+        }
+    }
+
+    private void updateScheduling() {
+        if (mDispatching) {
+            return;
+        }
+        boolean hasWork = !mOneShot.isEmpty();
+        hasWork |= hasLiveReferences(mViewsToInvalidate);
+        hasWork |= hasLiveReferences(mDrawablesToInvalidate);
+        hasWork |= hasLiveReferences(mDrawablesToInvalidate30fps);
+        for (int i = mGroups.size() - 1; i >= 0; i--) {
+            CallbackGroup group = mGroups.valueAt(i);
+            boolean live = hasLiveReferences(group.callbacks);
+            live |= hasLiveReferences(group.runnableCallbacks);
+            if (group.runnableCallbacksOnce != null) {
+                live |= hasLiveReferences(group.runnableCallbacksOnce);
+            }
+            if (!live) {
+                mGroups.removeAt(i);
+            }
+            hasWork |= live;
+        }
+        if (hasWork) {
+            scheduleFrame();
+        } else {
+            if (mFrameScheduled) {
+                mChoreographer.removeFrameCallback(this);
+                mFrameScheduled = false;
+            }
+            mLastVsyncNs = 0;
+            mAccumulatedNs = 0;
+        }
     }
 
     @Override
     public void doFrame(long frameTimeNanos) {
+        mFrameScheduled = false;
+        mDispatching = true;
         if (mLastVsyncNs == 0) {
             mLastVsyncNs = frameTimeNanos;
         } else {
@@ -177,21 +293,32 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             }
         }
 
-        mChoreographer.postFrameCallback(this);
+        mDispatching = false;
+        updateScheduling();
     }
 
     private void dispatchFrame(long frameTimeNanos) {
-        final long tickMask = 1L << mCounter;
-        for (int i = 0; i < mGroups.size(); i++) {
+        final boolean draw30fps = mCounter % 2 == 0;
+        final int groupCount = mGroups.size();
+        for (int i = 0; i < groupCount; i++) {
             CallbackGroup group = mGroups.valueAt(i);
-            final boolean fire = (group.frameMask & tickMask) != 0;
-            if (fire) {
-                if (group.runnableCallbacksOnce != null) {
-                    ReferenceList<Runnable> referenceList = group.runnableCallbacksOnce;
-                    group.runnableCallbacksOnce = null;
-                    for (Runnable runnable : referenceList) {
+            mDispatchGroups[i] = group;
+            if ((group.frameMask & (1L << mCounter)) != 0) {
+                group.dispatchOnce = group.runnableCallbacksOnce;
+                group.runnableCallbacksOnce = null;
+            }
+        }
+        final long tickMask = 1L << mCounter;
+        for (int i = 0; i < groupCount; i++) {
+            CallbackGroup group = mDispatchGroups[i];
+            mDispatchGroups[i] = null;
+            if ((group.frameMask & tickMask) != 0) {
+                if (group.dispatchOnce != null) {
+                    for (Runnable runnable : group.dispatchOnce) {
                         runnable.run();
                     }
+                    group.dispatchOnce.clear();
+                    group.dispatchOnce = null;
                 }
 
                 for (FrameCallback cb : group.callbacks) {
@@ -203,37 +330,46 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             }
         }
 
-        for (FrameCallback cb : mOneShot) {
+        Set<FrameCallback> oneShot = mOneShot;
+        mOneShot = mDispatchOneShot;
+        mDispatchOneShot = oneShot;
+        for (FrameCallback cb : oneShot) {
             cb.doFrame(frameTimeNanos);
         }
 
-        for (View view : mViewsToInvalidate) {
+        oneShot.clear();
+        ReferenceList<View> views = mViewsToInvalidate;
+        mViewsToInvalidate = mDispatchViews;
+        mDispatchViews = views;
+        for (View view : views) {
             view.invalidate();
         }
-        for (Drawable drawable : mDrawablesToInvalidate) {
+        views.clear();
+        ReferenceList<Drawable> drawables = mDrawablesToInvalidate;
+        mDrawablesToInvalidate = mDispatchDrawables;
+        mDispatchDrawables = drawables;
+        for (Drawable drawable : drawables) {
             drawable.invalidateSelf();
         }
-        mViewsToInvalidate.clear();
-        mDrawablesToInvalidate.clear();
-        mOneShot.clear();
-
-        if (mCounter % 2 == 0) {
-            for (Drawable drawable : mDrawablesToInvalidate30fps) {
+        drawables.clear();
+        if (draw30fps) {
+            ReferenceList<Drawable> drawables30fps = mDrawablesToInvalidate30fps;
+            mDrawablesToInvalidate30fps = mDispatchDrawables30fps;
+            mDispatchDrawables30fps = drawables30fps;
+            for (Drawable drawable : drawables30fps) {
                 drawable.invalidateSelf();
             }
-            mDrawablesToInvalidate30fps.clear();
+            drawables30fps.clear();
         }
-
-        if (mCounter % 300 == 0) {
             for (int i = 0; i < mGroups.size(); i++) {
-                CallbackGroup g = mGroups.valueAt(i);
-                try {
-                    g.callbacks.isEmpty();
-                    g.runnableCallbacks.isEmpty();
-                    if (g.runnableCallbacksOnce != null) {
-                        g.runnableCallbacksOnce.isEmpty();
-                    }
-                } catch (Throwable ignored) {}
+            CallbackGroup group = mGroups.valueAt(i);
+            if (group.pendingCallbacks != null) {
+                group.callbacks.addAll(group.pendingCallbacks);
+                group.pendingCallbacks.clear();
+            }
+            if (group.pendingRunnables != null) {
+                group.runnableCallbacks.addAll(group.pendingRunnables);
+                group.pendingRunnables.clear();
             }
         }
 
@@ -316,6 +452,12 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         @Nullable
         ReferenceList<Runnable> runnableCallbacksOnce;
 
+        @Nullable
+        ReferenceList<Runnable> dispatchOnce;
+        @Nullable
+        ReferenceList<FrameCallback> pendingCallbacks;
+        @Nullable
+        ReferenceList<Runnable> pendingRunnables;
         CallbackGroup(long frameMask) {
             this.frameMask = frameMask;
         }

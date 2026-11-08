@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_DocViewerTitle">Built-in document viewer</string>
+    <string name="NM_DocViewerDescription">Open PDF, Word (DOCX), Excel (XLSX), PowerPoint (PPTX) and text files inside NimarkoGram.</string>
+    <string name="NM_DocChooseSheet">Choose sheet</string>
+    <string name="NM_DocOfficeTooLarge">This document is too large or complex for the built-in Office viewer.</string>
+    <string name="NM_DocOfficeWebView">The Office viewer needs a compatible Android System WebView. Update it and try again.</string>
+    <string name="NM_DocOfficePassword">Password-protected Office documents are not supported by the built-in viewer yet.</string>
+    <string name="NM_DocText">Text</string>
+    <string name="NM_DocSearch">Search in document</string>
+    <string name="NM_DocSearching">Searching…</string>
+    <string name="NM_DocGoToPage">Go to page</string>
+    <string name="NM_DocPageOf">%1$d / %2$d</string>
+    <string name="NM_DocPageRange">Enter a page number from 1 to %1$d</string>
+    <string name="NM_DocMatchOf">%1$d / %2$d</string>
+    <string name="NM_DocMatchesFound">Matches: %1$d</string>
+    <string name="NM_DocNoMatches">No matches</string>
+    <string name="NM_DocSearchLimited">Refine your search</string>
+    <string name="NM_DocEncoding">Text encoding</string>
+    <string name="NM_DocResetZoom">Reset size</string>
+    <string name="NM_DocZoomIn">Zoom in</string>
+    <string name="NM_DocZoomOut">Zoom out</string>
+    <string name="NM_DocPrevious">Previous</string>
+    <string name="NM_DocNext">Next</string>
+    <string name="NM_DocRetry">Try again</string>
+    <string name="NM_DocOpenError">This document could not be opened in the built-in viewer.</string>
+    <string name="NM_DocPasswordRequired">This PDF requires a password. If you already entered one, check it and try again.</string>
+    <string name="NM_DocEnterPassword">Enter PDF password</string>
+    <string name="NM_DocPasswordUnsupported">Password-protected PDFs require Android 15 or later in the built-in viewer.</string>
+    <string name="NM_DocTimeout">Processing this document took too long.</string>
+    <string name="NM_DocTextTooLarge">This file is too large for the built-in text viewer.</string>
+    <string name="NM_DocEncodingError">The text encoding could not be read. Select another encoding in the menu.</string>
+    <string name="NM_DocExternalError">No application could open or share this file.</string>
+    <string name="NM_DocProtectedError">This document is protected and cannot be opened in another application.</string>
+</resources>

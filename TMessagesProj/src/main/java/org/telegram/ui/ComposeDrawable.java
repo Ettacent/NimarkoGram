@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import static org.telegram.messenger.AndroidUtilities.lerp;
@@ -25,11 +27,16 @@ public class ComposeDrawable extends Drawable {
 
     private int tx, ty;
     private boolean iconVisible = false;
+    private boolean iconSameSize = false;
     private final AnimatedFloat animatedIconVisible = new AnimatedFloat(this::invalidate, 420, CubicBezierInterpolator.EASE_OUT_QUINT);
 
     public ComposeDrawable(Drawable background, Drawable icon) {
         this.background = background;
         this.icon = icon;
+    }
+
+    public void setIconSameSize(boolean iconSameSize) {
+        this.iconSameSize = iconSameSize;
     }
 
     public void addView(View view) {
@@ -62,6 +69,9 @@ public class ComposeDrawable extends Drawable {
         background.draw(canvas);
 
         if (iconVisible > 0) {
+            if (iconSameSize) {
+                icon.setBounds(getBounds());
+            } else {
             icon.setAlpha((int) (alpha * iconVisible));
             icon.setBounds(
                 getBounds().left + tx,
@@ -69,6 +79,7 @@ public class ComposeDrawable extends Drawable {
                 getBounds().left + tx + icon.getIntrinsicWidth(),
                 getBounds().top + ty + icon.getIntrinsicHeight()
             );
+            }
             final float scale = lerp(0.5f, 1.0f, iconVisible);
             canvas.save();
             canvas.scale(scale, scale, icon.getBounds().centerX(), icon.getBounds().centerY());

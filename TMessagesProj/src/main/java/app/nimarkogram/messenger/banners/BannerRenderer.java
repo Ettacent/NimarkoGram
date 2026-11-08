@@ -66,6 +66,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -129,14 +130,14 @@ public final class BannerRenderer {
     private final Runnable outgoingAudioTick = this::updateOutgoingAudio;
     private boolean bannerAudioBlocked() {
         return inCall || profileExitActive || !BannerConfig.enabled || !isProfileOpen
-                || appPaused || overlayOpen || videoPausedByTab || profileCoveredByNavigation;
+                || appPaused || overlayOpen || videoPausedByTab || profileCoveredByNavigation || removingPath != null;
     }
     private float bannerExpansionVolume() {
         float expanded = clamp01(lastAudioExtra / Math.max(maxEh, 400f));
         return expanded <= AUDIO_MUTE_EPSILON ? 0f : BASE_VOL * expanded * expanded;
     }
     private float incomingBannerAudioProgress() {
-        if (curIv) {
+        if (curIv || videoPlayer != null && isVideoAttachedTo(currentTopView)) {
             if (!videoFrameReady || vidFirstFrameTime == 0 || videoTexture == null) return 0f;
             return clamp01(videoCrossfadeBitmap != null && vidFreeze != null
                     ? 1f - vidFreeze.getAlpha() : videoTexture.getAlpha());
@@ -260,6 +261,12 @@ public final class BannerRenderer {
     private boolean curIv, curLoading;
     private boolean suppressBg;
 
+    private final Set<ViewGroup> bannerHosts = Collections.newSetFromMap(new WeakHashMap<>());
+    private String removingPath;
+    private boolean removingVideo, removalVideoHidden;
+    private Bitmap removingPhoto;
+    private float removingForeground, removalPhotoAlpha, lastPhotoAlpha;
+    private double removalProgress, removalTick;
     private Paint pBmp, pBlur, pDark, pGrad;
     private Paint photoAddPaint;
     private Matrix matrix;
@@ -348,7 +355,39 @@ public final class BannerRenderer {
     private Matrix vidMatrix;
     private final Map<String, Double> failVids = new ConcurrentHashMap<>();
     private int videoViewH;
+    private ProfileInfoViewport profileInfoViewport;
+    private final Rect videoViewportClip = new Rect();
+    private final Matrix coverViewportMatrix = new Matrix();
+    private final View.OnAttachStateChangeListener viewportAttachListener = new View.OnAttachStateChangeListener() {
+        @Override public void onViewAttachedToWindow(View view) {}
+        @Override public void onViewDetachedFromWindow(View view) {
+            if (profileInfoViewport != null && profileInfoViewport.host == view) clearProfileInfoViewport();
+        }
+    };
+
+    private static final class ProfileInfoViewport {
+        final ViewGroup host;
+        final int account, generation, fromHeight, toHeight;
+        final long eid;
+        Object owner;
+        int logicalHeight, layoutHeight;
+        boolean settling, frozen;
+
+        ProfileInfoViewport(ViewGroup host, int account, int generation, long eid,
+                            Object owner, int fromHeight, int toHeight) {
+            this.host = host;
+            this.account = account;
+            this.generation = generation;
+            this.eid = eid;
+            this.owner = owner;
+            this.fromHeight = logicalHeight = fromHeight;
+            this.toHeight = toHeight;
+            layoutHeight = Math.max(fromHeight, toHeight);
+        }
+    }
     private boolean reparentCover;
+    private boolean freshCoverReveal;
+    private double freshCoverRevealElapsed, freshCoverRevealTick;
     private Bitmap reopenFreeze;
     private String reopenFreezePath;
     private long reopenFreezeEid;
@@ -400,6 +439,7 @@ public final class BannerRenderer {
         avBmpByEid.clear();
         clearBmps();
         pausedAvatarStates.clear();
+        bannerHosts.clear();
         avatarImage = null;
         avatarContainer = null;
         avatarsViewPager = null;
@@ -470,6 +510,7 @@ public final class BannerRenderer {
             if (lastFadeA >= 0f) setAvAlpha(1f, 1f);
             resetState();
             pausedAvatarStates.clear();
+            bannerHosts.clear();
         } else if (BannerConfig.liteMode) {
             stopBlur();
         } else if (videoPlayer != null && vidReady && isProfileOpen
@@ -570,20 +611,29 @@ public final class BannerRenderer {
     }
 
     public void onProfileResumed(ViewGroup topView, int account, long dialogId) {
+        float visibility = isCurrentProfile(topView, account, dialogId) && videoPausedByTab ? 0f : 1f;
+        onProfileResumed(topView, account, dialogId, visibility);
+    }
+
+    public void onProfileResumed(ViewGroup topView, int account, long dialogId, float tabVisibility) {
         if (!ensureAccount(account)) return;
         if (isProfileOpen && viewedAccount == account && viewedProfileId == dialogId && currentTopView == topView) {
+            onTabVisibilityChanged(topView, account, dialogId, tabVisibility);
             postInv();
             return;
         }
         bitmaps.clearFailed();
+        blurBmps.clearFailed();
         for (AvatarBitmap entry : avBmpByEid.values()) {
             if (!okBmp(entry.bitmap) || !pathEq(entry.path, entry.bitmapPath)) entry.attempted = false;
         }
         ViewGroup prevTopView = currentTopView;
         boolean samePeer = viewedAccount == account && viewedProfileId != 0 && viewedProfileId == dialogId;
         boolean topViewChanged = samePeer && prevTopView != topView;
+        if (prevTopView != topView) clearProfileInfoViewport();
         currentTopView = topView;
         if (topViewChanged) {
+            clearBannerRemoval();
             profileCoveredByNavigation = false;
             videoHierarchyGeneration++;
             firstCommitTime = 0;
@@ -599,6 +649,12 @@ public final class BannerRenderer {
         if (viewedAccount != account || viewedProfileId != 0 && viewedProfileId != dialogId) resetState();
         viewedAccount = account;
         viewedProfileId = dialogId;
+        videoPausedByTab = tabVisibility < 0.01f;
+        if (videoPausedByTab) {
+            cancelResumeCapture();
+            pauseBannerVideo();
+            stopBlur();
+        }
         isProfileOpen = true;
         openAnimDone = false;
         restoreAvatarState(topView, dialogId);
@@ -648,6 +704,7 @@ public final class BannerRenderer {
         }
         releaseOutgoingAudio();
         saveAvatarState(topView);
+        if (profileInfoViewport != null && !profileInfoViewport.frozen) clearProfileInfoViewport();
         cancelResumeCapture();
         isProfileOpen = false;
         openAnimDone = false;
@@ -663,7 +720,10 @@ public final class BannerRenderer {
 
     public void onProfileDestroyed(ViewGroup topView, int account, long dialogId) {
         if (!isActiveAccount(account) || viewedAccount != account) return;
-        if (topView != null) pausedAvatarStates.remove(topView);
+        if (topView != null) {
+            pausedAvatarStates.remove(topView);
+            bannerHosts.remove(topView);
+        }
         if (dialogId != 0 && viewedProfileId != 0 && dialogId != viewedProfileId) {
             frameBfByEid.remove(dialogId);
             frameIvByEid.remove(dialogId);
@@ -722,6 +782,11 @@ public final class BannerRenderer {
     }
 
     public void onTabVisibilityChanged(float visibility) {
+        onTabVisibilityChanged(currentTopView, viewedAccount, viewedProfileId, visibility);
+    }
+
+    public void onTabVisibilityChanged(ViewGroup topView, int account, long dialogId, float visibility) {
+        if (!isCurrentProfile(topView, account, dialogId)) return;
         if (visibility < 0.01f) {
             if (!videoPausedByTab) {
                 cancelResumeCapture();
@@ -745,10 +810,13 @@ public final class BannerRenderer {
         releaseOutgoingAudio();
         cancelResumeCapture();
         appPaused = true;
+        ctrl.onAppVisibilityChanged();
         stopBlur();
         pauseBannerVideo();
     }
     private void pauseBannerVideo() {
+        removalTick = 0;
+        freshCoverRevealTick = 0;
         final VideoPlayer player = videoPlayer;
         if (player == null) return;
         try {
@@ -760,6 +828,7 @@ public final class BannerRenderer {
 
     public void onAppResume() {
         appPaused = false;
+        ctrl.onAppVisibilityChanged();
         final long sessionId = videoSessionId;
         final VideoPlayer player = videoPlayer;
         final String path = curVidPath;
@@ -779,7 +848,8 @@ public final class BannerRenderer {
         if (!isCurrentVideoSession(sessionId, player, path) || !vidReady) {
             return;
         }
-        if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen || profileCoveredByNavigation || profileExitActive) {
+        if (appPaused || videoPausedByTab || overlayOpen || !isProfileOpen || profileCoveredByNavigation || profileExitActive
+                || removingPath != null) {
             return;
         }
         if (!isVideoAttachedTo(currentTopView)) {
@@ -843,6 +913,9 @@ public final class BannerRenderer {
     }
 
     private void resetState() {
+        clearBannerRemoval();
+        removalVideoHidden = false;
+        lastPhotoAlpha = 0f;
         profileCoveredByNavigation = false;
         isProfileOpen = false; openAnimDone = false; animDoneTime = 0; frameTime = 0;
         firstCommitTime = 0;
@@ -926,10 +999,223 @@ public final class BannerRenderer {
                 || child == vidBlur || child == vidContrast || child == vidDark);
     }
 
+    public boolean beginProfileInfoViewport(ViewGroup host, int account, long eid, Object owner,
+                                            int fromHeight, int toHeight) {
+        if (Looper.myLooper() != Looper.getMainLooper() || owner == null
+                || !isCurrentProfile(host, account, eid) || !isProfileOpen
+                || !host.isAttachedToWindow() || profileExitActive
+                || fromHeight <= 0 || toHeight <= 0) return false;
+        ProfileInfoViewport viewport = profileInfoViewport;
+        if (ownsProfileInfoViewport(host, account, eid, owner)) {
+            if (viewport.fromHeight == fromHeight && viewport.toHeight == toHeight) return true;
+            clearProfileInfoViewport();
+            return false;
+        }
+        clearProfileInfoViewport();
+        profileInfoViewport = new ProfileInfoViewport(host, account, accountGeneration, eid,
+                owner, fromHeight, toHeight);
+        host.addOnAttachStateChangeListener(viewportAttachListener);
+        syncVideoViewport(toHeight);
+        return true;
+    }
+
+    public int updateProfileInfoViewport(ViewGroup host, int account, long eid, Object owner, int height) {
+        if (Looper.myLooper() != Looper.getMainLooper()
+                || !ownsProfileInfoViewport(host, account, eid, owner)) return -1;
+        ProfileInfoViewport viewport = profileInfoViewport;
+        if (height < Math.min(viewport.fromHeight, viewport.toHeight)
+                || height > Math.max(viewport.fromHeight, viewport.toHeight)) {
+            if (height > 0) endProfileInfoViewport(host, account, eid, owner, height);
+            else clearProfileInfoViewport();
+            return -1;
+        }
+        int admitted = height;
+        if (isVideoAttachedTo(host) && videoVisualProgress() > 0f && videoTexture.getHeight() > 0) {
+            admitted = Math.min(admitted, videoTexture.getHeight());
+        }
+        viewport.logicalHeight = admitted;
+        syncVideoViewport(height);
+        return admitted;
+    }
+
+    public void endProfileInfoViewport(ViewGroup host, int account, long eid, Object owner, int height) {
+        if (Looper.myLooper() != Looper.getMainLooper() || height <= 0
+                || !ownsProfileInfoViewport(host, account, eid, owner)) return;
+        ProfileInfoViewport viewport = profileInfoViewport;
+        viewport.owner = null;
+        viewport.settling = true;
+        viewport.logicalHeight = viewport.layoutHeight = height;
+        syncVideoViewport(height);
+    }
+
+    private boolean ownsProfileInfoViewport(ViewGroup host, int account, long eid, Object owner) {
+        ProfileInfoViewport viewport = profileInfoViewport;
+        return owner != null && viewport != null && viewport.owner == owner
+                && viewport.host == host && viewport.account == account && viewport.eid == eid
+                && viewport.generation == accountGeneration && !viewport.frozen && !viewport.settling
+                && host.isAttachedToWindow() && isCurrentProfile(host, account, eid);
+    }
+
+    private void clearProfileInfoViewport() {
+        ProfileInfoViewport viewport = profileInfoViewport;
+        if (viewport == null) return;
+        profileInfoViewport = null;
+        viewport.host.removeOnAttachStateChangeListener(viewportAttachListener);
+        collectVideoFxViews();
+        for (View view : fxViews) if (view != null) view.setClipBounds(null);
+        updateVidTransform(0, 0);
+        if (vidFreeze != null) vidFreeze.invalidate();
+        if (vidBlur != null) vidBlur.invalidate();
+        if (vidContrast != null) vidContrast.invalidate();
+    }
+
+    private void collectVideoFxViews() {
+        fxViews[0] = videoTexture;
+        fxViews[1] = vidFreeze;
+        fxViews[2] = vidBlur;
+        fxViews[3] = vidContrast;
+        fxViews[4] = vidDark;
+    }
+
+    private boolean hasLogicalVideoViewport(View view) {
+        return profileInfoViewport != null && view != null
+                && view.getParent() == profileInfoViewport.host;
+    }
+
+    private final class ViewportImageView extends ImageView {
+        Bitmap photoCover;
+
+        ViewportImageView(Context context) { super(context); }
+
+        @Override protected void onDraw(Canvas canvas) {
+            Drawable drawable = getDrawable();
+            boolean photo = drawable instanceof BitmapDrawable
+                    && ((BitmapDrawable) drawable).getBitmap() == photoCover && photoCover != null;
+            if (!hasLogicalVideoViewport(this) && !photo) {
+                super.onDraw(canvas);
+                return;
+            }
+            int height = hasLogicalVideoViewport(this) ? profileInfoViewport.logicalHeight : getHeight();
+            int save = canvas.save();
+            try {
+                canvas.clipRect(0, 0, getWidth(), height);
+                drawViewportDrawable(canvas, drawable, getWidth(), height, photo ? (float) BANNER_BLEED : 1f);
+            } finally {
+                canvas.restoreToCount(save);
+            }
+        }
+    }
+
+    private void drawViewportDrawable(Canvas canvas, Drawable drawable, int width, int height, float bleed) {
+        if (drawable instanceof LayerDrawable) {
+            LayerDrawable layers = (LayerDrawable) drawable;
+            for (int i = 0; i < layers.getNumberOfLayers(); i++) {
+                drawViewportDrawable(canvas, layers.getDrawable(i), width, height, bleed);
+            }
+            return;
+        }
+        if (!(drawable instanceof BitmapDrawable) || width <= 0 || height <= 0) return;
+        BitmapDrawable image = (BitmapDrawable) drawable;
+        Bitmap bitmap = image.getBitmap();
+        if (!okBmp(bitmap)) return;
+        int iw = bitmap.getWidth(), ih = bitmap.getHeight();
+        if (iw <= 0 || ih <= 0) return;
+        float scale = Math.max((float) width / iw, (float) height / ih) * bleed;
+        coverViewportMatrix.setScale(scale, scale);
+        coverViewportMatrix.postTranslate((width - iw * scale) / 2f, (height - ih * scale) / 2f);
+        canvas.drawBitmap(bitmap, coverViewportMatrix, image.getPaint());
+    }
     public float getProfileExitAlpha(ViewGroup topView, int account, long eid) {
-        return isCurrentProfile(topView, account, eid) && profileExitActive
-                && profileExitEid == eid && isVideoAttachedTo(topView)
-                ? profileExitAvatarProgress : 1f;
+        if (!isCurrentProfile(topView, account, eid) || !isVideoAttachedTo(topView)) return 1f;
+        float exit = profileExitActive && profileExitEid == eid ? profileExitAvatarProgress : 1f;
+        return removalVideoHidden ? 0f : exit * bannerRemovalAlpha();
+    }
+
+    private float bannerRemovalAlpha() {
+        return removingPath == null ? 1f : (float) (0.5 + 0.5 * Math.cos(Math.PI * removalProgress));
+    }
+
+    private Bitmap bannerBitmap(String path) {
+        if (profileInfoViewport != null && pathEq(path, frozenPath) && !isVideoPath(path)
+                && okBmp(freezeBmp)) return freezeBmp;
+        return removingPath != null && pathEq(path, removingPath) && okBmp(removingPhoto)
+                ? removingPhoto : bitmaps.get(path);
+    }
+
+    private void clearBannerRemoval() {
+        if (okBmp(removingPhoto)) bitmaps.put(removingPath, removingPhoto);
+        removingPhoto = null;
+        removingPath = null;
+        removalProgress = removalTick = 0;
+    }
+
+    private BannerController.Resolved resolveBannerRemoval(BannerController.Resolved requested, double now) {
+        if (removalVideoHidden && requested.path != null && isVideoAttachedTo(currentTopView)) {
+            videoHierarchyGeneration++;
+            removalVideoHidden = false;
+            removingPath = curVidPath;
+            removingVideo = true;
+            removalProgress = 1;
+            removalTick = 0;
+        }
+        if (removingPath == null && !removalVideoHidden && requested.path == null) {
+            boolean displayedVideo = curVidPath != null && isVideoAttachedTo(currentTopView)
+                    && videoVisualProgress() > 0f;
+            String displayedPath = displayedVideo ? curVidPath : frameBfByEid.get(viewedProfileId);
+            float visible = getForegroundProgress(currentTopView, viewedAccount, viewedProfileId);
+            if (displayedPath != null && visible > 0f) {
+                removingForeground = visible;
+                removingVideo = displayedVideo || Boolean.TRUE.equals(frameIvByEid.get(viewedProfileId));
+                removingPath = removingVideo ? displayedPath : photoReplacementPath(viewedProfileId, displayedPath, now);
+                removalPhotoAlpha = lastPhotoAlpha;
+                removalProgress = 0;
+                removalTick = 0;
+                if (!removingVideo) removingPhoto = bitmaps.remove(removingPath);
+                cancelResumeCapture();
+                if (videoTexture != null) videoTexture.animate().cancel();
+                if (vidFreeze != null) vidFreeze.animate().withEndAction(null).cancel();
+                if (vidXfade != null) vidXfade.cancel();
+                if (videoBlurTransition != null) videoBlurTransition.pause();
+                releaseOutgoingAudio();
+                stopBlur();
+                pauseBannerVideo();
+                applyAudioVolume(lastAudioExtra);
+            }
+        }
+        if (removingPath == null) return requested;
+        boolean restoring = requested.path != null;
+        if (appPaused || overlayOpen || videoPausedByTab || !isProfileOpen
+                || profileCoveredByNavigation || profileExitActive) {
+            removalTick = 0;
+        } else {
+            double delta = removalTick > 0 ? Math.max(0, now - removalTick) / FADE_DUR : 0;
+            removalTick = now;
+            removalProgress = clamp01(removalProgress + (restoring ? -delta : delta));
+            if (!restoring && removalProgress >= 1) {
+                photoFadeKey.remove(viewedProfileId);
+                photoFadeStart.remove(viewedProfileId);
+                removalVideoHidden = removingVideo;
+                clearBannerRemoval();
+                return requested;
+            }
+            if (restoring && removalProgress <= 0) {
+                if (!removingVideo && photoFadeStart.containsKey(viewedProfileId)) {
+                    double phase = Math.acos(1.0 - 2.0 * clamp01(removalPhotoAlpha)) / Math.PI;
+                    photoFadeStart.put(viewedProfileId, now - phase * FADE_DUR);
+                }
+                clearBannerRemoval();
+                if (videoBlurTransition != null) videoBlurTransition.resume();
+                if (videoTexture != null && vidFirstFrameTime > 0 && videoCrossfadeBitmap == null) {
+                    videoTexture.animate().alpha(1f).setDuration(VID_FADE)
+                            .setInterpolator(new AccelerateDecelerateInterpolator())
+                            .setUpdateListener(animation -> invalidateTopView()).start();
+                }
+                resumePlayerIfReady();
+                return requested;
+            }
+            postInv();
+        }
+        return new BannerController.Resolved(removingPath, removingVideo, false);
     }
 
     public FrameDecision prepareFrame(ViewGroup topView, int account, long eid, float extra, int w, int y1Hint,
@@ -954,9 +1240,9 @@ public final class BannerRenderer {
 
             markFirstCommit(now);
             ctrl.maybeKickLoad(eid);
-            BannerController.Resolved resolved = ctrl.resolve(eid);
+            BannerController.Resolved resolved = resolveBannerRemoval(ctrl.resolve(eid), now);
 
-            if (extra == frameLastExtra && expand == frameLastExpand && avAnim.isEmpty() && blurFadeStart == 0.0
+            if (removingPath == null && extra == frameLastExtra && expand == frameLastExpand && avAnim.isEmpty() && blurFadeStart == 0.0
                     && isVideoAvatarStateSettled(eid, expand)
                     && videoPlayer != null && isVideoAttachedTo(topView)
                     && curVidPath != null && curVidPath.equals(curBf) && curBf != null
@@ -986,6 +1272,7 @@ public final class BannerRenderer {
                             return decision;
                         }
                         if (!openAnim && videoTexture != null && videoPlayer != null && vidReady
+                                && videoVisualProgress() >= 1f
                                 && (!okBmp(freezeBmp) || !pathEq(frozenPath, curVidPath))) {
                             try { captureFreezeFrame(); } catch (Throwable ignored) {}
                         }
@@ -1000,6 +1287,7 @@ public final class BannerRenderer {
             }
 
             if (searchMode) {
+                clearBannerRemoval();
                 if (videoPlayer != null || videoTexture != null) scheduleDestroyVideo();
                 suppressBg = false;
                 decision.suppressBackground = false;
@@ -1013,8 +1301,13 @@ public final class BannerRenderer {
             BannerController.Resolved r = resolved;
             String bf = r.path;
             boolean iv = r.isVideo;
-            frameBfByEid.put(eid, bf);
-            frameIvByEid.put(eid, iv);
+            String displayedPath = frameBfByEid.get(eid);
+            boolean keepPhoto = iv && (!isVideoAttachedTo(topView)
+                    || profileInfoViewport != null && videoTexture.getHeight() <= 0) && bannerHosts.contains(topView)
+                    && !Boolean.TRUE.equals(frameIvByEid.get(eid)) && displayedPath != null
+                    && !isVideoPath(displayedPath);
+            frameBfByEid.put(eid, keepPhoto ? displayedPath : bf);
+            frameIvByEid.put(eid, keepPhoto ? false : iv);
             curBf = bf; curIv = iv; curLoading = r.loading;
             lastAudioExtra = extra; // also track collapse while outgoing audio fades over a photo
 
@@ -1026,11 +1319,11 @@ public final class BannerRenderer {
             if (wantHide && iv && coldReveal) {
                 hide = vidReady && vidFirstFrameTime > 0;
             } else if (wantHide && !iv && bf != null && coldReveal && !okBmp(xfadeBmp)) {
-                hide = okBmp(bitmaps.get(bf));
+                hide = okBmp(bannerBitmap(bf));
             } else {
                 hide = wantHide;
             }
-            updateAvFade(eid, hide, now, openAnim, playProfileAnimation, expand);
+            updateAvFade(eid, removingPath == null && hide, now, openAnim, playProfileAnimation, expand);
             suppressGifts = hide && (getOr(avAlpha, eid, 1f) <= 0.05f);
             if (!avAnim.isEmpty()) postInv();
 
@@ -1042,7 +1335,10 @@ public final class BannerRenderer {
             }
 
 
-            if (bf != null) {
+            if (removingPath != null) {
+                suppressBg = false;
+                suppressActionsColor = bannerRemovalAlpha() > 0f;
+            } else if (bf != null) {
                 if (iv) {
                     boolean freshOpen = firstCommitTime > 0 && (now - firstCommitTime) < COLL_SETTLE;
                     if (!animNow || hasMainTabs || freshOpen) {
@@ -1052,7 +1348,7 @@ public final class BannerRenderer {
                         } else {
                             if (pathEq(curVidPath, ctrl.placeholderPath()) && !bf.equals(ctrl.placeholderPath())) {
                                 try { captureXfadeBmp(); } catch (Throwable ignored) {}
-                            } else if (xfadeBmp != null) {
+                            } else if (xfadeBmp != null && Boolean.TRUE.equals(frameIvByEid.get(eid))) {
                                 try { clearXfade(); } catch (Throwable ignored) {}
                             }
                             scheduleSetupVideo(topView, bf, w, y1Hint);
@@ -1062,12 +1358,22 @@ public final class BannerRenderer {
                     suppressBg = videoPlayer != null && isVideoAttachedTo(topView) && texShown;
                 } else {
                     if (videoPlayer != null || videoTexture != null) {
+                        boolean canReplace = isProfileOpen && !appPaused && !overlayOpen && !videoPausedByTab
+                                && !profileCoveredByNavigation && !profileExitActive;
+                        if (!canReplace || videoReplacementInFlight() || !prepareReplacementFrame(bf)) {
+                            frameBfByEid.put(eid, curVidPath);
+                            frameIvByEid.put(eid, true);
+                            suppressBg = videoVisualProgress() >= 1f;
+                            decision.suppressBackground = suppressBg;
+                            if (canReplace) postInv();
+                            return decision;
+                        }
                         try { captureXfadeBmp(); } catch (Throwable ignored) {}
                         photoFadeKey.remove(eid);
                         photoFadeStart.remove(eid);
                         scheduleDestroyVideo();
                     }
-                    Bitmap cached = bitmaps.get(bf);
+                    Bitmap cached = bannerBitmap(bf);
                     if (!okBmp(cached)) preloadBmp(bf);
                     double pfs = photoFadeStart.getOrDefault(eid, 0.0);
                     suppressBg = okBmp(cached) && !cached.hasAlpha() && pfs > 0 && ("f" + bf).equals(photoFadeKey.get(eid))
@@ -1099,17 +1405,24 @@ public final class BannerRenderer {
     private FrameDecision prepareFrameNonCommitted(ViewGroup topView, long eid) {
         boolean sb = false;
         try {
+            String bf;
+            boolean iv;
+            if (eid == viewedProfileId) {
+                bf = frameBfByEid.get(eid);
+                iv = Boolean.TRUE.equals(frameIvByEid.get(eid));
+            } else {
             BannerController.Resolved r = ctrl.resolve(eid);
-            String bf = r.path;
-            boolean iv = r.isVideo;
+                bf = r.path;
+                iv = r.isVideo;
             frameBfByEid.put(eid, bf);
             frameIvByEid.put(eid, iv);
+            }
             double now = t();
             if (bf != null && iv) {
                 sb = isVideoAttachedTo(topView) && pathEq(bf, curVidPath)
                         && videoVisualProgress() >= 1f;
             } else if (bf != null && !iv) {
-                Bitmap cached = bitmaps.get(bf);
+                Bitmap cached = bannerBitmap(bf);
                 double pfs = photoFadeStart.getOrDefault(eid, 0.0);
                 sb = okBmp(cached) && !cached.hasAlpha() && pfs > 0
                         && ("f" + bf).equals(photoFadeKey.get(eid))
@@ -1293,8 +1606,10 @@ public final class BannerRenderer {
             String bf = frameBfByEid.get(eid);
             boolean iv = Boolean.TRUE.equals(frameIvByEid.get(eid));
             boolean committed = isCurrentProfile(topView, account, eid);
+            if (committed && removingPath != null) return removingForeground * bannerRemovalAlpha();
             float retainedVideo = committed && bf != null && isVideoAttachedTo(topView)
                     ? videoVisualProgress() : 0f;
+            if (retainedVideo > 0f) bannerHosts.add(topView);
             if (bf != null && iv) {
                 return committed ? retainedVideo
                         : isVideoAttachedTo(topView) && pathEq(bf, curVidPath) ? videoVisualProgress() : 0f;
@@ -1308,7 +1623,7 @@ public final class BannerRenderer {
             Bitmap bmp;
             if (bf != null) {
                 key = "f" + bf;
-                bmp = bitmaps.get(bf);
+                bmp = bannerBitmap(bf);
             } else if (BannerConfig.useAvatar && ctrl.hasNoRealBanner(eid)) {
                 key = avatarFadeKey(eid);
                 bmp = cachedAvatarBitmap(eid);
@@ -1350,6 +1665,7 @@ public final class BannerRenderer {
 
 
     public void drawImageBanner(Canvas canvas, int w, int y1, float extra, int account, long callerEid) {
+        int removalLayer = -1;
         try {
             if (!isActiveAccount(account) || canvas == null || w <= 0 || y1 <= 0) return;
             long eid = callerEid;
@@ -1357,10 +1673,15 @@ public final class BannerRenderer {
             double now = t();
             boolean ownsXfade = viewedAccount == account && viewedProfileId == eid;
 
+            if (ownsXfade && removingPath != null) {
+                removalLayer = canvas.saveLayerAlpha(0, 0, w, y1, Math.round(255 * bannerRemovalAlpha()));
+            }
             String bf = frameBfByEid.get(eid);
             Boolean ivBoxed = frameIvByEid.get(eid);
             boolean iv = ivBoxed != null && ivBoxed;
-            if (ownsXfade && bf != null && !iv) bf = photoReplacementPath(eid, bf, now);
+            if (iv) return;
+
+            if (ownsXfade && removingPath == null && bf != null && !iv) bf = photoReplacementPath(eid, bf, now);
 
             if (ownsXfade && bf != null && !iv) {
                 String prevKey = photoFadeKey.get(eid);
@@ -1374,7 +1695,7 @@ public final class BannerRenderer {
 
             Bitmap bmp = null;
             if (bf != null && !iv) {
-                Bitmap cached = bitmaps.get(bf);
+                Bitmap cached = bannerBitmap(bf);
                 if (okBmp(cached)) bmp = cached;
                 else {
                     if (ownsXfade) drawXfadeOnly(canvas, w, y1, extra);
@@ -1397,7 +1718,9 @@ public final class BannerRenderer {
             if (fs > 0) {
                 double pr = clamp01((now - fs) / FADE_DUR);
                 pr = 0.5 - 0.5 * Math.cos(Math.PI * pr);
-                if (!(ownsXfade && okBmp(xfadeBmp)) && avAnim.contains(eid) && ctrl.shouldHideAvatar(eid)) {
+                if (ownsXfade && removingPath != null) pr = removalPhotoAlpha;
+                if (!(ownsXfade && (removingPath != null || okBmp(xfadeBmp)))
+                        && avAnim.contains(eid) && ctrl.shouldHideAvatar(eid)) {
                     double hideComplement = 1.0 - getOr(avAlpha, eid, 1f);
                     if (hideComplement > pr) { pr = hideComplement; needInv = true; }
                 }
@@ -1438,7 +1761,7 @@ public final class BannerRenderer {
                     photoBlurProgress = photoBlur.progress(now);
                     if (photoBlurProgress < 1f && coll > 0.05f) needInv = true;
                 }
-                if (bb == null && !blurReq.contains(bk)) {
+                if (photoBlur == null && !blurReq.contains(bk)) {
                     blurReq.add(bk);
                     final Bitmap ref = bmp;
                     final int generation = accountGeneration;
@@ -1457,7 +1780,7 @@ public final class BannerRenderer {
                         final Bitmap result = bl;
                         AndroidUtilities.runOnUIThread(() -> {
                             try {
-                                if (isCurrentAccountGeneration(generation) && okBmp(result)) {
+                                if (isCurrentAccountGeneration(generation)) {
                                     PhotoBlur previous = blurBmps.put(bk, new PhotoBlur(result, t()));
                                     if (previous != null && previous.bitmap != result) {
                                         recycle(previous.bitmap);
@@ -1529,8 +1852,15 @@ public final class BannerRenderer {
             } finally {
                 try { canvas.restoreToCount(sid); } catch (Throwable e) { try { canvas.restore(); } catch (Throwable ignored) {} }
             }
-            if (needInv) postInv();
-        } catch (Throwable ignored) {}
+            if (ownsXfade) {
+                lastPhotoAlpha = ff;
+                bannerHosts.add(currentTopView);
+            }
+            if (needInv && removingPath == null) postInv();
+        } catch (Throwable ignored) {
+        } finally {
+            if (removalLayer >= 0) canvas.restoreToCount(removalLayer);
+        }
     }
     private void drawAlphaPhotoCrossfade(Canvas canvas, Bitmap incoming, Bitmap incomingBlur,
                                          int w, int y1, int alpha, float coll, float blurProgress, double now) {
@@ -1794,6 +2124,13 @@ public final class BannerRenderer {
     public void beginProfileExit(ViewGroup topView, int account, long eid) {
         if (!isCurrentProfile(topView, account, eid)) return;
         if (profileExitActive && profileExitEid == eid) return;
+        if (profileInfoViewport != null) {
+            profileInfoViewport.owner = null;
+            profileInfoViewport.frozen = true;
+            profileInfoViewport.settling = false;
+        }
+        freshCoverRevealTick = 0;
+        removalTick = 0;
         motionExitPausedPlayer = null;
         motionExitPausedSession = 0;
         cancelResumeCapture();
@@ -1863,6 +2200,9 @@ public final class BannerRenderer {
         profileExitActive = false;
         profileExitEid = 0;
         profileExitAvatarProgress = 1f;
+        if (profileInfoViewport != null && profileInfoViewport.frozen) {
+            clearProfileInfoViewport();
+        }
         applyAudioVolume(lastAudioExtra);
         VideoPlayer pausedPlayer = motionExitPausedPlayer;
         long pausedSession = motionExitPausedSession;
@@ -1883,6 +2223,8 @@ public final class BannerRenderer {
 
     public void applyVideoFx(float extra, int y1, float expand) {
         if (videoPlayer == null || !isVideoAttachedTo(currentTopView)) return;
+        if (removingPath != null) { syncVideoViewport(y1); return; }
+        advanceFreshCoverReveal();
         applyAudioVolume(extra);
         float visualProgress = videoVisualProgress();
         if (vidContrast != null) vidContrast.setAlpha(visualProgress);
@@ -1958,6 +2300,31 @@ public final class BannerRenderer {
     }
 
     private void syncVideoViewport(int y1) {
+        ProfileInfoViewport viewport = profileInfoViewport;
+        if (viewport != null) {
+            if (viewport.generation != accountGeneration || !viewport.host.isAttachedToWindow()
+                    || !isCurrentProfile(viewport.host, viewport.account, viewport.eid)) {
+                clearProfileInfoViewport();
+            } else {
+                layoutVideoViewport(viewport.layoutHeight);
+                collectVideoFxViews();
+                boolean settled = viewport.settling;
+                for (View view : fxViews) {
+                    if (view == null || view.getParent() != viewport.host) continue;
+                    videoViewportClip.set(0, 0, view.getWidth(), viewport.logicalHeight);
+                    view.setClipBounds(videoViewportClip);
+                    view.invalidate();
+                    settled &= view.getHeight() == viewport.layoutHeight && !view.isLayoutRequested();
+                }
+                updateVidTransform(0, 0);
+                if (settled) clearProfileInfoViewport();
+                return;
+            }
+        }
+        layoutVideoViewport(y1);
+    }
+
+    private void layoutVideoViewport(int y1) {
         final int vh = Math.max(y1, 1);
         if (vh > maxVh) {
             maxVh = vh;
@@ -1967,11 +2334,7 @@ public final class BannerRenderer {
         }
         lastLh = vh;
 
-        fxViews[0] = videoTexture;
-        fxViews[1] = vidFreeze;
-        fxViews[2] = vidBlur;
-        fxViews[3] = vidContrast;
-        fxViews[4] = vidDark;
+        collectVideoFxViews();
         boolean layoutRequired = false;
         for (View view : fxViews) {
             if (view == null) {
@@ -2093,7 +2456,7 @@ public final class BannerRenderer {
                 tv.postInvalidateOnAnimation();
                 return;
             }
-            if (now - getOrD(failVids, path) < FAIL_CD_S) { return; }
+            if (now - getOrD(failVids, path) < FAIL_CD_S) { clearProfileInfoViewport(); return; }
             if (curVidPath != null && !curVidPath.equals(path)) {
                 if (isVideoAttachedTo(tv) && videoReplacementInFlight()) {
                     tv.postInvalidateOnAnimation();
@@ -2104,18 +2467,26 @@ public final class BannerRenderer {
                 removeVidViews(okBmp(freezeBmp));
                 releasePlayer(true);
             }
-            videoViewH = Math.max(y1, 1);
+            videoViewH = profileInfoViewport != null ? profileInfoViewport.layoutHeight : Math.max(y1, 1);
+            String photoCoverPath = null;
             if (videoPlayer == null && !okBmp(freezeBmp)) {
                 String photoKey = photoFadeKey.get(viewedProfileId);
                 if (photoKey != null && photoKey.startsWith("f") && !isVideoPath(photoKey.substring(1))) {
-                    Bitmap photo = bitmaps.remove(photoKey.substring(1));
-                    if (okBmp(photo)) {
-                        freezeBmp = photo;
-                        frozenPath = photoKey.substring(1);
+                    if (bannerHosts.contains(tv) && now - photoFadeStart.getOrDefault(viewedProfileId, 0.0) < FADE_DUR) {
+                        tv.postInvalidateOnAnimation();
+                        return;
                     }
+                    photoCoverPath = photoKey.substring(1);
                 }
             }
             if (!prepVideo(path)) return;
+            if (photoCoverPath != null) {
+                Bitmap photo = bitmaps.remove(photoCoverPath);
+                    if (okBmp(photo)) {
+                        freezeBmp = photo;
+                    frozenPath = photoCoverPath;
+                }
+            }
             boolean reparentKeepFreeze = okBmp(freezeBmp);
             if (videoTexture != null) {
                 ViewParent par = videoTexture.getParent();
@@ -2136,14 +2507,19 @@ public final class BannerRenderer {
             lastVidAttach = now;
             removeVidViews(reparentKeepFreeze);
             addVidViews(tv);
+            if (isVideoAttachedTo(tv) && (profileInfoViewport == null || videoTexture.getHeight() > 0)) {
+                frameBfByEid.put(viewedProfileId, path);
+                frameIvByEid.put(viewedProfileId, true);
+            }
         } catch (Throwable ignored) {}
     }
 
     private boolean prepVideo(String path) {
         try {
-            if (t() - getOrD(failVids, path) < FAIL_CD_S) { return false; }
+            if (t() - getOrD(failVids, path) < FAIL_CD_S) { clearProfileInfoViewport(); return false; }
             File f = new File(path);
             if (!f.exists() || f.length() < MIN_VID) {
+                clearProfileInfoViewport();
                 failVids.put(path, t()); return false;
             }
             if (videoPlayer != null && path.equals(curVidPath)) { return true; }
@@ -2229,7 +2605,7 @@ public final class BannerRenderer {
         AndroidUtilities.cancelRunOnUIThread(replacementCaptureTimeout);
         replacementCaptureTimeout = null;
         if (session != videoSessionId || host != currentTopView || !isProfileOpen
-                || !pathEq(outgoingPath, curVidPath) || !curIv || !pathEq(incomingPath, curBf)) {
+                || !pathEq(outgoingPath, curVidPath) || !pathEq(incomingPath, curBf)) {
             recycle(frame);
         } else {
             if (okBmp(frame)) publishLatestVideoFrame(frame, outgoingPath, session);
@@ -2248,8 +2624,10 @@ public final class BannerRenderer {
             vidFirstFrameTime = 0;
             videoFrameReady = false;
             videoDecoderFrameReady = false;
-            adoptReopenFreeze();
+            freshCoverReveal = adoptReopenFreeze();
+            freshCoverRevealElapsed = freshCoverRevealTick = 0;
             boolean hasFr = okBmp(freezeBmp);
+            freshCoverReveal |= hasFr && !bannerHosts.contains(tv);
             reparentCover = false;
             Context ctx = ApplicationLoader.applicationContext;
 
@@ -2258,23 +2636,39 @@ public final class BannerRenderer {
                 protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
                     super.onSizeChanged(width, height, oldWidth, oldHeight);
                     if (this == BannerRenderer.this.videoTexture && width > 0 && height > 0) {
-                        updateVidTransform(width, height);
+                        if (profileInfoViewport != null) syncVideoViewport(height);
+                        else updateVidTransform(width, height);
                     }
                 }
             };
             videoTexture.setLayoutParams(lp(vh)); videoTexture.setOpaque(false);
             videoTexture.setAlpha(0f); videoTexture.setVisibility(View.VISIBLE); tv.addView(videoTexture, 0);
 
-            vidFreeze = new ImageView(ctx); vidFreeze.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            vidFreeze = new ViewportImageView(ctx); vidFreeze.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            if (profileInfoViewport != null && hasFr && frozenPath != null && !isVideoPath(frozenPath)) {
+                ((ViewportImageView) vidFreeze).photoCover = freezeBmp;
+            }
             vidFreeze.setLayoutParams(lp(vh)); vidFreeze.setBackgroundColor(Color.TRANSPARENT);
             if (hasFr) vidFreeze.setImageBitmap(freezeBmp);
-            vidFreeze.setAlpha(hasFr ? 1f : 0f);
+            vidFreeze.setAlpha(hasFr && !freshCoverReveal ? 1f : 0f);
             waitFrame = true; tv.addView(vidFreeze, 1);
 
-            vidBlur = new ImageView(ctx); vidBlur.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            vidBlur = new ViewportImageView(ctx); vidBlur.setScaleType(ImageView.ScaleType.CENTER_CROP);
             vidBlur.setAlpha(0f); vidBlur.setLayoutParams(lp(vh)); tv.addView(vidBlur, 2);
 
-            vidContrast = new View(ctx);
+            vidContrast = new View(ctx) {
+                @Override public void draw(Canvas canvas) {
+                    Drawable background = getBackground();
+                    if (!hasLogicalVideoViewport(this)) {
+                        if (background != null) background.setBounds(0, 0, getWidth(), getHeight());
+                        super.draw(canvas);
+                        return;
+                    }
+                    if (background == null) return;
+                    background.setBounds(0, 0, getWidth(), profileInfoViewport.logicalHeight);
+                    background.draw(canvas);
+                }
+            };
             GradientDrawable contrast = new GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     new int[]{0x70000000, 0x18000000, 0xB0000000});
@@ -2288,6 +2682,7 @@ public final class BannerRenderer {
 
             vidTexAttachedTvId = System.identityHashCode(tv);
 
+            if (profileInfoViewport != null) syncVideoViewport(vh);
             VideoPlayer p = videoPlayer;
             if (p != null) {
                 try { p.setTextureView(videoTexture); } catch (Throwable ignored) {}
@@ -2307,9 +2702,11 @@ public final class BannerRenderer {
         return l;
     }
 
-    private void removeVidViews() { removeVidViews(false); }
+    private void removeVidViews() { clearProfileInfoViewport(); removeVidViews(false); }
 
     private void removeVidViews(boolean keepFreeze) {
+        freshCoverReveal = false;
+        freshCoverRevealElapsed = freshCoverRevealTick = 0;
         cancelResumeCapture();
         resumeFadeWaitingForFrame = false;
         ArrayList<Bitmap> bmps = new ArrayList<>();
@@ -2341,6 +2738,8 @@ public final class BannerRenderer {
             }
         } catch (Throwable ignored) {}
         videoTexture = null; vidFreeze = null; vidBlur = null; vidContrast = null; vidDark = null;
+        collectVideoFxViews();
+        removalVideoHidden = false;
         blurFadeStart = 0;
         liveVideoBlurRadius = -1f;
         vidTexAttachedTvId = 0; vidFirstFrameTime = 0;
@@ -2387,6 +2786,7 @@ public final class BannerRenderer {
     }
 
     public void destroyVideo() {
+        clearProfileInfoViewport();
         captureFreezeFrame();
         if (okBmp(freezeBmp) && frozenPath != null) {
             recycle(reopenFreeze);
@@ -2399,19 +2799,48 @@ public final class BannerRenderer {
         frozenPath = null; maxVh = 0; vidFirstFrameTime = 0;
         lastDa = -1; lastBa = -1f; lastLh = 0; lastVol = -1f;
     }
-    private void adoptReopenFreeze() {
+    private boolean adoptReopenFreeze() {
+        boolean adopted = false;
         if (!okBmp(freezeBmp) && okBmp(reopenFreeze)
                 && !pathEq(reopenFreezePath, curVidPath)
                 && reopenFreezeEid == viewedProfileId && reopenFreezeAccount == viewedAccount) {
             freezeBmp = reopenFreeze;
             frozenPath = reopenFreezePath;
             reopenFreeze = null;
+            adopted = true;
         }
         recycle(reopenFreeze);
         reopenFreeze = null;
         reopenFreezePath = null;
         reopenFreezeEid = 0;
         reopenFreezeAccount = -1;
+        return adopted;
+    }
+
+    private void advanceFreshCoverReveal() {
+        if (!freshCoverReveal) return;
+        if (vidFreeze == null || !okBmp(freezeBmp)) {
+            freshCoverReveal = false;
+            freshCoverRevealTick = 0;
+            return;
+        }
+        if (appPaused || videoPausedByTab || overlayOpen || profileCoveredByNavigation
+                || !isProfileOpen || profileExitActive) {
+            freshCoverRevealTick = 0;
+            return;
+        }
+        double now = t();
+        if (freshCoverRevealTick > 0) freshCoverRevealElapsed += Math.max(0, now - freshCoverRevealTick);
+        freshCoverRevealTick = now;
+        float progress = clamp01(freshCoverRevealElapsed / (VID_FADE / 1000.0));
+        vidFreeze.setAlpha((float) (0.5 - 0.5 * Math.cos(Math.PI * progress)));
+        if (progress >= 1f) {
+            freshCoverReveal = false;
+            freshCoverRevealTick = 0;
+            dismissFreeze();
+        } else {
+            postInv();
+        }
     }
 
     private void handleVidFail(String path) {
@@ -2533,7 +2962,7 @@ public final class BannerRenderer {
     private boolean captureFreezeFrame() {
         try {
             if (videoTexture == null || videoPlayer == null || !vidReady) { return false; }
-            if (okBmp(videoCrossfadeBitmap)) return false;
+            if (removingPath != null || freshCoverReveal || okBmp(videoCrossfadeBitmap)) return false;
             if (okBmp(freezeBmp) && pathEq(frozenPath, curVidPath)) { return true; }
             final Bitmap fr;
             synchronized (latestVideoFrameLock) {
@@ -2575,7 +3004,8 @@ public final class BannerRenderer {
     }
     private void startResumeCrossfadeOnFrame() {
         if (!resumeFadeWaitingForFrame || profileCoveredByNavigation || appPaused || videoPausedByTab
-                || overlayOpen || !isProfileOpen || profileExitActive || !isVideoAttachedTo(currentTopView)) return;
+                || overlayOpen || !isProfileOpen || profileExitActive || removingPath != null
+                || !isVideoAttachedTo(currentTopView)) return;
         resumeFadeWaitingForFrame = false;
         doFreezeSwap(videoTexture, vidFreeze, videoCrossfadeBitmap, RESUME_FADE);
     }
@@ -2661,6 +3091,8 @@ public final class BannerRenderer {
             if (!videoFrameReady || !isVideoAttachedTo(currentTopView) || !videoTexture.isAvailable()) return;
             if (!vidReady || appPaused || videoPausedByTab || overlayOpen
                     || profileCoveredByNavigation || !isProfileOpen || profileExitActive) return;
+            if (removingPath != null) return;
+            if (freshCoverReveal) { postInv(); return; }
             if (vidW <= 0 || vidH <= 0) { return; }
             if (videoTexture.getWidth() <= 0 || videoTexture.getHeight() <= 0) return;
             try { updateVidTransform(0, 0); } catch (Throwable ignored) {}
@@ -2794,19 +3226,21 @@ public final class BannerRenderer {
             if (vw <= 0 || vh <= 0 || tw <= 0 || th <= 0) {
                 return;
             }
-            float sc = Math.max((float) tw / vw, (float) th / vh);
+            int logicalHeight = hasLogicalVideoViewport(videoTexture) ? profileInfoViewport.logicalHeight : th;
+            float sc = Math.max((float) tw / vw, (float) logicalHeight / vh);
             float sw = vw * sc, sh = vh * sc;
             if (vidMatrix == null) vidMatrix = new Matrix();
             vidMatrix.reset();
             vidMatrix.setScale(sw / tw, sh / th);
-            vidMatrix.postTranslate((tw - sw) / 2f, (th - sh) / 2f);
+            vidMatrix.postTranslate((tw - sw) / 2f, (logicalHeight - sh) / 2f);
             videoTexture.setTransform(vidMatrix);
         } catch (Throwable ignored) {}
     }
 
 
     private void startBlur() {
-        if (BannerConfig.liteMode) return;
+        if (BannerConfig.liteMode || !isProfileOpen || appPaused || overlayOpen || videoPausedByTab
+                || profileCoveredByNavigation || profileExitActive || removingPath != null) return;
         Thread cur = blurThread;
         AtomicBoolean curStop = blurStop;
         if (cur != null && cur.isAlive() && curStop != null && !curStop.get()) return;
@@ -2819,9 +3253,11 @@ public final class BannerRenderer {
     }
 
     private void stopBlur() {
+        Thread retiring = blurThread;
         if (blurStop != null) blurStop.set(true);
         blurThread = null; blurStop = null;
         blurGen++;
+        if (retiring != null) retiring.interrupt();
     }
 
     private void blurWork(AtomicBoolean stop, int gen) {
@@ -2850,13 +3286,13 @@ public final class BannerRenderer {
     }
 
     private boolean sleepStop(AtomicBoolean stop, double secs) {
+        if (stop.get()) return true;
         long ms = (long) (secs * 1000);
-        long waited = 0;
-        while (waited < ms) {
-            if (stop.get()) return true;
-            long step = Math.min(50, ms - waited);
-            try { Thread.sleep(step); } catch (InterruptedException e) { return true; }
-            waited += step;
+        try {
+            if (ms > 0) Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return true;
         }
         return stop.get();
     }
@@ -3100,6 +3536,7 @@ public final class BannerRenderer {
             return false;
         }
         void clearAll() { for (PhotoBlur b : values()) recycle(b.bitmap); clear(); }
+        void clearFailed() { values().removeIf(b -> !okBmp(b.bitmap)); }
     }
 
     private static final class BitmapLru extends LinkedHashMap<String, Bitmap> {

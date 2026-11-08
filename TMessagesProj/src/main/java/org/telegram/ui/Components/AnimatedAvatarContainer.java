@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -11,6 +13,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class AnimatedAvatarContainer extends FrameLayout {
 
     boolean occupyStatusBar = true;
@@ -20,7 +23,7 @@ public class AnimatedAvatarContainer extends FrameLayout {
     public AnimatedAvatarContainer(@NonNull Context context) {
         super(context);
         titleTextView = new AnimatedTextView(context, true, true, true);
-        titleTextView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultTitle));
+        ThemeBind.textColor(titleTextView, Theme.key_actionBarDefaultTitle);
         titleTextView.setTextSize(AndroidUtilities.dp(18));
         titleTextView.setGravity(Gravity.LEFT);
         titleTextView.setTypeface(AndroidUtilities.bold());
@@ -29,7 +32,7 @@ public class AnimatedAvatarContainer extends FrameLayout {
 
         subtitleTextView = new AnimatedTextView(context, true, true, true);
         subtitleTextView.setTag(Theme.key_actionBarDefaultSubtitle);
-        subtitleTextView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultTitle));
+        ThemeBind.textColor(subtitleTextView, Theme.key_actionBarDefaultTitle);
         subtitleTextView.setTextSize(AndroidUtilities.dp(14));
         subtitleTextView.setGravity(Gravity.LEFT);
         subtitleTextView.setPadding(0, 0, AndroidUtilities.dp(10), 0);

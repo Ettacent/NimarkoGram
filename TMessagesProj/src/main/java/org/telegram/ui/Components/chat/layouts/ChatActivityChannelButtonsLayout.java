@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.chat.layouts;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -34,13 +36,13 @@ import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
 @SuppressLint("ViewConstructor")
-public class ChatActivityChannelButtonsLayout extends FrameLayout implements FactorAnimator.Target {
+public class ChatActivityChannelButtonsLayout extends FrameLayout implements FactorAnimator.Target, Theme.Colorable {
     public static final int BUTTON_SEARCH = 0;
     public static final int BUTTON_GIFT = 1;
     public static final int BUTTON_DIRECT = 2;
     public static final int BUTTON_GIGA_GROUP_INFO = 3;
     public static final int BUTTON_RECENT_ACTIONS_INFO = 4;
-    
+
     public static final int BUTTON_MUTE = 5;
     public static final int BUTTON_UNMUTE = 6;
     public static final int BUTTON_DISCUSS = 7;
@@ -60,7 +62,7 @@ public class ChatActivityChannelButtonsLayout extends FrameLayout implements Fac
         R.drawable.input_message,
         R.drawable.msg_help,
         R.drawable.msg_help,
-        
+
         R.drawable.notifications_on_solar,
         R.drawable.msg_mute_solar,
         R.drawable.msg_discuss_solar
@@ -73,7 +75,7 @@ public class ChatActivityChannelButtonsLayout extends FrameLayout implements Fac
         BUTTON_DIRECT,
         BUTTON_GIGA_GROUP_INFO,
         BUTTON_RECENT_ACTIONS_INFO,
-        
+
         BUTTON_MUTE,
         BUTTON_UNMUTE,
         BUTTON_DISCUSS
@@ -98,9 +100,10 @@ public class ChatActivityChannelButtonsLayout extends FrameLayout implements Fac
         addView(container, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44, Gravity.CENTER_VERTICAL));
     }
 
+    @Override
     public void updateColors() {
         for (ButtonHolder holder : buttonHolders) {
-            if (holder != null) {
+            if (holder != null && holder.button != null) {
                 holder.button.updateColors();
             }
         }
@@ -323,7 +326,7 @@ public class ChatActivityChannelButtonsLayout extends FrameLayout implements Fac
                 continue;
             }
 
-            final float width = holder.visibilityAnimator.getFloatValue() * dp(44 + 10);    
+            final float width = holder.visibilityAnimator.getFloatValue() * dp(44 + 10);
             holder.button.setTranslationX(dp(1) + totalWidthLeft);
             totalWidthLeft += width;
         }
@@ -334,7 +337,7 @@ public class ChatActivityChannelButtonsLayout extends FrameLayout implements Fac
                 continue;
             }
 
-            final float width = holder.visibilityAnimator.getFloatValue() * dp(44 + 10);    
+            final float width = holder.visibilityAnimator.getFloatValue() * dp(44 + 10);
             holder.button.setTranslationX(getMeasuredWidth() - holder.button.getMeasuredWidth() - dp(1) - totalWidthRight);
             totalWidthRight += width;
         }

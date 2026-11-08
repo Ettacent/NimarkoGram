@@ -58,6 +58,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BottomSheetTabs;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CombinedDrawable;
@@ -76,6 +77,7 @@ import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 
+import java.util.HashSet;
 import app.nimarkogram.messenger.icons.IconResources;
 public class AddressBarList extends FrameLayout {
 
@@ -722,6 +724,11 @@ public class AddressBarList extends FrameLayout {
             iconView.invalidate();
         }
 
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            colors.add(Theme.key_windowBackgroundWhite);
+            colors.add(Theme.key_windowBackgroundWhiteBlackText);
+        }
         private int textColor;
         public void setColors(int backgroundColor, int textColor) {
             this.textColor = textColor;
@@ -1098,8 +1105,8 @@ public class AddressBarList extends FrameLayout {
         public void attach() {
             if (attached) return;
             attached = true;
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.mediaDidLoad);
-            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.bookmarkAdded);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.mediaDidLoad);
+            NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.bookmarkAdded);
             if (TextUtils.isEmpty(query)) {
                 load();
             }

@@ -1,0 +1,47 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "2c6d7c72cce5f94e3c46c4d4fa34624c2f904e934bae712ff23f83015e01e8e7",
+      "replacements": [
+        {
+          "before": "\t\tthis._active = -1;\n\t\treturn this.matches();\n\t}\n\tnext() {",
+          "after": "\t\tthis._active = -1;\n\t\t// NimarkoGram: expose the bounded sentinel for truncation, never for navigation.\n\t\tconst result = this.matches();\n\t\tif (matches.length > 1000) {\n\t\t\tif (matches[1000].unit !== matches[999].unit) this._runs.delete(matches[1000].unit);\n\t\t\tmatches.length = 1000;\n\t\t}\n\t\treturn result;\n\t}\n\tnext() {",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "a5205b04e549923afd9171c0f98ba4d1df5e954b5cbf5a4fafc63d0c9fdcae1e",
+      "replacements": [
+        {
+          "before": "\t_collectSheetCells;\n\t_matches = [];",
+          "after": "\t_collectSheetCells;\n\t_isSheetVisible;\n\t_matches = [];",
+          "count": 1
+        },
+        {
+          "before": "\tconstructor(e, t, n) {\n\t\tthis._sheetCount = e, this._sheetName = t, this._collectSheetCells = n;\n\t}",
+          "after": "\tconstructor(e, t, n, isSheetVisible = () => true) {\n\t\tthis._sheetCount = e, this._sheetName = t, this._collectSheetCells = n;\n\t\tthis._isSheetVisible = isSheetVisible;\n\t}",
+          "count": 1
+        },
+        {
+          "before": "\t\tfor (let sheet = 0; sheet < count && matches.length < 1001; sheet++) {\n\t\t\tlet source;",
+          "after": "\t\tfor (let sheet = 0; sheet < count && matches.length < 1001; sheet++) {\n\t\t\t// Reject hidden/veryHidden sheets before allocation and before consuming the cap.\n\t\t\tif (!this._isSheetVisible(sheet)) continue;\n\t\t\tlet source;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis._active = -1;\n\t\treturn this.matches();\n\t}\n\tnext() {",
+          "after": "\t\tthis._active = -1;\n\t\t// Return only one sentinel; highlights and next/prev wrap within the first 1000.\n\t\tconst result = this.matches();\n\t\tif (matches.length > 1000) matches.length = 1000;\n\t\treturn result;\n\t}\n\tnext() {",
+          "count": 1
+        },
+        {
+          "before": "this.controller = new ii(() => e.sheetCount(), (t) => e.workbook()?.sheetNames[t] ?? \"\", (e) => this.collectSheetCells(e));",
+          "after": "this.controller = new ii(() => e.sheetCount(), (t) => e.workbook()?.sheetNames[t] ?? \"\", (e) => this.collectSheetCells(e), sheet => !!this.host.workbook() && !this.host.workbook().isHidden(sheet));",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.graphics.Canvas;
@@ -13,23 +15,9 @@ import androidx.annotation.Nullable;
 
 import org.telegram.messenger.AndroidUtilities;
 
-public class SpeedIconDrawable extends Drawable {
+public class SpeedIconDrawable extends Drawable implements Drawable.Callback {
 
     private final AnimatedTextView.AnimatedTextDrawable textDrawable;
-    private final Drawable.Callback callback = new Callback() {
-        @Override
-        public void invalidateDrawable(@NonNull Drawable who) {
-            SpeedIconDrawable.this.invalidateSelf();
-        }
-        @Override
-        public void scheduleDrawable(@NonNull Drawable who, @NonNull Runnable what, long when) {
-            SpeedIconDrawable.this.scheduleSelf(what, when);
-        }
-        @Override
-        public void unscheduleDrawable(@NonNull Drawable who, @NonNull Runnable what) {
-            SpeedIconDrawable.this.unscheduleSelf(what);
-        }
-    };
     private final Paint outlinePaint;
 
     public SpeedIconDrawable() {
@@ -38,7 +26,7 @@ public class SpeedIconDrawable extends Drawable {
 
     public SpeedIconDrawable(boolean outline) {
         textDrawable = new AnimatedTextView.AnimatedTextDrawable(false, true, true);
-        textDrawable.setCallback(callback);
+        textDrawable.setCallback(this);
         textDrawable.setAnimationProperties(.3f, 0, 165, CubicBezierInterpolator.EASE_OUT_QUINT);
         textDrawable.setGravity(Gravity.CENTER_HORIZONTAL);
         textDrawable.setTypeface(AndroidUtilities.bold());
@@ -135,5 +123,18 @@ public class SpeedIconDrawable extends Drawable {
     @Override
     public int getOpacity() {
         return PixelFormat.TRANSPARENT;
+    }
+    @Override
+    public void invalidateDrawable(@NonNull Drawable who) {
+        invalidateSelf();
+}
+    @Override
+    public void scheduleDrawable(@NonNull Drawable who, @NonNull Runnable what, long when) {
+        scheduleSelf(what, when);
+    }
+
+    @Override
+    public void unscheduleDrawable(@NonNull Drawable who, @NonNull Runnable what) {
+        unscheduleSelf(what);
     }
 }

@@ -28,7 +28,6 @@ import android.webkit.WebView;
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
-import androidx.core.content.pm.ShortcutManagerCompat;
 
 import org.json.JSONObject;
 import org.telegram.utils.proxy.ProxySettings;
@@ -302,8 +301,10 @@ public class SharedConfig {
     public static boolean saveStreamMedia = true;
     public static boolean pauseMusicOnRecord = false;
     public static boolean pauseMusicOnMedia = false;
+    public static boolean compactMode = false;
     public static boolean noiseSupression;
     public static boolean debugWebView;
+    public static boolean widgetStaticLayers = true;
     public static boolean sortContactsByName;
     public static boolean sortFilesByName;
     public static boolean shuffleMusic;
@@ -682,6 +683,7 @@ public class SharedConfig {
             saveStreamMedia = preferences.getBoolean("saveStreamMedia", true);
             pauseMusicOnRecord = preferences.getBoolean("pauseMusicOnRecord", true);
             pauseMusicOnMedia = preferences.getBoolean("pauseMusicOnMedia", false);
+            compactMode = preferences.getBoolean("compactMode", false);
             forceDisableTabletMode = preferences.getBoolean("forceDisableTabletMode", false);
             streamAllVideo = preferences.getBoolean("streamAllVideo", BuildVars.DEBUG_VERSION);
             streamMkv = preferences.getBoolean("streamMkv", false);
@@ -698,6 +700,7 @@ public class SharedConfig {
             distanceSystemType = preferences.getInt("distanceSystemType", 0);
             keepMedia = preferences.getInt("keep_media", CacheByChatsController.KEEP_MEDIA_ONE_MONTH);
             debugWebView = preferences.getBoolean("debugWebView", false);
+            widgetStaticLayers = preferences.getBoolean("widgetStaticLayers", true);
             lastKeepMediaCheckTime = preferences.getInt("lastKeepMediaCheckTime", 0);
             lastLogsCheckTime = preferences.getInt("lastLogsCheckTime", 0);
             searchMessagesAsListUsed = preferences.getBoolean("searchMessagesAsListUsed", false);
@@ -735,8 +738,8 @@ public class SharedConfig {
             photoViewerBlur = preferences.getBoolean("photoViewerBlur", true);
             multipleReactionsPromoShowed = preferences.getBoolean("multipleReactionsPromoShowed", false);
             callEncryptionHintDisplayedCount = preferences.getInt("callEncryptionHintDisplayedCount", 0);
-            debugVideoQualities = preferences.getBoolean("debugVideoQualities", false);
             shadowsInSections = preferences.getBoolean("shadowsInSections", false);
+            debugVideoQualities = preferences.getBoolean("debugVideoQualities", false);
             debugViewMetrics = preferences.getBoolean("debugViewMetrics", false);
             photoHighQualityDefault = preferences.getBoolean("photoHighQualityDefault", false);
             photoLiveDefault = preferences.getBoolean("photoLiveDefault", false);
@@ -1142,6 +1145,10 @@ public class SharedConfig {
         editor.apply();
     }
 
+    public static void toggleWidgetStaticLayers() {
+        widgetStaticLayers = !widgetStaticLayers;
+        MessagesController.getGlobalMainSettings().edit().putBoolean("widgetStaticLayers", widgetStaticLayers).apply();
+    }
     public static void toggleDebugWebView() {
         debugWebView = !debugWebView;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
@@ -1364,8 +1371,7 @@ public class SharedConfig {
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("direct_share", directShare);
         editor.apply();
-        ShortcutManagerCompat.removeAllDynamicShortcuts(ApplicationLoader.applicationContext);
-        MediaDataController.getInstance(UserConfig.selectedAccount).buildShortcuts();
+        MediaDataController.getInstance(UserConfig.selectedAccount).buildShortcuts(true);
     }
 
     public static void toggleStreamMedia() {
@@ -1429,6 +1435,18 @@ public class SharedConfig {
         SharedPreferences preferences = MessagesController.getGlobalMainSettings();
         SharedPreferences.Editor editor = preferences.edit();
         editor.putBoolean("pauseMusicOnMedia", pauseMusicOnMedia);
+        editor.apply();
+    }
+
+    public static boolean isCompactMode(int currentAccount, long dialogId) {
+        return compactMode || dialogId > 0 && AppGlobalConfig.getInstance(currentAccount).agentBotIds.contains(dialogId);
+    }
+
+    public static void toggleCompactMode() {
+        compactMode = !compactMode;
+        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putBoolean("compactMode", compactMode);
         editor.apply();
     }
 

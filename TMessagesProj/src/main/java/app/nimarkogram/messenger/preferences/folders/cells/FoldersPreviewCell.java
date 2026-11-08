@@ -1,4 +1,14 @@
 /*
+
+ This is the source code of exteraGram for Android.
+
+ We do not and cannot prevent the use of our code,
+ but be respectful and credit the original author.
+
+ Copyright @immat0x1, 2023
+ */
+
+/*
  * Copyright @immat0x1, 2023
  */
 
@@ -249,9 +259,10 @@ public class FoldersPreviewCell extends FrameLayout {
                     super.onAnimationEnd(animation);
                     allChatsTabName = getAllChatsTabName();
                     allChatsTabIcon = getAllChatsTabIcon();
-                    animator.setFloatValues(0f, 1f);
-                    animator.removeAllListeners();
-                    animator.start();
+                    ValueAnimator nameAnimator = (ValueAnimator) animation;
+                    nameAnimator.setFloatValues(0f, 1f);
+                    nameAnimator.removeAllListeners();
+                    nameAnimator.start();
                 }
             });
             animator.start();

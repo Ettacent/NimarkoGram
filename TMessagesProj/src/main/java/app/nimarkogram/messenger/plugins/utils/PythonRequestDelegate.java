@@ -41,9 +41,20 @@ public final class PythonRequestDelegate implements
         final TLObject response;
         final TLRPC.TL_error error;
 
-        Invocation(TLObject response, TLRPC.TL_error error) {
+        final ManagedResponseLease lease;
+
+        Invocation(TLObject response, TLRPC.TL_error error, ManagedResponseLease lease) {
             this.response = response;
             this.error = error;
+            this.lease = lease;
+        }
+
+        void release() {
+            release(null);
+        }
+
+        void release(Throwable bodyFailure) {
+            if (lease != null) lease.release(bodyFailure);
         }
     }
 
@@ -97,20 +108,44 @@ public final class PythonRequestDelegate implements
 
     @Override
     public void run(TLObject response, TLRPC.TL_error error) {
+        runWithResponseLease(response, error, null);
+    }
+
+    public void runWithResponseLease(TLObject response, TLRPC.TL_error error,
+            ManagedResponseLease producer) {
         if (!callbackState.beginInitialInvocation()) {
             return;
         }
-        dispatch(new Invocation(response, error));
+        ManagedResponseLease retained = null;
+        final Invocation invocation;
+        try {
+            retained = producer == null ? null : producer.retain();
+            invocation = new Invocation(response, error, retained);
+        } catch (Throwable failure) {
+            revokeAfterFailure(failure);
+            if (retained != null) retained.release(failure);
+            throw failure;
+        }
+        dispatch(invocation);
     }
 
-    private void runAfterActivation(Invocation invocation) {
+    private void runAfterActivation() {
+        final Invocation invocation;
+        synchronized (activationLeaseLock) {
+            invocation = activationInvocation.getAndSet(null);
+        }
+        if (invocation == null) return;
         if (!callbackState.beginOnlyRetry()) {
+            invocation.release();
             return;
         }
         dispatch(invocation);
     }
 
     private void dispatch(Invocation invocation) {
+        boolean parked = false;
+        Throwable bodyFailure = null;
+        try {
         PluginsController controller = PluginsController.getInstance();
         int decision = controller.getPluginRuntimeTaskDecision(runtimeToken);
         if (decision == PluginsController.RUNTIME_TASK_DROP) {
@@ -123,8 +158,10 @@ public final class PythonRequestDelegate implements
                 return;
             }
             synchronized (activationLeaseLock) {
+                    if (!callbackState.isWaiting()) return;
+                    activationDispatcher.set(captureDispatcher());
             activationInvocation.set(invocation);
-            activationDispatcher.set(captureDispatcher());
+                    parked = true;
             }
             int deferred = controller.deferRuntimeCallback(
                     runtimeToken, this);
@@ -194,25 +231,31 @@ public final class PythonRequestDelegate implements
                 }
             }
         }
+        } catch (Throwable failure) {
+            bodyFailure = failure;
+            revokeAfterFailure(failure);
+            throw failure;
+        } finally {
+            if (!parked) invocation.release(bodyFailure);
+        }
     }
 
     @Override
     public void onPluginRuntimeActive() {
         final ActivationDispatcher dispatcher;
-        final Invocation invocation;
+        final boolean hasInvocation;
         synchronized (activationLeaseLock) {
             dispatcher = activationDispatcher.getAndSet(null);
-            invocation = activationInvocation.getAndSet(null);
+            hasInvocation = activationInvocation.get() != null;
         }
-        if (dispatcher == null || invocation == null) {
-            if (dispatcher != null || invocation != null) {
+        if (dispatcher == null || !hasInvocation) {
+            if (dispatcher != null) {
                 revokeAndUnregister();
             }
             return;
         }
         try {
-            if (!dispatcher.post(
-                    () -> runAfterActivation(invocation))) {
+            if (!dispatcher.post(this::runAfterActivation)) {
                 revokeAndUnregister();
             }
         } catch (Throwable failure) {
@@ -224,13 +267,18 @@ public final class PythonRequestDelegate implements
         }
     }
 
+    public void cancel() {
+        revokeAndUnregister();
+    }
     @Override
     public void revokePluginRuntime() {
         callbackState.drop();
+        final Invocation cancelled;
         synchronized (activationLeaseLock) {
         activationDispatcher.set(null);
-        activationInvocation.set(null);
+            cancelled = activationInvocation.getAndSet(null);
         }
+        if (cancelled != null) cancelled.release();
     }
 
     private void registerExactHolder() {
@@ -262,6 +310,18 @@ public final class PythonRequestDelegate implements
                 runtimeToken, this);
     }
 
+    private void revokeAfterFailure(Throwable primary) {
+        try {
+            revokeAndUnregister();
+        } catch (Throwable secondary) {
+            if (primary != secondary) {
+                try {
+                    primary.addSuppressed(secondary);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
     private static void rethrowIfFatal(Throwable failure) {
         if (failure instanceof VirtualMachineError) {
             throw (VirtualMachineError) failure;

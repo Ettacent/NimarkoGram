@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_DocViewerTitle">内置文档查看器</string>
+    <string name="NM_DocViewerDescription">在 NimarkoGram 内打开 PDF、Word（DOCX）、Excel（XLSX）、PowerPoint（PPTX）和文本文件。</string>
+    <string name="NM_DocChooseSheet">选择工作表</string>
+    <string name="NM_DocOfficeTooLarge">此文档过大或过于复杂，无法使用内置 Office 查看器打开。</string>
+    <string name="NM_DocOfficeWebView">Office 查看器需要兼容的 Android System WebView。请更新后重试。</string>
+    <string name="NM_DocOfficePassword">内置查看器暂不支持受密码保护的 Office 文档。</string>
+    <string name="NM_DocText">文本</string>
+    <string name="NM_DocSearch">在文档中搜索</string>
+    <string name="NM_DocSearching">搜索中…</string>
+    <string name="NM_DocGoToPage">跳转到页面</string>
+    <string name="NM_DocPageOf">%1$d / %2$d</string>
+    <string name="NM_DocPageRange">请输入 1 到 %1$d 之间的页码</string>
+    <string name="NM_DocMatchOf">%1$d / %2$d</string>
+    <string name="NM_DocMatchesFound">找到 %1$d 处</string>
+    <string name="NM_DocNoMatches">无匹配结果</string>
+    <string name="NM_DocSearchLimited">请缩小搜索范围</string>
+    <string name="NM_DocEncoding">文本编码</string>
+    <string name="NM_DocResetZoom">重置缩放</string>
+    <string name="NM_DocZoomIn">放大</string>
+    <string name="NM_DocZoomOut">缩小</string>
+    <string name="NM_DocPrevious">上一个</string>
+    <string name="NM_DocNext">下一个</string>
+    <string name="NM_DocRetry">重试</string>
+    <string name="NM_DocOpenError">无法使用内置查看器打开此文档。</string>
+    <string name="NM_DocPasswordRequired">此 PDF 需要密码。如果已输入密码，请检查后重试。</string>
+    <string name="NM_DocEnterPassword">输入 PDF 密码</string>
+    <string name="NM_DocPasswordUnsupported">内置查看器需要 Android 15 或更高版本才能打开受密码保护的 PDF。</string>
+    <string name="NM_DocTimeout">处理此文档所用时间过长。</string>
+    <string name="NM_DocTextTooLarge">此文件过大，无法使用内置文本查看器打开。</string>
+    <string name="NM_DocEncodingError">无法读取文本编码。请在菜单中选择其他编码。</string>
+    <string name="NM_DocExternalError">未找到可以打开或分享此文件的应用。</string>
+    <string name="NM_DocProtectedError">此文档受保护，无法在其他应用中打开。</string>
+</resources>

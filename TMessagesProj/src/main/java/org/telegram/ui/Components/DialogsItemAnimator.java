@@ -290,6 +290,14 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
         return true;
     }
 
+    private void resetAddView(View view) {
+        view.setAlpha(1);
+        if (view instanceof DialogCell) {
+            DialogCell dialogCell = (DialogCell) view;
+            dialogCell.setClipProgress(0.0f);
+            dialogCell.setMoving(false);
+        }
+    }
     void animateAddImpl(final ViewHolder holder) {
         final View view = holder.itemView;
         mAddAnimations.add(holder);
@@ -304,19 +312,17 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
 
                     @Override
                     public void onAnimationCancel(Animator animator) {
-                        view.setAlpha(1);
+                        resetAddView(view);
                     }
 
                     @Override
                     public void onAnimationEnd(Animator animator) {
                         animation.setListener(null);
+                        resetAddView(view);
                         dispatchAddFinished(holder);
                         mAddAnimations.remove(holder);
                         dispatchFinishedWhenDone();
 
-                        if (holder.itemView instanceof DialogCell) {
-                            ((DialogCell) holder.itemView).setMoving(false);
-                        }
                     }
                 }).start();
     }
@@ -574,11 +580,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
             dispatchRemoveFinished(item);
         }
         if (mPendingAdditions.remove(item)) {
-            if (view instanceof DialogCell) {
-                ((DialogCell) view).setClipProgress(0.0f);
-            } else {
-                view.setAlpha(1);
-            }
+            resetAddView(view);
             dispatchAddFinished(item);
         }
 
@@ -607,11 +609,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
         for (int i = mAdditionsList.size() - 1; i >= 0; i--) {
             ArrayList<ViewHolder> additions = mAdditionsList.get(i);
             if (additions.remove(item)) {
-                if (view instanceof DialogCell) {
-                    ((DialogCell) view).setClipProgress(1.0f);
-                } else {
-                    view.setAlpha(1);
-                }
+                resetAddView(view);
                 dispatchAddFinished(item);
                 if (additions.isEmpty()) {
                     mAdditionsList.remove(i);
@@ -694,11 +692,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
         count = mPendingAdditions.size();
         for (int i = count - 1; i >= 0; i--) {
             ViewHolder item = mPendingAdditions.get(i);
-            if (item.itemView instanceof DialogCell) {
-                ((DialogCell) item.itemView).setClipProgress(0.0f);
-            } else {
-                item.itemView.setAlpha(1);
-            }
+            resetAddView(item.itemView);
             dispatchAddFinished(item);
             mPendingAdditions.remove(i);
         }
@@ -734,11 +728,7 @@ public class DialogsItemAnimator extends SimpleItemAnimator {
             for (int j = count - 1; j >= 0; j--) {
                 ViewHolder item = additions.get(j);
                 View view = item.itemView;
-                if (view instanceof DialogCell) {
-                    ((DialogCell) view).setClipProgress(0.0f);
-                } else {
-                    view.setAlpha(1);
-                }
+                resetAddView(view);
                 dispatchAddFinished(item);
                 additions.remove(j);
                 if (additions.isEmpty()) {

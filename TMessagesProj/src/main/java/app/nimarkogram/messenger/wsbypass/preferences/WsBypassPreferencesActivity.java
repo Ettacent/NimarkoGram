@@ -36,13 +36,14 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
 
     private final WsBypassController ctrl = WsBypassController.getInstance();
 
+    private boolean resumed;
     private boolean statusPollScheduled;
     private final Runnable statusPoll = () -> {
         statusPollScheduled = false;
-        if (WsBypassConfig.enabled) reload();
+        if (resumed && WsBypassConfig.enabled) reload();
     };
     private void scheduleStatusPoll() {
-        if (statusPollScheduled) return;
+        if (!resumed || statusPollScheduled) return;
         statusPollScheduled = true;
         AndroidUtilities.runOnUIThread(statusPoll, 1000);
     }
@@ -62,6 +63,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     @Override
     public void onResume() {
         super.onResume();
+        resumed = true;
         ctrl.setSettingsReloader(this::reload);
         if (WsBypassConfig.enabled) {
             WsRelayAuth.prefetchAsync(
@@ -75,9 +77,19 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     }
 
     @Override
+    public void onPause() {
+        resumed = false;
+        AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        statusPollScheduled = false;
+        super.onPause();
+    }
+
+    @Override
     public void onFragmentDestroy() {
+        resumed = false;
         ctrl.setSettingsReloader(null);
         AndroidUtilities.cancelRunOnUIThread(statusPoll);
+        statusPollScheduled = false;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.proxySettingsChanged);
         super.onFragmentDestroy();
     }
@@ -195,7 +207,7 @@ public class WsBypassPreferencesActivity extends BasePreferencesActivity
     }
 
     private void reload() {
-        if (listView != null && listView.adapter != null) {
+        if (resumed && listView != null && listView.adapter != null) {
             listView.adapter.update(true);
         }
     }

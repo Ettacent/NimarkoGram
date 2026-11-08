@@ -30,6 +30,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.ui.Stories.recorder.KeyboardNotifier;
 
 public class AlertDialogDecor extends AlertDialog {
@@ -52,7 +53,13 @@ public class AlertDialogDecor extends AlertDialog {
     private final Runnable showRunnable = () -> {
         rootView.setVisibility(View.VISIBLE);
         dimView.setAlpha(0);
-        contentView.startAnimation(AnimationUtils.loadAnimation(getContext(), resEnterAnimation));
+        final Animation enterAnimation = loadAnimation(resEnterAnimation);
+        if (enterAnimation != null) {
+            contentView.startAnimation(enterAnimation);
+        } else {
+            contentView.setAlpha(0f);
+            contentView.animate().setDuration(DIM_DURATION).alpha(1f).start();
+        }
         dimView.animate().setDuration(DIM_DURATION).alpha(1f).setListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
@@ -83,6 +90,19 @@ public class AlertDialogDecor extends AlertDialog {
         resEnterAnimation = array.getResourceId(0, -1);
         resExitAnimation = array.getResourceId(1, -1);
         array.recycle();
+    }
+
+    @Nullable
+    private Animation loadAnimation(int res) {
+        if (res == 0 || res == -1) {
+            return null;
+        }
+        try {
+            return AnimationUtils.loadAnimation(getContext(), res);
+        } catch (Resources.NotFoundException e) {
+            FileLog.e(e);
+            return null;
+        }
     }
 
     @Override
@@ -173,7 +193,9 @@ public class AlertDialogDecor extends AlertDialog {
             return;
         }
 
-        Animation animation = AnimationUtils.loadAnimation(getContext(), resExitAnimation);
+        final Animation animation = loadAnimation(resExitAnimation);
+        contentView.clearAnimation();
+        if (animation != null) {
         animation.setAnimationListener(new Animation.AnimationListener() {
             @Override
             public void onAnimationStart(Animation animation) {
@@ -190,8 +212,11 @@ public class AlertDialogDecor extends AlertDialog {
 
             }
         });
-        contentView.clearAnimation();
         contentView.startAnimation(animation);
+        } else {
+            contentView.animate().cancel();
+            contentView.animate().setDuration(DIM_DURATION).alpha(0f).start();
+        }
         dimView.animate().setListener(null).cancel();
         dimView.animate().setDuration(DIM_DURATION).alpha(0f).setListener(new AnimatorListenerAdapter() {
             @Override

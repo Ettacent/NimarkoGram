@@ -1174,7 +1174,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         super.onAttachedToWindow();
         removeCallbacks(refreshRoundZoomControl);
         post(refreshRoundZoomControl);
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileUploaded);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.fileUploaded);
     }
 
     @Override
@@ -1646,6 +1646,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
         final TextureView callbackTextureView = textureView = new TextureView(getContext());
         callbackTextureView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
+            private CameraGLThread outputOwner;
             @Override
             public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
                 if (textureView != callbackTextureView) {
@@ -1661,7 +1662,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     if (BuildVars.LOGS_ENABLED) {
                         FileLog.d("InstantCamera start create thread");
                     }
-                    cameraThread = new CameraGLThread(
+                    cameraThread = outputOwner = new CameraGLThread(
                             surface, width, height, ++cameraThreadGeneration);
                     cameraThread.start();
                 }
@@ -1672,17 +1673,23 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 if (textureView != callbackTextureView) {
                     return;
                 }
-                if (cameraThread != null) {
-                    cameraThread.surfaceWidth = width;
-                    cameraThread.surfaceHeight = height;
-                    cameraThread.refreshPreviewGeometry();
+                if (outputOwner != null && cameraThread == outputOwner
+                        && outputOwner.surfaceTexture == surface) {
+                    outputOwner.surfaceWidth = width;
+                    outputOwner.surfaceHeight = height;
+                    outputOwner.refreshPreviewGeometry();
                 }
             }
 
             @Override
             public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-                if (textureView != null && textureView != callbackTextureView) {
-                    return true;
+                final CameraGLThread owner = outputOwner;
+                final boolean outputReleaseDeferred = owner != null && owner.deferOutputRelease(surface);
+                if ((owner != null && owner.surfaceTexture != surface)
+                        || (textureView != callbackTextureView
+                                && (textureView != null || owner == null || cameraThread != owner))
+                        || (cameraThread != null && cameraThread != owner)) {
+                    return !outputReleaseDeferred;
                 }
                 ++cameraCoverGeneration;
                 cancelCameraXVideoTransitions();
@@ -1691,11 +1698,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 ++nmPhysicalReopenGeneration;
                 nmCamera2SwitchPending = false;
                 nmCancelCamera2SwitchFrameWatchdog();
-                final boolean cameraXCloseOwnedByThread = useCameraX && cameraThread != null;
+                final boolean cameraXCloseOwnedByThread = useCameraX && owner != null;
                 if (cameraThread != null) {
-                    cameraThread.shutdown(
-                            0, true, 0, 0, 0, 0,
-                            cameraXCloseOwnedByThread ? surface : null);
+                    cameraThread.shutdown(0, true, 0, 0, 0, 0);
                     cameraThread = null;
                 }
                 if (useCameraX) {
@@ -1719,7 +1724,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 // TextureView's output SurfaceTexture to CameraGLThread, which
                 // releases it only after CameraX returned all input surfaces
                 // and EGL was detached. Other paths retain framework ownership.
-                return !cameraXCloseOwnedByThread;
+                return !outputReleaseDeferred;
             }
 
             @Override
@@ -3297,7 +3302,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private boolean shutdownMessageQueued;
         private VideoRecorder ownedEncoder;
         private VideoRecorder shutdownEncoder;
-        private volatile SurfaceTexture outputSurfaceToReleaseOnShutdown;
+        private boolean recorderInputRetirementRequested;
+        private boolean recorderInputsRetired;
+        private Message recorderRetirementShutdownMessage;
+        private boolean outputRetired;
+        private boolean outputTransferred;
+        private SurfaceTexture outputSurfaceToReleaseOnShutdown;
         private EGL10 egl10;
         private EGLDisplay eglDisplay;
         private EGLContext eglContext;
@@ -4559,6 +4569,9 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     break;
                 }
                 case DO_SHUTDOWN_MESSAGE: {
+                    if (awaitRecorderInputRetirement(inputMessage)) {
+                        break;
+                    }
                     dualSurfaceSwitching = false;
                     synchronized (InstantCameraView.this) {
                         if (InstantCameraView.this.cameraTexture == cameraTexture) {
@@ -4566,8 +4579,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                         }
                     }
                     finish();
-                    SurfaceTexture outputSurface = outputSurfaceToReleaseOnShutdown;
+                    final SurfaceTexture outputSurface;
+                    synchronized (this) {
+                        outputRetired = true;
+                        outputSurface = outputSurfaceToReleaseOnShutdown;
                     outputSurfaceToReleaseOnShutdown = null;
+                    }
                     if (outputSurface != null) {
                         try {
                             outputSurface.release();
@@ -4783,18 +4800,22 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         }
 
-        public void shutdown(int send, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId) {
-            shutdown(send, notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, null);
+        private synchronized boolean deferOutputRelease(SurfaceTexture surface) {
+            if (surface != surfaceTexture) {
+                return false;
+            }
+            if (outputTransferred) {
+                return true;
+            }
+            if (outputRetired) {
+                return false;
+            }
+            outputTransferred = true;
+            outputSurfaceToReleaseOnShutdown = surface;
+            return true;
         }
-
-        public void shutdown(int send, boolean notify, int scheduleDate,
-                             int scheduleRepeatPeriod, int ttl, long effectId,
-                             SurfaceTexture outputSurfaceToRelease) {
+        public void shutdown(int send, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId) {
             synchronized (this) {
-                if (outputSurfaceToRelease == surfaceTexture
-                        && outputSurfaceToReleaseOnShutdown == null) {
-                    outputSurfaceToReleaseOnShutdown = outputSurfaceToRelease;
-                }
                 if (shutdownRequested) {
                     return;
                 }
@@ -4832,6 +4853,36 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (handler.sendMessage(pendingShutdownMessage)) {
                 shutdownMessageQueued = true;
                 pendingShutdownMessage = null;
+            }
+        }
+
+        private boolean awaitRecorderInputRetirement(Message shutdownMessage) {
+            final VideoRecorder encoder;
+            synchronized (this) {
+                if (recorderInputRetirementRequested) {
+                    return !recorderInputsRetired;
+                }
+                recorderInputRetirementRequested = true;
+                recorderRetirementShutdownMessage = Message.obtain(shutdownMessage);
+                encoder = shutdownEncoder;
+            }
+            if (encoder == null) {
+                onRecorderInputsRetired(null);
+            } else {
+                encoder.retirePreviewInputs(this);
+            }
+            return true;
+        }
+
+        private synchronized void onRecorderInputsRetired(VideoRecorder encoder) {
+            if (!recorderInputRetirementRequested || shutdownEncoder != encoder) {
+                return;
+            }
+            recorderInputsRetired = true;
+            Handler handler = getHandler();
+            if (handler != null && recorderRetirementShutdownMessage != null
+                    && handler.sendMessage(Message.obtain(recorderRetirementShutdownMessage))) {
+                recorderRetirementShutdownMessage = null;
             }
         }
 
@@ -4891,6 +4942,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
 
     private static final int MSG_AUDIO_CAPTURE_STOPPED = 6;
     /** Immutable transition values attached to one encoder frame message. */
+    private static final int MSG_RETIRE_PREVIEW_INPUTS = 7;
     private static final class CameraVideoFrameState {
         final Integer cameraId;
         final CameraGLThread liveSource;
@@ -5025,6 +5077,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     } else {
                         encoder.handleAudioCaptureStopped(capture);
                     }
+                    break;
+                }
+                case MSG_RETIRE_PREVIEW_INPUTS: {
+                    encoder.handleRetirePreviewInputs((CameraGLThread) obj);
                     break;
                 }
             }
@@ -5169,6 +5225,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         private boolean stopRequested;
         private boolean stopMessageQueued;
         private boolean recorderTerminated;
+        private boolean recorderOwnerExited;
+        private final ArrayList<CameraGLThread> pendingPreviewInputRetirements = new ArrayList<>();
         private boolean awaitingAudioStop;
         private boolean finalizationStarted;
         private int requestedStopSend;
@@ -5548,6 +5606,36 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             }
         }
 
+        private void retirePreviewInputs(CameraGLThread source) {
+            final boolean noOwnerUse;
+            synchronized (sync) {
+                noOwnerUse = !started || recorderOwnerExited;
+                if (!noOwnerUse && !pendingPreviewInputRetirements.contains(source)) {
+                    pendingPreviewInputRetirements.add(source);
+                    if (ready && handler != null) {
+                        handler.sendMessage(handler.obtainMessage(MSG_RETIRE_PREVIEW_INPUTS, source));
+                    }
+                }
+            }
+            if (noOwnerUse) {
+                source.onRecorderInputsRetired(this);
+            }
+        }
+
+        private void enqueuePreviewInputRetirementsLocked() {
+            for (CameraGLThread source : pendingPreviewInputRetirements) {
+                handler.sendMessage(handler.obtainMessage(MSG_RETIRE_PREVIEW_INPUTS, source));
+            }
+        }
+
+        private void handleRetirePreviewInputs(CameraGLThread source) {
+            synchronized (sync) {
+                if (!pendingPreviewInputRetirements.remove(source)) {
+                    return;
+                }
+            }
+            source.onRecorderInputsRetired(this);
+        }
         private void enqueueStopLocked() {
             if (stopRequested && startMessageQueued && ready && !stopMessageQueued && !recorderTerminated) {
                 stopMessageQueued = handler.sendMessage(handler.obtainMessage(
@@ -5704,6 +5792,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 synchronized (sync) {
                     handler = new EncoderHandler(this);
                     ready = true;
+                    enqueuePreviewInputRetirementsLocked();
                     sync.notifyAll();
                 }
                 Looper.loop();
@@ -5713,7 +5802,10 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
         }
 
         private void finishRecorderThread() {
+            final ArrayList<CameraGLThread> retiredSources = new ArrayList<>();
+            try {
             synchronized (sync) {
+                    recorderOwnerExited = true;
                 recorderTerminated = true;
                 ready = false;
                 running = false;
@@ -5724,11 +5816,24 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     audioCapture.stopRequested = true;
                     audioCapture = null;
                 }
+                    retiredSources.addAll(pendingPreviewInputRetirements);
+                    pendingPreviewInputRetirements.clear();
+                    try {
                 for (CameraVideoFrameState frameState : pendingVideoFrames) {
                     if (frameState.snapshot != null) frameState.snapshot.release();
                 }
+                    } finally {
                 pendingVideoFrames.clear();
                 sync.notifyAll();
+                    }
+                }
+            } finally {
+                for (CameraGLThread source : retiredSources) {
+                    try {
+                        source.onRecorderInputsRetired(this);
+                    } catch (Throwable error) {
+                        FileLog.e(error);
+                    }
             }
             setHeavyOperationsStopped(false);
             AndroidUtilities.runOnUIThread(() -> {
@@ -5736,6 +5841,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     InstantCameraView.this.videoEncoder = null;
                 }
             });
+            }
         }
 
         private void handleAudioFrameAvailable(AudioBufferInfo input) {
@@ -6289,6 +6395,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 }
             }
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
+            releaseEncoderSurface();
             AndroidUtilities.runOnUIThread(() -> {
                 if (pausePreviewToken != token || cancelled || textureView == null
                         || InstantCameraView.this.videoEncoder != VideoRecorder.this
@@ -6364,24 +6471,6 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             animatorSet.setInterpolator(new DecelerateInterpolator());
             animatorSet.start();
 
-            if (eglContext != null && eglContext.equals(EGL14.eglGetCurrentContext())) {
-                rearCrossfade.release();
-            }
-            EGL14.eglDestroySurface(eglDisplay, eglSurface);
-            eglSurface = EGL14.EGL_NO_SURFACE;
-            if (surface != null) {
-                surface.release();
-                surface = null;
-            }
-            if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
-                EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-                EGL14.eglDestroyContext(eglDisplay, eglContext);
-                EGL14.eglReleaseThread();
-                EGL14.eglTerminate(eglDisplay);
-            }
-            eglDisplay = EGL14.EGL_NO_DISPLAY;
-            eglContext = EGL14.EGL_NO_CONTEXT;
-            eglConfig = null;
         }
 
         public static final int ENCODER_SEND_CANCEL = 0;
@@ -6430,6 +6519,38 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 codec.release();
             } catch (Exception e) {
                 FileLog.e(e);
+            }
+        }
+
+        private void releaseEncoderSurface() {
+            if (eglContext != null && eglContext != EGL14.EGL_NO_CONTEXT
+                    && eglContext.equals(EGL14.eglGetCurrentContext())) {
+                if (overlayHelper != null) {
+                    try {
+                        overlayHelper.destroy();
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                }
+                rearCrossfade.release();
+            }
+            overlayHelper = null;
+            if (eglDisplay != null && eglDisplay != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+                if (eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
+                    EGL14.eglDestroySurface(eglDisplay, eglSurface);
+                }
+                EGL14.eglDestroyContext(eglDisplay, eglContext);
+                EGL14.eglReleaseThread();
+                EGL14.eglTerminate(eglDisplay);
+            }
+            eglSurface = EGL14.EGL_NO_SURFACE;
+            eglDisplay = EGL14.EGL_NO_DISPLAY;
+            eglContext = EGL14.EGL_NO_CONTEXT;
+            eglConfig = null;
+            if (surface != null) {
+                surface.release();
+                surface = null;
             }
         }
 
@@ -6687,35 +6808,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     if (recordingDelivery == delivery) MediaController.getInstance().requestRecordAudioFocus(false);
                 });
             }
-            if (overlayHelper != null) {
-                try {
-                    overlayHelper.destroy();
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-                overlayHelper = null;
-            }
-            if (eglDisplay != null && eglDisplay != EGL14.EGL_NO_DISPLAY
-                    && eglSurface != null && eglSurface != EGL14.EGL_NO_SURFACE) {
-                if (eglContext != null && eglContext.equals(EGL14.eglGetCurrentContext())) {
-                    rearCrossfade.release();
-                }
-                EGL14.eglDestroySurface(eglDisplay, eglSurface);
-            }
-            eglSurface = EGL14.EGL_NO_SURFACE;
-            if (surface != null) {
-                surface.release();
-                surface = null;
-            }
-            if (eglDisplay != null && eglDisplay != EGL14.EGL_NO_DISPLAY) {
-                EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
-                EGL14.eglDestroyContext(eglDisplay, eglContext);
-                EGL14.eglReleaseThread();
-                EGL14.eglTerminate(eglDisplay);
-            }
-            eglDisplay = EGL14.EGL_NO_DISPLAY;
-            eglContext = EGL14.EGL_NO_CONTEXT;
-            eglConfig = null;
+            releaseEncoderSurface();
             handler.exit();
             AndroidUtilities.runOnUIThread(() -> {
                 if (InstantCameraView.this.videoEncoder == this) {
@@ -7035,6 +7128,12 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     resumePreparationPending = true;
                     return;
                 }
+            }
+            if (fromPause) {
+                releaseEncoder(videoEncoder);
+                videoEncoder = null;
+                releaseEncoder(audioEncoder);
+                audioEncoder = null;
             }
             setBluetoothScoOn(true);
 

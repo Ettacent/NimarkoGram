@@ -34,6 +34,7 @@ import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -49,7 +50,7 @@ import java.util.ArrayList;
 import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.icons.IconResources;
 
-public class IconPackSelectorActivity extends BaseFragment {
+public class IconPackSelectorActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
 
     private static final int[] VALUES = {
@@ -82,6 +83,17 @@ public class IconPackSelectorActivity extends BaseFragment {
     private int pagerScrollState = ViewPager.SCROLL_STATE_IDLE;
     private final Runnable refreshColorsRunnable = this::refreshColors;
 
+    @Override public boolean onFragmentCreate() {
+        if (!super.onFragmentCreate()) return false;
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
+        return true;
+    }
+
+    @Override public void didReceivedNotification(int id, int account, Object... args) {
+        if (id != NotificationCenter.didSetNewTheme || root == null || Theme.isAnimatingColor()) return;
+        AndroidUtilities.cancelRunOnUIThread(refreshColorsRunnable);
+        AndroidUtilities.runOnUIThread(refreshColorsRunnable);
+    }
     @Override
     public View createView(Context context) {
         releasePager();
@@ -496,6 +508,8 @@ public class IconPackSelectorActivity extends BaseFragment {
         super.clearViews();
     }
     @Override public void onFragmentDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
+        AndroidUtilities.cancelRunOnUIThread(refreshColorsRunnable);
         flushPendingIconPack();
         releasePager();
         root = null;

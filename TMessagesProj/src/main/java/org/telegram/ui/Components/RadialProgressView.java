@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -21,9 +23,12 @@ import android.view.animation.DecelerateInterpolator;
 import androidx.annotation.Keep;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.ui.ActionBar.Theme;
 
-public class RadialProgressView extends View {
+import java.util.HashSet;
+
+public class RadialProgressView extends View implements Theme.Colorable {
 
     private long lastUpdateTime;
     private float radOffset;
@@ -71,6 +76,43 @@ public class RadialProgressView extends View {
         progressPaint.setStrokeCap(Paint.Cap.ROUND);
         progressPaint.setStrokeWidth(AndroidUtilities.dp(3));
         progressPaint.setColor(progressColor);
+        themedProgressColor = progressColor;
+    }
+
+    private int progressColorKey = Theme.key_progressCircle;
+    private int themedProgressColor;
+
+    public void setProgressColorKey(int key) {
+        progressColorKey = key;
+        setProgressColor(getThemedColor(key));
+        themedProgressColor = progressColor;
+    }
+
+    @Override
+    public void updateColors() {
+        try {
+            if (progressPaint == null || progressColor != themedProgressColor) {
+                return;
+            }
+            final int color = getThemedColor(progressColorKey);
+            themedProgressColor = color;
+            if (color != progressColor) {
+                final int alpha = progressPaint.getAlpha();
+                setProgressColor(color);
+                themedProgressColor = color;
+                if (useSelfAlpha) {
+                    progressPaint.setAlpha(alpha);
+                }
+                invalidate();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(progressColorKey);
     }
 
     public void setUseSelfAlpha(boolean value) {

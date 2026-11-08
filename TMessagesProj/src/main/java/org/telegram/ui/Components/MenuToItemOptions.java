@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.ComponentName;
@@ -11,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
@@ -22,14 +25,30 @@ public class MenuToItemOptions implements Menu {
     private final Utilities.Callback<Integer> onMenuClicked;
     private final Runnable premiumLock;
 
+    private final Utilities.Callback0Return<Boolean> quoteVisible;
     public MenuToItemOptions(@NonNull ItemOptions itemOptions, @NonNull Utilities.Callback<Integer> onMenuClicked, @Nullable Runnable premiumLock) {
+        this(itemOptions, onMenuClicked, premiumLock, null);
+    }
+
+    public MenuToItemOptions(@NonNull ItemOptions itemOptions, @NonNull Utilities.Callback<Integer> onMenuClicked, @Nullable Runnable premiumLock, @Nullable Utilities.Callback0Return<Boolean> quoteVisible) {
         this.itemOptions = itemOptions;
         this.onMenuClicked = onMenuClicked;
         this.premiumLock = premiumLock;
+        this.quoteVisible = quoteVisible;
+    }
+
+    public MenuToItemOptions(@NonNull ItemOptions itemOptions, @NonNull EditTextCaption editText) {
+        this(itemOptions, editText::performMenuAction, editText.getOnPremiumMenuLockClickListener(), editText::shouldShowQuoteButton);
     }
 
     @Override
     public MenuItem add(int groupId, int itemId, int order, CharSequence title) {
+        if (itemId == R.id.menu_quote && quoteVisible != null && !quoteVisible.run()) {
+            return null;
+        }
+        if (itemId == R.id.menu_regular && premiumLock != null) {
+            return null;
+        }
         if (premiumLock != null && FloatingToolbar.premiumOptions.contains(itemId) && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked()) {
             return null;
         }

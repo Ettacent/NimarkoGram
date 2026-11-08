@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Business;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -23,7 +25,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Stories.recorder.HintView2;
 
-public class QuickRepliesEmptyView extends LinearLayout {
+public class QuickRepliesEmptyView extends LinearLayout implements Theme.Colorable {
 
     private TextView titleView;
     private TextView descriptionView, descriptionView2;
@@ -127,7 +129,11 @@ public class QuickRepliesEmptyView extends LinearLayout {
         updateColors();
     }
 
-    private void updateColors() {
+    @Override
+    public void updateColors() {
+        if (titleView == null || descriptionView == null) {
+            return;
+        }
         titleView.setTextColor(getThemedColor(Theme.key_chat_serviceText));
         descriptionView.setTextColor(getThemedColor(Theme.key_chat_serviceText));
         if (descriptionView2 != null) {

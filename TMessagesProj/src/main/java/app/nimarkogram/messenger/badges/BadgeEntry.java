@@ -7,12 +7,19 @@ import app.nimarkogram.messenger.api.model.ProfileStatus;
 
 public final class BadgeEntry {
 
-    private BadgeDTO badge;
+    private volatile BadgeDTO badge;
+    private transient volatile BadgePluginOwners.Owner pluginOwner;
     private final ProfileStatus status;
     private final boolean canChangeBadge;
 
     public BadgeEntry(BadgeDTO badge, ProfileStatus status, boolean canChangeBadge) {
+        this(badge, status, canChangeBadge, BadgePluginOwners.capture());
+    }
+
+    private BadgeEntry(BadgeDTO badge, ProfileStatus status, boolean canChangeBadge,
+                       BadgePluginOwners.Owner owner) {
         this.badge = badge;
+        this.pluginOwner = owner;
         this.status = status != null ? status : ProfileStatus.DEFAULT;
         this.canChangeBadge = canChangeBadge;
     }
@@ -21,7 +28,20 @@ public final class BadgeEntry {
     public ProfileStatus getStatus() { return status; }
     public boolean getCanChangeBadge() { return canChangeBadge; }
 
-    public void setBadge(BadgeDTO badge) { this.badge = badge; }
+    public synchronized void setBadge(BadgeDTO badge) {
+        this.pluginOwner = null;
+        this.badge = badge;
+        this.pluginOwner = BadgePluginOwners.capture();
+    }
+
+    BadgePluginOwners.Owner getPluginOwner() { return pluginOwner; }
+    synchronized BadgeEntry snapshot() {
+        return new BadgeEntry(badge, status, canChangeBadge, pluginOwner);
+    }
+    synchronized void restorePluginOwner(String pluginId) {
+        pluginOwner = pluginId == null || pluginId.isEmpty() || pluginId.length() > 256
+                ? null : new BadgePluginOwners.Owner(pluginId, null);
+    }
 
     public BadgeEntry copy(BadgeDTO badge, ProfileStatus status, boolean canChangeBadge) {
         return new BadgeEntry(badge, status, canChangeBadge);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * Copyright 2018 The Android Open Source Project
  *
@@ -112,7 +114,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
     static final boolean FORCE_INVALIDATE_DISPLAY_LIST = Build.VERSION.SDK_INT == 18
             || Build.VERSION.SDK_INT == 19 || Build.VERSION.SDK_INT == 20;
-     
+
     static final boolean ALLOW_SIZE_IN_UNSPECIFIED_SPEC = Build.VERSION.SDK_INT >= 23;
 
     static final boolean POST_UPDATES_ON_ANIMATION = Build.VERSION.SDK_INT >= 16;
@@ -182,17 +184,17 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         @Override
         public void run() {
             if (!mFirstLayoutComplete || isLayoutRequested()) {
-                
+
                 return;
             }
             if (!mIsAttached) {
                 requestLayout();
-                
+
                 return;
             }
             if (mLayoutSuppressed) {
                 mLayoutWasDefered = true;
-                return; 
+                return;
             }
             consumePendingUpdateOperations();
         }
@@ -316,6 +318,9 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         glowColor = color;
     }
 
+    public int getGlowColor() {
+        return glowColor != null ? glowColor : 0;
+    }
     public int getAttachedScrapChildCount() {
         return mRecycler.getScrapCount();
     }
@@ -355,6 +360,31 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
         for (int i = 0; i < getAttachedScrapChildCount(); i++) {
             callback.accept(getAttachedScrapChildAt(i));
+        }
+    }
+
+    public void forEveryChild(boolean withPool, Consumer<View> callback) {
+        for (int i = 0; i < getChildCount(); i++) {
+            callback.accept(getChildAt(i));
+        }
+        for (int i = 0; i < getHiddenChildCount(); i++) {
+            callback.accept(getHiddenChildAt(i));
+        }
+        for (int i = 0; i < getAttachedScrapChildCount(); i++) {
+            callback.accept(getAttachedScrapChildAt(i));
+        }
+        for (int i = 0; i < getCachedChildCount(); i++) {
+            callback.accept(getCachedChildAt(i));
+        }
+        if (withPool) {
+            final RecycledViewPool pool = getRecycledViewPool();
+            if (pool != null) {
+                final ArrayList<View> pooled = new ArrayList<>();
+                pool.collectRecycledViews(pooled);
+                for (int i = 0; i < pooled.size(); i++) {
+                    callback.accept(pooled.get(i));
+                }
+            }
         }
     }
 
@@ -406,7 +436,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         @NonNull ItemHolderInfo preInfo, @NonNull ItemHolderInfo postInfo) {
                     viewHolder.setIsRecyclable(false);
                     if (mDataSetHasChangedAfterLayout) {
-                        
+
                         if (mItemAnimator.animateChange(viewHolder, viewHolder, preInfo,
                                 postInfo)) {
                             postAnimationRunner();
@@ -455,7 +485,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         initAdapterManager();
         initChildrenHelper();
         initAutofill();
-        
+
         if (ViewCompat.getImportantForAccessibility(this)
                 == ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
             ViewCompat.setImportantForAccessibility(this,
@@ -464,7 +494,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         mAccessibilityManager = (AccessibilityManager) getContext()
                 .getSystemService(Context.ACCESSIBILITY_SERVICE);
         setAccessibilityDelegateCompat(new RecyclerViewAccessibilityDelegate(this));
-        
+
         boolean nestedScrollingEnabled = true;
         setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
 
@@ -523,7 +553,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 try {
                     ClassLoader classLoader;
                     if (isInEditMode()) {
-                        
+
                         classLoader = this.getClass().getClassLoader();
                     } else {
                         classLoader = context.getClassLoader();
@@ -691,7 +721,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (vh == null) {
                     return null;
                 }
-                
+
                 if (mChildHelper.isHidden(vh.itemView)) {
                     if (DEBUG) {
                         Log.d(TAG, "assuming view holder cannot be find because it is hidden");
@@ -758,7 +788,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             @Override
             public void offsetPositionsForMove(int from, int to) {
                 offsetPositionRecordsForMove(from, to);
-                
+
                 mItemsAddedOrRemoved = true;
             }
         });
@@ -795,7 +825,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             default:
                 Log.w(TAG, "setScrollingTouchSlop(): bad argument constant "
                         + slopConstant + "; using default value");
-                
+
             case TOUCH_SLOP_DEFAULT:
                 mTouchSlop = vc.getScaledTouchSlop();
                 break;
@@ -807,15 +837,15 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public void swapAdapter(@Nullable Adapter adapter, boolean removeAndRecycleExistingViews) {
-        
+
         setLayoutFrozen(false);
         setAdapterInternal(adapter, true, removeAndRecycleExistingViews);
         processDataSetCompletelyChanged(true);
         requestLayout();
     }
-     
+
     public void setAdapter(@Nullable Adapter adapter) {
-        
+
         setLayoutFrozen(false);
         setAdapterInternal(adapter, false, true);
         processDataSetCompletelyChanged(false);
@@ -823,16 +853,16 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     void removeAndRecycleViews() {
-        
+
         if (mItemAnimator != null) {
             mItemAnimator.endAnimations();
         }
-        
+
         if (mLayout != null) {
             mLayout.removeAndRecycleAllViews(mRecycler);
             mLayout.removeAndRecycleScrapInt(mRecycler);
         }
-        
+
         mRecycler.clear();
     }
 
@@ -914,9 +944,9 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             return;
         }
         stopScroll();
-        
+
         if (mLayout != null) {
-            
+
             if (mItemAnimator != null) {
                 mItemAnimator.endAnimations();
             }
@@ -932,7 +962,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         } else {
             mRecycler.clear();
         }
-        
+
         mChildHelper.removeAllViewsUnfiltered();
         mLayout = layout;
         if (layout != null) {
@@ -1002,7 +1032,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         final boolean alreadyParented = view.getParent() == this;
         mRecycler.unscrapView(getChildViewHolder(view));
         if (viewHolder.isTmpDetached()) {
-            
+
             mChildHelper.attachViewToParent(view, -1, view.getLayoutParams(), true);
         } else if (!alreadyParented) {
             mChildHelper.addView(view, true);
@@ -1016,7 +1046,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         final boolean removed = mChildHelper.removeViewIfHidden(view);
         if (removed) {
             final ViewHolder viewHolder = getChildViewHolderInt(view);
-            
+
             if (viewHolder != null && viewHolder.isTmpDetached()) {
                 viewHolder.clearTmpDetachFlag();
             }
@@ -1026,7 +1056,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 Log.d(TAG, "after removing animated view: " + view + ", " + this);
             }
         }
-        
+
         stopInterceptRequestLayout(!removed);
         return removed;
     }
@@ -1271,7 +1301,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (hasUpdatedView()) {
                     dispatchLayout();
                 } else {
-                    
+
                     mAdapterHelper.consumePostponedUpdates();
                 }
             }
@@ -1415,11 +1445,11 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             mInterceptRequestLayoutDepth = 1;
         }
         if (!performLayoutChildren && !mLayoutSuppressed) {
-            
+
             mLayoutWasDefered = false;
         }
         if (mInterceptRequestLayoutDepth == 1) {
-            
+
             if (performLayoutChildren && mLayoutWasDefered && !mLayoutSuppressed
                     && mLayout != null && mAdapter != null) {
                 dispatchLayout();
@@ -1542,7 +1572,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             velocityY = 0;
         }
         if (velocityX == 0 && velocityY == 0) {
-            
+
             return false;
         }
 
@@ -1601,7 +1631,13 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         return mMaxFlingVelocity;
     }
 
+    private boolean isGlowDisabled() {
+        return glowColor != null && glowColor == 0;
+    }
     private void pullGlows(float x, float overscrollX, float y, float overscrollY) {
+        if (isGlowDisabled()) {
+            return;
+        }
         boolean invalidate = false;
         if (overscrollX < 0) {
             ensureLeftGlow();
@@ -1675,6 +1711,9 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     void absorbGlows(int velocityX, int velocityY) {
+        if (isGlowDisabled()) {
+            return;
+        }
         if (velocityX < 0) {
             ensureLeftGlow();
             if (mLeftGlow.isFinished()) {
@@ -1787,7 +1826,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         final FocusFinder ff = FocusFinder.getInstance();
         if (canRunFocusFailure
                 && (direction == View.FOCUS_FORWARD || direction == View.FOCUS_BACKWARD)) {
-            
+
             boolean needsFocusFailureLayout = false;
             if (mLayout.canScrollVertically()) {
                 final int absDir =
@@ -1795,7 +1834,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 final View found = ff.findNextFocus(this, focused, absDir);
                 needsFocusFailureLayout = found == null;
                 if (FORCE_ABS_FOCUS_SEARCH_DIRECTION) {
-                    
+
                     direction = absDir;
                 }
             }
@@ -1806,7 +1845,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 final View found = ff.findNextFocus(this, focused, absDir);
                 needsFocusFailureLayout = found == null;
                 if (FORCE_ABS_FOCUS_SEARCH_DIRECTION) {
-                    
+
                     direction = absDir;
                 }
             }
@@ -1814,7 +1853,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 consumePendingUpdateOperations();
                 final View focusedItemView = findContainingItemView(focused);
                 if (focusedItemView == null) {
-                    
+
                     return null;
                 }
                 startInterceptRequestLayout();
@@ -1828,7 +1867,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 consumePendingUpdateOperations();
                 final View focusedItemView = findContainingItemView(focused);
                 if (focusedItemView == null) {
-                    
+
                     return null;
                 }
                 startInterceptRequestLayout();
@@ -1838,10 +1877,10 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
         if (result != null && !result.hasFocusable()) {
             if (getFocusedChild() == null) {
-                
+
                 return super.focusSearch(focused, direction);
             }
-            
+
             requestChildOnScreen(result, null);
             return focused;
         }
@@ -1853,14 +1892,14 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         if (next == null || next == this || next == focused) {
             return false;
         }
-        
+
         if (findContainingItemView(next) == null) {
             return false;
         }
         if (focused == null) {
             return true;
         }
-        
+
         if (findContainingItemView(focused) == null) {
             return true;
         }
@@ -1921,7 +1960,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         final ViewGroup.LayoutParams focusedLayoutParams = rectView.getLayoutParams();
         if (focusedLayoutParams instanceof LayoutParams) {
-            
+
             final LayoutParams lp = (LayoutParams) focusedLayoutParams;
             if (!lp.mInsetsDirty) {
                 final Rect insets = lp.mDecorInsets;
@@ -1955,7 +1994,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     @Override
     protected boolean onRequestFocusInDescendants(int direction, Rect previouslyFocusedRect) {
         if (isComputingLayout()) {
-            
+
             return false;
         }
         return super.onRequestFocusInDescendants(direction, previouslyFocusedRect);
@@ -1973,7 +2012,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         mPostedAnimatorRunner = false;
 
         if (ALLOW_THREAD_GAP_WORK) {
-            
+
             mGapWorker = GapWorker.sGapWorker.get();
             if (mGapWorker == null) {
                 mGapWorker = new GapWorker();
@@ -2009,7 +2048,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         mViewInfoStore.onDetach();
 
         if (ALLOW_THREAD_GAP_WORK && mGapWorker != null) {
-            
+
             mGapWorker.remove(this);
             mGapWorker = null;
         }
@@ -2093,7 +2132,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     @Override
     public boolean onInterceptTouchEvent(MotionEvent e) {
         if (mLayoutSuppressed) {
-            
+
             return false;
         }
 
@@ -2277,7 +2316,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     dx -= mReusableIntPair[0];
                     dy -= mReusableIntPair[1];
                     vtev.offsetLocation(mScrollOffset[0], mScrollOffset[1]);
-                    
+
                     mNestedOffsets[0] += mScrollOffset[0];
                     mNestedOffsets[1] += mScrollOffset[1];
                 }
@@ -2368,7 +2407,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     private void onPointerUp(MotionEvent e) {
         final int actionIndex = e.getActionIndex();
         if (e.getPointerId(actionIndex) == mScrollPointerId) {
-            
+
             final int newIndex = actionIndex == 0 ? 1 : 0;
             mScrollPointerId = e.getPointerId(newIndex);
             mInitialTouchX = mLastTouchX = (int) (e.getX(newIndex) + 0.5f);
@@ -2388,7 +2427,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             final float vScroll, hScroll;
             if ((event.getSource() & InputDeviceCompat.SOURCE_CLASS_POINTER) != 0) {
                 if (mLayout.canScrollVertically()) {
-                    
+
                     vScroll = -event.getAxisValue(MotionEvent.AXIS_VSCROLL);
                 } else {
                     vScroll = 0f;
@@ -2401,7 +2440,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             } else if ((event.getSource() & InputDeviceCompat.SOURCE_ROTARY_ENCODER) != 0) {
                 final float axisScroll = event.getAxisValue(MotionEventCompat.AXIS_SCROLL);
                 if (mLayout.canScrollVertically()) {
-                    
+
                     vScroll = -axisScroll;
                     hScroll = 0f;
                 } else if (mLayout.canScrollHorizontally()) {
@@ -2445,7 +2484,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             if (mState.mLayoutStep == State.STEP_START) {
                 dispatchLayoutStep1();
             }
-            
+
             mLayout.setMeasureSpecs(widthSpec, heightSpec);
             mState.mIsMeasuring = true;
             dispatchLayoutStep2();
@@ -2458,7 +2497,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
                 mState.mIsMeasuring = true;
                 dispatchLayoutStep2();
-                
+
                 mLayout.setMeasuredDimensionFromChildren(widthSpec, heightSpec);
             }
         } else {
@@ -2466,7 +2505,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 mLayout.onMeasure(mRecycler, mState, widthSpec, heightSpec);
                 return;
             }
-            
+
             if (mAdapterUpdateDuringMeasure) {
                 startInterceptRequestLayout();
                 onEnterLayoutOrScroll();
@@ -2476,14 +2515,14 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (mState.mRunPredictiveAnimations) {
                     mState.mInPreLayout = true;
                 } else {
-                    
+
                     mAdapterHelper.consumeUpdatesInOnePass();
                     mState.mInPreLayout = false;
                 }
                 mAdapterUpdateDuringMeasure = false;
                 stopInterceptRequestLayout(false);
             } else if (mState.mRunPredictiveAnimations) {
-                
+
                 setMeasuredDimension(getMeasuredWidth(), getMeasuredHeight());
                 return;
             }
@@ -2496,12 +2535,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             startInterceptRequestLayout();
             mLayout.onMeasure(mRecycler, mState, widthSpec, heightSpec);
             stopInterceptRequestLayout(false);
-            mState.mInPreLayout = false; 
+            mState.mInPreLayout = false;
         }
     }
 
     void defaultOnMeasure(int widthSpec, int heightSpec) {
-        
+
         final int width = LayoutManager.chooseSize(widthSpec,
                 getPaddingLeft() + getPaddingRight(),
                 ViewCompat.getMinimumWidth(this));
@@ -2517,7 +2556,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         super.onSizeChanged(w, h, oldw, oldh);
         if (w != oldw || h != oldh) {
             invalidateGlows();
-            
+
         }
     }
 
@@ -2621,13 +2660,13 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
     private void processAdapterUpdatesAndSetAnimationFlags() {
         if (mDataSetHasChangedAfterLayout) {
-            
+
             mAdapterHelper.reset();
             if (mDispatchItemsChangedEvent) {
                 mLayout.onItemsChanged(this);
             }
         }
-        
+
         if (predictiveItemAnimationsEnabled()) {
             mAdapterHelper.preProcess();
         } else {
@@ -2650,12 +2689,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     void dispatchLayout() {
         if (mAdapter == null) {
             Log.e(TAG, "No adapter attached; skipping layout");
-            
+
             return;
         }
         if (mLayout == null) {
             Log.e(TAG, "No layout manager attached; skipping layout");
-            
+
             return;
         }
         mState.mIsMeasuring = false;
@@ -2665,11 +2704,11 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             dispatchLayoutStep2();
         } else if (mAdapterHelper.hasUpdates() || mLayout.getWidth() != getWidth()
                 || mLayout.getHeight() != getHeight()) {
-            
+
             mLayout.setExactMeasureSpecsFrom(this);
             dispatchLayoutStep2();
         } else {
-            
+
             mLayout.setExactMeasureSpecsFrom(this);
         }
         dispatchLayoutStep3();
@@ -2686,7 +2725,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             resetFocusInfo();
         } else {
             mState.mFocusedItemId = mAdapter.hasStableIds() ? focusedVh.getItemId() : NO_ID;
-            
+
             mState.mFocusedItemPosition = mDataSetHasChangedAfterLayout ? NO_POSITION
                     : (focusedVh.isRemoved() ? focusedVh.mOldPosition
                             : focusedVh.getAdapterPosition());
@@ -2732,27 +2771,27 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         if (!mPreserveFocusAfterLayout || mAdapter == null || !hasFocus()
                 || getDescendantFocusability() == FOCUS_BLOCK_DESCENDANTS
                 || (getDescendantFocusability() == FOCUS_BEFORE_DESCENDANTS && isFocused())) {
-            
+
             return;
         }
-        
+
         if (!isFocused()) {
             final View focusedChild = getFocusedChild();
             if (IGNORE_DETACHED_FOCUSED_CHILD
                     && (focusedChild.getParent() == null || !focusedChild.hasFocus())) {
-                
+
                 if (mChildHelper.getChildCount() == 0) {
-                    
+
                     requestFocus();
                     return;
                 }
             } else if (!mChildHelper.isHidden(focusedChild)) {
-                
+
                 return;
             }
         }
         ViewHolder focusTarget = null;
-        
+
         if (mState.mFocusedItemId != NO_ID && mAdapter.hasStableIds()) {
             focusTarget = findViewHolderForItemId(mState.mFocusedItemId);
         }
@@ -2760,11 +2799,11 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         if (focusTarget == null || mChildHelper.isHidden(focusTarget.itemView)
                 || !focusTarget.itemView.hasFocusable()) {
             if (mChildHelper.getChildCount() > 0) {
-                
+
                 viewToFocus = findNextViewToFocus();
             }
         } else {
-            
+
             viewToFocus = focusTarget.itemView;
         }
 
@@ -2818,7 +2857,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         findMinMaxChildLayoutPositions(mMinMaxLayoutPositions);
 
         if (mState.mRunSimpleAnimations) {
-            
+
             int count = mChildHelper.getChildCount();
             for (int i = 0; i < count; ++i) {
                 final ViewHolder holder = getChildViewHolderInt(mChildHelper.getChildAt(i));
@@ -2833,17 +2872,17 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (mState.mTrackOldChangeHolders && holder.isUpdated() && !holder.isRemoved()
                         && !holder.shouldIgnore() && !holder.isInvalid()) {
                     long key = getChangedHolderKey(holder);
-                    
+
                     mViewInfoStore.addToOldChangeHolders(key, holder);
                 }
             }
         }
         if (mState.mRunPredictiveAnimations) {
-            
+
             saveOldPositions();
             final boolean didStructureChange = mState.mStructureChanged;
             mState.mStructureChanged = false;
-            
+
             mLayout.onLayoutChildren(mRecycler, mState);
             mState.mStructureChanged = didStructureChange;
 
@@ -2869,7 +2908,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     }
                 }
             }
-            
+
             clearOldPositions();
         } else {
             clearOldPositions();
@@ -2905,7 +2944,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         onEnterLayoutOrScroll();
         mState.mLayoutStep = State.STEP_START;
         if (mState.mRunSimpleAnimations) {
-            
+
             try {
                 for (int i = mChildHelper.getChildCount() - 1; i >= 0; i--) {
                     ViewHolder holder = getChildViewHolderInt(mChildHelper.getChildAt(i));
@@ -2917,17 +2956,17 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                             .recordPostLayoutInformation(mState, holder);
                     ViewHolder oldChangeViewHolder = mViewInfoStore.getFromOldChangeHolders(key);
                     if (oldChangeViewHolder != null && !oldChangeViewHolder.shouldIgnore()) {
-                        
+
                         final boolean oldDisappearing = mViewInfoStore.isDisappearing(
                                 oldChangeViewHolder);
                         final boolean newDisappearing = mViewInfoStore.isDisappearing(holder);
                         if (oldDisappearing && oldChangeViewHolder == holder) {
-                            
+
                             mViewInfoStore.addToPostLayout(holder, animationInfo);
                         } else {
                             final ItemHolderInfo preInfo = mViewInfoStore.popFromPreLayout(
                                     oldChangeViewHolder);
-                            
+
                             mViewInfoStore.addToPostLayout(holder, animationInfo);
                             ItemHolderInfo postInfo = mViewInfoStore.popFromPostLayout(holder);
                             if (preInfo == null) {
@@ -2968,7 +3007,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             mRecycler.mChangedScrap.clear();
         }
         if (mLayout.mPrefetchMaxObservedInInitialPrefetch) {
-            
+
             mLayout.mPrefetchMaxCountObserved = 0;
             mLayout.mPrefetchMaxObservedInInitialPrefetch = false;
             mRecycler.updateViewCacheSize();
@@ -2987,7 +3026,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
     private void handleMissingPreInfoForChangeError(long key,
             ViewHolder holder, ViewHolder oldChangeViewHolder) {
-        
+
         final int childCount = mChildHelper.getChildCount();
         for (int i = 0; i < childCount; i++) {
             View view = mChildHelper.getChildAt(i);
@@ -3011,7 +3050,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 }
             }
         }
-        
+
         Log.e(TAG, "Problem while matching changed view holders with the new"
                 + "ones. The pre-layout information for the change holder " + oldChangeViewHolder
                 + " cannot be found but it is necessary for " + holder + exceptionLabel());
@@ -3019,7 +3058,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
     void recordAnimationInfoIfBouncedHiddenView(ViewHolder viewHolder,
             ItemHolderInfo animationInfo) {
-        
+
         viewHolder.setFlags(0, ViewHolder.FLAG_BOUNCED_FROM_HIDDEN_LIST);
         if (mState.mTrackOldChangeHolders && viewHolder.isUpdated()
                 && !viewHolder.isRemoved() && !viewHolder.shouldIgnore()) {
@@ -3112,7 +3151,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 addAnimatingView(newHolder);
             }
             oldHolder.mShadowedHolder = newHolder;
-            
+
             addAnimatingView(oldHolder);
             mRecycler.unscrapView(oldHolder);
             newHolder.setIsRecyclable(false);
@@ -3157,9 +3196,9 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         for (int i = 0; i < count; i++) {
             mItemDecorations.get(i).onDrawOver(c, this, mState);
         }
-        
+
         boolean needsInvalidate = false;
-        if (glowColor == null || glowColor != 0) {
+        if (!isGlowDisabled()) {
             if (mLeftGlow != null && !mLeftGlow.isFinished()) {
                 final int restore = c.save();
                 final int padding = mClipToPadding ? getPaddingBottom() : 0;
@@ -3369,10 +3408,10 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 continue;
             }
             if (holder.mPosition >= positionStart && holder.mPosition < positionEnd) {
-                
+
                 holder.addFlags(ViewHolder.FLAG_UPDATE);
                 holder.addChangePayload(payload);
-                
+
                 ((LayoutParams) child.getLayoutParams()).mInsetsDirty = true;
             }
         }
@@ -3498,7 +3537,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             return null;
         }
         final int childCount = mChildHelper.getUnfilteredChildCount();
-        
+
         ViewHolder hidden = null;
         for (int i = 0; i < childCount; i++) {
             final ViewHolder holder = getChildViewHolderInt(mChildHelper.getUnfilteredChildAt(i));
@@ -3535,7 +3574,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 }
             }
         }
-        
+
         return hidden;
     }
 
@@ -3620,7 +3659,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         if (mState.isPreLayout() && (lp.isItemChanged() || lp.isViewInvalid())) {
-            
+
             return lp.mDecorInsets;
         }
         final Rect insets = lp.mDecorInsets;
@@ -3639,12 +3678,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public void onScrolled(@Px int dx, @Px int dy) {
-        
+
     }
 
     void dispatchOnScrolled(int hresult, int vresult) {
         mDispatchScrollCounter++;
-        
+
         final int scrollX = getScrollX();
         final int scrollY = getScrollY();
         onScrollChanged(scrollX, scrollY, scrollX - hresult, scrollY - vresult);
@@ -3663,11 +3702,11 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public void onScrollStateChanged(int state) {
-        
+
     }
 
     void dispatchOnScrollStateChanged(int state) {
-        
+
         if (mLayout != null) {
             mLayout.onScrollStateChanged(state);
         }
@@ -3715,7 +3754,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             if (mLayout == null) {
                 canStopFlinger = true;
                 stop();
-                return; 
+                return;
             }
 
             mReSchedulePostAnimationCallback = false;
@@ -3801,7 +3840,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         smoothScroller != null && smoothScroller.isPendingInitialRun();
 
                 if (!smoothScrollerPending && doneScrolling) {
-                    
+
                     if (getOverScrollMode() != View.OVER_SCROLL_NEVER) {
                         final int vel = (int) scroller.getCurrVelocity();
                         int velX = unconsumedX < 0 ? -vel : unconsumedX > 0 ? vel : 0;
@@ -3813,7 +3852,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         mPrefetchRegistry.clearPrefetchPositions();
                     }
                 } else {
-                    
+
                     postOnAnimation();
                     if (mGapWorker != null) {
                         mGapWorker.postFromTraversal(RecyclerView.this, consumedX, consumedY);
@@ -3824,7 +3863,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             isFlingerWorking = false;
 
             SmoothScroller smoothScroller = mLayout.mSmoothScroller;
-            
+
             if (smoothScroller != null && smoothScroller.isPendingInitialRun()) {
                 smoothScroller.onAnimation(0, 0);
             }
@@ -3854,7 +3893,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         public void fling(int velocityX, int velocityY) {
             setScrollState(SCROLL_STATE_SETTLING);
             mLastFlingX = mLastFlingY = 0;
-            
+
             if (mInterpolator != sQuinticInterpolator) {
                 mInterpolator = sQuinticInterpolator;
                 mOverScroller = new OverScroller(getContext(), sQuinticInterpolator);
@@ -3885,7 +3924,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             mOverScroller.startScroll(0, 0, dx, dy, duration);
 
             if (Build.VERSION.SDK_INT < 23) {
-                
+
                 mOverScroller.computeScrollOffset();
             }
 
@@ -3893,7 +3932,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         private float distanceInfluenceForSnapDuration(float f) {
-            f -= 0.5f; 
+            f -= 0.5f;
             f *= 0.3f * (float) Math.PI / 2.0f;
             return (float) Math.sin(f);
         }
@@ -3929,7 +3968,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     void repositionShadowingViews() {
-        
+
         int count = mChildHelper.getChildCount();
         for (int i = 0; i < count; i++) {
             View view = mChildHelper.getChildAt(i);
@@ -4041,6 +4080,14 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         private int mAttachCount = 0;
 
+        public void collectRecycledViews(ArrayList<View> out) {
+            for (int i = 0; i < mScrap.size(); i++) {
+                final ArrayList<ViewHolder> heap = mScrap.valueAt(i).mScrapHeap;
+                for (int j = 0; j < heap.size(); j++) {
+                    out.add(heap.get(j).itemView);
+                }
+            }
+        }
         public void clear() {
             for (int i = 0; i < mScrap.size(); i++) {
                 ScrapData data = mScrap.valueAt(i);
@@ -4184,7 +4231,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             View item = holder.mNestedRecyclerView.get();
             while (item != null) {
                 if (item == holder.itemView) {
-                    return; 
+                    return;
                 }
 
                 ViewParent parent = item.getParent();
@@ -4194,7 +4241,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     item = null;
                 }
             }
-            holder.mNestedRecyclerView = null; 
+            holder.mNestedRecyclerView = null;
         }
     }
 
@@ -4250,7 +4297,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         boolean validateViewHolderForOffsetPosition(ViewHolder holder) {
-            
+
             if (holder.isRemoved()) {
                 if (DEBUG && !mState.isPreLayout()) {
                     throw new IllegalStateException("should not receive a removed view unless it"
@@ -4263,7 +4310,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         + "adapter position" + holder + exceptionLabel());
             }
             if (!mState.isPreLayout()) {
-                
+
                 final int type = mAdapter.getItemViewType(holder.mPosition);
                 if (type != holder.getItemViewType()) {
                     return false;
@@ -4282,7 +4329,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             long startBindNs = getNanoTime();
             if (deadlineNs != FOREVER_NS
                     && !mRecyclerPool.willBindInTime(viewType, startBindNs, deadlineNs)) {
-                
+
                 return false;
             }
             mAdapter.bindViewHolder(holder, offsetPosition);
@@ -4357,19 +4404,19 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             }
             boolean fromScrapOrHiddenOrCache = false;
             ViewHolder holder = null;
-            
+
             if (mState.isPreLayout()) {
                 holder = getChangedScrapViewForPosition(position);
                 fromScrapOrHiddenOrCache = holder != null;
             }
-            
+
             if (holder == null) {
                 holder = getScrapOrHiddenOrCachedHolderForPosition(position, dryRun);
                 if (holder != null) {
                     if (!validateViewHolderForOffsetPosition(holder)) {
-                        
+
                         if (!dryRun) {
-                            
+
                             holder.addFlags(ViewHolder.FLAG_INVALID);
                             if (holder.isScrap()) {
                                 removeDetachedView(holder.itemView, false);
@@ -4394,18 +4441,18 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 }
 
                 final int type = mAdapter.getItemViewType(offsetPosition);
-                
+
                 if (mAdapter.hasStableIds()) {
                     holder = getScrapOrCachedViewForId(mAdapter.getItemId(offsetPosition),
                             type, dryRun);
                     if (holder != null) {
-                        
+
                         holder.mPosition = offsetPosition;
                         fromScrapOrHiddenOrCache = true;
                     }
                 }
                 if (holder == null && mViewCacheExtension != null) {
-                    
+
                     final View view = mViewCacheExtension
                             .getViewForPositionAndType(this, position, type);
                     if (view != null) {
@@ -4421,7 +4468,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         }
                     }
                 }
-                if (holder == null) { 
+                if (holder == null) {
                     if (DEBUG) {
                         Log.d(TAG, "tryGetViewHolderForPositionByDeadline("
                                 + position + ") fetching from shared pool");
@@ -4438,12 +4485,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     long start = getNanoTime();
                     if (deadlineNs != FOREVER_NS
                             && !mRecyclerPool.willCreateInTime(type, start, deadlineNs)) {
-                        
+
                         return null;
                     }
                     holder = mAdapter.createViewHolder(RecyclerView.this, type);
                     if (ALLOW_THREAD_GAP_WORK) {
-                        
+
                         RecyclerView innerView = findNestedRecyclerView(holder.itemView);
                         if (innerView != null) {
                             holder.mNestedRecyclerView = new WeakReference<>(innerView);
@@ -4473,7 +4520,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
             boolean bound = false;
             if (mState.isPreLayout() && holder.isBound()) {
-                
+
                 holder.mPreLayoutPosition = position;
             } else if (!holder.isBound() || holder.needsUpdate() || holder.isInvalid()) {
                 if (DEBUG && holder.isRemoved()) {
@@ -4536,7 +4583,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             if (!invalidateThis) {
                 return;
             }
-            
+
             if (viewGroup.getVisibility() == View.INVISIBLE) {
                 viewGroup.setVisibility(View.VISIBLE);
                 viewGroup.setVisibility(View.INVISIBLE);
@@ -4548,7 +4595,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public void recycleView(@NonNull View view) {
-            
+
             ViewHolder holder = getChildViewHolderInt(view);
             if (holder.isTmpDetached()) {
                 removeDetachedView(view, false);
@@ -4559,7 +4606,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 holder.clearReturnedFromScrapFlag();
             }
             recycleViewHolderInternal(holder);
-            
+
             if (mItemAnimator != null && !holder.isRecyclable()) {
                 mItemAnimator.endAnimation(holder);
             }
@@ -4625,7 +4672,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         | ViewHolder.FLAG_REMOVED
                         | ViewHolder.FLAG_UPDATE
                         | ViewHolder.FLAG_ADAPTER_POSITION_UNKNOWN)) {
-                    
+
                     int cachedViewSize = mCachedViews.size();
                     if (cachedViewSize >= mViewCacheMax && cachedViewSize > 0) {
                         recycleCachedViewAt(0);
@@ -4636,7 +4683,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     if (ALLOW_THREAD_GAP_WORK
                             && cachedViewSize > 0
                             && !mPrefetchRegistry.lastPrefetchIncludedPosition(holder.mPosition)) {
-                        
+
                         int cacheIndex = cachedViewSize - 1;
                         while (cacheIndex >= 0) {
                             int cachedPos = mCachedViews.get(cacheIndex).mPosition;
@@ -4655,14 +4702,14 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     recycled = true;
                 }
             } else {
-                
+
                 if (DEBUG) {
                     Log.d(TAG, "trying to recycle a non-recycleable holder. Hopefully, it will "
                             + "re-visit here. We are still removing it from animation lists"
                             + exceptionLabel());
                 }
             }
-            
+
             mViewInfoStore.removeViewHolder(holder);
             if (!cached && !recycled && transientStatePreventsRecycling) {
                 holder.mOwnerRecyclerView = null;
@@ -4737,12 +4784,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         ViewHolder getChangedScrapViewForPosition(int position) {
-            
+
             final int changedScrapSize;
             if (mChangedScrap == null || (changedScrapSize = mChangedScrap.size()) == 0) {
                 return null;
             }
-            
+
             for (int i = 0; i < changedScrapSize; i++) {
                 final ViewHolder holder = mChangedScrap.get(i);
                 if (!holder.wasReturnedFromScrap() && holder.getLayoutPosition() == position) {
@@ -4750,7 +4797,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     return holder;
                 }
             }
-            
+
             if (mAdapter.hasStableIds()) {
                 final int offsetPosition = mAdapterHelper.findPositionOffset(position);
                 if (offsetPosition > 0 && offsetPosition < mAdapter.getItemCount()) {
@@ -4782,7 +4829,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             if (!dryRun) {
                 View view = mChildHelper.findHiddenNonRemovedView(position);
                 if (view != null) {
-                    
+
                     final ViewHolder vh = getChildViewHolderInt(view);
                     mChildHelper.unhide(view);
                     int layoutIndex = mChildHelper.indexOfChild(view);
@@ -4801,7 +4848,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             final int cacheSize = mCachedViews.size();
             for (int i = 0; i < cacheSize; i++) {
                 final ViewHolder holder = mCachedViews.get(i);
-                
+
                 if (!holder.isInvalid() && holder.getLayoutPosition() == position
                         && !holder.isAttachedToTransitionOverlay()) {
                     if (!dryRun) {
@@ -4818,7 +4865,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         ViewHolder getScrapOrCachedViewForId(long id, int type, boolean dryRun) {
-            
+
             final int count = mAttachedScrap.size();
             for (int i = count - 1; i >= 0; i--) {
                 final ViewHolder holder = mAttachedScrap.get(i);
@@ -4826,7 +4873,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     if (type == holder.getItemViewType()) {
                         holder.addFlags(ViewHolder.FLAG_RETURNED_FROM_SCRAP);
                         if (holder.isRemoved()) {
-                            
+
                             if (!mState.isPreLayout()) {
                                 holder.setFlags(ViewHolder.FLAG_UPDATE, ViewHolder.FLAG_UPDATE
                                         | ViewHolder.FLAG_INVALID | ViewHolder.FLAG_REMOVED);
@@ -4834,7 +4881,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         }
                         return holder;
                     } else if (!dryRun) {
-                        
+
                         mAttachedScrap.remove(i);
                         removeDetachedView(holder.itemView, false);
                         quickRecycleScrapView(holder.itemView);
@@ -4936,7 +4983,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                         }
                         holder.offsetPosition(-count, applyToPreLayout);
                     } else if (holder.mPosition >= removedFrom) {
-                        
+
                         holder.addFlags(ViewHolder.FLAG_REMOVED);
                         recycleCachedViewAt(i);
                     }
@@ -4978,7 +5025,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (pos >= positionStart && pos < positionEnd) {
                     holder.addFlags(ViewHolder.FLAG_UPDATE);
                     recycleCachedViewAt(i);
-                    
+
                 }
             }
         }
@@ -4994,7 +5041,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             }
 
             if (mAdapter == null || !mAdapter.hasStableIds()) {
-                
+
                 recycleAndClearCachedViews();
             }
         }
@@ -5301,7 +5348,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         private int mWidth, mHeight;
 
         public interface LayoutPrefetchRegistry {
-             
+
             void addPosition(int layoutPosition, int pixelDistance);
         }
 
@@ -5466,7 +5513,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             }
             return false;
         }
-         
+
         @CallSuper
         public void onAttachedToWindow(RecyclerView view) {
         }
@@ -5581,10 +5628,10 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         private void addViewInt(View child, int index, boolean disappearing) {
             final ViewHolder holder = getChildViewHolderInt(child);
             if (disappearing || holder.isRemoved()) {
-                
+
                 mRecyclerView.mViewInfoStore.addToDisappearedInLayout(holder);
             } else {
-                
+
                 mRecyclerView.mViewInfoStore.removeFromDisappearedInLayout(holder);
             }
             final LayoutParams lp = (LayoutParams) child.getLayoutParams();
@@ -5598,8 +5645,8 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 if (DISPATCH_TEMP_DETACH) {
                     ViewCompat.dispatchFinishTemporaryDetach(child);
                 }
-            } else if (child.getParent() == mRecyclerView) { 
-                
+            } else if (child.getParent() == mRecyclerView) {
+
                 int currentIndex = mChildHelper.indexOfChild(child);
                 if (index == -1) {
                     index = mChildHelper.getChildCount();
@@ -5640,7 +5687,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public void removeAllViews() {
-            
+
             final int childCount = getChildCount();
             for (int i = childCount - 1; i >= 0; i--) {
                 mChildHelper.removeViewAt(i);
@@ -5865,7 +5912,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         public void ignoreView(@NonNull View view) {
             if (view.getParent() != mRecyclerView || mRecyclerView.indexOfChild(view) == -1) {
-                
+
                 throw new IllegalArgumentException("View should be fully attached to be ignored"
                         + mRecyclerView.exceptionLabel());
             }
@@ -5910,14 +5957,14 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         void removeAndRecycleScrapInt(Recycler recycler) {
             final int scrapCount = recycler.getScrapCount();
-            
+
             for (int i = scrapCount - 1; i >= 0; i--) {
                 final View scrap = recycler.getScrapViewAt(i);
                 final ViewHolder vh = getChildViewHolderInt(scrap);
                 if (vh.shouldIgnore()) {
                     continue;
                 }
-                
+
                 vh.setIsRecyclable(false);
                 if (vh.isTmpDetached()) {
                     mRecyclerView.removeDetachedView(scrap, false);
@@ -6020,7 +6067,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     resultSize = childDimension;
                     resultMode = MeasureSpec.EXACTLY;
                 } else {
-                    
+
                     resultSize = 0;
                     resultMode = MeasureSpec.UNSPECIFIED;
                 }
@@ -6030,7 +6077,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     resultMode = MeasureSpec.EXACTLY;
                 } else if (childDimension == LayoutParams.MATCH_PARENT) {
                     resultSize = size;
-                    
+
                     resultMode = MeasureSpec.EXACTLY;
                 } else if (childDimension == LayoutParams.WRAP_CONTENT) {
                     resultSize = size;
@@ -6225,7 +6272,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             out[1] = dy;
             return out;
         }
-         
+
         public boolean requestChildRectangleOnScreen(@NonNull RecyclerView parent,
                 @NonNull View child, @NonNull Rect rect, boolean immediate) {
             return requestChildRectangleOnScreen(parent, child, rect, immediate, false);
@@ -6287,7 +6334,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         @Deprecated
         public boolean onRequestChildFocus(@NonNull RecyclerView parent, @NonNull View child,
                 @Nullable View focused) {
-            
+
             return isSmoothScrolling() || parent.isComputingLayout();
         }
 
@@ -6371,7 +6418,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         public int getMinimumHeight() {
             return ViewCompat.getMinimumHeight(mRecyclerView);
         }
-         
+
         @Nullable
         public Parcelable onSaveInstanceState() {
             return null;
@@ -6449,7 +6496,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         void onInitializeAccessibilityNodeInfoForItem(View host, AccessibilityNodeInfoCompat info) {
             final ViewHolder vh = getChildViewHolderInt(host);
-            
+
             if (vh != null && !vh.isRemoved() && !mChildHelper.isHidden(vh.itemView)) {
                 onInitializeAccessibilityNodeInfoForItem(mRecyclerView.mRecycler,
                         mRecyclerView.mState, host, info);
@@ -6566,13 +6613,13 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public static class Properties {
-             
+
             public int orientation;
-             
+
             public int spanCount;
-             
+
             public boolean reverseLayout;
-             
+
             public boolean stackFromEnd;
         }
 
@@ -6590,7 +6637,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public abstract static class ItemDecoration {
-         
+
         public void onDraw(@NonNull Canvas c, @NonNull RecyclerView parent, @NonNull State state) {
             onDraw(c, parent);
         }
@@ -6622,7 +6669,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public interface OnItemTouchListener {
-         
+
         boolean onInterceptTouchEvent(@NonNull RecyclerView rv, @NonNull MotionEvent e);
 
         void onTouchEvent(@NonNull RecyclerView rv, @NonNull MotionEvent e);
@@ -6646,7 +6693,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public abstract static class OnScrollListener {
-         
+
         public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState){}
 
         public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy){}
@@ -6678,7 +6725,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         public int mOldCompoundPosition = NO_POSITION;
 
         ViewHolder mShadowedHolder = null;
-        
+
         ViewHolder mShadowingHolder = null;
 
         static final int FLAG_BOUND = 1 << 0;
@@ -6721,12 +6768,12 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         private int mIsRecyclableCount = 0;
 
         Recycler mScrapContainer = null;
-        
+
         public boolean mInChangeScrap = false;
 
         private int mWasImportantForAccessibilityBeforeHidden =
                 ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_AUTO;
-        
+
         @VisibleForTesting
         int mPendingAccessibilityState = PENDING_ACCESSIBILITY_STATE_NOT_SET;
 
@@ -6900,13 +6947,13 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         List<Object> getUnmodifiedPayloads() {
             if ((mFlags & FLAG_ADAPTER_FULLUPDATE) == 0) {
                 if (mPayloads == null || mPayloads.size() == 0) {
-                    
+
                     return FULLUPDATE_PAYLOADS;
                 }
-                
+
                 return mUnmodifiedPayloads;
             } else {
-                
+
                 return FULLUPDATE_PAYLOADS;
             }
         }
@@ -6930,7 +6977,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         void onEnteredHiddenState(RecyclerView parent) {
-            
+
             if (mPendingAccessibilityState != PENDING_ACCESSIBILITY_STATE_NOT_SET) {
                 mWasImportantForAccessibilityBeforeHidden = mPendingAccessibilityState;
             } else {
@@ -7151,7 +7198,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         public ViewHolder mViewHolder;
         public final Rect mDecorInsets = new Rect();
         boolean mInsetsDirty = true;
-        
+
         boolean mPendingInvalidate = false;
 
         public LayoutParams(Context c, AttributeSet attrs) {
@@ -7206,28 +7253,28 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
     public abstract static class AdapterDataObserver {
         public void onChanged() {
-            
+
         }
 
         public void onItemRangeChanged(int positionStart, int itemCount) {
-            
+
         }
 
         public void onItemRangeChanged(int positionStart, int itemCount, @Nullable Object payload) {
-            
+
             onItemRangeChanged(positionStart, itemCount);
         }
 
         public void onItemRangeInserted(int positionStart, int itemCount) {
-            
+
         }
 
         public void onItemRangeRemoved(int positionStart, int itemCount) {
-            
+
         }
 
         public void onItemRangeMoved(int fromPosition, int toPosition, int itemCount) {
-            
+
         }
     }
 
@@ -7254,7 +7301,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         void start(RecyclerView recyclerView, LayoutManager layoutManager) {
-            
+
             recyclerView.canStopFlinger = true;
             recyclerView.mViewFlinger.stop();
 
@@ -7311,9 +7358,9 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             mTargetView = null;
             mTargetPosition = RecyclerView.NO_POSITION;
             mPendingInitialRun = false;
-            
+
             mLayoutManager.onSmoothScrollerStopped(this);
-            
+
             mLayoutManager = null;
             mRecyclerView = null;
         }
@@ -7349,7 +7396,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
             mPendingInitialRun = false;
 
             if (mTargetView != null) {
-                
+
                 if (getChildPosition(mTargetView) == mTargetPosition) {
                     onTargetFound(mTargetView, recyclerView.mState, mRecyclingAction);
                     mRecyclingAction.runIfNecessary(recyclerView);
@@ -7364,7 +7411,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                 boolean hadJumpTarget = mRecyclingAction.hasJumpTarget();
                 mRecyclingAction.runIfNecessary(recyclerView);
                 if (hadJumpTarget) {
-                    
+
                     if (mRunning) {
                         mPendingInitialRun = true;
                         recyclerView.mViewFlinger.postOnAnimation();
@@ -7471,7 +7518,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
                     recyclerView.mViewFlinger.smoothScrollBy(mDx, mDy, mDuration, mInterpolator);
                     mConsecutiveUpdates++;
                     if (mConsecutiveUpdates > 10) {
-                        
+
                         Log.e(TAG, "Smooth Scroll action is being updated too frequently. Make sure"
                                 + " you are not changing it unless necessary");
                     }
@@ -7540,7 +7587,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public interface ScrollVectorProvider {
-             
+
             @Nullable
             PointF computeScrollVectorForPosition(int targetPosition);
         }
@@ -7552,7 +7599,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public void notifyChanged() {
-            
+
             for (int i = mObservers.size() - 1; i >= 0; i--) {
                 mObservers.get(i).onChanged();
             }
@@ -7564,21 +7611,21 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         public void notifyItemRangeChanged(int positionStart, int itemCount,
                 @Nullable Object payload) {
-            
+
             for (int i = mObservers.size() - 1; i >= 0; i--) {
                 mObservers.get(i).onItemRangeChanged(positionStart, itemCount, payload);
             }
         }
 
         public void notifyItemRangeInserted(int positionStart, int itemCount) {
-            
+
             for (int i = mObservers.size() - 1; i >= 0; i--) {
                 mObservers.get(i).onItemRangeInserted(positionStart, itemCount);
             }
         }
 
         public void notifyItemRangeRemoved(int positionStart, int itemCount) {
-            
+
             for (int i = mObservers.size() - 1; i >= 0; i--) {
                 mObservers.get(i).onItemRangeRemoved(positionStart, itemCount);
             }
@@ -7680,7 +7727,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
 
         int mFocusedItemPosition;
         long mFocusedItemId;
-        
+
         int mFocusedSubChildId;
 
         int mRemainingScrollHorizontal;
@@ -7789,10 +7836,10 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         @Override
         public void onAnimationFinished(ViewHolder item) {
             item.setIsRecyclable(true);
-            if (item.mShadowedHolder != null && item.mShadowingHolder == null) { 
+            if (item.mShadowedHolder != null && item.mShadowingHolder == null) {
                 item.mShadowedHolder = null;
             }
-            
+
             item.mShadowingHolder = null;
             if (!item.shouldBeKeptAsChild()) {
                 if (!removeAnimatingView(item.itemView) && item.isTmpDetached()) {
@@ -8065,7 +8112,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
         }
 
         public interface ItemAnimatorFinishedListener {
-             
+
             void onAnimationsFinished();
         }
 
@@ -8113,7 +8160,7 @@ public class RecyclerView extends ViewGroup implements ScrollingView,
     }
 
     public interface ChildDrawingOrderCallback {
-         
+
         int onGetChildDrawingOrder(int childCount, int i);
     }
 

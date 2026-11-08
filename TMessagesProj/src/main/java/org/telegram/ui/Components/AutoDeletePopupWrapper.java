@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -5,7 +7,6 @@ import android.text.SpannableStringBuilder;
 import android.text.method.LinkMovementMethod;
 import android.util.TypedValue;
 import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -16,6 +17,7 @@ import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.ActionBarPopupWindow;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class AutoDeletePopupWrapper {
 
     public static final int TYPE_GROUP_CREATE = 1;
@@ -72,15 +74,16 @@ public class AutoDeletePopupWrapper {
             callback.setAutoDeleteHistory(0, UndoView.ACTION_AUTO_DELETE_OFF);
         });
         if (type != TYPE_GROUP_CREATE) {
-            disableItem.setColors(Theme.getColor(Theme.key_text_RedBold), Theme.getColor(Theme.key_text_RedBold));
+            if (resourcesProvider == null) {
+                disableItem.setColorKeys(Theme.key_text_RedBold, Theme.key_text_RedBold);
+            } else {
+                ThemeBind.custom(disableItem, 100, Theme.key_text_RedBold, null, AutoDeletePopupWrapper::getSubItemTextColor, AutoDeletePopupWrapper::setSubItemColors);
+            }
         }
 
         if (type != TYPE_GROUP_CREATE) {
-            FrameLayout gap = new FrameLayout(context);
-            gap.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
-            View gapShadow = new View(context);
-            gapShadow.setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow, resourcesProvider));
-            gap.addView(gapShadow, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+            ActionBarPopupWindow.GapView gap = new ActionBarPopupWindow.GapView(context, resourcesProvider);
+            ThemeBind.backgroundColor(gap, Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider);
             gap.setTag(R.id.fit_width_tag, 1);
             windowLayout.addView(gap, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
 
@@ -88,9 +91,9 @@ public class AutoDeletePopupWrapper {
             textView.setTag(R.id.fit_width_tag, 1);
             textView.setPadding(AndroidUtilities.dp(13), 0, AndroidUtilities.dp(13), AndroidUtilities.dp(8));
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-            textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+            ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
             textView.setMovementMethod(LinkMovementMethod.getInstance());
-            textView.setLinkTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteLinkText));
+            ThemeBind.linkTextColor(textView, Theme.key_windowBackgroundWhiteLinkText);
             textView.setText(LocaleController.getString(R.string.AutoDeletePopupDescription));
             windowLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 8, 0, 0));
         }
@@ -138,5 +141,11 @@ public class AutoDeletePopupWrapper {
         default void showGlobalAutoDeleteScreen() {
 
         }
+    }
+    private static int getSubItemTextColor(ActionBarMenuSubItem item) {
+        return item.getTextView() != null ? item.getTextView().getCurrentTextColor() : 0;
+}
+    private static void setSubItemColors(ActionBarMenuSubItem item, int color) {
+        item.setColors(color, color);
     }
 }

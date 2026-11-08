@@ -22,6 +22,12 @@ final class RoundVideoMp4Writer {
         void onBytesAvailable(long availableSize);
     }
 
+    static final class CodecConfigurationChangedException extends IOException {
+        CodecConfigurationChangedException(@NonNull String message) {
+            super(message);
+        }
+    }
+
     private final File file;
     private final int outputSize;
     private final boolean includeAudio;
@@ -41,6 +47,7 @@ final class RoundVideoMp4Writer {
     private long audioSamples;
     private long liveSegmentOffsetUs = Long.MIN_VALUE;
     private long liveSegmentBaseUs;
+    private int encoderFrameRate;
     private ByteBuffer videoConversionBuffer;
     private final MediaCodec.BufferInfo convertedVideoInfo = new MediaCodec.BufferInfo();
     private boolean firstVideoSampleLogged;
@@ -73,7 +80,7 @@ final class RoundVideoMp4Writer {
             if ((video && !sameCodecSpecificData(expected, format, "csd-0", "csd-1"))
                     || (!video && includeAudio
                     && !sameCodecSpecificData(expected, format, "csd-0"))) {
-                throw new IOException((video ? "Video" : "Audio")
+                throw new CodecConfigurationChangedException((video ? "Video" : "Audio")
                         + " codec configuration changed between segments");
             }
             return;
@@ -84,6 +91,20 @@ final class RoundVideoMp4Writer {
             audioFormat = format;
         }
         initializeIfReady();
+    }
+
+    synchronized void setEncoderFrameRate(int frameRate) {
+        encoderFrameRate = frameRate;
+    }
+
+    synchronized int getEncoderFrameRate() {
+        return encoderFrameRate;
+    }
+
+    synchronized long getDurationMs() {
+        long durationUs = videoTimeline.nextPresentationTimeUs();
+        if (includeAudio) durationUs = Math.max(durationUs, audioTimeline.nextPresentationTimeUs());
+        return durationUs / 1000L;
     }
 
     synchronized void writeSample(
@@ -450,7 +471,7 @@ final class RoundVideoMp4Writer {
         return result.toString();
     }
 
-    private static boolean sameCodecSpecificData(
+    static boolean sameCodecSpecificData(
             @Nullable MediaFormat first,
             @NonNull MediaFormat second,
             @NonNull String... keys

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -176,8 +178,9 @@ public class SnowflakesEffect {
             return;
         }
 
+        updateColors();
         if (batchParticlesBuffer != null) {
-            
+
             final int count = Math.min(batchParticlesBuffer.vertexCount, particles.size());
             final int texSize = dp(TEXTURE_SIZE_DP);
 

@@ -337,6 +337,8 @@ final class SettingsSearchIndex {
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
         row(entries, guid, SCREEN_CHATS, 56, R.string.NimarkoDisableVMAutoplay, R.string.NM_DisableVoiceAutoNext_Desc,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
+        row(entries, guid, SCREEN_CHATS, 57, R.string.NM_DocViewerTitle, R.string.NM_DocViewerDescription,
+                R.drawable.msg_sendfile, R.string.NM_Cat_Chats, R.string.NM_SettingsSectionMediaPlayback);
         row(entries, guid, SCREEN_CAMERA, 1, R.string.NM_DisableCam, R.string.NM_DisableCam_Desc,
                 R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_Category_Camera);
         row(entries, guid, SCREEN_CAMERA, 23, R.string.NM_CAM_ControlsSide, 0,

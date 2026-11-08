@@ -475,7 +475,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return;
         }
         if (layout.getLineCount() > 0) {
-            textWidth = (int) Math.max(Math.ceil(layout.getLineWidth(0)), Math.ceil(layout.getLineRight(0) - layout.getLineLeft(0)));
+            final float firstLineWidth = layout.getLineWidth(0);
+            final float firstLineLeft = layout.getLineLeft(0);
+            textWidth = (int) Math.max(Math.ceil(firstLineWidth), Math.ceil(layout.getLineRight(0) - firstLineLeft));
             if (fullLayout != null) {
                 textHeight = fullLayout.getLineBottom(fullLayout.getLineCount() - 1);
             } else if (maxLines > 1 && layout.getLineCount() > 0) {
@@ -487,20 +489,20 @@ public class SimpleTextView extends View implements Drawable.Callback {
             int rightDrawableWidth = rightDrawableInside && !rightDrawableOutside
                     ? getRightDrawablesWidth() : 0;
             if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
-                offsetX = (width - textWidth - rightDrawableWidth) / 2 - (int) layout.getLineLeft(0);
+                offsetX = (width - textWidth - rightDrawableWidth) / 2 - (int) firstLineLeft;
                 if (scrollNonFitText && textWidth + rightDrawableWidth > width - paddingRight) {
-                    offsetX = -(int) layout.getLineLeft(0);
+                    offsetX = -(int) firstLineLeft;
                 } else if (ellipsizeByGradient && !scrollNonFitText && textWidth + rightDrawableWidth > width) {
                     offsetX = (ellipsizeByGradientLeft ? width - textWidth - rightDrawableWidth : 0)
-                            - (int) layout.getLineLeft(0);
+                            - (int) firstLineLeft;
                 }
             } else if ((gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.LEFT) {
                 if (firstLineLayout != null) {
                     offsetX = -(int) firstLineLayout.getLineLeft(0);
                 } else {
-                    offsetX = -(int) layout.getLineLeft(0);
+                    offsetX = -(int) firstLineLeft;
                 }
-            } else if (layout.getLineLeft(0) == 0) {
+            } else if (firstLineLeft == 0) {
                 if (firstLineLayout != null) {
                     offsetX = (int) (width - firstLineLayout.getLineWidth(0) - rightDrawableWidth);
                 } else {
@@ -511,7 +513,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             }
             offsetX += getPaddingLeft();
             textDoesNotFit = textWidth + rightDrawableWidth > (width - paddingRight);
-            textOverflow = Math.max(0f, layout.getLineWidth(0) + rightDrawableWidth - (width - paddingRight));
+            textOverflow = Math.max(0f, firstLineWidth + rightDrawableWidth - (width - paddingRight));
             checkUi_layerType();
 
             if (fullLayout != null && fullLayoutAdditionalWidth > 0) {
@@ -1068,6 +1070,23 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return 0;
         }
         return (int) getY();
+    }
+
+    public boolean getProfileTextDrawAnchor(float[] out) {
+        if (layout == null || layout.getLineCount() != 1 || fullAlpha > 0f) return false;
+        int horizontal = gravity & Gravity.HORIZONTAL_GRAVITY_MASK;
+        float x = offsetX - scrollingOffset;
+        if (leftDrawable != null && (leftDrawableOutside
+                || horizontal == Gravity.LEFT || horizontal == Gravity.CENTER_HORIZONTAL)) {
+            x += drawablePadding + leftDrawable.getIntrinsicWidth();
+        }
+        if (replacedDrawable != null && replacedText != null && replacingDrawableTextIndex < 0
+                && (horizontal == Gravity.LEFT || horizontal == Gravity.CENTER_HORIZONTAL)) {
+            x += drawablePadding + replacedDrawable.getIntrinsicWidth();
+        }
+        out[0] = x + layout.getPrimaryHorizontal(0);
+        out[1] = offsetY + layout.getLineBaseline(0);
+        return Float.isFinite(out[0]) && Float.isFinite(out[1]);
     }
 
     public void setRightPadding(int padding) {

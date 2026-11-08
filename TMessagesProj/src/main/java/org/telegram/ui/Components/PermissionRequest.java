@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.Manifest;
@@ -62,7 +64,7 @@ public class PermissionRequest {
             }
             if (needsPermissionRationale) {
                 new AlertDialog.Builder(activity, null)
-                    .setTopAnimation(iconResId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                    .setTopAnimation(iconResId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                     .setMessage(AndroidUtilities.replaceTags(LocaleController.getString(stringResId)))
                     .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                         try {
@@ -125,7 +127,7 @@ public class PermissionRequest {
             }
             if (needsPermissionRationale) {
                 new AlertDialog.Builder(activity, null)
-                        .setTopAnimation(iconResId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                        .setTopAnimation(iconResId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                         .setMessage(AndroidUtilities.replaceTags(LocaleController.getString(stringResId)))
                         .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                             try {

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_DocViewerTitle">內建文件檢視器</string>
+    <string name="NM_DocViewerDescription">在 NimarkoGram 內開啟 PDF、Word（DOCX）、Excel（XLSX）、PowerPoint（PPTX）和文字檔案。</string>
+    <string name="NM_DocChooseSheet">選擇工作表</string>
+    <string name="NM_DocOfficeTooLarge">此文件過大或過於複雜，無法使用內建 Office 檢視器開啟。</string>
+    <string name="NM_DocOfficeWebView">Office 檢視器需要相容的 Android System WebView。請更新後重試。</string>
+    <string name="NM_DocOfficePassword">內建檢視器暫不支援受密碼保護的 Office 文件。</string>
+    <string name="NM_DocText">文字</string>
+    <string name="NM_DocSearch">在文件中搜尋</string>
+    <string name="NM_DocSearching">搜尋中…</string>
+    <string name="NM_DocGoToPage">跳至頁面</string>
+    <string name="NM_DocPageOf">%1$d / %2$d</string>
+    <string name="NM_DocPageRange">請輸入 1 到 %1$d 之間的頁碼</string>
+    <string name="NM_DocMatchOf">%1$d / %2$d</string>
+    <string name="NM_DocMatchesFound">找到 %1$d 處</string>
+    <string name="NM_DocNoMatches">沒有相符結果</string>
+    <string name="NM_DocSearchLimited">請縮小搜尋範圍</string>
+    <string name="NM_DocEncoding">文字編碼</string>
+    <string name="NM_DocResetZoom">重設縮放</string>
+    <string name="NM_DocZoomIn">放大</string>
+    <string name="NM_DocZoomOut">縮小</string>
+    <string name="NM_DocPrevious">上一個</string>
+    <string name="NM_DocNext">下一個</string>
+    <string name="NM_DocRetry">重試</string>
+    <string name="NM_DocOpenError">無法使用內建檢視器開啟此文件。</string>
+    <string name="NM_DocPasswordRequired">此 PDF 需要密碼。如果已輸入密碼，請確認後重試。</string>
+    <string name="NM_DocEnterPassword">輸入 PDF 密碼</string>
+    <string name="NM_DocPasswordUnsupported">內建檢視器需要 Android 15 或更新版本才能開啟受密碼保護的 PDF。</string>
+    <string name="NM_DocTimeout">處理此文件所需時間過長。</string>
+    <string name="NM_DocTextTooLarge">此檔案過大，無法使用內建文字檢視器開啟。</string>
+    <string name="NM_DocEncodingError">無法讀取文字編碼。請在選單中選擇其他編碼。</string>
+    <string name="NM_DocExternalError">找不到可以開啟或分享此檔案的應用程式。</string>
+    <string name="NM_DocProtectedError">此文件受保護，無法在其他應用程式中開啟。</string>
+</resources>

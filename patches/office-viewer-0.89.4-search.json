@@ -1,0 +1,43 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "canvas-viewer-mechanics-ycCX6v-z.js",
+      "sha256": "64b5a8635fe9211431405f4fc92462f36307c253219d1656838d4757c455ef77",
+      "replacements": [
+        {
+          "before": "function C(e) {\n\tlet t = Array(e.length), n = 0, r = \"\";\n\tfor (let i = 0; i < e.length; i++) t[i] = n, r += e[i].text, n += e[i].text.length;\n\treturn {\n\t\ttext: r,\n\t\tfolded: S(r),\n\t\trunStart: t,\n\t\trunCount: e.length\n\t};\n}\n",
+          "after": "function C(e) {\n\t// NimarkoGram: check before allocating runStart, joined text or folded text.\n\tif (e.length > 65536) throw Object.assign(Error(\"Office search text-index limit\"), {code: \"ooxml-search-limit\"});\n\tlet size = 0;\n\tfor (const run of e) {\n\t\tsize += run.text.length;\n\t\tif (size > 1048576) throw Object.assign(Error(\"Office search text-index limit\"), {code: \"ooxml-search-limit\"});\n\t}\n\tlet t = Array(e.length), n = 0, r = \"\";\n\tfor (let i = 0; i < e.length; i++) t[i] = n, r += e[i].text, n += e[i].text.length;\n\treturn {text: r, folded: S(r), runStart: t, runCount: e.length};\n}\n",
+          "count": 1
+        },
+        {
+          "before": "function E(e, t, n = {}) {\n\tif (t.length === 0) return [];\n\tlet r = n.caseSensitive ?? !1, i = r ? e.text : e.folded, a = r ? t : S(t), o = [], s = 0, c = 0;\n\tfor (;;) {\n\t\tlet t = i.indexOf(a, s);\n\t\tif (t === -1) break;\n\t\to.push({\n\t\t\tmatchIndex: c,\n\t\t\tslices: T(e, t, t + a.length)\n\t\t}), c++, s = t + a.length;\n\t}\n\treturn o;\n}\n",
+          "after": "function E(e, t, n = {}, accept = () => true, remaining = 1001) {\n\t// NimarkoGram: bound accepted matches before append; rejected geometry is not a hit.\n\tconst limit = Math.max(0, Math.min(1001, Math.floor(remaining)));\n\tif (t.length === 0 || limit === 0) return [];\n\tif (t.length > 4096) throw Object.assign(Error(\"Office search query limit\"), {code: \"ooxml-search-limit\"});\n\tlet r = n.caseSensitive ?? !1, i = r ? e.text : e.folded, a = r ? t : S(t), o = [], s = 0;\n\twhile (o.length < limit) {\n\t\tlet at = i.indexOf(a, s);\n\t\tif (at === -1) break;\n\t\tconst match = {matchIndex: o.length, slices: T(e, at, at + a.length)};\n\t\tif (accept(match)) o.push(match);\n\t\ts = at + a.length;\n\t}\n\treturn o;\n}\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "39c4822b8881f7fd15e205e844777c162c7d3a0b7494711f94b96752499679a6",
+      "replacements": [
+        {
+          "before": "\tasync find(e, t = {}) {\n\t\tlet n = ++this._generation;\n\t\tif (e.length === 0) return this._runsRevision++, this._runs.clear(), this._matches = [], this._active = -1, [];\n\t\tlet r = this._runsRevision, i = new Map(this._runs), a = this._count();\n\t\tfor (let e = 0; e < a; e++) {\n\t\t\tlet t = i.get(e);\n\t\t\tif (!t) {\n\t\t\t\ttry {\n\t\t\t\t\tt = await this._collectRuns(e);\n\t\t\t\t} catch (e) {\n\t\t\t\t\tif (n !== this._generation) return [];\n\t\t\t\t\tthrow e;\n\t\t\t\t}\n\t\t\t\tif (n !== this._generation) return [];\n\t\t\t\ti.set(e, t);\n\t\t\t}\n\t\t}\n\t\tif (n !== this._generation) return [];\n\t\tlet o = r === this._runsRevision ? i : new Map([...i, ...this._runs]), s = [];\n\t\tfor (let n = 0; n < a; n++) {\n\t\t\tlet r = o.get(n) ?? [];\n\t\t\tfor (let i of c(d(r), e, t)) {\n\t\t\t\tif (!this._acceptMatch(r, i.slices)) continue;\n\t\t\t\tlet e = i.slices.map((e) => r[e.runIndex].text.slice(e.start, e.end)).join(\"\");\n\t\t\t\ts.push({\n\t\t\t\t\tunit: n,\n\t\t\t\t\ttext: e,\n\t\t\t\t\tslices: i.slices\n\t\t\t\t});\n\t\t\t}\n\t\t}\n\t\treturn this._runsRevision++, this._runs = o, this._matches = s, this._active = -1, this.matches();\n\t}\n",
+          "after": "\tasync find(e, t = {}) {\n\t\tconst generation = ++this._generation;\n\t\tif (e.length === 0) return this._runsRevision++, this._runs.clear(), this._matches = [], this._active = -1, [];\n\t\t// NimarkoGram: search incrementally, retaining geometry only for accepted hits.\n\t\tconst matches = [], matchedRuns = new Map(), count = this._count();\n\t\tlet characters = 0, runCount = 0;\n\t\tfor (let unit = 0; unit < count && matches.length < 1001; unit++) {\n\t\t\tif (unit % 32 === 0) await new Promise(resolve => setTimeout(resolve, 0));\n\t\t\tif (generation !== this._generation) return [];\n\t\t\tlet runs = this._runs.get(unit);\n\t\t\tif (!runs) {\n\t\t\t\ttry { runs = await this._collectRuns(unit); }\n\t\t\t\tcatch (error) { if (generation !== this._generation) return []; throw error; }\n\t\t\t\tif (generation !== this._generation) return [];\n\t\t\t\t// A visible render may have published fresher geometry during the await.\n\t\t\t\truns = this._runs.get(unit) ?? runs;\n\t\t\t}\n\t\t\trunCount += runs.length;\n\t\t\tif (runCount > 262144) throw Object.assign(Error(\"Office search scan limit\"), {code: \"ooxml-search-limit\"});\n\t\t\tfor (const run of runs) {\n\t\t\t\tcharacters += run.text.length;\n\t\t\t\tif (characters > 4194304) throw Object.assign(Error(\"Office search scan limit\"), {code: \"ooxml-search-limit\"});\n\t\t\t}\n\t\t\tconst found = c(d(runs), e, t, match => this._acceptMatch(runs, match.slices), 1001 - matches.length);\n\t\t\tfor (const match of found) {\n\t\t\t\tconst text = match.slices.map(slice => runs[slice.runIndex].text.slice(slice.start, slice.end)).join(\"\");\n\t\t\t\tmatches.push({unit, text, slices: match.slices});\n\t\t\t}\n\t\t\tif (found.length) matchedRuns.set(unit, runs);\n\t\t}\n\t\tif (generation !== this._generation) return [];\n\t\tthis._runsRevision++;\n\t\tthis._runs = matchedRuns;\n\t\tthis._matches = matches;\n\t\tthis._active = -1;\n\t\treturn this.matches();\n\t}\n",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "4875f4b32321214b39e7a429096f3fed0717f76a4b523c9f8b8086dbd2fcab13",
+      "replacements": [
+        {
+          "before": "\tasync find(e, t = {}) {\n\t\tlet n = ++this._generation;\n\t\tif (e.length === 0) return this._matches = [], this._active = -1, [];\n\t\tlet r = this._sheetCount(), i = [];\n\t\tfor (let a = 0; a < r; a++) {\n\t\t\tlet r;\n\t\t\ttry {\n\t\t\t\tr = await this._collectSheetCells(a);\n\t\t\t} catch (e) {\n\t\t\t\tif (n !== this._generation) return [];\n\t\t\t\tthrow e;\n\t\t\t}\n\t\t\tif (n !== this._generation) return [];\n\t\t\tlet o = this._sheetName(a);\n\t\t\tfor (let n of r) {\n\t\t\t\tlet r = Se(De([{ text: n.text }]), e, t);\n\t\t\t\tfor (let e of r) {\n\t\t\t\t\tlet t = e.slices[0], r = n.text.slice(t.start, t.end);\n\t\t\t\t\ti.push({\n\t\t\t\t\t\tsheet: a,\n\t\t\t\t\t\tsheetName: o,\n\t\t\t\t\t\trow: n.row,\n\t\t\t\t\t\tcol: n.col,\n\t\t\t\t\t\ttext: r\n\t\t\t\t\t});\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn n === this._generation ? (this._matches = i, this._active = -1, this.matches()) : [];\n\t}\n",
+          "after": "\tasync find(e, t = {}) {\n\t\tconst generation = ++this._generation;\n\t\tif (e.length === 0) return this._matches = [], this._active = -1, [];\n\t\t// NimarkoGram: bound aggregates and stop visiting cells/sheets at the sentinel.\n\t\tconst matches = [], count = this._sheetCount();\n\t\tlet characters = 0, cells = 0;\n\t\tfor (let sheet = 0; sheet < count && matches.length < 1001; sheet++) {\n\t\t\tlet source;\n\t\t\ttry { source = await this._collectSheetCells(sheet); }\n\t\t\tcatch (error) { if (generation !== this._generation) return []; throw error; }\n\t\t\tif (generation !== this._generation) return [];\n\t\t\tconst sheetName = this._sheetName(sheet);\n\t\t\tfor (const cell of source) {\n\t\t\t\tif (matches.length >= 1001) break;\n\t\t\t\tif (cells % 128 === 0) await new Promise(resolve => setTimeout(resolve, 0));\n\t\t\t\tif (generation !== this._generation) return [];\n\t\t\t\tcharacters += cell.text.length;\n\t\t\t\tif (++cells > 262144 || characters > 4194304) throw Object.assign(Error(\"Office search scan limit\"), {code: \"ooxml-search-limit\"});\n\t\t\t\tfor (const hit of Se(De([{text: cell.text}]), e, t, undefined, 1001 - matches.length)) {\n\t\t\t\t\tconst slice = hit.slices[0];\n\t\t\t\t\tmatches.push({sheet, sheetName, row: cell.row, col: cell.col, text: cell.text.slice(slice.start, slice.end)});\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tif (generation !== this._generation) return [];\n\t\tthis._matches = matches;\n\t\tthis._active = -1;\n\t\treturn this.matches();\n\t}\n",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

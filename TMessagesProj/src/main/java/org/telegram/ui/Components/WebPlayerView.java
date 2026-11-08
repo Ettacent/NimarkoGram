@@ -2078,6 +2078,11 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         return initied;
     }
 
+    public void exitFromInlineMode() {
+        if (isInline && inlineButton != null) {
+            inlineButton.callOnClick();
+        }
+    }
     public boolean isInline() {
         return isInline || switchingInlineMode;
     }

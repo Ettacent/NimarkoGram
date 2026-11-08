@@ -1,0 +1,108 @@
+{
+  "version": "0.89.4",
+  "attribution": "Modifications Copyright (C) 2026 Ettacent",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "7c8bfcd2393b23ab4308eba21741eb01d9713bea55216efbddba13d3d027419f",
+      "replacements": [
+        {
+          "before": "leading: e.paddingTop ?? t,",
+          "after": "leading: (e.paddingTop ?? t) + Number(this.hooks.scrollHost().getAttribute(\"data-office-top-inset\") || 0),",
+          "count": 1
+        },
+        {
+          "before": "a = T(this.hooks.offset(n), i);",
+          "after": "a = T(this.hooks.offset(n) - Number(r.getAttribute(\"data-office-top-inset\") || 0), i);",
+          "count": 1
+        },
+        {
+          "before": "this.hooks.offset(e) + n - i.clientHeight / 2",
+          "after": "this.hooks.offset(e) + n - (i.clientHeight + Number(i.getAttribute(\"data-office-top-inset\") || 0) - Number(i.getAttribute(\"data-office-bottom-inset\") || 0)) / 2",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tif (!this.hooks.commitBitmap(e, t, o, s, c, n)) return;",
+          "after": "\t\t\tlet preview = t.renderedScale > 0 && t.renderedScale !== i;\n\t\t\tlet destination = d, dispatcher = o, token = s;\n\t\t\tif (preview) {\n\t\t\t\tdestination = document.createElement(\"canvas\");\n\t\t\t\tdestination.style.cssText = d.style.cssText;\n\t\t\t\tdispatcher = new o.constructor(destination, !0);\n\t\t\t\ttoken = dispatcher.begin();\n\t\t\t}\n\t\t\tif (!this.hooks.commitBitmap(e, t, dispatcher, token, c, n)) { if (preview) dispatcher.destroy(); return; }\n\t\t\tif (preview) {\n\t\t\t\tfor (const old of t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")) old.remove();\n\t\t\t\tfor (const animation of d.getAnimations?.() || []) animation.cancel();\n\t\t\t\td.setAttribute(\"data-office-quality-preview\", \"\");\n\t\t\t\td.style.position = \"absolute\";\n\t\t\t\td.style.inset = \"0\";\n\t\t\t\td.style.width = d.style.height = \"100%\";\n\t\t\t\tt.wrapper.insertBefore(destination, d);\n\t\t\t\to.destroy();\n\t\t\t\tt.canvas = destination;\n\t\t\t\tt.dispatcher = dispatcher;\n\t\t\t\tdestination.setAttribute(\"data-office-quality-commit\", \"\");\n\t\t\t}",
+          "count": 1
+        },
+        {
+          "before": "t.wrapper.insertBefore(o, r), r.remove(), t.canvas = o",
+          "after": "t.wrapper.querySelectorAll(\"[data-office-quality-preview]\").forEach(e => e.remove()), (r.getAnimations?.() || []).forEach(e => e.cancel()), r.setAttribute(\"data-office-quality-preview\", \"\"), r.style.position = \"absolute\", r.style.inset = \"0\", r.style.width = r.style.height = \"100%\", t.wrapper.insertBefore(o, r), o.setAttribute(\"data-office-quality-commit\", \"\"), t.canvas = o",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.slots.delete(e), this.hooks.resetSlot(e, t), this.free.push(t);",
+          "after": "\t\tt.wrapper.querySelectorAll(\"[data-office-quality-preview]\").forEach(e => e.remove());\n\t\tthis.slots.delete(e), this.hooks.resetSlot(e, t), this.free.push(t);",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "dfbe5e381f77203dc97443bb0e39957ee0c4f31a46ba042dceebb1d81ce6681e",
+      "replacements": [
+        {
+          "before": "\tsyncNativeViewportExtent() {",
+          "after": "\tsetTopInset(e) {\n\t\tconst previous = this.officeTopInset || 0, before = this.scrollHost.scrollTop;\n\t\tconst next = Math.max(0, e);\n\t\tif (previous === next) { this.syncOfficeTopInset(); return; }\n\t\tthis.officeTopInset = next;\n\t\tthis.scrollHost.setAttribute(\"data-office-top-inset\", String(this.officeTopInset));\n\t\tif (this.currentWorksheet) this.updateSpacerSize(this.currentWorksheet);\n\t\tthis.scrollHost.scrollTop = before <= previous ? Math.min(before, next) : before + next - previous;\n\t\tthis.syncOfficeTopInset();\n\t}\n\tsyncOfficeTopInset() {\n\t\tthis.gridRegion.style.transform = `translateY(${Math.max(0, (this.officeTopInset || 0) - this.scrollHost.scrollTop)}px)`;\n\t}\n\tsyncNativeViewportExtent() {",
+          "count": 1
+        },
+        {
+          "before": "this.viewport.ensureExtent(this.scrollHost.scrollWidth, this.scrollHost.scrollHeight)",
+          "after": "this.viewport.ensureExtent(this.scrollHost.scrollWidth, this.scrollHost.scrollHeight - (this.officeTopInset || 0))",
+          "count": 1
+        },
+        {
+          "before": "this.viewport.adoptNativeOffset(this.viewport.x, this.scrollHost.scrollTop)",
+          "after": "this.viewport.adoptNativeOffset(this.viewport.x, Math.max(0, this.scrollHost.scrollTop - (this.officeTopInset || 0)))",
+          "count": 1
+        },
+        {
+          "before": "this._nativeScrollbars && (this.scrollHost.scrollTop = this.viewport.y);",
+          "after": "this._nativeScrollbars && (this.scrollHost.scrollTop = this.viewport.y > 0 ? this.viewport.y + (this.officeTopInset || 0) : 0), this.syncOfficeTopInset();",
+          "count": 1
+        },
+        {
+          "before": "this.viewport.setOffset(t, this.scrollHost.scrollTop);",
+          "after": "this.viewport.setOffset(t, Math.max(0, this.scrollHost.scrollTop - (this.officeTopInset || 0))), this.syncOfficeTopInset();",
+          "count": 1
+        },
+        {
+          "before": "this.spacer.style.height = `${o}px`",
+          "after": "this.spacer.style.height = `${o + (this.officeTopInset || 0)}px`",
+          "count": 1
+        },
+        {
+          "before": "let i = this.viewport.scale, a = V(r).scrollOffsetForCell(e, t, {\n\t\t\tscale: i,\n\t\t\tviewportWidth: this.canvasArea.clientWidth,\n\t\t\tviewportHeight: this.canvasArea.clientHeight,\n\t\t\tcurrentX: this.effectiveScrollLeft,\n\t\t\tcurrentY: this.viewportTop,",
+          "after": "const top = this.officeTopInset || 0, bottom = Number(this.scrollHost.getAttribute(\"data-office-bottom-inset\") || 0);\n\t\tlet i = this.viewport.scale, a = V(r).scrollOffsetForCell(e, t, {\n\t\t\tscale: i,\n\t\t\tviewportWidth: this.canvasArea.clientWidth,\n\t\t\tviewportHeight: Math.max(1, this.canvasArea.clientHeight - top - bottom),\n\t\t\tcurrentX: this.effectiveScrollLeft,\n\t\t\tcurrentY: this.viewportTop + top,",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.viewportTop = a.y, this.setViewportLeft(a.x);",
+          "after": "\t\tthis.viewportTop = Math.max(0, a.y - top), this.setViewportLeft(a.x);",
+          "count": 1
+        },
+        {
+          "before": "\tasync renderCurrentSheet() {",
+          "after": "\tasync renderCurrentSheet() {\n\t\tif (this._mode !== \"main\") return this.renderOfficeFrame();\n\t\tif (this.officeMainRender) {\n\t\t\tthis.officeMainAgain = !0;\n\t\t\tthis.renderDispatcher.begin();\n\t\t\treturn this.officeMainRender;\n\t\t}\n\t\tthis.officeMainRender = (async () => {\n\t\t\tdo {\n\t\t\t\tthis.officeMainAgain = !1;\n\t\t\t\tawait this.renderOfficeFrame();\n\t\t\t} while (this.officeMainAgain && !this._destroyed);\n\t\t})();\n\t\ttry { await this.officeMainRender; }\n\t\tfinally { this.officeMainRender = null; if (this.officeMainAgain && !this._destroyed) this.scheduleRender(); }\n\t}\n\tasync renderOfficeFrame() {",
+          "count": 1
+        },
+        {
+          "before": "} else if (await this.workbook.renderViewport(this.canvas, this.currentSheet, d, tn(b, () => !this._destroyed && this.renderDispatcher.isCurrent(e))), !this.renderDispatcher.isCurrent(e) || this._destroyed) return;",
+          "after": "} else {\n\t\t\tconst buffer = this.officeMainCanvas ||= this.hostDocument.createElement(\"canvas\");\n\t\t\tawait this.workbook.renderViewport(buffer, this.currentSheet, d, tn(b, () => !this._destroyed && this.renderDispatcher.isCurrent(e)));\n\t\t\tif (!this.renderDispatcher.isCurrent(e) || this._destroyed) return;\n\t\t\tthis.canvas.width = buffer.width;\n\t\t\tthis.canvas.height = buffer.height;\n\t\t\tthis.canvas.style.width = `${n}px`;\n\t\t\tthis.canvas.style.height = `${r}px`;\n\t\t\tthis.canvas.getContext(\"2d\").drawImage(buffer, 0, 0);\n\t\t}",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.renderGutters(), this.firstPreviewRender = !1, this.committedFrameCount++;",
+          "after": "\t\tthis.canvas.style.transform = \"\";\n\t\tthis.canvas.setAttribute(\"data-office-sheet-content\", \"\");\n\t\tthis.canvas.parentElement.setAttribute(\"data-office-sheet-surface\", \"\");\n\t\tconst headerWidth = Math.min(1, Math.round(50 * i) / n), headerHeight = Math.min(1, Math.round(22 * i) / r);\n\t\tthis.canvas.setAttribute(\"data-office-sheet-region\", `${this.isRtl ? 0 : headerWidth} ${headerHeight} ${1 - headerWidth} ${1 - headerHeight}`);\n\t\tthis.canvas.setAttribute(\"data-office-painted-x\", String(c));\n\t\tthis.canvas.setAttribute(\"data-office-painted-y\", String(l));\n\t\tthis.renderGutters(), this.firstPreviewRender = !1, this.committedFrameCount++;",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tthis.renderCurrentSheet().catch((e) => this._reportRenderError(e)), this.updateSelectionOverlay(), this.updateFindOverlay(), this.sheetTabs?.updateNavButtons(), this.opts.onScaleChange?.(i);",
+          "after": "\t\t\tconst painted = Number(this.canvas.getAttribute(\"data-office-painted-scale\"));\n\t\t\tif (painted > 0) {\n\t\t\t\tconst ratio = i / painted, x = Number(this.canvas.getAttribute(\"data-office-painted-x\")) * ratio - this.effectiveScrollLeft, y = Number(this.canvas.getAttribute(\"data-office-painted-y\")) * ratio - this.viewportTop;\n\t\t\t\tthis.canvas.style.transformOrigin = \"0 0\";\n\t\t\t\tthis.canvas.style.transform = `translate(${x}px,${y}px) scale(${ratio})`;\n\t\t\t}\n\t\t\tthis.renderCurrentSheet().catch((e) => this._reportRenderError(e)), this.updateSelectionOverlay(), this.updateFindOverlay(), this.sheetTabs?.updateNavButtons(), this.opts.onScaleChange?.(i);",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

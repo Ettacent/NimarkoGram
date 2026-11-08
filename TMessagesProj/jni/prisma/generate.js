@@ -143,6 +143,73 @@ function uniqlo(a, fn) {
     return a
 }
 
+const EXTENSIONS = {
+    rs: 'rust',
+    h: 'cpp',
+    hpp: 'cpp',
+    hh: 'cpp',
+    hxx: 'cpp',
+    cc: 'cpp',
+    cxx: 'cpp',
+    inl: 'cpp',
+    ipp: 'cpp',
+    mm: 'objectivec',
+    mts: 'typescript',
+    cts: 'typescript',
+    mjs: 'javascript',
+    cjs: 'javascript',
+    pyi: 'python',
+    htm: 'html',
+    xaml: 'xml',
+    csproj: 'xml',
+    vcxproj: 'xml',
+    props: 'xml',
+    targets: 'xml',
+    resx: 'xml',
+    resw: 'xml',
+    xsd: 'xml',
+    xsl: 'xml',
+    xslt: 'xml',
+    config: 'xml',
+    manifest: 'xml',
+    appxmanifest: 'xml',
+    nuspec: 'xml',
+    plist: 'xml',
+    zsh: 'bash',
+    ksh: 'bash',
+    ps1: 'powershell',
+    psm1: 'powershell',
+    bat: 'batch',
+    cmd: 'batch',
+    mk: 'makefile',
+    pl: 'perl',
+    pm: 'perl',
+    rake: 'ruby',
+    gemspec: 'ruby',
+    jl: 'julia',
+    fs: 'fsharp',
+    fsx: 'fsharp',
+    ex: 'elixir',
+    exs: 'elixir',
+    erl: 'erlang',
+    hrl: 'erlang',
+    clj: 'clojure',
+    cljs: 'clojure',
+    cljc: 'clojure',
+    edn: 'clojure',
+    ml: 'ocaml',
+    mli: 'ocaml',
+    sv: 'verilog',
+    svh: 'verilog',
+    vhd: 'vhdl',
+    styl: 'stylus',
+    gql: 'graphql',
+    proto: 'protobuf',
+    tf: 'hcl',
+    tfvars: 'hcl',
+    htaccess: 'apacheconf',
+}
+
 async function generate() {
 
     var tempPatterns = []
@@ -274,6 +341,9 @@ async function generate() {
     loadLocalLanguage('./components/prism-tact.js', 'tact', 'Tact', 'tact')
     loadLocalLanguage('./components/prism-tolk.js', 'tolk', 'Tolk', 'tolk')
 
+    include(fs.readFileSync('./components/prism-diff-embedded.js'))
+    include(fs.readFileSync('./components/prism-kotlin.js'))
+
     Object.keys(Prism.languages).forEach(lng => {
         if (unsupported.includes(lng) || !components.languages[lng]) {
             return
@@ -384,6 +454,18 @@ async function generate() {
                 const aliasTitles = components.languages[name].aliasTitles
                 languageNames[lng] = (aliasTitles && aliasTitles[lng]) || components.languages[name].title
             }
+        }
+    })
+
+    Object.entries(EXTENSIONS).forEach(([extension, name]) => {
+        if (allLanguages[name] === undefined) {
+            throw new Error(`.${extension} names ${name}, which is no language`)
+        }
+        if (allLanguages[extension] === undefined) {
+            allLanguages[extension] = allLanguages[name]
+            languageNames[extension] = ''
+        } else {
+            console.log(`EXTENSIONS.${extension} is not needed: it is a language name already`)
         }
     })
 

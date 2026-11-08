@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<resources>
+    <item name="AddManyMembersAlertNamesText_few" type="string">@string/AddManyMembersAlertNamesText_other</item>
+    <item name="AddManyMembersAlertNamesText_two" type="string">@string/AddManyMembersAlertNamesText_other</item>
+    <item name="AddManyMembersAlertTitle_few" type="string">@string/AddManyMembersAlertTitle_other</item>
+    <item name="AddManyMembersAlertTitle_many" type="string">@string/AddManyMembersAlertTitle_other</item>
+    <item name="AddManyMembersAlertTitle_two" type="string">@string/AddManyMembersAlertTitle_other</item>
+    <string name="EmailPasswordConfirmText3">To complete recovery email setup, check %1$s (don\'t forget the spam folder) and enter the code we just sent you.</string>
+    <item name="Languages_few" type="string">@string/Languages_other</item>
+    <item name="Languages_many" type="string">@string/Languages_other</item>
+    <item name="Languages_two" type="string">@string/Languages_other</item>
+    <item name="Languages_zero" type="string">@string/Languages_other</item>
+    <string name="NoContactsYet">You have no contacts on Telegram yet</string>
+    <string name="NoContactsYetLine1">Invite friends to try Telegram</string>
+    <string name="NoContactsYetLine2">Find people nearby to chat with</string>
+    <string name="NoContactsYetLine3">Search people by username</string>
+    <string name="PleaseEnterFirstPassword">Enter a password</string>
+    <string name="PleaseEnterPassword">Enter your new password</string>
+    <string name="PluginIsNotResponding">Plugin is not responding.</string>
+    <string name="PluginsRowSubtitle">Python scripts that extend the app</string>
+    <string name="ResetAccountButton">RESET ACCOUNT</string>
+    <string name="ResetMyAccountText">You will lose all your chats and messages, along with any media and files you shared, if you proceed with resetting your account.</string>
+    <string name="ShareTelegram">Share Telegram...</string>
+    <string name="UseProxyForCalls">Use proxy for calls</string>
+    <string name="UseProxyForCallsInfo">Proxy servers may degrade the quality of your calls.</string>
+    <string name="WidgetPasscodeEnable2">Your passcode **will not affect** widgets added to homescreen.</string>
+    <string name="YourEmailCode">Your Email Code</string>
+    <string name="YourEmailCodeInfo">Please confirm your email address by entering the code you just received on %1$s.</string>
+    <string name="YourPasswordSuccessText">Your password for Two-Step Verification is now active.</string>
+    <string name="formatterMonthName">LLLL</string>
+    <string name="formatterMonthYear2">LLLL yyyy</string>
+</resources>

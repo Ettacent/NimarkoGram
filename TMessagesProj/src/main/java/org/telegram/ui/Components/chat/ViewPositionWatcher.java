@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.chat;
 
 import android.graphics.PointF;
@@ -38,7 +40,7 @@ public final class ViewPositionWatcher implements
     }
 
     private static final class TrackedGeometry {
-        
+
         final WeakReference<ViewGroup> parent;
         final boolean multiwindow;
         final List<ListenerRegistration> listeners = new ArrayList<>(1);
@@ -63,7 +65,7 @@ public final class ViewPositionWatcher implements
     }
 
     private final WeakHashMap<View, TrackedView> tracked = new WeakHashMap<>();
-    private final RectF tmpRect = new RectF(); 
+    private final RectF tmpRect = new RectF();
     private static final int[] tmpCords = new int[2];
 
     private final View.OnAttachStateChangeListener multiwindowAttachStateListener =
@@ -200,7 +202,7 @@ public final class ViewPositionWatcher implements
 
     @Override
     public boolean onPreDraw() {
-        
+
         ViewTreeObserver current = anchorView.getViewTreeObserver();
         if (current != vto) {
             detachIfListening();
@@ -216,7 +218,7 @@ public final class ViewPositionWatcher implements
 
             for (TrackedGeometry geometry : trackedView.geometries) {
                 ViewGroup parent = geometry.parent.get();
-                if (parent == null) continue; 
+                if (parent == null) continue;
                 if (geometry.multiwindow) {
                     view.getLocationOnScreen(tmpCords);
                     tmpRect.set(tmpCords[0], tmpCords[1], tmpCords[0] + view.getWidth(), tmpCords[1] + view.getHeight());
@@ -233,7 +235,7 @@ public final class ViewPositionWatcher implements
                     geometry.hasLast = true;
                 }
                 if (changed || geometry.needsInitialDispatch) {
-                    
+
                     geometry.needsInitialDispatch = false;
                     final int listenerCount = geometry.listeners.size();
                     for (int i = 0; i < listenerCount; i++) {
@@ -245,7 +247,7 @@ public final class ViewPositionWatcher implements
                         try {
                             registration.listener.onPositionChanged(view, registration.callbackRect);
                         } catch (Throwable ignored) {
-                            
+
                         }
                     }
                 }
@@ -276,6 +278,27 @@ public final class ViewPositionWatcher implements
         return result;
     }
 
+    private static final float[] tmpOffset = new float[2];
+
+    private static boolean computeOffsetInRoot(@NonNull View view, @NonNull View root, float[] out) {
+        float left = 0f, top = 0f;
+        View current = view;
+        while (current != root) {
+            left += current.getX();
+            top += current.getY();
+            final ViewParent vp = current.getParent();
+            if (!(vp instanceof View)) {
+                return false;
+            }
+            final View parent = (View) vp;
+            left -= parent.getScrollX();
+            top -= parent.getScrollY();
+            current = parent;
+        }
+        out[0] = left;
+        out[1] = top;
+        return true;
+    }
     public static boolean computeRectInParent(@NonNull View view,
                                                @NonNull View parentView,
                                                @NonNull RectF out) {
@@ -289,7 +312,7 @@ public final class ViewPositionWatcher implements
 
             ViewParent vp = current.getParent();
             if (!(vp instanceof View)) {
-                return false; 
+                break;
             }
             View parent = (View) vp;
             left -= parent.getScrollX();
@@ -299,8 +322,12 @@ public final class ViewPositionWatcher implements
         }
 
         if (current != parentView) {
-            
+
+            if (current == null || !computeOffsetInRoot(parentView, current, tmpOffset)) {
             return false;
+            }
+            left -= tmpOffset[0];
+            top -= tmpOffset[1];
         }
 
         final float l = left;

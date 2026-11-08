@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -80,7 +82,9 @@ public class ChatActivityEnterTopView extends FrameLayout {
 
         public void updateColors() {
             for (EditViewButton button : buttons) {
+                if (button != null) {
                 button.updateColors();
+                }
             }
         }
     }

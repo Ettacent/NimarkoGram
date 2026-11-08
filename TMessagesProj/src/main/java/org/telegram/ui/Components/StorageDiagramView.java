@@ -495,7 +495,7 @@ public class StorageDiagramView extends View implements NotificationCenter.Notif
         if (avatarImageReceiver != null) {
             avatarImageReceiver.onAttachedToWindow();
         }
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
+        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
     }
 
     @Override

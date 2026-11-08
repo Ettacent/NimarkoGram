@@ -11,19 +11,29 @@ final class CoreIconReplacements {
 
     static void apply(BaseIconReplace pack) {
         if (pack instanceof SolarIconReplace) {
+            pack.replaces.put(R.drawable.menu_sidebar_right, R.drawable.msg_list_solar);
+            pack.replaces.put(R.drawable.location_city, R.drawable.ng_upgrade_location_city_solar);
             pack.replaces.put(R.drawable.iv_math, R.drawable.ng_editor_math_solar);
             pack.replaces.put(R.drawable.iv_super, R.drawable.ng_editor_super_solar);
             pack.replaces.put(R.drawable.iv_sub, R.drawable.ng_editor_sub_solar);
         } else if (pack instanceof LiquidGlassFullReplace) {
+            pack.replaces.put(R.drawable.menu_sidebar_right, R.drawable.msg_contacts_name_liquid);
+            pack.replaces.put(R.drawable.location_city, R.drawable.ng_upgrade_location_city_liquid);
+            pack.replaces.put(R.drawable.location_country, R.drawable.ng_upgrade_location_country_liquid);
             pack.replaces.put(R.drawable.iv_math, R.drawable.ng_editor_math_liquid);
             pack.replaces.put(R.drawable.iv_super, R.drawable.ng_editor_super_liquid);
             pack.replaces.put(R.drawable.iv_sub, R.drawable.ng_editor_sub_liquid);
         } else if (pack instanceof PlumpyFullReplace) {
+            pack.replaces.put(R.drawable.menu_sidebar_right, R.drawable.menu_sidebar_plumpy);
+            pack.replaces.put(R.drawable.location_city, R.drawable.ng_upgrade_location_city_plumpy);
             pack.replaces.put(R.drawable.iv_math, R.drawable.ng_editor_math_plumpy);
             pack.replaces.put(R.drawable.iv_super, R.drawable.ng_editor_super_plumpy);
             pack.replaces.put(R.drawable.iv_sub, R.drawable.ng_editor_sub_plumpy);
         }
         pack.noTint.remove(R.drawable.iv_math);
+        pack.noTint.remove(R.drawable.menu_sidebar_right);
+        pack.noTint.remove(R.drawable.location_city);
+        pack.addAlias(R.drawable.location_country, R.drawable.msg_language);
         pack.noTint.remove(R.drawable.iv_super);
         pack.noTint.remove(R.drawable.iv_sub);
         pack.addAlias(R.drawable.settings_account, R.drawable.msg_contacts);

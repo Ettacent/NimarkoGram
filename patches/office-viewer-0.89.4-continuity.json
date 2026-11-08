@@ -1,0 +1,80 @@
+{
+  "version": "0.89.4",
+  "attribution": "Modifications Copyright (C) 2026 Ettacent",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "7774b29b88ea6264b6f4e1026a6df8c2edd08740a6ae03003fc3fc7faa761c50",
+      "replacements": [
+        {
+          "before": "let c = await this.hooks.render(e, d, n, r, m ? (e) => p.push(e) : void 0);",
+          "after": "let c = await this.hooks.render(e, d, n, r, m ? (e) => p.push(e) : void 0);\n\t\t\tawait Promise.allSettled([...t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")].flatMap(canvas => canvas.getAnimations?.() || []).filter(animation => animation.playState === \"running\").map(animation => animation.finished));",
+          "count": 1
+        },
+        {
+          "before": "\t\tm.then(() => {\n\t\t\tif (!this.isCurrent(e, t, c, u, d, o, a, !0)) {",
+          "after": "\t\tm.then(async () => {\n\t\t\tawait Promise.allSettled([...t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")].flatMap(canvas => canvas.getAnimations?.() || []).filter(animation => animation.playState === \"running\").map(animation => animation.finished));\n\t\t\tif (!this.isCurrent(e, t, c, u, d, o, a, !0)) {",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "fafd57d3af2e9c2712cf8be6fd8f7a6531649d7d37de11660fdcd77208dc9611",
+      "replacements": [
+        {
+          "before": "\tsetScaleAt(scale, x, y) {",
+          "after": "\tgetZoomGeometry() {\n\t\tconst heights = this._heights.slice(), widths = heights.map((_, unit) => this._pageWidthPx(unit));\n\t\tconst padding = this._viewport.verticalPadding();\n\t\treturn {heights, widths, leading: padding.leading, trailing: padding.trailing, gap: this._viewport.gap(), padding: this._viewport.horizontalPadding().left};\n\t}\n\tsetScaleAt(scale, x, y) {",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "pptx-CLyebeF_.js",
+      "sha256": "dea5eb9aa6cc45522eb2e91072f62a2e94936ff2439d12f88278e550af123170",
+      "replacements": [
+        {
+          "before": "\tsetScaleAt(scale, x, y) {",
+          "after": "\tgetZoomGeometry() {\n\t\tconst heights = Array(this.slideCount).fill(this._slideHeightPx()), widths = Array(this.slideCount).fill(this._slideWidthPx());\n\t\tconst padding = this._viewport.verticalPadding();\n\t\treturn {heights, widths, leading: padding.leading, trailing: padding.trailing, gap: this._viewport.gap(), padding: this._viewport.horizontalPadding().left};\n\t}\n\tsetScaleAt(scale, x, y) {",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "xlsx-lvftmF1U.js",
+      "sha256": "7d78c2a169087055e0a729a44ea41035be7d0acabf07626ee4f70c508d6ea99b",
+      "replacements": [
+        {
+          "before": "\tsetScaleAt(scale, x, y) {",
+          "after": "\tgetZoomPreview() {\n\t\tconst host = this.scrollHost, top = this.officeTopInset || 0;\n\t\tconst width = parseFloat(this.spacer.style.width), height = parseFloat(this.spacer.style.height) - top;\n\t\tconst bottom = Number(host.getAttribute(\"data-office-bottom-inset\") || 0);\n\t\tconst state = {x: this.effectiveScrollLeft, y: this.viewportTop, rtl: this.isRtl, leading: Math.max(0, top - host.scrollTop), rootTop: host.getBoundingClientRect().top - Math.max(0, top - host.scrollTop),\n\t\t\tmaxX: ratio => Math.max(0, width * ratio - host.clientWidth), maxY: ratio => Math.max(0, height * ratio + bottom - host.clientHeight)};\n\t\tthis.officeZoomPreview = state;\n\t\treturn state;\n\t}\n\tpreviewZoom(state, ratio, x, y) {\n\t\tconst shift = Math.max(0, -y) - state.leading;\n\t\tconst offsetX = this.isRtl ? this.canvasArea.clientWidth * (1 - ratio) + x - state.x * ratio : state.x * ratio - x;\n\t\tconst transform = `translate(${offsetX}px,${state.y * ratio - Math.max(0, y) + shift}px) scale(${ratio})`;\n\t\tfor (const layer of [this.canvas, this.overlayHost.find, this.overlayHost.selection]) {\n\t\t\tlayer.style.transformOrigin = \"0 0\";\n\t\t\tlayer.style.transform = transform;\n\t\t}\n\t}\n\tfinishZoomPreview(x, y) {\n\t\tthis.officeZoomPreview = null;\n\t\tthis.setViewportLeft(x);\n\t\tthis.viewportTop = Math.max(0, y);\n\t\tif (y < 0) this.scrollHost.scrollTop = Math.max(0, (this.officeTopInset || 0) + y);\n\t\tthis.syncOfficeTopInset();\n\t\tthis.renderCurrentSheet().catch(error => this._reportRenderError(error));\n\t\tthis.updateSelectionOverlay();\n\t\tthis.updateFindOverlay();\n\t}\n\tsetScaleAt(scale, x, y) {",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tif (!this.renderDispatcher.commitBitmap(e, a, n, r)) return;",
+          "after": "\t\t\tif (this.officeZoomPreview) { a.close(); return; }\n\t\t\tif (!this.renderDispatcher.commitBitmap(e, a, n, r)) return;",
+          "count": 1
+        },
+        {
+          "before": "if (!this.renderDispatcher.isCurrent(e) || this._destroyed) return;\n\t\t\tthis.canvas.width = buffer.width;",
+          "after": "if (!this.renderDispatcher.isCurrent(e) || this._destroyed || this.officeZoomPreview) return;\n\t\t\tthis.canvas.width = buffer.width;",
+          "count": 1
+        },
+        {
+          "before": "\tasync renderOfficeFrame() {",
+          "after": "\tasync renderOfficeFrame() {\n\t\tif (this.officeZoomPreview) return;",
+          "count": 1
+        },
+        {
+          "before": "\t\tthis.canvas.style.transform = \"\";",
+          "after": "\t\tthis.canvas.style.transform = \"\";\n\t\tthis.overlayHost.find.style.transform = this.overlayHost.selection.style.transform = \"\";",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tthis.renderCurrentSheet().catch((e) => this._reportRenderError(e)), this.updateSelectionOverlay(), this.updateFindOverlay(), this.sheetTabs?.updateNavButtons(), this.opts.onScaleChange?.(i);",
+          "after": "\t\t\tif (!this.officeZoomPreview) this.renderCurrentSheet().catch((e) => this._reportRenderError(e));\n\t\t\tthis.updateSelectionOverlay(), this.updateFindOverlay(), this.sheetTabs?.updateNavButtons(), this.opts.onScaleChange?.(i);",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

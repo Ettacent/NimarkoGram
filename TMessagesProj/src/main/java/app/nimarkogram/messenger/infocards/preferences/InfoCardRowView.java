@@ -21,7 +21,7 @@ import org.telegram.ui.Components.Switch;
 import app.nimarkogram.messenger.infocards.InfoCardRegistry;
 import app.nimarkogram.messenger.utils.ui.MonetHelper;
 
-public class InfoCardRowView extends FrameLayout {
+public class InfoCardRowView extends FrameLayout implements Theme.Colorable {
 
     public interface Listener {
         void onToggle(int pillId, boolean active);
@@ -34,6 +34,10 @@ public class InfoCardRowView extends FrameLayout {
     private final TextView title;
     private final Switch switchView;
 
+    private InfoCardRegistry.CardInfo boundInfo;
+    private boolean bodyClickable;
+    private GradientDrawable badgeGradient;
+    private int badgeTopColor, badgeBottomColor;
     private int pillId = -1;
     private boolean active;
     private Listener listener;
@@ -90,28 +94,54 @@ public class InfoCardRowView extends FrameLayout {
         this.pillId = info.id;
         this.active = active;
 
-        int badgeTop = MonetHelper.getSettingsIconBackgroundColor(info.colorTop);
-        int badgeBottom = MonetHelper.getSettingsIconBackgroundColor(info.colorBottom);
-        GradientDrawable g = new GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM, new int[]{badgeTop, badgeBottom});
-        g.setCornerRadius(dp(11));
-        badge.setBackground(g);
+        this.boundInfo = info;
+        this.bodyClickable = clickable;
+        setClickable(clickable);
+        updateColors();
         badgeIcon.setImageResource(info.iconRes);
-        badgeIcon.setColorFilter(MonetHelper.getSettingsIconForegroundColor(0xffffffff));
 
         title.setText(info.getName());
-        title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, rp));
 
         switchView.setChecked(active, false);
         switchView.setContentDescription(info.getName());
         setContentDescription(info.getName());
 
-        setClickable(clickable);
-        setBackground(clickable ? Theme.getSelectorDrawable(false, rp) : null);
 
         float alpha = active ? 1f : 0.55f;
         badge.setAlpha(alpha);
         title.setAlpha(alpha);
+    }
+
+    @Override
+    public void updateColors() {
+        InfoCardRegistry.CardInfo info = boundInfo;
+        if (info == null) return;
+        int badgeTop = MonetHelper.getSettingsIconBackgroundColor(info.colorTop);
+        int badgeBottom = MonetHelper.getSettingsIconBackgroundColor(info.colorBottom);
+        if (badgeGradient == null) {
+            badgeGradient = new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM, new int[]{badgeTop, badgeBottom});
+            badgeGradient.setCornerRadius(dp(11));
+            badge.setBackground(badgeGradient);
+        } else if (badgeTopColor != badgeTop || badgeBottomColor != badgeBottom) {
+            badgeGradient.setColors(new int[]{badgeTop, badgeBottom});
+        }
+        badgeTopColor = badgeTop;
+        badgeBottomColor = badgeBottom;
+        badgeIcon.setColorFilter(MonetHelper.getSettingsIconForegroundColor(0xffffffff));
+        title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, rp));
+        if (bodyClickable) {
+            if (getBackground() == null) setBackground(Theme.getSelectorDrawable(false, rp));
+            else Theme.setSelectorDrawableColor(getBackground(), Theme.getColor(Theme.key_listSelector, rp), true);
+        } else {
+            setBackground(null);
+        }
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        updateColors();
     }
 
     @Override

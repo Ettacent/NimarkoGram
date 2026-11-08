@@ -47,6 +47,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -55,6 +56,7 @@ import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedColor;
 import org.telegram.ui.Components.AnimatedFloat;
+import org.telegram.ui.Components.BoundedPackIconRenderer;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Text;
 import org.telegram.ui.LaunchActivity;
@@ -267,7 +269,8 @@ public class BottomSheetTabs extends FrameLayout {
     }
 
     public void setNavigationBarColor(int color, boolean animated) {
-        if (color != backgroundColor) {
+        if (color != backgroundColor || !animated || !SharedConfig.animationsEnabled()) {
+            final boolean animateTabColors = animated && SharedConfig.animationsEnabled();
             if (!actionBarLayout.startedTracking || actionBarLayout.animationInProgress) {
                 animated = false;
             }
@@ -277,6 +280,8 @@ public class BottomSheetTabs extends FrameLayout {
             tabIsDark = AndroidUtilities.computePerceivedBrightness(tabColor) < .721f;
             if (!animated) {
                 backgroundColorAnimated.set(backgroundColor, true);
+            }
+            if (!animateTabColors) {
                 tabColorAnimated.set(tabColor, true);
                 tabDarkAnimated.set(tabIsDark, true);
             }
@@ -512,7 +517,7 @@ public class BottomSheetTabs extends FrameLayout {
         });
         dialog[0].show();
         TextView textView = (TextView) dialog[0].getButton(AlertDialog.BUTTON_POSITIVE);
-        textView.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+        ThemeBind.textColor(textView, Theme.key_text_RedBold);
     }
 
     public boolean removeTab(WebTabData tab, boolean destroy) {
@@ -777,8 +782,6 @@ public class BottomSheetTabs extends FrameLayout {
 
     public static class TabDrawable {
 
-        private static final app.nimarkogram.messenger.icons.AnimatedIconSpec CLOSE_ICON = app.nimarkogram.messenger.icons.AnimatedIconSpec.single(R.drawable.ic_close_white);
-        private static final app.nimarkogram.messenger.icons.AnimatedIconSpec EXPAND_ICON = app.nimarkogram.messenger.icons.AnimatedIconSpec.single(R.drawable.arrow_more);
         public final WebTabData tab;
         public final View parentView;
 
@@ -792,7 +795,8 @@ public class BottomSheetTabs extends FrameLayout {
         private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint faviconPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
-        private final app.nimarkogram.messenger.icons.AnimatedIconRenderer packIconRenderer = new app.nimarkogram.messenger.icons.AnimatedIconRenderer();
+        private final BoundedPackIconRenderer packClose = new BoundedPackIconRenderer(false);
+        private final BoundedPackIconRenderer packExpand = new BoundedPackIconRenderer(false);
         private final RectF packIconBounds = new RectF();
         public int closeRippleColor;
         public final Drawable closeRipple = Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_CIRCLE_20DP);
@@ -919,14 +923,18 @@ public class BottomSheetTabs extends FrameLayout {
         private final Path closePath = new Path();
         private final Path expandPath = new Path();
 
-        private boolean drawPackIcon(Canvas canvas, app.nimarkogram.messenger.icons.AnimatedIconSpec spec, float cx, float cy, float rotation, int color) {
-            final float halfSize = dp(24) / 2f;
-            packIconBounds.set(cx - halfSize, cy - halfSize, cx + halfSize, cy + halfSize);
+        private boolean drawPackIcon(Canvas canvas, BoundedPackIconRenderer renderer, int resourceId,
+                                     Path nativePath, float rotation) {
+            if (!renderer.prepare(IconResources.activeNavigationIcons(), resourceId)) return false;
+            nativePath.computeBounds(packIconBounds, true);
+            final float halfStroke = iconPaint.getStrokeWidth() / 2f;
+            packIconBounds.inset(-halfStroke, -halfStroke);
+            final float cx = packIconBounds.centerX(), cy = packIconBounds.centerY();
             final int save = canvas.save();
             canvas.rotate(rotation, cx, cy);
-            final boolean drawn = packIconRenderer.draw(canvas, spec, 0, 1, packIconBounds, iconPaint, 0x100000000L | (color & 0xffffffffL));
+            renderer.draw(canvas, iconPaint, cx, cy, packIconBounds.width(), packIconBounds.height(), 1f, false);
             canvas.restoreToCount(save);
-            return drawn;
+            return true;
         }
         public void draw(Canvas canvas, RectF bounds, float r, float alpha, float contentAlpha) {
             final int backgroundColor = ColorUtils.blendARGB(this.backgroundColor, this.tabColor, expandProgress);
@@ -972,7 +980,7 @@ public class BottomSheetTabs extends FrameLayout {
             canvas.save();
             canvas.translate(bounds.left + dp(22 - 4), bounds.centerY() - dp(6));
             iconPaint.setAlpha((int) (0xFF * alpha * contentAlpha));
-            if (!drawPackIcon(canvas, CLOSE_ICON, dp(6), dp(6), 0, iconColor)) {
+            if (!drawPackIcon(canvas, packClose, R.drawable.ic_close_white, closePath, 0)) {
             canvas.drawPath(closePath, iconPaint);
             }
             canvas.restore();
@@ -980,7 +988,7 @@ public class BottomSheetTabs extends FrameLayout {
             canvas.save();
             canvas.translate(bounds.right - dp(22 - 4 + 12.66f), bounds.centerY());
             iconPaint.setAlpha((int) (0xFF * alpha * contentAlpha * (1f - expandProgress)));
-            if (!drawPackIcon(canvas, EXPAND_ICON, dp(12.66f) / 2f, 0, 180, iconColor)) {
+            if (!drawPackIcon(canvas, packExpand, R.drawable.arrow_more, expandPath, 180)) {
             canvas.drawPath(expandPath, iconPaint);
             }
             canvas.restore();

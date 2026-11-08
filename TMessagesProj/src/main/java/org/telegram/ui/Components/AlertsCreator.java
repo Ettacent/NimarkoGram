@@ -17,7 +17,6 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.messenger.MessagesController.findUpdates;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Dialog;
@@ -106,8 +105,7 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
-import org.telegram.messenger.pip.utils.PipPermissions;
-import org.telegram.messenger.pip.utils.PipUtils;
+import org.telegram.utils.pip.PipEnvironment;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
@@ -125,6 +123,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Business.TimezonesController;
 import org.telegram.ui.CacheControlActivity;
 import org.telegram.ui.Cells.AccountSelectCell;
@@ -181,6 +180,76 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class AlertsCreator {
+    static Theme.ResourcesProvider getStarsDialogResourcesProvider(BaseFragment fragment) {
+        final Theme.ThemeInfo theme = Theme.getCurrentTheme();
+        final boolean monet = theme != null && theme.isMonet();
+        if (PhotoViewer.getInstance().isVisible()
+                || fragment != null && fragment.hasShownSheet() && !monet) {
+            return new DarkThemeResourceProvider();
+        }
+        if (monet && fragment != null) {
+            final var storyViewer = fragment.getLastStoryViewer();
+            if (storyViewer != null && storyViewer.isShown()) {
+                return storyViewer.getResourceProvider();
+            }
+        }
+        return fragment != null ? fragment.getResourceProvider() : null;
+    }
+
+
+    private static void bindRadioColorCell(RadioColorCell cell, int key, int checkedKey, Theme.ResourcesProvider resourcesProvider) {
+        for (int i = 0; i < cell.getChildCount(); ++i) {
+            final View child = cell.getChildAt(i);
+            if (child instanceof RadioButton) {
+                ThemeBind.radioColors((RadioButton) child, key, checkedKey, resourcesProvider);
+                return;
+            }
+        }
+        cell.setCheckColor(Theme.getColor(key, resourcesProvider), Theme.getColor(checkedKey, resourcesProvider));
+    }
+
+    public static class ThemedCursorEditText extends EditTextBoldCursor implements Theme.Colorable {
+
+        private boolean hasCursorColorKey;
+        private int cursorColorKey;
+        private Theme.ResourcesProvider cursorResourcesProvider;
+        private int appliedCursorColor;
+
+        public ThemedCursorEditText(Context context) {
+            super(context);
+        }
+
+        public void setCursorColorKey(int key, Theme.ResourcesProvider resourcesProvider) {
+            hasCursorColorKey = true;
+            cursorColorKey = key;
+            cursorResourcesProvider = resourcesProvider;
+            appliedCursorColor = Theme.getColor(key, resourcesProvider);
+            setCursorColor(appliedCursorColor);
+        }
+
+        @Override
+        public void updateColors() {
+            try {
+                if (!hasCursorColorKey) {
+                    return;
+                }
+                final int color = Theme.getColor(cursorColorKey, cursorResourcesProvider);
+                if (color != appliedCursorColor) {
+                    appliedCursorColor = color;
+                    setCursorColor(color);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            if (hasCursorColorKey) {
+                colors.add(cursorColorKey);
+            }
+        }
+    }
     public final static int PERMISSIONS_REQUEST_TOP_ICON_SIZE = 72;
     public final static int NEW_DENY_DIALOG_TOP_ICON_SIZE = 52;
 
@@ -195,7 +264,7 @@ public class AlertsCreator {
     public static Dialog createLocationRequiredDialog(Context ctx, boolean friends) {
         return new AlertDialog.Builder(ctx)
                 .setMessage(replaceTags(LocaleController.getString(R.string.PermissionNoLocationFriends)))
-                .setTopAnimation(R.raw.permission_request_location, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                .setTopAnimation(R.raw.permission_request_location, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                 .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                     try {
                         Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
@@ -214,7 +283,7 @@ public class AlertsCreator {
                 .setTitle(LocaleController.getString(R.string.AllowBackgroundActivity))
                 .setMessage(replaceTags(LocaleController.getString(OneUIUtilities.isOneUI() ? Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? R.string.AllowBackgroundActivityInfoOneUIAboveS :
                         R.string.AllowBackgroundActivityInfoOneUIBelowS : R.string.AllowBackgroundActivityInfo)))
-                .setTopAnimation(R.raw.permission_request_apk, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                .setTopAnimation(R.raw.permission_request_apk, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                 .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                     try {
                         Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
@@ -243,7 +312,7 @@ public class AlertsCreator {
         AtomicBoolean gotCallback = new AtomicBoolean();
         boolean finalShowSettings = showSettings;
         return new AlertDialog.Builder(ctx, resourcesProvider)
-                .setTopAnimation(animationId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                .setTopAnimation(animationId, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                 .setMessage(replaceTags(showSettings ? titleWithHint : title))
                 .setPositiveButton(LocaleController.getString(showSettings ? R.string.PermissionOpenSettings : R.string.BotWebViewRequestAllow), (dialogInterface, i) -> {
                     if (finalShowSettings) {
@@ -275,7 +344,7 @@ public class AlertsCreator {
     public static Dialog createApkRestrictedDialog(Context ctx, Theme.ResourcesProvider resourcesProvider) {
         return new AlertDialog.Builder(ctx, resourcesProvider)
                 .setMessage(LocaleController.getString(R.string.ApkRestricted))
-                .setTopAnimation(R.raw.permission_request_apk, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground))
+                .setTopAnimation(R.raw.permission_request_apk, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)).setTopBackgroundColorKey(Theme.key_dialogTopBackground, null)
                 .setPositiveButton(LocaleController.getString(R.string.PermissionOpenSettings), (dialogInterface, i) -> {
                     try {
                         ctx.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + ctx.getPackageName())));
@@ -298,7 +367,7 @@ public class AlertsCreator {
                 StarsController.getInstance(currentAccount).getBalance(true, () -> {
                     final Activity activity = AndroidUtilities.getActivity();
                     final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
-                    final Theme.ResourcesProvider resourcesProvider = PhotoViewer.getInstance().isVisible() || lastFragment != null && lastFragment.hasShownSheet() ? new DarkThemeResourceProvider() : (lastFragment != null ? lastFragment.getResourceProvider() : null);
+                    final Theme.ResourcesProvider resourcesProvider = getStarsDialogResourcesProvider(lastFragment);
 
                     new StarsIntroActivity.StarsNeededSheet(activity, currentAccount, resourcesProvider, price, StarsIntroActivity.StarsNeededSheet.TYPE_PRIVATE_MESSAGE, DialogObject.getShortName(currentAccount, dialogId), () -> {
 
@@ -533,7 +602,7 @@ public class AlertsCreator {
                     fragment.presentFragment(new TooManyCommunitiesActivity(TooManyCommunitiesActivity.TYPE_JOIN));
                 }
             } else if (error.text.equals("INVITE_HASH_EXPIRED")) {
-                showSimpleAlert(fragment, LocaleController.getString(R.string.ExpiredLink), LocaleController.getString(R.string.InviteExpired));
+                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.linkbroken, LocaleController.getString(R.string.InviteExpired)).show();
             } else {
                 showSimpleAlert(fragment, LocaleController.getString(R.string.JoinToGroupErrorNotExist));
             }
@@ -772,11 +841,11 @@ public class AlertsCreator {
         final TextView message = new TextView(activity);
         message.setText(spanned);
         message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        message.setLinkTextColor(Theme.getColor(Theme.key_dialogTextLink));
-        message.setHighlightColor(Theme.getColor(Theme.key_dialogLinkSelection));
+        ThemeBind.linkTextColor(message, Theme.key_dialogTextLink);
+        ThemeBind.highlightColor(message, Theme.key_dialogLinkSelection);
         message.setPadding(dp(23), 0, dp(23), 0);
         message.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
-        message.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(message, Theme.key_dialogTextBlack);
         builder.setView(message);
 
         return builder;
@@ -811,6 +880,7 @@ public class AlertsCreator {
         colorsReplacement.put("info1", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
         colorsReplacement.put("info2", Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider));
         builder.setTopAnimation(R.raw.not_available, AlertsCreator.NEW_DENY_DIALOG_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground, resourcesProvider), colorsReplacement);
+        builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, resourcesProvider);
         builder.setTopAnimationIsNew(true);
         builder.setPositiveButton(LocaleController.getString(R.string.Close), null);
         builder.setMessage(message);
@@ -872,10 +942,10 @@ public class AlertsCreator {
         builder.setTitle(title == null ? LocaleController.getString(R.string.AppName) : title);
         builder.setMessage(info);
 
-        EditTextBoldCursor editText = new EditTextBoldCursor(context);
+        ThemedCursorEditText editText = new ThemedCursorEditText(context);
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        editText.setHintTextColor(Theme.getColor(Theme.key_groupcreate_hintText, resourcesProvider));
+        ThemeBind.textColor(editText, Theme.key_dialogTextBlack, resourcesProvider);
+        ThemeBind.hintTextColor(editText, Theme.key_groupcreate_hintText, resourcesProvider);
         editText.setHint(hint);
         editText.setFocusable(true);
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
@@ -883,7 +953,7 @@ public class AlertsCreator {
         editText.setMaxLines(10);
         editText.setPadding(dp(16), dp(11), dp(16), dp(11));
         editText.setCursorWidth(1.5f);
-        editText.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider));
+        editText.setCursorColorKey(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider);
         if (name != null) {
             editText.setText(name);
         }
@@ -922,10 +992,7 @@ public class AlertsCreator {
             }
         });
 
-        final GradientDrawable fieldBackground = new GradientDrawable();
-        fieldBackground.setCornerRadius(dp(22));
-        fieldBackground.setColor(Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
-        editText.setBackground(fieldBackground);
+        ThemeBind.fillBackground(editText, Theme.createRoundRectDrawable(dp(22), Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f)), ThemeBind.multAlpha(Theme.key_dialogTextBlack, 0.06f), resourcesProvider);
 
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -976,7 +1043,7 @@ public class AlertsCreator {
         builder.setTitle(getString(R.string.PollV2AddLinkTitle));
         builder.setMessage(getString(R.string.PollV2AddLinkMessage));
 
-        EditTextBoldCursor editText = new EditTextBoldCursor(context) {
+        ThemedCursorEditText editText = new ThemedCursorEditText(context) {
             @Override
             public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
                 InputConnection conn = super.onCreateInputConnection(outAttrs);
@@ -985,8 +1052,8 @@ public class AlertsCreator {
             }
         };
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        editText.setHintTextColor(Theme.getColor(Theme.key_groupcreate_hintText, resourcesProvider));
+        ThemeBind.textColor(editText, Theme.key_dialogTextBlack, resourcesProvider);
+        ThemeBind.hintTextColor(editText, Theme.key_groupcreate_hintText, resourcesProvider);
         editText.setHint(getString(R.string.PollV2AddLinkUrlHint));
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
@@ -994,7 +1061,7 @@ public class AlertsCreator {
         editText.setSingleLine(false);
         editText.setPadding(dp(16), dp(13), dp(16), dp(13));
         editText.setCursorWidth(1.5f);
-        editText.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider));
+        editText.setCursorColorKey(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider);
         if (existingUrl != null) {
             editText.setText(existingUrl);
             editText.setSelection(existingUrl.length());
@@ -1014,10 +1081,7 @@ public class AlertsCreator {
             return false;
         });
 
-        GradientDrawable fieldBackground = new GradientDrawable();
-        fieldBackground.setCornerRadius(dp(22));
-        fieldBackground.setColor(Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
-        editText.setBackground(fieldBackground);
+        ThemeBind.fillBackground(editText, Theme.createRoundRectDrawable(dp(22), Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f)), ThemeBind.multAlpha(Theme.key_dialogTextBlack, 0.06f), resourcesProvider);
 
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -1064,7 +1128,7 @@ public class AlertsCreator {
 
         TextView button = (TextView) dialog[0].getButton(AlertDialog.BUTTON_NEUTRAL);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -1089,10 +1153,10 @@ public class AlertsCreator {
                 ? R.string.BrowserSettingsAddText
                 : R.string.BrowserSettingsAddTextExternal));
 
-        EditTextBoldCursor editText = new EditTextBoldCursor(context);
+        ThemedCursorEditText editText = new ThemedCursorEditText(context);
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        editText.setHintTextColor(Theme.getColor(Theme.key_groupcreate_hintText, resourcesProvider));
+        ThemeBind.textColor(editText, Theme.key_dialogTextBlack, resourcesProvider);
+        ThemeBind.hintTextColor(editText, Theme.key_groupcreate_hintText, resourcesProvider);
         editText.setHint(LocaleController.getString(R.string.BrowserSettingsAddHint));
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
@@ -1100,13 +1164,9 @@ public class AlertsCreator {
         editText.setFocusable(true);
         editText.setPadding(dp(16), dp(13), dp(16), dp(13));
         editText.setCursorWidth(1.5f);
-        editText.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider));
+        editText.setCursorColorKey(Theme.key_windowBackgroundWhiteBlueText4, resourcesProvider);
 
-        GradientDrawable fieldBackground = new GradientDrawable();
-        fieldBackground.setCornerRadius(dp(22));
-        fieldBackground.setColor(Theme.multAlpha(
-                Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
-        editText.setBackground(fieldBackground);
+        ThemeBind.fillBackground(editText, Theme.createRoundRectDrawable(dp(22), Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f)), ThemeBind.multAlpha(Theme.key_dialogTextBlack, 0.06f), resourcesProvider);
 
         final Runnable done = () -> {
             final String text = editText.getText().toString().trim();
@@ -1203,7 +1263,7 @@ public class AlertsCreator {
         if (confirmIsRed) {
             TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
             if (button != null) {
-                button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+                ThemeBind.textColor(button, Theme.key_text_RedBold);
             }
         }
         return dialog;
@@ -1216,7 +1276,7 @@ public class AlertsCreator {
         if (confirmIsRed) {
             TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
             if (button != null) {
-                button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+                ThemeBind.textColor(button, Theme.key_text_RedBold);
             }
         }
         return dialog;
@@ -1316,7 +1376,7 @@ public class AlertsCreator {
 
         TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
 
         return dialog;
@@ -1402,7 +1462,7 @@ public class AlertsCreator {
         fragment.showDialog(dialog);
         TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -1491,7 +1551,7 @@ public class AlertsCreator {
         fragment.showDialog(dialog);
         TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -1533,11 +1593,11 @@ public class AlertsCreator {
             TextView textView = new TextView(parentFragment.getParentActivity());
             Drawable drawable = parentFragment.getParentActivity().getResources().getDrawable(icons[a]);
             if (a == descriptions.length - 1) {
-                textView.setTextColor(Theme.getColor(Theme.key_text_RedBold));
-                drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_text_RedRegular), PorterDuff.Mode.MULTIPLY));
+                ThemeBind.textColor(textView, Theme.key_text_RedBold);
+                ThemeBind.drawableColorFilter(textView, drawable, Theme.key_text_RedRegular, PorterDuff.Mode.MULTIPLY);
             } else {
-                textView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-                drawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
+                ThemeBind.textColor(textView, Theme.key_dialogTextBlack);
+                ThemeBind.drawableColorFilter(textView, drawable, Theme.key_dialogIcon, PorterDuff.Mode.MULTIPLY);
             }
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             textView.setLines(1);
@@ -1664,9 +1724,9 @@ public class AlertsCreator {
             RadioColorCell cell = new RadioColorCell(context, resourcesProvider);
             cell.setPadding(dp(4), 0, dp(4), 0);
             cell.setTag(a);
-            cell.setCheckColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, null);
             cell.setTextAndValue(arrayList.get(a), SharedConfig.mapPreviewType == types.get(a));
-            cell.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_ALL));
+            ThemeBind.selectorBackground(cell, Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_ALL), null, ThemeBind.of(Theme.key_listSelector));
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
                 Integer which = (Integer) v.getTag();
@@ -1748,18 +1808,7 @@ public class AlertsCreator {
             return;
         }
 
-        String urlFinal;
-        if (punycode) {
-            try {
-                Uri uri = Uri.parse(url);
-                urlFinal = Browser.replaceHostname(uri, Browser.IDN_toUnicode(uri.getHost()), null);
-            } catch (Exception e) {
-                FileLog.e(e, false);
-                urlFinal = url;
-            }
-        } else {
-            urlFinal = url;
-        }
+        final String urlFinal = Browser.formatUrlForDisplay(url, punycode);
 
         final Runnable open = () -> Browser.openUrl(context, Uri.parse(url), inlineReturn == 0, tryTelegraph, progress);
         final AlertDialog[] dialog = new AlertDialog[1];
@@ -1770,7 +1819,7 @@ public class AlertsCreator {
         final TextView urlView = new TextView(context);
         urlView.setText(urlFinal);
         urlView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-        urlView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(urlView, Theme.key_dialogTextBlack, resourcesProvider);
         urlView.setGravity(Gravity.CENTER);
         urlView.setMaxLines(5);
         urlView.setEllipsize(TextUtils.TruncateAt.END);
@@ -1782,10 +1831,7 @@ public class AlertsCreator {
         });
         */
 
-        final GradientDrawable urlBackground = new GradientDrawable();
-        urlBackground.setCornerRadius(dp(22));
-        urlBackground.setColor(Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
-        urlView.setBackground(urlBackground);
+        ThemeBind.fillBackground(urlView, Theme.createRoundRectDrawable(dp(22), Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f)), ThemeBind.multAlpha(Theme.key_dialogTextBlack, 0.06f), resourcesProvider);
 
         final LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -1829,17 +1875,13 @@ public class AlertsCreator {
         final TextView urlView = new TextView(context);
         urlView.setText(url);
         urlView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-        urlView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(urlView, Theme.key_dialogTextBlack, resourcesProvider);
         urlView.setGravity(Gravity.CENTER);
         urlView.setMaxLines(5);
         urlView.setEllipsize(TextUtils.TruncateAt.END);
         urlView.setPadding(dp(14), dp(12), dp(14), dp(12));
 
-        final GradientDrawable urlBackground = new GradientDrawable();
-        urlBackground.setCornerRadius(dp(22));
-        urlBackground.setColor(Theme.multAlpha(
-                Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f));
-        urlView.setBackground(urlBackground);
+        ThemeBind.fillBackground(urlView, Theme.createRoundRectDrawable(dp(22), Theme.multAlpha(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider), 0.06f)), ThemeBind.multAlpha(Theme.key_dialogTextBlack, 0.06f), resourcesProvider);
 
         final CheckBoxCell cell = new CheckBoxCell(context, 1, resourcesProvider);
         cell.setMultiline(true);
@@ -1905,11 +1947,11 @@ public class AlertsCreator {
         }
         message.setText(spanned);
         message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        message.setLinkTextColor(Theme.getColor(Theme.key_dialogTextLink, resourcesProvider));
-        message.setHighlightColor(Theme.getColor(Theme.key_dialogLinkSelection, resourcesProvider));
+        ThemeBind.linkTextColor(message, Theme.key_dialogTextLink, resourcesProvider);
+        ThemeBind.highlightColor(message, Theme.key_dialogLinkSelection, resourcesProvider);
         message.setPadding(dp(23), 0, dp(23), 0);
         message.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
-        message.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(message, Theme.key_dialogTextBlack, resourcesProvider);
 
         AlertDialog.Builder builder1 = new AlertDialog.Builder(fragment.getParentActivity(), resourcesProvider);
         builder1.setView(message);
@@ -2004,7 +2046,7 @@ public class AlertsCreator {
         long selfUserId = UserConfig.getInstance(account).getClientUserId();
 
         TextView messageTextView = new TextView(context);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
 
@@ -2019,7 +2061,7 @@ public class AlertsCreator {
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setLines(1);
@@ -2088,8 +2130,8 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-        messageTextView.setLinkTextColor(Theme.getColor(Theme.key_chat_messageLinkIn));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
+        ThemeBind.linkTextColor(messageTextView, Theme.key_chat_messageLinkIn);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
 
@@ -2105,7 +2147,7 @@ public class AlertsCreator {
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         SimpleTextView textView = new SimpleTextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
@@ -2117,15 +2159,15 @@ public class AlertsCreator {
             textView.setRightDrawable(Theme.dialogs_fakeDrawable);
         } else if (user.verified) {
             Drawable verifiedBackground = context.getResources().getDrawable(R.drawable.verified_area).mutate();
-            verifiedBackground.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_verifiedBackground), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.drawableColorFilter(textView, verifiedBackground, Theme.key_chats_verifiedBackground, PorterDuff.Mode.MULTIPLY);
             Drawable verifiedCheck = context.getResources().getDrawable(R.drawable.verified_check).mutate();
-            verifiedCheck.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_verifiedCheck), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.drawableColorFilter(textView, verifiedCheck, Theme.key_chats_verifiedCheck, PorterDuff.Mode.MULTIPLY);
             Drawable verifiedDrawable = new CombinedDrawable(verifiedBackground, verifiedCheck);
             textView.setRightDrawable(verifiedDrawable);
         }
 
         TextView subtitleView = new TextView(context);
-        subtitleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue));
+        ThemeBind.textColor(subtitleView, Theme.key_dialogTextBlue);
         subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         subtitleView.setLines(1);
         subtitleView.setMaxLines(1);
@@ -2201,8 +2243,8 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-        messageTextView.setLinkTextColor(Theme.getColor(Theme.key_chat_messageLinkIn));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
+        ThemeBind.linkTextColor(messageTextView, Theme.key_chat_messageLinkIn);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
 
@@ -2226,7 +2268,7 @@ public class AlertsCreator {
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         SimpleTextView titleView = new SimpleTextView(context);
-        titleView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(titleView, Theme.key_actionBarDefaultSubmenuItem);
         titleView.setTextSize(20);
         titleView.setTypeface(AndroidUtilities.bold());
         titleView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
@@ -2238,15 +2280,15 @@ public class AlertsCreator {
             titleView.setRightDrawable(Theme.dialogs_fakeDrawable);
         } else if (user.verified) {
             Drawable verifiedBackground = context.getResources().getDrawable(R.drawable.verified_area).mutate();
-            verifiedBackground.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_verifiedBackground), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.drawableColorFilter(titleView, verifiedBackground, Theme.key_chats_verifiedBackground, PorterDuff.Mode.MULTIPLY);
             Drawable verifiedCheck = context.getResources().getDrawable(R.drawable.verified_check).mutate();
-            verifiedCheck.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_verifiedCheck), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.drawableColorFilter(titleView, verifiedCheck, Theme.key_chats_verifiedCheck, PorterDuff.Mode.MULTIPLY);
             Drawable verifiedDrawable = new CombinedDrawable(verifiedBackground, verifiedCheck);
             titleView.setRightDrawable(verifiedDrawable);
         }
 
         TextView subtitleView = new TextView(context);
-        subtitleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue));
+        ThemeBind.textColor(subtitleView, Theme.key_dialogTextBlue);
         subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         subtitleView.setLines(1);
         subtitleView.setMaxLines(1);
@@ -2365,7 +2407,7 @@ public class AlertsCreator {
 
         final Activity activity = AndroidUtilities.getActivity();
         final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
-        final Theme.ResourcesProvider resourcesProvider = PhotoViewer.getInstance().isVisible() || lastFragment != null && lastFragment.hasShownSheet() ? new DarkThemeResourceProvider() : (lastFragment != null ? lastFragment.getResourceProvider() : null);
+        final Theme.ResourcesProvider resourcesProvider = getStarsDialogResourcesProvider(lastFragment);
 
         SpannableStringBuilder sb = new SpannableStringBuilder();
         sb.append(replaceTags(LocaleController.formatPluralStringComma("MessageLockedStarsConfirmMessageMulti1", totalChats)));
@@ -2443,7 +2485,7 @@ public class AlertsCreator {
                 if (balance < price) {
                     final Activity activity = AndroidUtilities.getActivity();
                     final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
-                    final Theme.ResourcesProvider resourcesProvider = PhotoViewer.getInstance().isVisible() || lastFragment != null && lastFragment.hasShownSheet() ? new DarkThemeResourceProvider() : (lastFragment != null ? lastFragment.getResourceProvider() : null);
+                    final Theme.ResourcesProvider resourcesProvider = getStarsDialogResourcesProvider(lastFragment);
 
                     if (activity == null) return;
                     new StarsIntroActivity.StarsNeededSheet(activity, currentAccount, resourcesProvider, price, StarsIntroActivity.StarsNeededSheet.TYPE_PRIVATE_MESSAGE, DialogObject.getShortName(currentAccount, dialogId), () -> {
@@ -2472,7 +2514,7 @@ public class AlertsCreator {
 
         final Activity activity = AndroidUtilities.getActivity();
         final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
-        final Theme.ResourcesProvider resourcesProvider = PhotoViewer.getInstance().isVisible() || lastFragment != null && lastFragment.hasShownSheet() ? new DarkThemeResourceProvider() : (lastFragment != null ? lastFragment.getResourceProvider() : null);
+        final Theme.ResourcesProvider resourcesProvider = getStarsDialogResourcesProvider(lastFragment);
 
         String chatName = DialogObject.getShortName(currentAccount, dialogId);
         if (ChatObject.isMonoForum(currentAccount, dialogId)) {
@@ -2530,7 +2572,7 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack, resourcesProvider);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         messageTextView.setText(message);
@@ -2548,7 +2590,7 @@ public class AlertsCreator {
         builder.setView(frameLayout);
 
         final TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem, resourcesProvider);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setLines(1);
@@ -2562,7 +2604,7 @@ public class AlertsCreator {
 
         if (!TextUtils.isEmpty(check)) {
             cell[0] = new CheckBoxCell(context, 1, resourcesProvider);
-            cell[0].setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_ROUNDRECT_6DP, dp(12)));
+            ThemeBind.selectorBackground(cell[0], Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_ROUNDRECT_6DP, dp(12)), null, ThemeBind.of(Theme.key_listSelector), resourcesProvider);
             cell[0].setMultiline(true);
             FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) cell[0].getCheckBoxView().getLayoutParams();
             lp.topMargin = 0;
@@ -2625,7 +2667,7 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
 
@@ -2651,7 +2693,7 @@ public class AlertsCreator {
         frameLayout.addView(imageView, LayoutHelper.createFrame(30, 30, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         final AnimatedTextView textView = new AnimatedTextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(dp(20));
         textView.setTypeface(AndroidUtilities.bold());
         textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
@@ -2768,11 +2810,11 @@ public class AlertsCreator {
 
         if (user != null) {
             if (UserObject.isReplyUser(user)) {
-                avatarDrawable.setScaleSize(.8f);
+                avatarDrawable.setScaleSize(.6f);
                 avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REPLIES);
                 imageView.setImage(null, null, avatarDrawable, user);
             } else if (user.id == selfUserId) {
-                avatarDrawable.setScaleSize(.8f);
+                avatarDrawable.setScaleSize(.6f);
                 avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                 imageView.setImage(null, null, avatarDrawable, user);
             } else {
@@ -2932,7 +2974,7 @@ public class AlertsCreator {
         fragment.showDialog(alertDialog);
         TextView button = (TextView) alertDialog.getButton(AlertDialog.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -2957,7 +2999,7 @@ public class AlertsCreator {
 
         final ImageView arrowView = new ImageView(context);
         arrowView.setImageResource(R.drawable.msg_arrow_avatar);
-        arrowView.setColorFilter(new PorterDuffColorFilter(fragment.getThemedColor(Theme.key_divider), PorterDuff.Mode.SRC_IN));
+        ThemeBind.colorFilter(arrowView, Theme.key_divider, fragment.getResourceProvider(), PorterDuff.Mode.SRC_IN);
         topView.addView(arrowView, LayoutHelper.createFrame(24, 24, Gravity.CENTER, 0, 15, 0, 12));
 
         final BackupImageView toImageView = new BackupImageView(context) {
@@ -3002,7 +3044,7 @@ public class AlertsCreator {
 
         final View button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         if (button instanceof TextView) {
-            ((TextView) button).setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor((TextView) button, Theme.key_text_RedBold);
         }
     }
 
@@ -3016,7 +3058,7 @@ public class AlertsCreator {
         CheckBoxCell[] cell = new CheckBoxCell[1];
         boolean[] deleteForAll = new boolean[1];
         TextView messageTextView = new TextView(context);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         FrameLayout frameLayout = new FrameLayout(context) {
@@ -3032,7 +3074,7 @@ public class AlertsCreator {
         builder.setView(frameLayout);
 
         TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setLines(1);
@@ -3081,7 +3123,7 @@ public class AlertsCreator {
         fragment.showDialog(alertDialog);
         TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -3105,7 +3147,7 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
 
@@ -3121,7 +3163,7 @@ public class AlertsCreator {
         builder.setView(frameLayout);
 
         TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setLines(1);
@@ -3192,7 +3234,7 @@ public class AlertsCreator {
         fragment.showDialog(alertDialog);
         TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -3223,7 +3265,7 @@ public class AlertsCreator {
             }
         };
         NotificationCenter.listenEmojiLoading(messageTextView);
-        messageTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(messageTextView, Theme.key_dialogTextBlack);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         messageTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         messageTextView.setText(replaceTags(message));
@@ -3239,7 +3281,7 @@ public class AlertsCreator {
         frameLayout.addView(imageView, LayoutHelper.createFrame(40, 40, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 5, 22, 0));
 
         TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem));
+        ThemeBind.textColor(textView, Theme.key_actionBarDefaultSubmenuItem);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setLines(1);
@@ -3277,7 +3319,7 @@ public class AlertsCreator {
 
         NumberTextView checkTextView = new NumberTextView(context);
         EditText editTextView = new EditText(context);
-        editTextView.setTextColor(Theme.getColor(Theme.key_voipgroup_actionBarItems));
+        ThemeBind.textColor(editTextView, Theme.key_voipgroup_actionBarItems);
         editTextView.setHint(peerId > 0 ? LocaleController.getString(R.string.UserBio) : LocaleController.getString(R.string.DescriptionPlaceholder));
         editTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         editTextView.setBackground(Theme.createEditTextDrawable(context, true));
@@ -3422,7 +3464,7 @@ public class AlertsCreator {
         dialogView.setOrientation(LinearLayout.VERTICAL);
 
         EditText firstNameEditTextView = new EditText(context);
-        firstNameEditTextView.setTextColor(Theme.getColor(Theme.key_voipgroup_actionBarItems));
+        ThemeBind.textColor(firstNameEditTextView, Theme.key_voipgroup_actionBarItems);
         firstNameEditTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         firstNameEditTextView.setMaxLines(1);
         firstNameEditTextView.setLines(1);
@@ -3438,7 +3480,7 @@ public class AlertsCreator {
         EditText lastNameEditTextView = null;
         if (peerId > 0) {
             lastNameEditTextView = new EditText(context);
-            lastNameEditTextView.setTextColor(Theme.getColor(Theme.key_voipgroup_actionBarItems));
+            ThemeBind.textColor(lastNameEditTextView, Theme.key_voipgroup_actionBarItems);
             lastNameEditTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             lastNameEditTextView.setMaxLines(1);
             lastNameEditTextView.setLines(1);
@@ -3557,7 +3599,7 @@ public class AlertsCreator {
         linearLayout.setOrientation(LinearLayout.VERTICAL);
         TextView messageTextView = new TextView(fragment.getParentActivity());
         linearLayout.addView(messageTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, 0, 21, 0, 21, 8));
-        messageTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(messageTextView, Theme.key_windowBackgroundWhiteBlackText);
         messageTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
 
         messageTextView.setText(replaceTags(LocaleController.formatString("ChatWithAdminMessage", R.string.ChatWithAdminMessage, chatWithAdmin, LocaleController.formatDateAudio(chatWithAdminDate, false))));
@@ -3570,8 +3612,8 @@ public class AlertsCreator {
         buttonTextView.setTypeface(AndroidUtilities.bold());
         buttonTextView.setText(LocaleController.getString(R.string.IUnderstand));
 
-        buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText));
-        buttonTextView.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed)));
+        ThemeBind.textColor(buttonTextView, Theme.key_featuredStickers_buttonText);
+        ThemeBind.selectorBackground(buttonTextView, Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_featuredStickers_addButton), Theme.getColor(Theme.key_featuredStickers_addButtonPressed)), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.of(Theme.key_featuredStickers_addButtonPressed));
 
         linearLayout.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 0, 16, 12, 16, 8));
 
@@ -3749,7 +3791,7 @@ public class AlertsCreator {
         fragment.showDialog(alertDialog);
         TextView button = (TextView) alertDialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -4475,6 +4517,7 @@ public class AlertsCreator {
                 optionsButton.setLongClickEnabled(false);
                 optionsButton.setSubMenuOpenSide(2);
                 optionsButton.setIcon(R.drawable.ic_ab_other);
+                org.telegram.ui.ActionBar.HeaderMenuOverlay.bind(optionsButton, resourcesProvider);
                 optionsButton.setBackground(Theme.createSelectorDrawable(datePickerColors.iconSelectorColor, 1));
                 titleLayout.addView(optionsButton, LayoutHelper.createFrame(40, 40, Gravity.TOP | Gravity.RIGHT, 0, 8, 5, 0));
                 optionsButton.addSubItem(1, LocaleController.formatString(R.string.ScheduleWhenOnline, name));
@@ -4484,10 +4527,10 @@ public class AlertsCreator {
         final ActionBarMenuItem finalOptionsButton = optionsButton;
         if (finalOptionsButton != null) {
             finalOptionsButton.setOnClickListener(v -> {
-                finalOptionsButton.toggleSubMenu();
                 finalOptionsButton.setPopupItemsColor(datePickerColors.subMenuTextColor, false);
                 finalOptionsButton.setupPopupRadialSelectors(datePickerColors.subMenuSelectorColor);
                 finalOptionsButton.redrawPopup(datePickerColors.subMenuBackgroundColor);
+                finalOptionsButton.toggleSubMenu();
             });
             finalOptionsButton.setDelegate(id -> {
                 if (id == 1) {
@@ -5039,7 +5082,7 @@ public class AlertsCreator {
 
         TextView titleView = new TextView(context);
         titleView.setText(title);
-        titleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(titleView, Theme.key_dialogTextBlack, resourcesProvider);
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setTypeface(AndroidUtilities.bold());
         titleLayout.addView(titleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 12, 0, 0));
@@ -5170,8 +5213,8 @@ public class AlertsCreator {
             LinkSpanDrawable.LinksTextView textView = new LinkSpanDrawable.LinksTextView(context);
             textView.setPadding(dp(8), 0, dp(8), 0);
             textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-            textView.setTextColor(Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider));
-            textView.setLinkTextColor(Theme.getColor(Theme.key_chat_messageLinkIn, resourcesProvider));
+            ThemeBind.textColor(textView, Theme.key_dialogTextGray2, resourcesProvider);
+            ThemeBind.linkTextColor(textView, Theme.key_chat_messageLinkIn, resourcesProvider);
             textView.setGravity(Gravity.CENTER);
             frameLayout.addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));;
             container.addView(frameLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -5219,11 +5262,11 @@ public class AlertsCreator {
 
         buttonTextView.setPadding(dp(34), 0, dp(34), 0);
         buttonTextView.setGravity(Gravity.CENTER);
-        buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
+        ThemeBind.textColor(buttonTextView, Theme.key_featuredStickers_buttonText, resourcesProvider);
         buttonTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         buttonTextView.setTypeface(AndroidUtilities.bold());
         buttonTextView.setText(button);
-        buttonTextView.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(24), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButtonPressed, resourcesProvider)));
+        ThemeBind.selectorBackground(buttonTextView, Theme.createSimpleSelectorRoundRectDrawable(dp(24), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButtonPressed, resourcesProvider)), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.of(Theme.key_featuredStickers_addButtonPressed), resourcesProvider);
         ScaleStateListAnimator.apply(buttonTextView, .02f, 1.2f);
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, showRemoveYear ? 0 : 15, 16, showDelete ? 0 : 16));
         buttonTextView.setOnClickListener(v -> {
@@ -5602,7 +5645,7 @@ public class AlertsCreator {
 
         TextView closesInTextView = new TextView(context);
         closesInTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
-        closesInTextView.setTextColor(Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider));
+        ThemeBind.textColor(closesInTextView, Theme.key_dialogTextGray2, resourcesProvider);
         closesInTextView.setGravity(Gravity.CENTER);
 
         Calendar calendar = Calendar.getInstance();
@@ -6459,7 +6502,7 @@ public class AlertsCreator {
 
         TextView titleView = new TextView(context);
         titleView.setText(LocaleController.getString(R.string.ChooseDate));
-        titleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(titleView, Theme.key_dialogTextBlack, resourcesProvider);
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setTypeface(AndroidUtilities.bold());
         titleLayout.addView(titleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 12, 0, 0));
@@ -6535,11 +6578,11 @@ public class AlertsCreator {
 
         buttonTextView.setPadding(dp(34), 0, dp(34), 0);
         buttonTextView.setGravity(Gravity.CENTER);
-        buttonTextView.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider));
+        ThemeBind.textColor(buttonTextView, Theme.key_featuredStickers_buttonText, resourcesProvider);
         buttonTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         buttonTextView.setTypeface(AndroidUtilities.bold());
         buttonTextView.setText(LocaleController.getString(R.string.JumpToDate));
-        buttonTextView.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButtonPressed, resourcesProvider)));
+        ThemeBind.selectorBackground(buttonTextView, Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider), Theme.getColor(Theme.key_featuredStickers_addButtonPressed, resourcesProvider)), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.of(Theme.key_featuredStickers_addButtonPressed), resourcesProvider);
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             checkCalendarDate(minDate, dayPicker, monthPicker, yearPicker);
@@ -7096,7 +7139,7 @@ public class AlertsCreator {
             RadioColorCell cell = new RadioColorCell(parentActivity, resourcesProvider);
             cell.setPadding(dp(4), 0, dp(4), 0);
             cell.setTag(a);
-            cell.setCheckColor(Theme.getColor(Theme.key_radioBackground, resourcesProvider), Theme.getColor(Theme.key_dialogRadioBackgroundChecked, resourcesProvider));
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, resourcesProvider);
             cell.setTextAndValue(descriptions[a], selected[0] == a);
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
@@ -7172,8 +7215,7 @@ public class AlertsCreator {
         } else {
             titleTextView.setText(LocaleController.getString(R.string.LiveLocationAlertGroup));
         }
-        int textColor = resourcesProvider != null ? resourcesProvider.getColorOrDefault(Theme.key_dialogTextBlack) : Theme.getColor(Theme.key_dialogTextBlack);
-        titleTextView.setTextColor(textColor);
+        ThemeBind.textColor(titleTextView, Theme.key_dialogTextBlack, resourcesProvider);
         titleTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         titleTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         linearLayout.addView(titleTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 24, (expand ? 4 : 0), 24, 8));
@@ -7183,9 +7225,7 @@ public class AlertsCreator {
             cell.heightDp = 42;
             cell.setPadding(dp(4), 0, dp(4), 0);
             cell.setTag(a);
-            int color1 = resourcesProvider != null ? resourcesProvider.getColorOrDefault(Theme.key_radioBackground) : Theme.getColor(Theme.key_radioBackground);
-            int color2 = resourcesProvider != null ? resourcesProvider.getColorOrDefault(Theme.key_dialogRadioBackgroundChecked) : Theme.getColor(Theme.key_dialogRadioBackgroundChecked);
-            cell.setCheckColor(color1, color2);
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, resourcesProvider);
             cell.setTextAndValue(descriptions[a], selected[0] == a);
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
@@ -7206,6 +7246,9 @@ public class AlertsCreator {
         } else {
             int topImageColor = resourcesProvider != null ? resourcesProvider.getColorOrDefault(Theme.key_dialogTopBackground) : Theme.getColor(Theme.key_dialogTopBackground);
             builder.setTopImage(new ShareLocationDrawable(parentActivity, 0), topImageColor);
+            if (resourcesProvider == null) {
+                builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
+            }
         }
         builder.setView(linearLayout);
         builder.setPositiveButton(LocaleController.getString(R.string.ShareFile), (dialog, which) -> {
@@ -7223,49 +7266,6 @@ public class AlertsCreator {
         });
         builder.setNeutralButton(LocaleController.getString(R.string.Cancel), null);
         return builder.create();
-    }
-
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    public static AlertDialog.Builder createBackgroundLocationPermissionDialog(Activity activity, TLRPC.User selfUser, Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
-        if (activity == null || Build.VERSION.SDK_INT < 29) {
-            return null;
-        }
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity, resourcesProvider);
-        String svg = AndroidUtilities.readRes(Theme.getCurrentTheme().isDark() ? R.raw.permission_map_dark : R.raw.permission_map);
-        String pinSvg = AndroidUtilities.readRes(Theme.getCurrentTheme().isDark() ? R.raw.permission_pin_dark : R.raw.permission_pin);
-        FrameLayout frameLayout = new FrameLayout(activity);
-        frameLayout.setClipToOutline(true);
-        frameLayout.setOutlineProvider(new ViewOutlineProvider() {
-            @Override
-            public void getOutline(View view, Outline outline) {
-                outline.setRoundRect(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight() + dp(6), dp(6));
-            }
-        });
-
-        View background = new View(activity);
-        background.setBackground(SvgHelper.getDrawable(svg));
-        frameLayout.addView(background, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 0, 0, 0, 0));
-
-        View pin = new View(activity);
-        pin.setBackground(SvgHelper.getDrawable(pinSvg));
-        frameLayout.addView(pin, LayoutHelper.createFrame(60, 82, Gravity.CENTER, 0, 0, 0, 0));
-
-        BackupImageView imageView = new BackupImageView(activity);
-        imageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(52));
-        imageView.setForUserOrChat(selfUser, new AvatarDrawable(selfUser));
-        frameLayout.addView(imageView, LayoutHelper.createFrame(52, 52, Gravity.CENTER, 0, 0, 0, 11));
-
-        builder.setTopView(frameLayout);
-        float aspectRatio = 354f / 936f;
-        builder.setTopViewAspectRatio(aspectRatio);
-        builder.setMessage(replaceTags(LocaleController.getString(R.string.PermissionBackgroundLocation)));
-        builder.setPositiveButton(LocaleController.getString(R.string.Continue), (dialog, which) -> {
-            if (activity.checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                activity.requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, 30);
-            }
-        });
-        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), ((dialog, which) -> cancelRunnable.run()));
-        return builder;
     }
 
     public static AlertDialog.Builder createGigagroupConvertAlert(Activity activity, AlertDialog.OnButtonClickListener onProcess, AlertDialog.OnButtonClickListener onCancel) {
@@ -7325,7 +7325,7 @@ public class AlertsCreator {
         builder.setPositiveButton(LocaleController.getString(R.string.Enable), (dialogInterface, i) -> {
             if (activity != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (allowPictureInPicture && PipUtils.checkPermissions(activity) == PipPermissions.PIP_DENIED_PIP) {
+                    if (allowPictureInPicture && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !PipEnvironment.canDrawOverlays(activity) && !PipEnvironment.canUseSystemPip(activity)) {
                         try {
                             activity.startActivity(new Intent("android.settings.PICTURE_IN_PICTURE_SETTINGS", Uri.parse("package:" + activity.getPackageName())));
                             return;
@@ -7407,7 +7407,7 @@ public class AlertsCreator {
 
     public static AlertDialog.Builder createContactsPermissionDialog(Activity parentActivity, MessagesStorage.IntCallback callback) {
         AlertDialog.Builder builder = new AlertDialog.Builder(parentActivity);
-        builder.setTopAnimation(R.raw.permission_request_contacts, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground));
+        builder.setTopAnimation(R.raw.permission_request_contacts, PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground)); builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
         builder.setMessage(replaceTags(LocaleController.getString(R.string.ContactsPermissionAlert)));
         builder.setPositiveButton(LocaleController.getString(R.string.ContactsPermissionAlertContinue), (dialog, which) -> callback.run(1));
         builder.setNegativeButton(LocaleController.getString(R.string.ContactsPermissionAlertNotNow), (dialog, which) -> callback.run(0));
@@ -7488,7 +7488,7 @@ public class AlertsCreator {
             RadioColorCell cell = new RadioColorCell(parentActivity, resourcesProvider);
             cell.setPadding(dp(4), 0, dp(4), 0);
             cell.setTag(a);
-            cell.setCheckColor(Theme.getColor(Theme.key_radioBackground, resourcesProvider), Theme.getColor(Theme.key_dialogRadioBackgroundChecked, resourcesProvider));
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, resourcesProvider);
             cell.setTextAndValue(descriptions[a], selected[0] == a);
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
@@ -7578,7 +7578,7 @@ public class AlertsCreator {
             RadioColorCell cell = new RadioColorCell(parentActivity);
             cell.setTag(a);
             cell.setPadding(dp(4), 0, dp(4), 0);
-            cell.setCheckColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, null);
             cell.setTextAndValue(descriptions[a], selected[0] == a);
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
@@ -7614,7 +7614,7 @@ public class AlertsCreator {
             RadioColorCell cell = new RadioColorCell(parentActivity);
             cell.setPadding(dp(4), 0, dp(4), 0);
             cell.setTag(a);
-            cell.setCheckColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
+            bindRadioColorCell(cell, Theme.key_radioBackground, Theme.key_dialogRadioBackgroundChecked, null);
             cell.setTextAndValue(options[a], selected == a);
             linearLayout.addView(cell);
             cell.setOnClickListener(v -> {
@@ -8334,13 +8334,13 @@ public class AlertsCreator {
         fragment.showDialog(dialog);
         TextView positiveButton = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (positiveButton != null) {
-            positiveButton.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(positiveButton, Theme.key_text_RedBold);
         }
         TextView neutralButton = (TextView) dialog.getButton(DialogInterface.BUTTON_NEUTRAL);
         if (neutralButton != null) {
             dialog.getButtonsLayout().setPadding(dp(12), dp(0), dp(8), dp(12));
             ((ViewGroup.MarginLayoutParams) dialog.getButtonsLayout().getLayoutParams()).topMargin = dp(-8);
-            neutralButton.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(neutralButton, Theme.key_text_RedBold);
         }
     }
 
@@ -8349,9 +8349,9 @@ public class AlertsCreator {
             return;
         }
         Context context = fragment.getParentActivity();
-        final EditTextBoldCursor editText = new EditTextBoldCursor(context);
+        final ThemedCursorEditText editText = new ThemedCursorEditText(context);
         editText.setBackground(null);
-        editText.setLineColors(Theme.getColor(Theme.key_dialogInputField), Theme.getColor(Theme.key_dialogInputFieldActivated), Theme.getColor(Theme.key_text_RedBold));
+        ThemeBind.lineColors(editText, Theme.key_dialogInputField, Theme.key_dialogInputFieldActivated, Theme.key_text_RedBold);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(LocaleController.getString(R.string.NewTheme));
@@ -8372,18 +8372,18 @@ public class AlertsCreator {
         }
         message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         message.setPadding(dp(23), dp(12), dp(23), dp(6));
-        message.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(message, Theme.key_dialogTextBlack);
         linearLayout.addView(message, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        ThemeBind.textColor(editText, Theme.key_dialogTextBlack);
         editText.setMaxLines(1);
         editText.setLines(1);
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         editText.setGravity(Gravity.LEFT | Gravity.TOP);
         editText.setSingleLine(true);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        editText.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        editText.setCursorColorKey(Theme.key_windowBackgroundWhiteBlackText, null);
         editText.setCursorSize(dp(20));
         editText.setCursorWidth(1.5f);
         editText.setPadding(0, dp(4), 0, 0);
@@ -8849,9 +8849,9 @@ public class AlertsCreator {
         dialogView.setClipChildren(false);
 
         EditText editTextView = new EditText(context);
-        editTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+        ThemeBind.textColor(editTextView, Theme.key_windowBackgroundWhiteBlackText);
         editTextView.setHint(LocaleController.getString(R.string.SuggestedMessageDeclineReasonHint));
-        editTextView.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText));
+        ThemeBind.hintTextColor(editTextView, Theme.key_windowBackgroundWhiteHintText);
         editTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         editTextView.setBackground(Theme.createEditTextDrawable(context, true));
 
@@ -8900,7 +8900,7 @@ public class AlertsCreator {
 
         TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
         if (button != null) {
-            button.setTextColor(Theme.getColor(Theme.key_text_RedBold));
+            ThemeBind.textColor(button, Theme.key_text_RedBold);
         }
     }
 
@@ -8992,7 +8992,7 @@ public class AlertsCreator {
         titleView.setOnTouchListener((v, event) -> true);
 
         TextView subtitleView = new TextView(context);
-        subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
+        ThemeBind.textColor(subtitleView, Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider);
         subtitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         subtitleView.setText(LocaleController.getString(R.string.PostSuggestionsAddTimeHint));
         titleLayout.addView(subtitleView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 2, 0, 0));
@@ -9112,7 +9112,7 @@ public class AlertsCreator {
         buttonAnytimeTextView.setText(LocaleController.getString(mode == SUGGEST_DATE_PICKER_MODE_ACCEPT ? R.string.MessageSuggestionPublishNow: R.string.PostSuggestionsAnytime));
         buttonAnytimeTextView.setTextColor(datePickerColors.buttonBackgroundColor);
         buttonAnytimeTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-        buttonAnytimeTextView.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_windowBackgroundWhite), Theme.getColor(Theme.key_listSelector)));
+        ThemeBind.selectorBackground(buttonAnytimeTextView, Theme.createSimpleSelectorRoundRectDrawable(dp(8), Theme.getColor(Theme.key_windowBackgroundWhite), Theme.getColor(Theme.key_listSelector)), ThemeBind.of(Theme.key_windowBackgroundWhite), ThemeBind.of(Theme.key_listSelector));
         container.addView(buttonAnytimeTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 0, 16, 16));
         buttonAnytimeTextView.setOnClickListener(v -> {
             canceled[0] = false;
@@ -9152,11 +9152,11 @@ public class AlertsCreator {
         imageView.setScaleX(2f);
         imageView.setScaleY(2f);
         circle.addView(imageView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER));
-        circle.setBackground(Theme.createCircleDrawable(dp(80), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)));
+        ThemeBind.fillBackground(circle, Theme.createCircleDrawable(dp(80), Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider)), ThemeBind.of(Theme.key_featuredStickers_addButton), resourcesProvider);
         topView.addView(circle, LayoutHelper.createFrame(80, 80, Gravity.CENTER_HORIZONTAL, 0, 12, 0, 0));
 
         TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         textView.setTypeface(AndroidUtilities.bold());
         textView.setText(getString(R.string.CallForbiddenInviteLinkTitle));
@@ -9164,7 +9164,7 @@ public class AlertsCreator {
         linearLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 32, 16, 32, 8));
 
         textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         textView.setText(replaceTags(LocaleController.formatString(R.string.CallForbiddenInviteLinkText, DialogObject.getName(currentAccount, dialogId))));
         textView.setGravity(Gravity.CENTER);
@@ -9240,7 +9240,7 @@ public class AlertsCreator {
         topView.setOrientation(LinearLayout.VERTICAL);
         topView.addView(new StarGiftSheet.GiftThemeReuseTopView(context, currentAccount, gift, user), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 0, -4, 0, 0));
         final TextView textView = new TextView(context);
-        textView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
+        ThemeBind.textColor(textView, Theme.key_dialogTextBlack, resourcesProvider);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         textView.setText(replaceTags(formatString(R.string.GiftThemesSetInReuseInfo, DialogObject.getDialogTitle(user))));
         topView.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 24, 0, 24, 4));
@@ -9358,7 +9358,7 @@ public class AlertsCreator {
         titleView.setGravity(Gravity.CENTER);
         titleView.setText(getString(R.string.DisableSharingInfoHeader));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
-        titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+        ThemeBind.textColor(titleView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
         linearLayout.addView(titleView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER, 20, 0, 20, 14));
 
         {
@@ -9367,7 +9367,7 @@ public class AlertsCreator {
             cell.description.setText(getString(R.string.DisableSharingInfoText1));
             cell.nextIcon.setVisibility(View.GONE);
             cell.imageView.setImageResource(R.drawable.menu_photo_off_24);
-            cell.imageView.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+            ThemeBind.colorFilter(cell.imageView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider, PorterDuff.Mode.SRC_ATOP);
             linearLayout.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 6, 0, 6, -2));
         }
         {
@@ -9376,7 +9376,7 @@ public class AlertsCreator {
             cell.description.setText(getString(R.string.DisableSharingInfoText2));
             cell.nextIcon.setVisibility(View.GONE);
             cell.imageView.setImageResource(R.drawable.menu_share_off_24);
-            cell.imageView.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+            ThemeBind.colorFilter(cell.imageView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider, PorterDuff.Mode.SRC_ATOP);
             linearLayout.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 6, 0, 6, -2));
         }
         {
@@ -9385,7 +9385,7 @@ public class AlertsCreator {
             cell.description.setText(getString(R.string.DisableSharingInfoText3));
             cell.nextIcon.setVisibility(View.GONE);
             cell.imageView.setImageResource(R.drawable.menu_download_off_24);
-            cell.imageView.setColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
+            ThemeBind.colorFilter(cell.imageView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider, PorterDuff.Mode.SRC_ATOP);
             linearLayout.addView(cell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 6, 0, 6, 8));
         }
         {

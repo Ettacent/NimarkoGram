@@ -6,7 +6,8 @@ def mediaDirectory = new File(settingsDir, 'TMessagesProj_Modules/media')
 def mediaPatches = [
     new File(settingsDir, 'patches/media3-ffmpeg-video.patch'),
     new File(settingsDir, 'patches/media3-retiring-player-release.patch'),
-    new File(settingsDir, 'patches/media3-audio-release-lifecycle.patch')
+    new File(settingsDir, 'patches/media3-audio-release-lifecycle.patch'),
+    new File(settingsDir, 'patches/media3-decoder-release-interruption.patch')
 ]
 def lockFile = new File(settingsDir, '.gradle/media3-patches.lock')
 lockFile.parentFile.mkdirs()

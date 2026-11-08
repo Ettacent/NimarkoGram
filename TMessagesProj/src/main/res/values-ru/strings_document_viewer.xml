@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+<resources>
+    <string name="NM_DocViewerTitle">Встроенный просмотр документов</string>
+    <string name="NM_DocViewerDescription">Открывать PDF, Word (DOCX), Excel (XLSX), PowerPoint (PPTX) и текстовые файлы внутри NimarkoGram.</string>
+    <string name="NM_DocChooseSheet">Выбрать лист</string>
+    <string name="NM_DocOfficeTooLarge">Этот документ слишком большой или сложный для встроенного просмотра Office.</string>
+    <string name="NM_DocOfficeWebView">Для просмотра Office нужна совместимая версия Android System WebView. Обновите её и попробуйте снова.</string>
+    <string name="NM_DocOfficePassword">Защищённые паролем документы Office пока не поддерживаются встроенным просмотрщиком.</string>
+    <string name="NM_DocText">Текст</string>
+    <string name="NM_DocSearch">Поиск в документе</string>
+    <string name="NM_DocSearching">Поиск…</string>
+    <string name="NM_DocGoToPage">Перейти к странице</string>
+    <string name="NM_DocPageOf">%1$d / %2$d</string>
+    <string name="NM_DocPageRange">Введите номер страницы от 1 до %1$d</string>
+    <string name="NM_DocMatchOf">%1$d / %2$d</string>
+    <string name="NM_DocMatchesFound">Найдено: %1$d</string>
+    <string name="NM_DocNoMatches">Совпадений нет</string>
+    <string name="NM_DocSearchLimited">Уточните запрос</string>
+    <string name="NM_DocEncoding">Кодировка текста</string>
+    <string name="NM_DocResetZoom">Сбросить масштаб</string>
+    <string name="NM_DocZoomIn">Увеличить</string>
+    <string name="NM_DocZoomOut">Уменьшить</string>
+    <string name="NM_DocPrevious">Назад</string>
+    <string name="NM_DocNext">Далее</string>
+    <string name="NM_DocRetry">Повторить</string>
+    <string name="NM_DocOpenError">Не удалось открыть документ встроенным просмотрщиком.</string>
+    <string name="NM_DocPasswordRequired">Для этого PDF нужен пароль. Если вы уже ввели его, проверьте и попробуйте снова.</string>
+    <string name="NM_DocEnterPassword">Введите пароль PDF</string>
+    <string name="NM_DocPasswordUnsupported">Для просмотра защищённых паролем PDF требуется Android 15 или новее.</string>
+    <string name="NM_DocTimeout">Обработка документа заняла слишком много времени.</string>
+    <string name="NM_DocTextTooLarge">Этот файл слишком велик для встроенного текстового просмотрщика.</string>
+    <string name="NM_DocEncodingError">Не удалось прочитать кодировку текста. Выберите другую кодировку в меню.</string>
+    <string name="NM_DocExternalError">Не найдено приложение для открытия или отправки этого файла.</string>
+    <string name="NM_DocProtectedError">Документ защищён. Открытие в другом приложении недоступно.</string>
+</resources>

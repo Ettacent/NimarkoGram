@@ -1,0 +1,332 @@
+{
+  "version": "0.89.4",
+  "attribution": "Modifications Copyright (C) 2026 Ettacent",
+  "files": [
+    {
+      "path": "comment-overlay-controller-CR5ySvki.js",
+      "sha256": "13b12e0827c1168aa91db7a12de3461a2ec804e29908450ec520bc3e35f447a7",
+      "replacements": [
+        {
+          "before": "let a = r.createElement(\"canvas\");\n\ta.style.cssText",
+          "after": "let a = r.createElement(\"canvas\");\n\ta.width = a.height = 1;\n\ta.style.cssText",
+          "count": 1
+        },
+        {
+          "before": "\tasync render(e, t, n, r, i, a = this.hooks.nextToken(t), o = t.dispatcher, s = o.begin(), c = !0) {",
+          "after": "\trender(e, t, n, r, i, a, o, s, c = !0, current = () => !0) {\n\t\treturn this.hooks.scheduler.run(e, t, current => {\n\t\t\tconst width = this.hooks.width(e), dpr = this.hooks.scheduler.reserveDpr(width, this.hooks.height(e), this.hooks.dpr());\n\t\t\treturn this.renderNow(e, t, width, dpr, this.hooks.scale(), this.hooks.token(t), t.dispatcher, t.dispatcher.begin(), c, current);\n\t\t});\n\t}\n\tasync renderNow(e, t, n, r, i, a = this.hooks.nextToken(t), o = t.dispatcher, s = o.begin(), c = !0, current = () => !0) {",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tlet c = await this.hooks.render(e, d, n, r, m ? (e) => p.push(e) : void 0);\n\t\t\tawait Promise.allSettled([...t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")].flatMap(canvas => canvas.getAnimations?.() || []).filter(animation => animation.playState === \"running\").map(animation => animation.finished));\n\t\t\tif (!this.isCurrent(e, t, a, o, s, d, u)) {\n\t\t\t\tc.close();\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tlet preview = t.renderedScale > 0 && t.renderedScale !== i;\n\t\t\tlet destination = d, dispatcher = o, token = s;\n\t\t\tif (preview) {\n\t\t\t\tdestination = document.createElement(\"canvas\");\n\t\t\t\tdestination.style.cssText = d.style.cssText;\n\t\t\t\tdispatcher = new o.constructor(destination, !0);\n\t\t\t\ttoken = dispatcher.begin();\n\t\t\t}\n\t\t\tif (!this.hooks.commitBitmap(e, t, dispatcher, token, c, n)) { if (preview) dispatcher.destroy(); return; }\n\t\t\tif (preview) {\n\t\t\t\tfor (const old of t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")) old.remove();\n\t\t\t\tfor (const animation of d.getAnimations?.() || []) animation.cancel();\n\t\t\t\td.setAttribute(\"data-office-quality-preview\", \"\");\n\t\t\t\td.style.position = \"absolute\";\n\t\t\t\td.style.inset = \"0\";\n\t\t\t\td.style.width = d.style.height = \"100%\";\n\t\t\t\tt.wrapper.insertBefore(destination, d);\n\t\t\t\to.destroy();\n\t\t\t\tt.canvas = destination;\n\t\t\t\tt.dispatcher = dispatcher;\n\t\t\t\tdestination.setAttribute(\"data-office-quality-commit\", \"\");\n\t\t\t}\n\t\t\tt.renderedScale = i, this.hooks.commitRuns(e, t, p, n, m), t.canvas.setAttribute(\"data-office-painted-unit\", String(e)), t.canvas.setAttribute(\"data-office-painted-scale\", String(i)), t.canvas.setAttribute(\"data-office-valid-unit\", String(e)), f = !0;",
+          "after": "\t\t\tlet c = await this.hooks.render(e, d, n, r, m ? (e) => p.push(e) : void 0);\n\t\t\tf = !0;\n\t\t\tthis.hooks.scheduler.stage(e, t, u, c.width * c.height * 4, () => {\n\t\t\tif (!this.isCurrent(e, t, a, o, s, d, u)) {\n\t\t\t\tc.close();\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tlet preview = t.renderedScale > 0 && t.renderedScale !== i;\n\t\t\tlet destination = d, dispatcher = o, token = s;\n\t\t\tif (preview) {\n\t\t\t\tdestination = document.createElement(\"canvas\");\n\t\t\t\tdestination.style.cssText = d.style.cssText;\n\t\t\t\tdispatcher = new o.constructor(destination, !0);\n\t\t\t\ttoken = dispatcher.begin();\n\t\t\t}\n\t\t\tif (!this.hooks.commitBitmap(e, t, dispatcher, token, c, n)) { if (preview) dispatcher.destroy(); return; }\n\t\t\tif (preview) {\n\t\t\t\tfor (const old of t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")) old.remove();\n\t\t\t\tfor (const animation of d.getAnimations?.() || []) animation.cancel();\n\t\t\t\td.setAttribute(\"data-office-quality-preview\", \"\");\n\t\t\t\td.style.position = \"absolute\";\n\t\t\t\td.style.inset = \"0\";\n\t\t\t\td.style.width = d.style.height = \"100%\";\n\t\t\t\tt.wrapper.insertBefore(destination, d);\n\t\t\t\to.destroy();\n\t\t\t\tt.canvas = destination;\n\t\t\t\tt.dispatcher = dispatcher;\n\t\t\t\tdestination.setAttribute(\"data-office-quality-commit\", \"\");\n\t\t\t}\n\t\t\tt.renderedScale = i, this.hooks.commitRuns(e, t, p, n, m), t.canvas.setAttribute(\"data-office-painted-unit\", String(e)), t.canvas.setAttribute(\"data-office-painted-scale\", String(i)), t.canvas.setAttribute(\"data-office-valid-unit\", String(e)), f = !0;\n\t\t\t}, () => c.close());",
+          "count": 1
+        },
+        {
+          "before": "\n\t\t\tlet n = this.hooks.slots().get(e);\n\t\t\tif (!f && n && this.hooks.canRetry(n) && (n !== t || u !== this.hooks.epoch() || a !== this.hooks.token(n) || !o.isCurrent(s)) && !l.has(e) && !this.hooks.destroyed()) {\n\t\t\t\tlet t = n.dispatcher;\n\t\t\t\tawait this.render(e, n, this.hooks.width(e), this.hooks.dpr(), this.hooks.scale(), this.hooks.nextToken(n), t, t.begin(), c);\n\t\t\t}",
+          "after": "",
+          "count": 1
+        },
+        {
+          "before": "return n === this.hooks.token(t) && r.isCurrent(i) && a === t.canvas && o === this.hooks.epoch()",
+          "after": "return !this.hooks.scheduler.interacting && !this.hooks.scheduler._destroyed && n === this.hooks.token(t) && r.isCurrent(i) && a === t.canvas && o === this.hooks.epoch()",
+          "count": 1
+        },
+        {
+          "before": "\trender(e, t, n, r, i, a, o, s) {",
+          "after": "\trender(e, t, n, r, i, a, o, s) {\n\t\treturn this.hooks.scheduler.run(e, t, current => {\n\t\t\tconst width = this.hooks.width(e), dpr = this.hooks.scheduler.reserveDpr(width, this.hooks.height(e), this.hooks.dpr());\n\t\t\treturn this.renderNow(e, t, width, dpr, this.hooks.token(t), t.dispatcher, t.dispatcher.begin(), s, current);\n\t\t});\n\t}\n\trenderNow(e, t, n, r, i, a, o, s, current = () => !0) {",
+          "count": 1
+        },
+        {
+          "before": "\tsettle(e, t, n, r) {",
+          "after": "\tsettle(e, t, n, r) {\n\t\treturn this.hooks.scheduler.run(e, t, current => {\n\t\t\tconst width = this.hooks.width(e), dpr = this.hooks.scheduler.reserveDpr(width, this.hooks.height(e), this.hooks.dpr());\n\t\t\treturn this.settleNow(e, t, width, dpr, current);\n\t\t});\n\t}\n\tsettleNow(e, t, n, r, current = () => !0) {",
+          "count": 1
+        },
+        {
+          "before": "\t\tm.then(async () => {\n\t\t\tawait Promise.allSettled([...t.wrapper.querySelectorAll(\"[data-office-quality-preview]\")].flatMap(canvas => canvas.getAnimations?.() || []).filter(animation => animation.playState === \"running\").map(animation => animation.finished));\n\t\t\tif (!this.isCurrent(e, t, c, u, d, o, a, !0)) {\n\t\t\t\tu.destroy();\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tlet r = t.canvas;\n\t\t\tt.dispatcher.destroy(), t.wrapper.querySelectorAll(\"[data-office-quality-preview]\").forEach(e => e.remove()), (r.getAnimations?.() || []).forEach(e => e.cancel()), r.setAttribute(\"data-office-quality-preview\", \"\"), r.style.position = \"absolute\", r.style.inset = \"0\", r.style.width = r.style.height = \"100%\", t.wrapper.insertBefore(o, r), o.setAttribute(\"data-office-quality-commit\", \"\"), t.canvas = o, t.dispatcher = u, t.renderedScale = i, this.hooks.commitRuns(e, t, f, o, n, p, !0), o.setAttribute(\"data-office-painted-unit\", String(e)), o.setAttribute(\"data-office-painted-scale\", String(i)), o.setAttribute(\"data-office-valid-unit\", String(e));",
+          "after": "\t\treturn m.then(() => {\n\t\t\tthis.hooks.scheduler.stage(e, t, a, o.width * o.height * 4, () => {\n\t\t\tif (!this.isCurrent(e, t, c, u, d, o, a, !0)) {\n\t\t\t\tu.destroy(); o.width = o.height = 0;\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tlet r = t.canvas;\n\t\t\tt.dispatcher.destroy(), t.wrapper.querySelectorAll(\"[data-office-quality-preview]\").forEach(e => e.remove()), (r.getAnimations?.() || []).forEach(e => e.cancel()), r.setAttribute(\"data-office-quality-preview\", \"\"), r.style.position = \"absolute\", r.style.inset = \"0\", r.style.width = r.style.height = \"100%\", t.wrapper.insertBefore(o, r), o.setAttribute(\"data-office-quality-commit\", \"\"), t.canvas = o, t.dispatcher = u, t.renderedScale = i, this.hooks.commitRuns(e, t, f, o, n, p, !0), o.setAttribute(\"data-office-painted-unit\", String(e)), o.setAttribute(\"data-office-painted-scale\", String(i)), o.setAttribute(\"data-office-valid-unit\", String(e));\n\t\t\t}, () => { u.destroy(); o.width = o.height = 0; });",
+          "count": 1
+        },
+        {
+          "before": "return n === this.hooks.token(t) && r.isCurrent(i) && (s || a === t.canvas)",
+          "after": "return !this.hooks.scheduler.interacting && !this.hooks.scheduler._destroyed && n === this.hooks.token(t) && r.isCurrent(i) && (s || a === t.canvas)",
+          "count": 1
+        },
+        {
+          "before": "\tsyncSpacer() {",
+          "after": "\tinteracting = !1;\n\trenderQueue = new Map();\n\tstaged = new Map();\n\trenderActive = !1;\n\tpumpPosted = !1;\n\trasterReservation = 0;\n\trasterObserver = null;\n\tpumpFrame = null;\n\tpumpTask = null;\n\tpostTurn(callback) {\n\t\tthis.pumpFrame = requestAnimationFrame(() => {\n\t\t\tthis.pumpFrame = null;\n\t\t\tthis.pumpTask = setTimeout(() => { this.pumpTask = null; callback(); }, 0);\n\t\t});\n\t}\n\tcurrent(unit, slot, epoch) {\n\t\treturn this.validSlot(unit, slot) && !this.interacting && epoch === this.renderEpoch;\n\t}\n\tget rasterBudget() {\n\t\treturn this.hooks.rasterBudget?.() ?? 50331648;\n\t}\n\tvalidSlot(unit, slot) {\n\t\treturn !this._destroyed && this.slots.get(unit) === slot && slot.wrapper.getAttribute(\"data-office-unit\") === String(unit);\n\t}\n\tbeginInteraction() {\n\t\tif (this._destroyed || this.interacting) return;\n\t\tthis.interacting = !0;\n\t\tthis.renderEpoch++;\n\t\tclearTimeout(this._settleTimer);\n\t\tthis._settleTimer = null;\n\t\tfor (const job of this.renderQueue.values()) job.resolve();\n\t\tthis.renderQueue.clear();\n\t\tfor (const entry of this.staged.values()) entry.dispose();\n\t\tthis.staged.clear();\n\t\tfor (const slot of this.slots.values()) slot.dispatcher.begin();\n\t}\n\tendInteraction() {\n\t\tif (this._destroyed || !this.interacting) return;\n\t\tthis.interacting = !1;\n\t\tthis.preview();\n\t\tthis.settle();\n\t\tthis.pump();\n\t}\n\tobserveRasterLifetime() {\n\t\tif (this.rasterObserver || typeof MutationObserver === \"undefined\") return;\n\t\tthis.rasterObserver = new MutationObserver(() => {\n\t\t\tthis.pump();\n\t\t});\n\t\tthis.rasterObserver.observe(this.hooks.spacer().parentElement, {subtree: !0, childList: !0});\n\t}\n\trun(unit, slot, render) {\n\t\tif (!this.validSlot(unit, slot) || this.interacting) return Promise.resolve();\n\t\tthis.observeRasterLifetime();\n\t\tconst pending = this.staged.get(slot);\n\t\tif (pending && pending.epoch === this.renderEpoch) return Promise.resolve();\n\t\treturn new Promise((resolve, reject) => {\n\t\t\tthis.renderQueue.get(slot)?.resolve();\n\t\t\tthis.renderQueue.set(slot, {unit, slot, epoch: this.renderEpoch, render, resolve, reject});\n\t\t\tthis.pump();\n\t\t});\n\t}\n\tpump() {\n\t\tif (this.pumpPosted || this.interacting || this._destroyed || (!this.renderQueue.size && !this.staged.size)) return;\n\t\tthis.pumpPosted = !0;\n\t\tthis.postTurn(() => {\n\t\t\tthis.pumpPosted = !1;\n\t\t\tif (this.interacting || this._destroyed) return;\n\t\t\tif (this.flushCommits()) { this.pump(); return; }\n\t\t\tif (this.renderActive) return;\n\t\t\tconst host = this.hooks.spacer().parentElement, top = host.scrollTop, bottom = top + host.clientHeight;\n\t\t\tconst jobs = [...this.renderQueue.values()].map(job => {\n\t\t\t\tconst y = job.slot.wrapper.offsetTop, height = job.slot.wrapper.offsetHeight;\n\t\t\t\treturn {job, distance: Math.max(0, y - bottom, top - y - height)};\n\t\t\t}).sort((a, b) => a.distance - b.distance).map(entry => entry.job);\n\t\t\tconst job = jobs.find(job => this.validSlot(job.unit, job.slot) && job.epoch === this.renderEpoch && !this.staged.has(job.slot));\n\t\t\tfor (const stale of jobs) {\n\t\t\t\tif (!this.validSlot(stale.unit, stale.slot) || stale.epoch !== this.renderEpoch || this.staged.has(stale.slot)) {\n\t\t\t\t\tthis.renderQueue.delete(stale.slot);\n\t\t\t\t\tstale.resolve();\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (!job) return;\n\t\t\tthis.renderQueue.delete(job.slot);\n\t\t\tthis.renderActive = !0;\n\t\t\tPromise.resolve().then(() => {\n\t\t\t\tif (this.validSlot(job.unit, job.slot) && job.epoch === this.renderEpoch && !this.interacting) return job.render(() => this.current(job.unit, job.slot, job.epoch));\n\t\t\t}).then(job.resolve, job.reject).finally(() => {\n\t\t\t\tthis.renderActive = !1;\n\t\t\t\tthis.rasterReservation = 0;\n\t\t\t\tthis.pump();\n\t\t\t});\n\t\t});\n\t}\n\tretainedBytes() {\n\t\tlet bytes = 0;\n\t\tfor (const slot of [...this.slots.values(), ...this.free]) {\n\t\t\tfor (const canvas of slot.wrapper.querySelectorAll(\"canvas\")) bytes += canvas.width * canvas.height * 4;\n\t\t}\n\t\tfor (const entry of this.staged.values()) bytes += entry.bytes;\n\t\treturn bytes;\n\t}\n\treserveDpr(width, height, requested) {\n\t\tconst fairPixels = Math.min(2097152, Math.floor(this.rasterBudget / (4 * (3 * Math.max(1, this.slots.size) + 1))));\n\t\tconst available = Math.max(1, Math.floor((this.rasterBudget - this.retainedBytes()) / 4));\n\t\tconst pixels = Math.min(fairPixels, available);\n\t\tlet dpr = Math.min(requested, 4096 / (width + 2), 4096 / (height + 2), Math.sqrt(pixels / ((width + 2) * (height + 2))));\n\t\tif (Math.ceil(width * dpr) * Math.ceil(height * dpr) > pixels) {\n\t\t\tlet lower = 0, upper = dpr;\n\t\t\tfor (let step = 0; step < 24; step++) {\n\t\t\t\tconst middle = (lower + upper) / 2;\n\t\t\t\tif (Math.ceil(width * middle) * Math.ceil(height * middle) <= pixels) lower = middle;\n\t\t\t\telse upper = middle;\n\t\t\t}\n\t\t\tdpr = lower;\n\t\t}\n\t\tthis.rasterReservation = Math.ceil(width * dpr) * Math.ceil(height * dpr) * 4;\n\t\treturn dpr;\n\t}\n\tstage(unit, slot, epoch, bytes, apply, dispose) {\n\t\tif (!this.validSlot(unit, slot) || this.interacting || epoch !== this.renderEpoch) { dispose(); return; }\n\t\tthis.staged.get(slot)?.dispose();\n\t\tthis.staged.set(slot, {unit, slot, epoch, bytes, apply, dispose});\n\t\tthis.pump();\n\t}\n\tflushCommits() {\n\t\tfor (const [slot, entry] of this.staged) {\n\t\t\tif (!this.validSlot(entry.unit, slot) || this.interacting || entry.epoch !== this.renderEpoch) {\n\t\t\t\tthis.staged.delete(slot);\n\t\t\t\tentry.dispose();\n\t\t\t} else if (!slot.wrapper.querySelector(\"[data-office-quality-preview]\")) {\n\t\t\t\tthis.staged.delete(slot);\n\t\t\t\ttry { entry.apply(); }\n\t\t\t\tcatch (error) { entry.dispose(); this.hooks.reportError?.(error); }\n\t\t\t\treturn !0;\n\t\t\t}\n\t\t}\n\t}\n\tsyncSpacer() {",
+          "count": 1
+        },
+        {
+          "before": "\trecycleSlot(e, t) {\n",
+          "after": "\trecycleSlot(e, t) {\n\t\tif (this.interacting && !this._destroyed) return;\n\t\tthis.renderQueue.get(t)?.resolve(); this.renderQueue.delete(t);\n\t\tthis.staged.get(t)?.dispose(); this.staged.delete(t);\n\t\tt.wrapper.style.transform = t.wrapper.style.transformOrigin = \"\";\n",
+          "count": 1
+        },
+        {
+          "before": "this.slots.delete(e), this.hooks.resetSlot(e, t), this.free.push(t);",
+          "after": "this.slots.delete(e), this.hooks.resetSlot(e, t), t.canvas.width = t.canvas.height = 1, this.free.push(t);",
+          "count": 1
+        },
+        {
+          "before": "\tmount(e, t = !0) {\n\t\tif (this._destroyed || this.hooks.count() === 0) return;",
+          "after": "\tmount(e, t = !0) {\n\t\tif (this._destroyed || this.interacting || this.hooks.count() === 0) return;",
+          "count": 1
+        },
+        {
+          "before": "\tpreview() {\n\t\tif (this._destroyed || this.hooks.count() === 0) return;",
+          "after": "\tpreview() {\n\t\tif (this._destroyed || this.interacting || this.hooks.count() === 0) return;",
+          "count": 1
+        },
+        {
+          "before": "\tscheduleSettle(e) {",
+          "after": "\tscheduleSettle(e) {\n\t\tif (this.interacting || this._destroyed) return;",
+          "count": 1
+        },
+        {
+          "before": "if (!(this._destroyed || this.hooks.count() === 0)) for (let [e, t]",
+          "after": "if (!(this._destroyed || this.interacting || this.hooks.count() === 0)) for (let [e, t]",
+          "count": 1
+        },
+        {
+          "before": "this.hooks.renderedScale(t) !== this.hooks.scale() && (this.hooks.shouldSettle",
+          "after": "(t.needsRender || this.hooks.renderedScale(t) !== this.hooks.scale() || t.canvas.getAttribute(\"data-office-painted-unit\") !== String(e)) && (this.hooks.shouldSettle",
+          "count": 1
+        },
+        {
+          "before": "this._destroyed = !0, this._settleTimer !== null && clearTimeout(this._settleTimer), this._settleTimer = null;",
+          "after": "this._destroyed = !0, this._settleTimer !== null && clearTimeout(this._settleTimer), this._settleTimer = null;\n\t\t\tthis.renderEpoch++; this.interacting = !1; this.rasterObserver?.disconnect();\n\t\t\tfor (const job of this.renderQueue.values()) job.resolve(); this.renderQueue.clear();\n\t\t\tfor (const entry of this.staged.values()) entry.dispose(); this.staged.clear();\n\t\t\tif (this.pumpFrame !== null) cancelAnimationFrame(this.pumpFrame);\n\t\t\tif (this.pumpTask !== null) clearTimeout(this.pumpTask);\n\t\t\tthis.pumpFrame = this.pumpTask = null; this.pumpPosted = !1;",
+          "count": 1
+        },
+        {
+          "before": "this.hooks.render(e, u, n, r, f ? (e) => d.push(e) : void 0, !1)",
+          "after": "this.hooks.render(e, u, n, r, f ? (e) => d.push(e) : void 0, !1, current)",
+          "count": 1
+        },
+        {
+          "before": "this.hooks.render(e, o, n, r, p ? (e) => f.push(e) : void 0, !0)",
+          "after": "this.hooks.render(e, o, n, r, p ? (e) => f.push(e) : void 0, !0, current)",
+          "count": 1
+        },
+        {
+          "before": "\t\td.removeAttribute(\"data-office-painted-unit\");\n",
+          "after": "\t\tt.needsRender = !0;\n",
+          "count": 1
+        },
+        {
+          "before": "\t\tu.removeAttribute(\"data-office-painted-unit\");\n",
+          "after": "\t\tt.needsRender = !0;\n",
+          "count": 1
+        },
+        {
+          "before": "\t\tt.canvas.removeAttribute(\"data-office-painted-unit\");\n",
+          "after": "\t\tt.needsRender = !0;\n",
+          "count": 1
+        },
+        {
+          "before": "this.isCurrent(e, t, c, u, d, o, a, !0) && this.hooks.reportError(n), u.destroy();\n\t\t\treturn;\n\t\t}",
+          "after": "this.isCurrent(e, t, c, u, d, o, a, !0) && this.hooks.reportError(n), u.destroy(), o.width = o.height = 0;\n\t\t\treturn;\n\t\t}",
+          "count": 1
+        },
+        {
+          "before": "this.isCurrent(e, t, c, u, d, o, a, !0) && this.hooks.reportError(n), u.destroy();\n\t\t});\n\t}\n\tisCurrent",
+          "after": "this.isCurrent(e, t, c, u, d, o, a, !0) && this.hooks.reportError(n), u.destroy(), o.width = o.height = 0;\n\t\t});\n\t}\n\tisCurrent",
+          "count": 1
+        },
+        {
+          "before": "this.lastFitWidth = this.hooks.fitWidthPx(), this.hooks.mountVisible();",
+          "after": "const base = this.hooks.baseScale();\n\t\t\tif (base > 0) this.prevBase = base;\n\t\t\tthis.lastFitWidth = this.hooks.fitWidthPx(), this.hooks.mountVisible();",
+          "count": 1
+        },
+        {
+          "before": "\t\tlet n = this.hooks.range();\n\t\tthis.lastRange = n;",
+          "after": "\t\tlet n = this.hooks.range();\n\t\tthis.hooks.snapshotGeometry?.(n);\n\t\tthis.lastRange = n;",
+          "count": 1
+        },
+        {
+          "before": "\t\tlet e = this.hooks.range();\n\t\tthis.lastRange = e;",
+          "after": "\t\tlet e = this.hooks.range();\n\t\tthis.hooks.snapshotGeometry?.(e);\n\t\tthis.lastRange = e;",
+          "count": 1
+        },
+        {
+          "before": "t.canvas.setAttribute(\"data-office-valid-unit\", String(e))",
+          "after": "t.canvas.setAttribute(\"data-office-valid-unit\", String(e)), t.needsRender = !1",
+          "count": 1
+        },
+        {
+          "before": "u.setAttribute(\"data-office-valid-unit\", String(e))",
+          "after": "u.setAttribute(\"data-office-valid-unit\", String(e)), t.needsRender = !1",
+          "count": 1
+        },
+        {
+          "before": "o.setAttribute(\"data-office-valid-unit\", String(e))",
+          "after": "o.setAttribute(\"data-office-valid-unit\", String(e)), t.needsRender = !1",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "1db1daa0c69256598dbaeebc6695375dfa923ad0ce7f98a4695d070d0e7ce6b0",
+      "replacements": [
+        {
+          "before": "\t_renderHooks = {",
+          "after": "\t_renderHooks = {\n\t\tscheduler: this._scroller,\n\t\twidth: (e) => this._pageWidthPx(e),\n\t\theight: (e) => this._pageHeightPx(e),\n\t\tdpr: () => this._viewport.dpr(),",
+          "count": 1
+        },
+        {
+          "before": "\t\tonRange: (e) => this._emitVisiblePageChange(e),",
+          "after": "\t\treportError: error => this._reportRenderError(error),\n\t\tonRange: (e) => this._emitVisiblePageChange(e),",
+          "count": 1
+        },
+        {
+          "before": "\tgetZoomGeometry() {",
+          "after": "\tbeginInteraction() {\n\t\tif (this._scroller.interacting) return;\n\t\tthis._interactionScroll = {x: this._scrollHost.scrollLeft, y: this._scrollHost.scrollTop, anchor: this._scrollHost.style.overflowAnchor};\n\t\tthis._scrollHost.style.overflowAnchor = \"none\";\n\t\tthis._scroller.beginInteraction();\n\t}\n\tendInteraction() {\n\t\tif (!this._scroller.interacting) return;\n\t\tthis._scrollHost.style.overflowAnchor = this._interactionScroll?.anchor || \"\";\n\t\tthis._interactionScroll = null;\n\t\tthis._scroller.endInteraction();\n\t}\n\tgetZoomGeometry() {",
+          "count": 1
+        },
+        {
+          "before": "\t_onScroll() {",
+          "after": "\t_onScroll() {\n\t\tif (this._scroller.interacting) {\n\t\t\tif (this._interactionScroll) { this._scrollHost.scrollLeft = this._interactionScroll.x; this._scrollHost.scrollTop = this._interactionScroll.y; }\n\t\t\treturn;\n\t\t}",
+          "count": 1
+        },
+        {
+          "before": "\t\tpositionSlot: (e, t, n) => this._positionSlot(t, e, n),",
+          "after": "\t\tsnapshotGeometry: range => { range.officeWidth = this._scrollHost.clientWidth; range.officePadding = this._viewport.horizontalPadding().left; },\n\t\tpositionSlot: (e, t, n) => this._positionSlot(t, e, n),",
+          "count": 1
+        },
+        {
+          "before": "this._scrollHost.clientWidth, this._viewport.horizontalPadding().left);\n\t}\n\t_renderSlot",
+          "after": "n.officeWidth ?? this._scrollHost.clientWidth, n.officePadding ?? this._viewport.horizontalPadding().left);\n\t}\n\t_renderSlot",
+          "count": 1
+        },
+        {
+          "before": "render: (e, t, n, r, i) => jr(this._doc, t, e, \"main\", {",
+          "after": "render: (e, t, n, r, i, a, current) => jr(this._doc, t, e, \"main\", {\n\t\t\tofficeIsCurrent: current,",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "pptx-CLyebeF_.js",
+      "sha256": "3b0ef9a8bb741183b5bbd22375c3782bdabf7b336721b70096b21f225c3923d2",
+      "replacements": [
+        {
+          "before": "\t_renderHooks = {",
+          "after": "\t_renderHooks = {\n\t\tscheduler: this._scroller,\n\t\twidth: (e) => this._slideWidthPx(),\n\t\theight: (e) => this._slideHeightPx(),\n\t\tdpr: () => this._viewport.dpr(),",
+          "count": 1
+        },
+        {
+          "before": "\t\tonRange: (e) => this._emitVisibleSlideChange(e),",
+          "after": "\t\treportError: error => this._reportRenderError(error),\n\t\tonRange: (e) => this._emitVisibleSlideChange(e),",
+          "count": 1
+        },
+        {
+          "before": "\tgetZoomGeometry() {",
+          "after": "\tbeginInteraction() {\n\t\tif (this._scroller.interacting) return;\n\t\tthis._interactionScroll = {x: this._scrollHost.scrollLeft, y: this._scrollHost.scrollTop, anchor: this._scrollHost.style.overflowAnchor};\n\t\tthis._scrollHost.style.overflowAnchor = \"none\";\n\t\tthis._scroller.beginInteraction();\n\t}\n\tendInteraction() {\n\t\tif (!this._scroller.interacting) return;\n\t\tthis._scrollHost.style.overflowAnchor = this._interactionScroll?.anchor || \"\";\n\t\tthis._interactionScroll = null;\n\t\tthis._scroller.endInteraction();\n\t}\n\tgetZoomGeometry() {",
+          "count": 1
+        },
+        {
+          "before": "\t_onScroll() {",
+          "after": "\t_onScroll() {\n\t\tif (this._scroller.interacting) {\n\t\t\tif (this._interactionScroll) { this._scrollHost.scrollLeft = this._interactionScroll.x; this._scrollHost.scrollTop = this._interactionScroll.y; }\n\t\t\treturn;\n\t\t}",
+          "count": 1
+        },
+        {
+          "before": "\t\tpositionSlot: (e, t, n) => this._positionSlot(t, e, n),",
+          "after": "\t\tsnapshotGeometry: range => { range.officeWidth = this._scrollHost.clientWidth; range.officePadding = this._viewport.horizontalPadding().left; },\n\t\tpositionSlot: (e, t, n) => this._positionSlot(t, e, n),",
+          "count": 1
+        },
+        {
+          "before": "this._scrollHost.clientWidth, this._viewport.horizontalPadding().left);\n\t}\n\t_renderSlot",
+          "after": "n.officeWidth ?? this._scrollHost.clientWidth, n.officePadding ?? this._viewport.horizontalPadding().left);\n\t}\n\t_renderSlot",
+          "count": 1
+        },
+        {
+          "before": "render: (e, t, n, r, i, a) => Q(this._pres, t, e, \"main\", {",
+          "after": "render: (e, t, n, r, i, a, current) => Q(this._pres, t, e, \"main\", {\n\t\t\tofficeIsCurrent: current,",
+          "count": 1
+        },
+        {
+          "before": "cssWidth: Math.round(a),\n\t\t\t\tcssHeight: Math.round(this._slideHeightPx())",
+          "after": "cssWidth: a,\n\t\t\t\tcssHeight: this._slideHeightPx()",
+          "count": 1
+        },
+        {
+          "before": "L(t.textLayer, n, Math.round(r), Math.round(this._slideHeightPx()),",
+          "after": "L(t.textLayer, n, r, this._slideHeightPx(),",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tlet r = this._preflight, i = this._slides;",
+          "after": "\t\t\tif (n.officeIsCurrent?.() === !1) return;\n\t\t\tlet r = this._preflight, i = this._slides;",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tlet c = C(e) ? e.ownerDocument.fonts",
+          "after": "\t\t\tif (n.officeIsCurrent?.() === !1) return;\n\t\t\tlet c = C(e) ? e.ownerDocument.fonts",
+          "count": 1
+        },
+        {
+          "before": "\t\t\t\treturn this._assertResourceHealthy(), p(e, t, r.slideWidth, r.slideHeight, {",
+          "after": "\t\t\t\tif (n.officeIsCurrent?.() === !1) return;\n\t\t\t\treturn this._assertResourceHealthy(), p(e, t, r.slideWidth, r.slideHeight, {\n\t\t\t\t\tofficeIsCurrent: n.officeIsCurrent,",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "document-pull-client-CHpz0Q1p.js",
+      "sha256": "127c0c12b520dc80677e96d9b3f30d31f15914dc91688bd12b03739d6c764d6f",
+      "replacements": [
+        {
+          "before": "let a = () => mS.get(n) !== i,",
+          "after": "let a = () => mS.get(n) !== i || r.officeIsCurrent?.() === !1,",
+          "count": 1
+        },
+        {
+          "before": "\t\t\tcallerOwnedCanvasTarget: r.callerOwnedCanvasTarget,",
+          "after": "\t\t\tofficeIsCurrent: r.officeIsCurrent,\n\t\t\tcallerOwnedCanvasTarget: r.callerOwnedCanvasTarget,",
+          "count": 1
+        },
+        {
+          "before": "\tlet i = OR(e, t, n, r);",
+          "after": "\tif (r.officeIsCurrent?.() === !1) return;\n\tlet i = OR(e, t, n, r);",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "slide-pull-client-43mS9T70.js",
+      "sha256": "458bf7f3115278454310528e61182c5fe9ca356daea59503e141d077d84cef56",
+      "replacements": [
+        {
+          "before": "let c = () => Wo.get(e) !== s,",
+          "after": "let c = () => Wo.get(e) !== s || i.officeIsCurrent?.() === !1,",
+          "count": 1
+        },
+        {
+          "before": "d = u / n, f = Math.round(u), p = Math.round(r * d),",
+          "after": "d = u / n, f = u, p = r * d,",
+          "count": 1
+        },
+        {
+          "before": "e.style.width = `${f}px`, e.style.display",
+          "after": "e.style.width = `${f}px`, e.style.height = `${p}px`, e.style.display",
+          "count": 1
+        },
+        {
+          "before": "\tif (t.parseError) return Ko(b(),",
+          "after": "\tif (c()) return e;\n\tif (t.parseError) return Ko(b(),",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "db823b05fc40234c3e167cb005ef87bab7e4a8c260b21aca3acb4b75f1037a39",
+      "replacements": [
+        {
+          "before": "\t\t\tb.style.cssText = `position:absolute;left:${T(o.x + v, r)};top:${T(o.y, i)};width:${T(y, r)};height:${T(o.h, i)};` + x + `background:${n};pointer-events:none;`, e.appendChild(b);",
+          "after": "\t\t\tlet highlight = o.highlightBounds;\n\t\t\tb.style.cssText = `position:absolute;left:${T((highlight?.x ?? o.x) + v, r)};top:${T(highlight?.y ?? o.y, i)};width:${T(y, r)};height:${T(highlight?.height ?? o.h, i)};` + x + `background:${n};pointer-events:none;`, e.appendChild(b);",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

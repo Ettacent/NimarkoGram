@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.tlrpc.schema
 
 sealed class TlSchemaParamType {
@@ -10,7 +12,8 @@ sealed class TlSchemaParamType {
         ): Primary()
 
         data class Object(
-            val name: String
+            val name: String,
+            val bareConstructor: String? = null
         ) : Primary()
 
         data object X : Primary()

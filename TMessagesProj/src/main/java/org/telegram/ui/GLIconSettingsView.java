@@ -14,6 +14,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Components.ColorPicker;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Premium.GLIcon.GLIconRenderer;
@@ -29,7 +30,7 @@ public class GLIconSettingsView extends LinearLayout {
 
         TextView saturationTextView = new TextView(context);
         saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconHighlightTop));
-        saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
+        ThemeBind.textColor(saturationTextView, Theme.key_dialogTextBlue2);
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setMaxLines(1);
@@ -57,7 +58,7 @@ public class GLIconSettingsView extends LinearLayout {
 
         saturationTextView = new TextView(context);
         saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconHighlightBottom));
-        saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
+        ThemeBind.textColor(saturationTextView, Theme.key_dialogTextBlue2);
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setMaxLines(1);
@@ -90,8 +91,8 @@ public class GLIconSettingsView extends LinearLayout {
         saturationTextView.setGravity(Gravity.CENTER);
         saturationTextView.setMaxLines(1);
         saturationTextView.setSingleLine(true);
-        saturationTextView.setTextColor(Theme.getColor((Theme.key_featuredStickers_buttonText)));
-        saturationTextView.setBackground(Theme.AdaptiveRipple.filledRect(Theme.getColor(Theme.key_featuredStickers_addButton), 4));
+        ThemeBind.textColor(saturationTextView, (Theme.key_featuredStickers_buttonText));
+        ThemeBind.selectorBackground(saturationTextView, Theme.AdaptiveRipple.filledRect(Theme.getColor(Theme.key_featuredStickers_addButton), 4), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.adaptiveRipple(Theme.key_featuredStickers_addButton));
         saturationTextView.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -121,7 +122,7 @@ public class GLIconSettingsView extends LinearLayout {
 
         saturationTextView = new TextView(context);
         saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconDiffuseLighting));
-        saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
+        ThemeBind.textColor(saturationTextView, Theme.key_dialogTextBlue2);
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setMaxLines(1);
@@ -149,7 +150,7 @@ public class GLIconSettingsView extends LinearLayout {
 
         saturationTextView = new TextView(context);
         saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconNormalHighlights));
-        saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
+        ThemeBind.textColor(saturationTextView, Theme.key_dialogTextBlue2);
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setMaxLines(1);
@@ -182,8 +183,8 @@ public class GLIconSettingsView extends LinearLayout {
         saturationTextView.setGravity(Gravity.CENTER);
         saturationTextView.setMaxLines(1);
         saturationTextView.setSingleLine(true);
-        saturationTextView.setTextColor(Theme.getColor((Theme.key_featuredStickers_buttonText)));
-        saturationTextView.setBackground(Theme.AdaptiveRipple.filledRect(Theme.getColor(Theme.key_featuredStickers_addButton), 4));
+        ThemeBind.textColor(saturationTextView, (Theme.key_featuredStickers_buttonText));
+        ThemeBind.selectorBackground(saturationTextView, Theme.AdaptiveRipple.filledRect(Theme.getColor(Theme.key_featuredStickers_addButton), 4), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.adaptiveRipple(Theme.key_featuredStickers_addButton));
         // addView(saturationTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, 21, 13, 21, 0));
         saturationTextView.setOnClickListener(new OnClickListener() {
             @Override
@@ -216,7 +217,7 @@ public class GLIconSettingsView extends LinearLayout {
 
         saturationTextView = new TextView(context);
         saturationTextView.setText(LocaleController.getString(R.string.NM_Settings_IconSmallStarSize));
-        saturationTextView.setTextColor(Theme.getColor(Theme.key_dialogTextBlue2));
+        ThemeBind.textColor(saturationTextView, Theme.key_dialogTextBlue2);
         saturationTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         saturationTextView.setLines(1);
         saturationTextView.setMaxLines(1);

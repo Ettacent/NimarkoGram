@@ -1,0 +1,68 @@
+{
+  "version": "0.89.4",
+  "files": [
+    {
+      "path": "document-pull-client-CHpz0Q1p.js",
+      "sha256": "f0161135167219f4e4bc9900524f8a32e329cb54a9bbd1aa95a735843a246fdf",
+      "replacements": [
+        {
+          "before": "resourceKind: \"math\",\n\t\t\t\t\tmeasu",
+          "after": "officeMathText: t.fallbackText, officeMathFontSizePt: t.fontSize, resourceKind: \"math\",\n\t\t\t\t\tmeasu",
+          "count": 1
+        },
+        {
+          "before": "resourceKind: a.resourceKind,\n\t\t",
+          "after": "...a.resourceKind === 'math' ? {officeMathText: a.officeMathText, officeMathFontSizePt: a.officeMathFontSizePt} : {}, resourceKind: a.resourceKind,\n\t\t",
+          "count": 1
+        },
+        {
+          "before": "let { placement: n } = e, r = Cb",
+          "after": "if (e.placement.kind === 'resource' && e.placement.resourceKind === 'math') {\n    const p = e.placement, b = Cb(t, p.bounds);\n    const sx = Math.hypot(t.a, t.b), sy = Math.hypot(t.c, t.d);\n    const transform = Xb(t);\n    const w = p.bounds.widthPt * sx, h = p.bounds.heightPt * sy;\n    return {source: {story: e.source.story, storyInstance: e.source.storyInstance, path: [...e.source.path]},\n        ...e.paragraphId === undefined ? {} : {paragraphId: e.paragraphId},\n        ...p.sourceRunIndex === undefined ? {} : {sourceRunIndex: p.sourceRunIndex},\n        direction: 'ltr', text: p.officeMathText, x: b.xPt, y: b.yPt, w, h,\n        fontSize: p.officeMathFontSizePt * sy, font: String(p.officeMathFontSizePt * sy) + 'px serif',\n        officeMath: true, highlightBounds: {x: b.xPt, y: b.yPt, width: w, height: h},\n        ...transform ? {transform} : {}};\n}\nlet { placement: n } = e, r = Cb",
+          "count": 1
+        },
+        {
+          "before": "if (s.kind === \"text\") {\n\t\t\t\tfor",
+          "after": "if (n.collectTextRuns && s.kind === 'resource' && s.resourceKind === 'math'\n     && typeof s.officeMathText === 'string' && s.officeMathText.length > 0\n     && [s.bounds.xPt, s.bounds.yPt, s.bounds.widthPt, s.bounds.heightPt].every(Number.isFinite)\n     && s.bounds.widthPt > 0 && s.bounds.heightPt > 0) {\n    n.runs.push(Object.freeze({placement: s, pointToPage: t.pointToPage,\n        source: e.source, ...e.paragraphId === undefined ? {} : {paragraphId: e.paragraphId}}));\n}\nif (s.kind === \"text\") {\n\t\t\t\tfor",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "assets/render-worker-BUa1gyCE.js",
+      "sha256": "682c4c87045b82d36f9dde0cfbfff4d1d42e67afc7b0293042c9b6384fc7da04",
+      "replacements": [
+        {
+          "before": "resourceKind:`math`,measuredWidt",
+          "after": "officeMathText: t.fallbackText, officeMathFontSizePt: t.fontSize, resourceKind:`math`,measuredWidt",
+          "count": 1
+        },
+        {
+          "before": "resourceKind:a.resourceKind,...a",
+          "after": "...a.resourceKind === 'math' ? {officeMathText: a.officeMathText, officeMathFontSizePt: a.officeMathFontSizePt} : {}, resourceKind:a.resourceKind,...a",
+          "count": 1
+        },
+        {
+          "before": "let{placement:n}=e,r=sZ(t,n.boun",
+          "after": "if (e.placement.kind === 'resource' && e.placement.resourceKind === 'math') {\n    const p = e.placement, b = sZ(t, p.bounds);\n    const sx = Math.hypot(t.a, t.b), sy = Math.hypot(t.c, t.d);\n    const transform = PZ(t);\n    const w = p.bounds.widthPt * sx, h = p.bounds.heightPt * sy;\n    return {source: {story: e.source.story, storyInstance: e.source.storyInstance, path: [...e.source.path]},\n        ...e.paragraphId === undefined ? {} : {paragraphId: e.paragraphId},\n        ...p.sourceRunIndex === undefined ? {} : {sourceRunIndex: p.sourceRunIndex},\n        direction: 'ltr', text: p.officeMathText, x: b.xPt, y: b.yPt, w, h,\n        fontSize: p.officeMathFontSizePt * sy, font: String(p.officeMathFontSizePt * sy) + 'px serif',\n        officeMath: true, highlightBounds: {x: b.xPt, y: b.yPt, width: w, height: h},\n        ...transform ? {transform} : {}};\n}\nlet{placement:n}=e,r=sZ(t,n.boun",
+          "count": 1
+        },
+        {
+          "before": "if(s.kind===`text`){for(let r of",
+          "after": "if (n.collectTextRuns && s.kind === 'resource' && s.resourceKind === 'math'\n     && typeof s.officeMathText === 'string' && s.officeMathText.length > 0\n     && [s.bounds.xPt, s.bounds.yPt, s.bounds.widthPt, s.bounds.heightPt].every(Number.isFinite)\n     && s.bounds.widthPt > 0 && s.bounds.heightPt > 0) {\n    n.runs.push(Object.freeze({placement: s, pointToPage: t.pointToPage,\n        source: e.source, ...e.paragraphId === undefined ? {} : {paragraphId: e.paragraphId}}));\n}\nif(s.kind===`text`){for(let r of",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "docx-GXxH0AwW.js",
+      "sha256": "bc14ddf2f8d4da1ce9b09addf0f17dbf235569da7f1d41a13e8161fc020b48a6",
+      "replacements": [
+        {
+          "before": "let c = a(o.font), l = ne(o.text",
+          "after": "if (o.officeMath) {\n    const start = Math.max(0, Math.min(s.start, o.text.length)), end = Math.max(start, Math.min(s.end, o.text.length));\n    if (end <= start || !(o.w > 0) || !(o.h > 0)) continue;\n    const box = (e.ownerDocument ?? document).createElement('div');\n    if (active) box.setAttribute('data-office-find-active', '');\n    box.setAttribute('data-office-find-math', '');\n    const transform = o.transform ? 'transform:' + o.transform + ';transform-origin:top left;' : '';\n    box.style.cssText = 'position:absolute;left:' + T(o.x, r) + ';top:' + T(o.y, i) + ';width:' + T(o.w, r) + ';height:' + T(o.h, i) + ';' + transform + 'background:' + n + ';pointer-events:none;';\n    e.appendChild(box);\n    continue;\n}\nlet c = a(o.font), l = ne(o.text",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

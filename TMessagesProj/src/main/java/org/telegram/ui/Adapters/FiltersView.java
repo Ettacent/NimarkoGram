@@ -7,6 +7,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.graphics.drawable.ShapeDrawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -35,6 +36,7 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CombinedDrawable;
@@ -55,7 +57,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class FiltersView extends RecyclerListView {
+public class FiltersView extends RecyclerListView implements Theme.Colorable {
 
     public final static int FILTER_TYPE_MEDIA = 0;
     public final static int FILTER_TYPE_FILES = 1;
@@ -208,7 +210,7 @@ public class FiltersView extends RecyclerListView {
         setWillNotDraw(false);
         setHideIfEmpty(false);
         setSelectorRadius(AndroidUtilities.dp(28));
-        setSelectorDrawableColor(getThemedColor(Theme.key_listSelector));
+        ThemeBind.listSelectorColor(this, Theme.key_listSelector, resourcesProvider);
     }
 
     public MediaFilterData getFilterAt(int i) {
@@ -601,15 +603,8 @@ public class FiltersView extends RecyclerListView {
         }
     }
 
+    @Override
     public void updateColors() {
-        getRecycledViewPool().clear();
-
-        for (int i = 0; i < getChildCount(); i++) {
-            View view = getChildAt(i);
-            if (view instanceof FilterView) {
-                ((FilterView) view).updateColors();
-            }
-        }
 
         for (int i = 0; i < getCachedChildCount(); i++) {
             View view = getCachedChildAt(i);
@@ -624,7 +619,6 @@ public class FiltersView extends RecyclerListView {
                 ((FilterView) view).updateColors();
             }
         }
-        setSelectorDrawableColor(getThemedColor(Theme.key_listSelector));
     }
 
     private class Adapter extends RecyclerListView.SelectionAdapter {
@@ -694,7 +688,7 @@ public class FiltersView extends RecyclerListView {
         }
     };
 
-    public static class FilterView extends FrameLayout {
+    public static class FilterView extends FrameLayout implements Theme.Colorable {
 
         private final Theme.ResourcesProvider resourcesProvider;
 
@@ -715,10 +709,18 @@ public class FiltersView extends RecyclerListView {
             updateColors();
         }
 
-        private void updateColors() {
+        @Override
+        public void updateColors() {
+            if (getBackground() instanceof ShapeDrawable) {
+                Theme.setDrawableColor(getBackground(), getThemedColor(Theme.key_groupcreate_spanBackground));
+                invalidate();
+            } else {
             setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(28), getThemedColor(Theme.key_groupcreate_spanBackground)));
+            }
+            if (titleView != null) {
             titleView.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
-            if (thumbDrawable != null) {
+            }
+            if (thumbDrawable != null && data != null) {
                 if (data.filterType == FILTER_TYPE_ARCHIVE) {
                     Theme.setCombinedDrawableColor(thumbDrawable, getThemedColor(Theme.key_featuredStickers_addButton), false);
                     Theme.setCombinedDrawableColor(thumbDrawable, getThemedColor(Theme.key_featuredStickers_buttonText), true);

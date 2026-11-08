@@ -53,6 +53,7 @@ import me.vkryl.android.AnimatorUtils;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
+import java.util.HashSet;
 @SuppressLint("ViewConstructor")
 public class FragmentSearchField extends FrameLayout implements FactorAnimator.Target, Theme.Colorable {
     private static final int ANIMATOR_ID_CLOSE_BUTTON_VISIBLE = 0;
@@ -63,7 +64,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     private final BoolAnimator animatorCloseIconVisible = new BoolAnimator(ANIMATOR_ID_CLOSE_BUTTON_VISIBLE, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380, false);
     private final BoolAnimator animatorSearchIconVisible = new BoolAnimator(ANIMATOR_ID_SEARCH_ICON_VISIBLE, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380, true);
     private final FactorAnimator animatorSearchFiltersWidth = new FactorAnimator(ANIMATOR_ID_SEARCH_FILTERS_WIDTH, this, AnimatorUtils.DECELERATE_INTERPOLATOR, 280);
-    
+
     private final BoolAnimator animatorInfoCardsVisible = new BoolAnimator(ANIMATOR_ID_INFO_CARDS_VISIBLE, this, CubicBezierInterpolator.EASE_OUT_QUINT, 250, true);
 
     private final Theme.ResourcesProvider resourcesProvider;
@@ -71,7 +72,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     private final ImageView searchIcon;
     private final ImageView closeIcon;
     private final LinearLayout additionalIconsLayout;
-    
+
     private app.nimarkogram.messenger.infocards.InfoCardStripView infoCards;
     private boolean infoCardsSuppressed;
     private boolean searchIconOnRight;
@@ -199,12 +200,12 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         addView(searchFilterLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 4, 0, 4, 0));
 
         if (withInfoCards) {
-            
+
             setClipChildren(false);
             setClipToPadding(false);
             infoCards = new app.nimarkogram.messenger.infocards.InfoCardStripView(context, resourcesProvider);
             infoCards.setVisibilityFactor(1f);
-            
+
             addView(infoCards, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT,
                     (InfoCardsConfig.isOnLeft() ? Gravity.LEFT : Gravity.RIGHT), 6, 0, 6, 0));
         }
@@ -307,7 +308,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         final boolean cardsEnabled = infoCards != null && !infoCardsSuppressed
                 && InfoCardsConfig.isEnabled() && infoCards.getChildCount() > 0;
         searchIconOnRight = cardsEnabled && InfoCardsConfig.isOnLeft() && !LocaleController.isRTL;
-        final int filtersWidth = (int) animatorSearchFiltersWidth.getFactor() + dp(6); 
+        final int filtersWidth = (int) animatorSearchFiltersWidth.getFactor() + dp(6);
         int pStart = Math.max(filtersWidth, dp(searchIconOnRight ? 12 : 48));
         int pEnd = dp(48) + additionalIconsLayout.getMeasuredWidth();
         int cardInset = 0;
@@ -414,6 +415,13 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         invalidate();
     }
 
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(Theme.key_windowBackgroundWhite);
+        colors.add(Theme.key_windowBackgroundWhiteBlackText);
+        colors.add(Theme.key_listSelector);
+        colors.add(Theme.key_groupcreate_cursor);
+    }
     private int getThemedColor(int key) {
         return Theme.getColor(key, resourcesProvider);
     }

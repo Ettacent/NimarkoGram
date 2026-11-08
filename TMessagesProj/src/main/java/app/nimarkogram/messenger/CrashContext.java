@@ -27,7 +27,8 @@ public final class CrashContext {
         CONSTRUCTOR_CALL_BEGIN, CONSTRUCTOR_CALL_END,
         CONSTRUCTOR_UNHOOK_BEGIN, CONSTRUCTOR_UNHOOK_END,
         MIXED_UNHOOK_BEGIN, MIXED_UNHOOK_END,
-        STATIC_UNHOOK_BEGIN, STATIC_UNHOOK_END
+        STATIC_UNHOOK_BEGIN, STATIC_UNHOOK_END,
+        BACKEND_READY_HOOKS_UNVERIFIED
     }
     private static final int MAX_VALUE_LENGTH = 160;
     private static final long MIN_UPDATE_INTERVAL_MS = 250L;
@@ -509,7 +510,8 @@ public final class CrashContext {
         try {
             Context context = ApplicationLoader.applicationContext;
             if (context == null) return "unavailable";
-            Resources resources = context.getResources();
+            Resources resources = ApplicationLoader.rawResources();
+            if (resources == null) resources = context.getResources();
             int id = resources.getIdentifier("com.google.firebase.crashlytics.mapping_file_id",
                     "string", context.getPackageName());
             if (id != 0) return safe(resources.getString(id));

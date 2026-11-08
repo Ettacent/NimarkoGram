@@ -30,6 +30,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ChatThemeController;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
@@ -48,6 +49,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.theme.ITheme;
 import org.telegram.ui.ChatBackgroundDrawable;
 
@@ -55,7 +57,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.io.File;
 
-public class ThemeSmallPreviewView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
+public class ThemeSmallPreviewView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, Theme.Colorable {
 
     private final static int PATTERN_BITMAP_MAXWIDTH = 120;
     private final static int PATTERN_BITMAP_MAXHEIGHT = 140;
@@ -113,7 +115,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
         this.resourcesProvider = resourcesProvider;
         this.avatarImageReceiver = new ImageReceiver(this);
         this.avatarImageReceiver.setRoundRadius(AndroidUtilities.dp(8));
-        setBackgroundColor(getThemedColor(Theme.key_dialogBackgroundGray));
+        ThemeBind.backgroundColor(this, Theme.key_dialogBackgroundGray, resourcesProvider);
         backupImageView = new BackupImageView(context);
         backupImageView.getImageReceiver().setCrossfadeWithOldImage(true);
         backupImageView.getImageReceiver().setAllowStartLottieAnimation(false);
@@ -642,6 +644,19 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     }
 
     @Override
+    public void updateColors() {
+        try {
+            backgroundFillPaint.setColor(getThemedColor(Theme.key_dialogBackgroundGray));
+            if (noThemeTextPaint != null) {
+                noThemeTextPaint.setColor(getThemedColor(Theme.key_chat_emojiPanelTrendingDescription));
+            }
+            invalidate();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    @Override
     public void setBackgroundColor(int color) {
         backgroundFillPaint.setColor(getThemedColor(Theme.key_dialogBackgroundGray));
         if (noThemeTextPaint != null) {
@@ -989,7 +1004,7 @@ public class ThemeSmallPreviewView extends FrameLayout implements NotificationCe
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
+        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
         attached = true;
         if (chatThemeItem != null && lastThemeIndex != chatThemeItem.themeIndex) {
             setItem(chatThemeItem, parentDialogId, false);

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -603,9 +605,17 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
         final int[] messageCount = {messages != null ? messages.size() : 0};
 
         if (participantMessageCounts != null && participantMessageCountsLoaded) {
+            if (isSingleUsersMode) {
+                if (restrictUserDeleteAllMessages) {
+                    for (int count : participantMessageCounts) {
+                        messageCount[0] += count;
+                    }
+                }
+            } else {
             deleteAll.forEachSelected((o, i) -> {
                 messageCount[0] += participantMessageCounts[i];
             });
+            }
         }
 
         return LocaleController.formatPluralString("DeleteOptionsTitle", messageCount[0]);
@@ -891,7 +901,7 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
 
                 items.add(UItem.asButton(RESTRICT_DURATION, LocaleController.getString(R.string.UserRestrictionsDuration), value));
             }
-             
+
             if (canRestrict) {
                 items.add(UItem.asShadowCollapseButton(1, getString(getRestrictToggleTextKey()))
                         .setCollapsed(!restrict)
@@ -1045,7 +1055,7 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
                     onRestrictionsChanged();
                 } else if (item.id == OPTION_DELETE_MESSAGES) {
                     restrictUserDeleteAllMessages = !restrictUserDeleteAllMessages;
-                    updateTitleAnimated();
+                    onDeleteAllChanged();
                 } else if (item.id == OPTION_DELETE_REACTIONS) {
                     restrictUserDeleteAllReactions = !restrictUserDeleteAllReactions;
                     updateTitleAnimated();
@@ -1096,7 +1106,7 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
             saveScrollPosition();
             adapter.update(true);
             applyScrolledPosition(true);
-            updateTitleAnimated();
+            onDeleteAllChanged();
         } else if (item.viewType == VIEW_TYPE_SHADOW_COLLAPSE_BUTTON) {
             restrict = !restrict;
             banOrRestrict.setFilter(restrict ? restrictFilter : banFilter);
@@ -1314,7 +1324,7 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
 
     private static final int RESTRICT_DURATION = 1390;
 
-    private void selectDate() { 
+    private void selectDate() {
         BottomSheet.Builder builder = new BottomSheet.Builder(getContext());
         builder.setApplyTopPadding(false);
 
@@ -1379,5 +1389,15 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
         builder.setCustomView(linearLayout);
         builder.show();
     }
-     
+
+    @Override
+    public void onThemeColorsChanged() {
+        super.onThemeColorsChanged();
+        final int color = getThemedColor(Theme.key_windowBackgroundGray);
+        if (color != lastThemedBackgroundColor) {
+            lastThemedBackgroundColor = color;
+            setBackgroundColor(color);
+        }
+    }
+    private int lastThemedBackgroundColor;
 }

@@ -54,6 +54,7 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
 
+import java.util.HashSet;
 public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements Theme.Colorable {
 
     public interface ScrollSlidingTabStripDelegate {
@@ -671,6 +672,13 @@ public class ScrollSlidingTextTabStrip extends HorizontalScrollView implements T
             appliedInactiveColor = inactive;
             invalidate();
         }
+        if (backgroundDrawable != null) {
+            backgroundDrawable.updateColors();
+        }
+    }
+    @Override
+    public void addColorKeys(HashSet<Integer> colors) {
+        colors.add(activeTextColorKey);
     }
 
     public int getCurrentTabId() {

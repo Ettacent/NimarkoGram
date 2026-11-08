@@ -39,7 +39,7 @@ public class UItem extends AdapterWithDiffUtils.Item {
     public int pad;
     public boolean hideDivider;
     public int iconResId;
-    
+
     public boolean colorfulIcon;
     public int iconColorTop, iconColorBottom;
     public Drawable drawable;
@@ -140,6 +140,11 @@ public class UItem extends AdapterWithDiffUtils.Item {
         return i;
     }
 
+    public static UItem asViewportCustom(View view) {
+        UItem i = new UItem(UniversalAdapter.VIEW_TYPE_VIEWPORT_CUSTOM, false);
+        i.view = view;
+        return i;
+    }
     public static UItem asFullscreenCustom(View view, int minusHeight) {
         return asFullscreenCustom(view, minusHeight, false);
     }
@@ -751,7 +756,7 @@ public class UItem extends AdapterWithDiffUtils.Item {
     }
     public String getLinkAlias()                                 { return linkAlias; }
     public UItem setCheckBoxIcon(int iconResId)                    { this.iconResId = iconResId; return this; }
-     
+
     public UItem setTransparent(boolean transparent)               { this.transparent = transparent; return this; }
 
     public UItem setColorfulIcon(int iconResId, int color) {

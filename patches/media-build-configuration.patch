@@ -1,0 +1,627 @@
+diff --git a/common_config.gradle b/common_config.gradle
+--- a/common_config.gradle
++++ b/common_config.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -33,7 +35,7 @@
+     }
+ 
+     lintOptions {
+-        checkTestSources true
++        checkTestSources = true
+     }
+ 
+     compileOptions {
+@@ -46,13 +48,18 @@
+             jvmArgs "-Xmx2g"
+             systemProperty "robolectric.graphicsMode", "NATIVE"
+         }
+-        unitTests.includeAndroidResources true
++        unitTests.includeAndroidResources = true
+         // See https://developer.android.com/training/testing/instrumented-tests/androidx-test-libraries/runner
+-        execution 'ANDROIDX_TEST_ORCHESTRATOR'
++        execution = 'ANDROIDX_TEST_ORCHESTRATOR'
+     }
+ }
+ 
+ dependencies {
++
++
++    compileOnly 'com.google.code.findbugs:jsr305:' + jsr305Version
++    compileOnly 'org.jetbrains.kotlin:kotlin-annotations-jvm:' + kotlinAnnotationsVersion
++    compileOnly 'com.google.j2objc:j2objc-annotations:2.8'
+     // See https://developer.android.com/training/testing/instrumented-tests/androidx-test-libraries/runner
+     androidTestUtil 'androidx.test:orchestrator:1.6.1'
+ }
+diff --git a/libraries/common/build.gradle b/libraries/common/build.gradle
+--- a/libraries/common/build.gradle
++++ b/libraries/common/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -26,7 +28,7 @@
+ }
+ 
+ android {
+-    namespace 'androidx.media3.common'
++    namespace = 'androidx.media3.common'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/common_ktx/build.gradle b/libraries/common_ktx/build.gradle
+--- a/libraries/common_ktx/build.gradle
++++ b/libraries/common_ktx/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2024 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -20,7 +22,7 @@
+ apply plugin: 'kotlin-android'
+ 
+ android {
+-    namespace 'androidx.media3.common.ktx'
++    namespace = 'androidx.media3.common.ktx'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/container/build.gradle b/libraries/container/build.gradle
+--- a/libraries/container/build.gradle
++++ b/libraries/container/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2023 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply plugin: 'com.android.library'
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ android {
+-    namespace 'androidx.media3.container'
++    namespace = 'androidx.media3.container'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/database/build.gradle b/libraries/database/build.gradle
+--- a/libraries/database/build.gradle
++++ b/libraries/database/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2021 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.database'
++    namespace = 'androidx.media3.database'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/datasource/build.gradle b/libraries/datasource/build.gradle
+--- a/libraries/datasource/build.gradle
++++ b/libraries/datasource/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.datasource'
++    namespace = 'androidx.media3.datasource'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/datasource_cronet/build.gradle b/libraries/datasource_cronet/build.gradle
+--- a/libraries/datasource_cronet/build.gradle
++++ b/libraries/datasource_cronet/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2014 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.datasource.cronet'
++    namespace = 'androidx.media3.datasource.cronet'
+ 
+     publishing {
+         singleVariant('release') {
+diff --git a/libraries/datasource_okhttp/build.gradle b/libraries/datasource_okhttp/build.gradle
+--- a/libraries/datasource_okhttp/build.gradle
++++ b/libraries/datasource_okhttp/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.datasource.okhttp'
++    namespace = 'androidx.media3.datasource.okhttp'
+ 
+     defaultConfig.minSdkVersion project.ext.minSdkVersion
+ 
+diff --git a/libraries/datasource_rtmp/build.gradle b/libraries/datasource_rtmp/build.gradle
+--- a/libraries/datasource_rtmp/build.gradle
++++ b/libraries/datasource_rtmp/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.datasource.rtmp'
++    namespace = 'androidx.media3.datasource.rtmp'
+ 
+     publishing {
+         singleVariant('release') {
+diff --git a/libraries/decoder/build.gradle b/libraries/decoder/build.gradle
+--- a/libraries/decoder/build.gradle
++++ b/libraries/decoder/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2021 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder'
++    namespace = 'androidx.media3.decoder'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/decoder_av1/build.gradle b/libraries/decoder_av1/build.gradle
+--- a/libraries/decoder_av1/build.gradle
++++ b/libraries/decoder_av1/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2019 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.av1'
++    namespace = 'androidx.media3.decoder.av1'
+ 
+     defaultConfig {
+         externalNativeBuild {
+diff --git a/libraries/decoder_ffmpeg/build.gradle b/libraries/decoder_ffmpeg/build.gradle
+--- a/libraries/decoder_ffmpeg/build.gradle
++++ b/libraries/decoder_ffmpeg/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.ffmpeg'
++    namespace = 'androidx.media3.decoder.ffmpeg'
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/decoder_flac/build.gradle b/libraries/decoder_flac/build.gradle
+--- a/libraries/decoder_flac/build.gradle
++++ b/libraries/decoder_flac/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.flac'
++    namespace = 'androidx.media3.decoder.flac'
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/decoder_iamf/build.gradle b/libraries/decoder_iamf/build.gradle
+--- a/libraries/decoder_iamf/build.gradle
++++ b/libraries/decoder_iamf/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2024 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.iamf'
++    namespace = 'androidx.media3.decoder.iamf'
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/decoder_mpegh/build.gradle b/libraries/decoder_mpegh/build.gradle
+--- a/libraries/decoder_mpegh/build.gradle
++++ b/libraries/decoder_mpegh/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2024 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.mpegh'
++    namespace = 'androidx.media3.decoder.mpegh'
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/decoder_opus/build.gradle b/libraries/decoder_opus/build.gradle
+--- a/libraries/decoder_opus/build.gradle
++++ b/libraries/decoder_opus/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.opus'
++    namespace = 'androidx.media3.decoder.opus'
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/decoder_vp9/build.gradle b/libraries/decoder_vp9/build.gradle
+--- a/libraries/decoder_vp9/build.gradle
++++ b/libraries/decoder_vp9/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.decoder.vp9'
++    namespace = 'androidx.media3.decoder.vp9'
+ 
+     sourceSets {
+         main {
+diff --git a/libraries/effect/build.gradle b/libraries/effect/build.gradle
+--- a/libraries/effect/build.gradle
++++ b/libraries/effect/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2022 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ apply plugin: 'kotlin-android'
+ android {
+-    namespace 'androidx.media3.effect'
++    namespace = 'androidx.media3.effect'
+ 
+     buildTypes {
+         debug {
+@@ -34,7 +36,7 @@
+ 
+     lintOptions {
+         // TODO: b/353490583 - Enable this once the violations are fixed.
+-        checkTestSources false
++        checkTestSources = false
+     }
+ 
+     publishing {
+diff --git a/libraries/effect_lottie/build.gradle b/libraries/effect_lottie/build.gradle
+--- a/libraries/effect_lottie/build.gradle
++++ b/libraries/effect_lottie/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2026 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -14,7 +16,7 @@
+ apply plugin: 'com.android.library'
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ android {
+-    namespace 'androidx.media3.effect.lottie'
++    namespace = 'androidx.media3.effect.lottie'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer/build.gradle b/libraries/exoplayer/build.gradle
+--- a/libraries/exoplayer/build.gradle
++++ b/libraries/exoplayer/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2016 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -19,7 +21,7 @@
+ apply plugin: 'kotlin-android'
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer'
++    namespace = 'androidx.media3.exoplayer'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer_dash/build.gradle b/libraries/exoplayer_dash/build.gradle
+--- a/libraries/exoplayer_dash/build.gradle
++++ b/libraries/exoplayer_dash/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2017 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.dash'
++    namespace = 'androidx.media3.exoplayer.dash'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer_hls/build.gradle b/libraries/exoplayer_hls/build.gradle
+--- a/libraries/exoplayer_hls/build.gradle
++++ b/libraries/exoplayer_hls/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2017 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.hls'
++    namespace = 'androidx.media3.exoplayer.hls'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer_ima/build.gradle b/libraries/exoplayer_ima/build.gradle
+--- a/libraries/exoplayer_ima/build.gradle
++++ b/libraries/exoplayer_ima/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2017 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,9 +17,9 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.ima'
++    namespace = 'androidx.media3.exoplayer.ima'
+ 
+-    compileOptions.coreLibraryDesugaringEnabled true
++    compileOptions.coreLibraryDesugaringEnabled = true
+ 
+     sourceSets {
+         androidTest.assets.srcDir '../test_data/src/test/assets'
+diff --git a/libraries/exoplayer_rtsp/build.gradle b/libraries/exoplayer_rtsp/build.gradle
+--- a/libraries/exoplayer_rtsp/build.gradle
++++ b/libraries/exoplayer_rtsp/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.rtsp'
++    namespace = 'androidx.media3.exoplayer.rtsp'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer_smoothstreaming/build.gradle b/libraries/exoplayer_smoothstreaming/build.gradle
+--- a/libraries/exoplayer_smoothstreaming/build.gradle
++++ b/libraries/exoplayer_smoothstreaming/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2017 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.smoothstreaming'
++    namespace = 'androidx.media3.exoplayer.smoothstreaming'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/exoplayer_workmanager/build.gradle b/libraries/exoplayer_workmanager/build.gradle
+--- a/libraries/exoplayer_workmanager/build.gradle
++++ b/libraries/exoplayer_workmanager/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ /*
+  * Copyright (C) 2019 The Android Open Source Project
+  *
+@@ -17,7 +19,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.exoplayer.workmanager'
++    namespace = 'androidx.media3.exoplayer.workmanager'
+ 
+     publishing {
+         singleVariant('release') {
+diff --git a/libraries/extractor/build.gradle b/libraries/extractor/build.gradle
+--- a/libraries/extractor/build.gradle
++++ b/libraries/extractor/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright (C) 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.extractor'
++    namespace = 'androidx.media3.extractor'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/inspector/build.gradle b/libraries/inspector/build.gradle
+--- a/libraries/inspector/build.gradle
++++ b/libraries/inspector/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2025 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.inspector'
++    namespace = 'androidx.media3.inspector'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/inspector_frame/build.gradle b/libraries/inspector_frame/build.gradle
+--- a/libraries/inspector_frame/build.gradle
++++ b/libraries/inspector_frame/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2025 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.inspector.frame'
++    namespace = 'androidx.media3.inspector.frame'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/muxer/build.gradle b/libraries/muxer/build.gradle
+--- a/libraries/muxer/build.gradle
++++ b/libraries/muxer/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2022 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply plugin: 'com.android.library'
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ android {
+-    namespace 'androidx.media3.muxer'
++    namespace = 'androidx.media3.muxer'
+ 
+     buildTypes {
+         debug {
+diff --git a/libraries/session/build.gradle b/libraries/session/build.gradle
+--- a/libraries/session/build.gradle
++++ b/libraries/session/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2019 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -15,7 +17,7 @@
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ 
+ android {
+-    namespace 'androidx.media3.session'
++    namespace = 'androidx.media3.session'
+ 
+     buildTypes {
+         debug {
+@@ -29,7 +31,7 @@
+         }
+     }
+     buildFeatures {
+-        aidl true
++        aidl = true
+     }
+ }
+ dependencies {
+diff --git a/libraries/transformer/build.gradle b/libraries/transformer/build.gradle
+--- a/libraries/transformer/build.gradle
++++ b/libraries/transformer/build.gradle
+@@ -1,3 +1,5 @@
++/* Modifications Copyright (C) 2026 Ettacent */
++
+ // Copyright 2020 The Android Open Source Project
+ //
+ // Licensed under the Apache License, Version 2.0 (the "License");
+@@ -14,7 +16,7 @@
+ apply plugin: 'com.android.library'
+ apply from: "$gradle.ext.androidxMediaSettingsDir/common_config.gradle"
+ android {
+-    namespace 'androidx.media3.transformer'
++    namespace = 'androidx.media3.transformer'
+ 
+     buildTypes {
+         debug {
+@@ -29,7 +31,7 @@
+ 
+     lintOptions {
+         // TODO: b/353490583 - Enable this once the violations are fixed.
+-        checkTestSources false
++        checkTestSources = false
+     }
+ 
+     publishing {

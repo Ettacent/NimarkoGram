@@ -12,6 +12,7 @@ import android.graphics.RectF;
 import app.nimarkogram.messenger.icons.IconResources;
 
 public final class BoundedPackIconRenderer {
+    private final boolean useSourceForeground;
     private IconResources.PreparedIcon icon;
     private boolean ready;
     private final Rect ink = new Rect();
@@ -21,6 +22,11 @@ public final class BoundedPackIconRenderer {
     private final Paint tintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public BoundedPackIconRenderer() {
+        this(true);
+    }
+
+    public BoundedPackIconRenderer(boolean useSourceForeground) {
+        this.useSourceForeground = useSourceForeground;
         tintPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
     }
 
@@ -68,11 +74,13 @@ public final class BoundedPackIconRenderer {
         canvas.saveLayer(target, null);
         bitmapPaint.setAlpha(Math.round(foreground.getAlpha() * opacity));
         canvas.drawBitmap(icon.bitmap, ink, target, bitmapPaint);
+        if (useSourceForeground || !icon.noTint) {
         tintPaint.setColor(foreground.getColor() | 0xff000000);
         tintPaint.setColorFilter(foreground.getColorFilter());
         tintPaint.setShader(foreground.getShader());
         canvas.drawRect(target, tintPaint);
         tintPaint.setShader(null);
+        }
         canvas.restoreToCount(save);
     }
 }

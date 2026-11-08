@@ -84,8 +84,10 @@ import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.LaunchActivity;
 
+import org.telegram.utils.glass.GlassEngine;
 import java.util.ArrayList;
 
+import java.util.HashSet;
 public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     private final static boolean AVOID_SYSTEM_CUTOUT_FULLSCREEN = false;
 
@@ -228,6 +230,24 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     protected boolean allowNestedScroll = true;
 
     protected Drawable shadowDrawable;
+    private static class FilterTrackingDrawable extends android.graphics.drawable.DrawableWrapper {
+        private ColorFilter colorFilter;
+
+        FilterTrackingDrawable(Drawable drawable) {
+            super(drawable);
+        }
+
+        @Override
+        public void setColorFilter(ColorFilter colorFilter) {
+            this.colorFilter = colorFilter;
+            super.setColorFilter(colorFilter);
+        }
+
+        @Override
+        public ColorFilter getColorFilter() {
+            return colorFilter;
+        }
+    }
     protected int backgroundPaddingTop;
     protected int backgroundPaddingLeft;
 
@@ -391,7 +411,39 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         }
     }
 
-    public class ContainerView extends FrameLayout implements NestedScrollingParent {
+    public void onThemeColorsChanged() {
+        if (this instanceof Theme.Colorable && !dispatchingThemeColors) {
+            dispatchingThemeColors = true;
+            try {
+                ((Theme.Colorable) this).updateColors();
+            } catch (Exception e) {
+                FileLog.e(e);
+            } finally {
+                dispatchingThemeColors = false;
+            }
+        }
+    }
+    private boolean dispatchingThemeColors;
+
+    public void addThemeColorKeys(HashSet<Integer> keys) {
+    }
+
+    public class ContainerView extends FrameLayout implements NestedScrollingParent, Theme.Colorable {
+
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            addThemeColorKeys(colors);
+        }
+
+        @Override
+        public void updateColors() {
+            try {
+                updateThemedSheetColors();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            onThemeColorsChanged();
+        }
 
         private VelocityTracker velocityTracker = null;
         private int startedTrackingX;
@@ -1125,6 +1177,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         drawNavigationBar = value;
     }
 
+    protected final GlassEngine glassEngine = new GlassEngine();
     public static class BottomSheetDelegate implements BottomSheetDelegateInterface {
         @Override
         public void onOpenAnimationStart() {
@@ -1166,12 +1219,12 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
             imageView = new ImageView(context);
             imageView.setScaleType(ImageView.ScaleType.CENTER);
-            imageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_dialogIcon), PorterDuff.Mode.MULTIPLY));
+            ThemeBind.colorFilter(imageView, Theme.key_dialogIcon, resourcesProvider, PorterDuff.Mode.MULTIPLY);
             addView(imageView, LayoutHelper.createFrame(56, 48, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT)));
 
             imageView2 = new ImageView(context);
             imageView2.setScaleType(ImageView.ScaleType.CENTER);
-            imageView2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_radioBackgroundChecked, resourcesProvider), PorterDuff.Mode.SRC_IN));
+            ThemeBind.colorFilter(imageView2, Theme.key_radioBackgroundChecked, resourcesProvider, PorterDuff.Mode.SRC_IN);
             addView(imageView2, LayoutHelper.createFrame(56, 48, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT)));
 
             textView = new AnimatedEmojiSpan.TextViewEmojis(context);
@@ -1180,18 +1233,18 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             textView.setGravity(Gravity.CENTER_HORIZONTAL);
             textView.setEllipsize(TextUtils.TruncateAt.END);
             if (type == 0 || type == Builder.CELL_TYPE_CALL) {
-                textView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+                ThemeBind.textColor(textView, Theme.key_dialogTextBlack, resourcesProvider);
                 textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
                 addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL));
             } else if (type == 1) {
                 textView.setGravity(Gravity.CENTER);
-                textView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+                ThemeBind.textColor(textView, Theme.key_dialogTextBlack, resourcesProvider);
                 textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
                 textView.setTypeface(AndroidUtilities.bold());
                 addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
             } else if (type == 2) {
                 textView.setGravity(Gravity.CENTER);
-                textView.setTextColor(getThemedColor(Theme.key_featuredStickers_buttonText));
+                ThemeBind.textColor(textView, Theme.key_featuredStickers_buttonText, resourcesProvider);
                 textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
                 textView.setTypeface(AndroidUtilities.bold());
                 textView.setBackground(Theme.AdaptiveRipple.filledRect(getThemedColor(Theme.key_featuredStickers_addButton), 6));
@@ -1326,8 +1379,8 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         touchSlop = vc.getScaledTouchSlop();
 
         Rect padding = new Rect();
-        shadowDrawable = context.getResources().getDrawable(R.drawable.sheet_shadow_round).mutate();
-        shadowDrawable.setColorFilter(new PorterDuffColorFilter(internalBackgroundColor = getThemedColor(Theme.key_dialogBackground), PorterDuff.Mode.MULTIPLY));
+        shadowDrawable = new FilterTrackingDrawable(context.getResources().getDrawable(R.drawable.sheet_shadow_round).mutate());
+        shadowDrawable.setColorFilter(themedBackgroundFilter = new PorterDuffColorFilter(internalBackgroundColor = getThemedColor(Theme.key_dialogBackground), PorterDuff.Mode.MULTIPLY));
         shadowDrawable.getPadding(padding);
         backgroundPaddingLeft = padding.left;
         backgroundPaddingTop = padding.top;
@@ -1422,7 +1475,7 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     }
 
     public void fixNavigationBar() {
-        fixNavigationBar(getThemedColor(Theme.key_windowBackgroundGray));
+        fixNavigationBarKey(Theme.key_windowBackgroundGray);
     }
 
     public void fixNavigationBar(int bgColor) {
@@ -1430,7 +1483,47 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         drawDoubleNavigationBar = true;
         scrollNavBar = true;
         navBarColorKey = -1;
+        fixedNavBarColorKey = -1;
         setOverlayNavBarColor(navBarColor = bgColor);
+    }
+
+    private int fixedNavBarColorKey = -1;
+
+    public void fixNavigationBarKey(int key) {
+        fixNavigationBar(getThemedColor(key));
+        fixedNavBarColorKey = key;
+    }
+
+    private void updateThemedSheetColors() {
+        if (backgroundColorKey >= 0 && shadowDrawable != null && themedBackgroundFilter != null && shadowDrawable.getColorFilter() == themedBackgroundFilter) {
+            final int color = getThemedColor(backgroundColorKey);
+            if (color != internalBackgroundColor) {
+                shadowDrawable.setColorFilter(themedBackgroundFilter = new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+                internalBackgroundColor = color;
+                if (container != null) {
+                    container.invalidate();
+                }
+                if (containerView != null) {
+                    containerView.invalidate();
+                }
+            }
+        }
+        if (fixedNavBarColorKey >= 0 && navBarColorKey < 0 && overlayDrawNavBarColor == navBarColor) {
+            final int color = getThemedColor(fixedNavBarColorKey);
+            if (color != navBarColor) {
+                overlayDrawNavBarColor = navBarColor = color;
+                if (container != null) {
+                    container.invalidate();
+                }
+                final boolean light = AndroidUtilities.computePerceivedBrightness(color) > .721;
+                if (attachedFragment != null) {
+                    AndroidUtilities.setLightNavigationBar(getWindowView(), light);
+                } else {
+                    AndroidUtilities.setNavigationBarColor(this, color, false);
+                    AndroidUtilities.setLightNavigationBar(this, light);
+                }
+            }
+        }
     }
 
     @Override
@@ -1539,12 +1632,12 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             int height = 48;
             titleView.setText(title);
             if (bigTitle) {
-                titleView.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+                ThemeBind.textColor(titleView, Theme.key_dialogTextBlack, resourcesProvider);
                 titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
                 titleView.setTypeface(AndroidUtilities.bold());
                 titleView.setPadding(dp(21), dp(multipleLinesTitle ? 14 : 6), dp(21), dp(8));
             } else {
-                titleView.setTextColor(getThemedColor(Theme.key_dialogTextGray2));
+                ThemeBind.textColor(titleView, Theme.key_dialogTextGray2, resourcesProvider);
                 titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
                 titleView.setPadding(dp(16), dp(multipleLinesTitle ? 8 : 0), dp(16), dp(8));
             }
@@ -1694,6 +1787,14 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     }
 
     private int internalBackgroundColor;
+    private int backgroundColorKey = Theme.key_dialogBackground;
+    private PorterDuffColorFilter themedBackgroundFilter;
+
+    public void setBackgroundColorKey(int key) {
+        setBackgroundColor(getThemedColor(key));
+        shadowDrawable.setColorFilter(themedBackgroundFilter = new PorterDuffColorFilter(internalBackgroundColor, PorterDuff.Mode.MULTIPLY));
+        backgroundColorKey = key;
+    }
     public void setBackgroundColor(int color) {
         shadowDrawable.setColorFilter(color, PorterDuff.Mode.MULTIPLY);
         if (internalBackgroundColor != color) {

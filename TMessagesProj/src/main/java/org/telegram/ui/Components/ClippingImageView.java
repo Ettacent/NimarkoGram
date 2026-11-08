@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -16,7 +18,6 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
-import android.graphics.Region;
 import android.graphics.Shader;
 import androidx.annotation.Keep;
 import android.view.View;
@@ -177,61 +178,13 @@ public class ClippingImageView extends View {
     public int[] getRadius() {
         return radius;
     }
-    public boolean hasBitmap() {
-        return bmp != null && !bmp.isRecycled();
-    }
-    private final RectF backdropBounds = new RectF();
-    public boolean getBackdropBounds(RectF bounds) {
-        bounds.setEmpty();
-        final float scale = getScaleY();
-        if (getVisibility() != VISIBLE || !hasBitmap() || !Float.isFinite(scale) || scale <= 0) return false;
-        final float horizontalInset = needRadius ? imageX : 0;
-        final float verticalInset = needRadius ? imageY : Math.max(0, imageY);
-        bounds.set(Math.max(horizontalInset, clipLeft) / scale,
-                verticalInset / scale,
-                getWidth() - Math.max(horizontalInset, clipRight) / scale,
-                getHeight() - verticalInset / scale);
-        return !bounds.isEmpty();
-    }
-    public void drawBackdrop(Canvas canvas) {
-        if (getBackdropBounds(backdropBounds) && !canvas.quickReject(backdropBounds, Canvas.EdgeType.AA)) {
-            drawImage(canvas, true);
-        }
-    }
-    public boolean hasBackdropOutsideViewport() {
-        if (!getBackdropBounds(backdropBounds)) return false;
-        final float scale = getScaleY();
-        return backdropBounds.left < clipLeft / scale
-                || backdropBounds.top < clipTop / scale
-                || backdropBounds.right > getWidth() - clipRight / scale
-                || backdropBounds.bottom > getHeight() - clipBottom / scale;
-    }
-    public void drawOutsideViewport(Canvas canvas) {
-        final float scale = getScaleY();
-        if (scale <= 0 || !hasBitmap()) return;
-        final int save = canvas.save();
-        try {
-            if (canvas.clipRect(clipLeft / scale, clipTop / scale,
-                    getWidth() - clipRight / scale, getHeight() - clipBottom / scale,
-                    Region.Op.DIFFERENCE)) {
-                drawBackdrop(canvas);
-            }
-        } finally {
-            canvas.restoreToCount(save);
-        }
-    }
 
     public void onDraw(Canvas canvas) {
-        drawImage(canvas, false);
-    }
-    private void drawImage(Canvas canvas, boolean backdrop) {
         if (getVisibility() != VISIBLE) {
             return;
         }
         if (bmp != null && !bmp.isRecycled()) {
             float scaleY = getScaleY();
-            final float top = backdrop ? imageY : clipTop;
-            final float bottom = backdrop ? imageY : clipBottom;
             canvas.save();
 
             if (needRadius) {
@@ -240,7 +193,7 @@ public class ClippingImageView extends View {
                 bitmapRect.set(0, 0, bmp.getWidth(), bmp.getHeight());
                 AndroidUtilities.setRectToRect(shaderMatrix, bitmapRect, roundRect, orientation, invert, false);
                 bitmapShader.setLocalMatrix(shaderMatrix);
-                canvas.clipRect(clipLeft / scaleY, top / scaleY, getWidth() - clipRight / scaleY, getHeight() - bottom / scaleY);
+                canvas.clipRect(clipLeft / scaleY, clipTop / scaleY, getWidth() - clipRight / scaleY, getHeight() - clipBottom / scaleY);
 
                 for (int a = 0; a < radius.length; a++) {
                     radii[a * 2] = radius[a];
@@ -281,7 +234,7 @@ public class ClippingImageView extends View {
                     matrix.setRectToRect(bitmapRect, drawRect, Matrix.ScaleToFit.FILL);
                 }
 
-                canvas.clipRect(clipLeft / scaleY, top / scaleY, getWidth() - clipRight / scaleY, getHeight() - bottom / scaleY);
+                canvas.clipRect(clipLeft / scaleY, clipTop / scaleY, getWidth() - clipRight / scaleY, getHeight() - clipBottom / scaleY);
                 try {
                     canvas.drawBitmap(bmp.bitmap, matrix, paint);
                 } catch (Exception e) {

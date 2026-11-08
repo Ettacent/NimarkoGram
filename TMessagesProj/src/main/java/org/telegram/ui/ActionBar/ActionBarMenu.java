@@ -14,6 +14,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.find;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -49,6 +50,10 @@ public class ActionBarMenu extends LinearLayout {
         parentActionBar = layer;
     }
 
+    @Override
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        return HeaderMenuOverlay.isDrawingSource(child) || super.drawChild(canvas, child, drawingTime);
+    }
     public ActionBarMenu(Context context) {
         super(context);
     }
@@ -123,6 +128,8 @@ public class ActionBarMenu extends LinearLayout {
 
     public ActionBarMenuItem addItemAt(int index, int id, int icon, CharSequence text, int backgroundColor, Drawable drawable, int width, CharSequence title, Theme.ResourcesProvider resourcesProvider) {
         ActionBarMenuItem menuItem = new ActionBarMenuItem(getContext(), this, backgroundColor, isActionMode ? parentActionBar.itemsActionModeColor : parentActionBar.itemsColor, text != null, resourcesProvider);
+        menuItem.setSubMenuOverlayProvider(parentActionBar::getHeaderMenuOverlay);
+        menuItem.setItemOptionsOverlayEnabled(true);
         menuItem.setTag(id);
         if (text != null) {
             menuItem.textView.setText(text);

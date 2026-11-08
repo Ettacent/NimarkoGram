@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -99,8 +101,20 @@ public class ImportingService extends Service implements NotificationCenter.Noti
             }
         }
         builder.setProgress(100, 0, true);
+        try {
         startForeground(5, builder.build());
+        } catch (Throwable e) {
+            FileLog.e(e);
+        }
         NotificationManagerCompat.from(ApplicationLoader.applicationContext).notify(5, builder.build());
         return Service.START_NOT_STICKY;
     }
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        FileLog.d("ImportingService timeout, type = " + fgsType);
+        try {
+            stopForeground(true);
+        } catch (Throwable ignore) {}
+        stopSelf();
+}
 }

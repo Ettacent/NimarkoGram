@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import android.content.Context;
@@ -15,6 +17,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.GenericProvider;
 import org.telegram.ui.ActionBar.Theme;
 
+import org.telegram.ui.ActionBar.ThemeBind;
 public class CheckBox2 extends View {
 
     private CheckBoxBase checkBoxBase;
@@ -142,7 +145,7 @@ public class CheckBox2 extends View {
                 iconDrawable = null;
             } else {
                 iconDrawable = ContextCompat.getDrawable(getContext(), icon).mutate();
-                iconDrawable.setColorFilter(Theme.getColor(Theme.key_switch2Track), PorterDuff.Mode.MULTIPLY);
+                ThemeBind.drawableColorFilter(this, iconDrawable, Theme.key_switch2Track, PorterDuff.Mode.MULTIPLY);
             }
         }
     }

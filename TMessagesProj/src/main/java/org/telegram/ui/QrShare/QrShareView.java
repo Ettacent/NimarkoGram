@@ -23,7 +23,6 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.SweepGradient;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -2183,7 +2182,6 @@ public class QrShareView extends View {
         return ColorUtils.setAlphaComponent(color, (int) (Color.alpha(color) * Utilities.clamp01(a)));
     }
 
-    private final java.util.ArrayList<android.graphics.Rect> exclusion = new java.util.ArrayList<>();
 
     private int insetTop = AndroidUtilities.statusBarHeight, insetBottom = AndroidUtilities.navigationBarHeight;
 
@@ -2211,13 +2209,6 @@ public class QrShareView extends View {
         super.onLayout(changed, l, t, r, b);
         insetTop = Math.max(insetTop(this), dp(9) + dp(20) - ActionBar.getCurrentActionBarHeight() / 2);
         insetBottom = Math.max(insetBottom(this), dp(22) - dp(20));
-        if (Build.VERSION.SDK_INT >= 29 && changed) {
-            final int w = r - l, cy = (int) (cardTop() + cardH() / 2f), half = dp(100), edge = dp(24);
-            exclusion.clear();
-            exclusion.add(new android.graphics.Rect(0, cy - half, edge, cy + half));
-            exclusion.add(new android.graphics.Rect(w - edge, cy - half, w, cy + half));
-            setSystemGestureExclusionRects(exclusion);
-        }
     }
 
     @Override
@@ -4385,7 +4376,7 @@ public class QrShareView extends View {
         refreshIcons();
         prepareCardShadow();
         prewarmIslandColors();
-        org.telegram.messenger.NotificationCenter.getInstance(currentAccount).addObserver(giftsObserver, org.telegram.messenger.NotificationCenter.starUserGiftsLoaded);
+        org.telegram.messenger.NotificationCenter.getInstance(currentAccount).addWeakObserver(giftsObserver, org.telegram.messenger.NotificationCenter.starUserGiftsLoaded);
         loadGifts();
         sensors = (android.hardware.SensorManager) getContext().getSystemService(Context.SENSOR_SERVICE);
         final android.hardware.Sensor g = sensors != null ? sensors.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY) : null;

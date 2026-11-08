@@ -15,13 +15,15 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.Inet4Address;
-import java.nio.ByteBuffer;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.RejectedExecutionException;
 import org.telegram.messenger.UserConfig;
 
 public final class VoipBypassCore {
@@ -31,9 +33,6 @@ public final class VoipBypassCore {
     public static final boolean DEBUG = false;
     public static void dlog(String msg) {}
 
-    private static final int MAGIC = 0xC1;
-
-    private static final int VERSION_EPHEMERAL = 0x02;
     private static final int STATUS_OK = 0;
     private static final int STATUS_AUTH_FAIL = 1;
 
@@ -46,11 +45,12 @@ public final class VoipBypassCore {
         t.setDaemon(true);
         return t;
     });
-    private static final ExecutorService dnsExecutor = Executors.newFixedThreadPool(2, r -> {
+    private static final ExecutorService dnsExecutor = new ThreadPoolExecutor(
+            2, 2, 30L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(8), r -> {
         Thread t = new Thread(r, "voip-relay-dns");
         t.setDaemon(true);
         return t;
-    });
+    }, new ThreadPoolExecutor.AbortPolicy());
     private static final long DNS_TTL_MS = 60_000L;
     private static final ConcurrentHashMap<String, ResolvedRelay> dnsCache =
             new ConcurrentHashMap<>();
@@ -132,7 +132,8 @@ public final class VoipBypassCore {
         }
 
         final int controlPort = VoipBypassConfig.RELAY_CONTROL_PORT;
-        final byte[] request = buildV2Request(protocolTarget, reflectorPort, cred, account);
+        final byte[] request = VoipRelayProof.request(protocolTarget, reflectorPort, cred.expiry, cred.uid,
+                cred.hmac, VoipRelayAuth.nowSeconds(account) * 1000L);
         if (request == null) {
             Log.e(TAG, "allocateRelay: failed to build request");
             return null;
@@ -147,15 +148,17 @@ public final class VoipBypassCore {
             if (remaining <= 0) break;
             int attemptBudget = i + 1 < relayHosts.length
                     ? Math.min(PRIMARY_ATTEMPT_MAX_MS, remaining) : remaining;
-            RelayEndpoint endpoint = allocateOnHost(relayHosts[i], controlPort, request, protocolTarget,
+            RelayEndpoint endpoint = allocateOnHost(relayHosts[i], controlPort, request, cred, protocolTarget,
                     reflectorPort, account, attemptBudget, authRejected);
             if (endpoint != null) return endpoint;
             if (authRejected.get()) break;
         }
+        VoipRelayAuth.refreshAfterAllocationFailure(account);
         return null;
     }
 
     private RelayEndpoint allocateOnHost(final String relayHost, final int controlPort, final byte[] request,
+                                         final VoipRelayAuth.Credential credential,
                                          final String reflectorIp, final int reflectorPort, final int account,
                                          final int budgetMs,
                                          final AtomicBoolean authRejected) {
@@ -187,24 +190,18 @@ public final class VoipBypassCore {
                     return null;
                 }
 
-                if (resp.getLength() < 4) {
-                    Log.e(TAG, "allocateRelay: response too short");
+                int[] verified = VoipRelayProof.reply(buf, resp.getLength(), request, credential.hmac);
+                if (verified == null) {
+                    Log.e(TAG, "allocateRelay: unauthenticated response rejected");
                     return null;
                 }
-
-                int magic = buf[0] & 0xFF;
-                int status = buf[1] & 0xFF;
-                int allocatedPort = ((buf[2] & 0xFF) << 8) | (buf[3] & 0xFF);
-
-                if (magic != MAGIC) {
-                    Log.e(TAG, "allocateRelay: bad magic " + magic);
-                    return null;
-                }
+                int status = verified[0];
+                int allocatedPort = verified[1];
                 if (status != STATUS_OK) {
                     Log.e(TAG, "allocateRelay: server error status=" + status);
                     if (status == STATUS_AUTH_FAIL) {
                         authRejected.set(true);
-                        VoipRelayAuth.invalidateCredential(account);
+                        VoipRelayAuth.invalidateCredential(account, credential);
                     }
                     return null;
                 }
@@ -243,7 +240,12 @@ public final class VoipBypassCore {
         if (cached != null && now - cached.resolvedAtMs < DNS_TTL_MS) return cached.address;
         int remaining = (int) (deadlineMs - now);
         if (remaining <= 0) return null;
-        Future<InetAddress[]> future = dnsExecutor.submit(() -> InetAddress.getAllByName(host));
+        final Future<InetAddress[]> future;
+        try {
+            future = dnsExecutor.submit(() -> InetAddress.getAllByName(host));
+        } catch (RejectedExecutionException saturated) {
+            return null;
+        }
         try {
             InetAddress[] addresses = future.get(remaining, TimeUnit.MILLISECONDS);
             if (addresses == null || addresses.length == 0) return null;
@@ -259,35 +261,6 @@ public final class VoipBypassCore {
         }
     }
 
-    private byte[] buildV2Request(String reflectorIp, int reflectorPort, VoipRelayAuth.Credential cred, int account) {
-        try {
-            if (reflectorPort <= 0 || reflectorPort > 65535 || cred == null
-                    || cred.uid <= 0 || cred.hmac == null || cred.hmac.length != 32) return null;
-            ByteBuffer buf = ByteBuffer.allocate(64);
-            buf.put((byte) MAGIC);
-            buf.put((byte) VERSION_EPHEMERAL);
-
-            buf.putLong(VoipRelayAuth.nowSeconds(account) * 1000L);
-
-            String[] parts = reflectorIp.split("\\.");
-            if (parts.length != 4) return null;
-            for (String p : parts) {
-                int octet = Integer.parseInt(p);
-                if (octet < 0 || octet > 255) return null;
-                buf.put((byte) octet);
-            }
-            buf.putShort((short) reflectorPort);
-
-            buf.putLong(cred.expiry);
-            buf.putLong(cred.uid);
-            buf.put(cred.hmac);
-
-            return buf.array();
-        } catch (Exception e) {
-            Log.e(TAG, "buildV2Request failed: " + e);
-            return null;
-        }
-    }
 
     @Deprecated
     public int prepareReflector(String reflectorIp, int reflectorPort) {

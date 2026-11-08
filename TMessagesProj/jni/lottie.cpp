@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include <jni.h>
 #include <android/bitmap.h>
 #include <tlottie.h>
@@ -189,14 +191,14 @@ JNIEXPORT void JNICALL Java_org_telegram_ui_Components_RLottieNative_nDestroy(JN
 
 JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_RLottieNative_nGetFrame(
         JNIEnv *env, jclass, jlong ptr, jint frame, jobject bitmap, jboolean clear) {
-    if (ptr == 0 || bitmap == nullptr) return 0;
+    if (ptr == 0 || bitmap == nullptr) return -1;
     auto *instance = reinterpret_cast<TLottieInstance *>(ptr);
     AndroidBitmapInfo bitmapInfo;
     if (AndroidBitmap_getInfo(env, bitmap, &bitmapInfo) != ANDROID_BITMAP_RESULT_SUCCESS ||
         (bitmapInfo.format != ANDROID_BITMAP_FORMAT_RGBA_8888 &&
-         bitmapInfo.format != ANDROID_BITMAP_FORMAT_A_8)) return 0;
+         bitmapInfo.format != ANDROID_BITMAP_FORMAT_A_8)) return -1;
     void *rawPixels = nullptr;
-    if (AndroidBitmap_lockPixels(env, bitmap, &rawPixels) < 0) return 0;
+    if (AndroidBitmap_lockPixels(env, bitmap, &rawPixels) < 0) return -1;
     const size_t count = static_cast<size_t>(bitmapInfo.width) * bitmapInfo.height;
     int32_t result;
     if (bitmapInfo.format == ANDROID_BITMAP_FORMAT_A_8) {
@@ -255,6 +257,6 @@ JNIEXPORT jint JNICALL Java_org_telegram_ui_Components_RLottieNative_nGetFrame(
         }
     }
     AndroidBitmap_unlockPixels(env, bitmap);
-    return result == TLOTTIE_OK ? frame : -5;
+    return result == TLOTTIE_OK ? frame : -1;
 }
 }

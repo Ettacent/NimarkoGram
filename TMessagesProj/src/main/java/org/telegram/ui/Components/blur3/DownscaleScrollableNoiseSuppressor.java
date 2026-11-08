@@ -28,10 +28,13 @@ import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class DownscaleScrollableNoiseSuppressor {
+    public enum CaptureFilter { NONE, BEFORE_DOWNSCALE }
     public boolean isLiquidGlassEnabled;
     public final boolean allowNoiseSuppress;
     private float scrollPhaseX, scrollPhaseY;
     private final boolean simpleMode;
+    private final CaptureFilter captureFilter;
+    private static final int CAPTURE_FILTER_PADDING = 16;
     private int k;
     private boolean modeGraphChanged;
     private boolean drawableGraphChanged;
@@ -45,15 +48,39 @@ public class DownscaleScrollableNoiseSuppressor {
     }
 
     public DownscaleScrollableNoiseSuppressor(boolean simple, boolean allowNoiseSuppress) {
+        this(simple, allowNoiseSuppress, CaptureFilter.NONE);
+    }
+
+    public DownscaleScrollableNoiseSuppressor(boolean simple, boolean allowNoiseSuppress,
+                                             CaptureFilter captureFilter) {
         isLiquidGlassEnabled = BlurredBackgroundDrawableViewFactory.isLiquidGlassEnabled();
         simpleMode = simple;
+        this.captureFilter = captureFilter;
         k = isLiquidGlassEnabled || allowNoiseSuppress ? 1 : 8;
 
         this.allowNoiseSuppress = allowNoiseSuppress;
-        resultRenderNodes = new RenderNode[2];
+        resultRenderNodes = new RenderNode[3];
         for (int a = 0; a < resultRenderNodes.length; a++) {
             resultRenderNodes[a] = new RenderNode(null);
         }
+    }
+
+    private boolean isCaptureFilterEnabled() {
+        return captureFilter == CaptureFilter.BEFORE_DOWNSCALE
+                && !isLiquidGlassEnabled && !enhanced && k > 1;
+    }
+
+    private float captureFilterSigma() {
+        return isCaptureFilterEnabled() ? k / 2f : 0f;
+    }
+
+    private float compensatedBlurRadius(float radius, int scale) {
+        final float existingRadius = downscaleRadius(radius, scale);
+        if (!isCaptureFilterEnabled()) return existingRadius;
+        final float existingSigma = convertRadiusToSigma(existingRadius);
+        final float prefilterSigma = captureFilterSigma() / scale;
+        return convertSigmaToRadius((float) Math.sqrt(Math.max(0f,
+                existingSigma * existingSigma - prefilterSigma * prefilterSigma)));
     }
 
     public static final int DRAW_GLASS = -2;
@@ -65,15 +92,19 @@ public class DownscaleScrollableNoiseSuppressor {
         if ((isLiquidGlassEnabled == enabled && enhanced == nextEnhanced) || recordingPos != null) {
             return;
         }
+        final boolean wasCaptureFilterEnabled = isCaptureFilterEnabled();
         isLiquidGlassEnabled = enabled;
         enhanced = nextEnhanced;
         modeGraphChanged = true;
         final int nextScale = enabled || allowNoiseSuppress ? 1 : 8;
         final boolean captureScaleChanged = k != nextScale;
         k = nextScale;
+        final boolean captureTopologyChanged = captureScaleChanged
+                || wasCaptureFilterEnabled != isCaptureFilterEnabled();
         invalidateCapturePositions();
         for (SourcePart part : rectRenderNodes) {
-            if (captureScaleChanged) {
+            part.clearCaptureFilter();
+            if (captureTopologyChanged) {
                 part.renderNode.discardDisplayList();
             }
             part.setupEffects();
@@ -86,7 +117,7 @@ public class DownscaleScrollableNoiseSuppressor {
         for (RenderNode node : resultRenderNodes) {
             node.discardDisplayList();
         }
-        if (!captureScaleChanged && width > 0 && height > 0) {
+        if (!captureTopologyChanged && width > 0 && height > 0) {
             invalidateResultRenderNodes(width, height);
         }
     }
@@ -109,6 +140,7 @@ public class DownscaleScrollableNoiseSuppressor {
             canvas.drawRenderNode(node);
         }
     }
+    public boolean hasLostDisplayLists;
     private int resolveInlineIndex(int index) {
         updateGlassMode();
         if (!isLiquidGlassEnabled && simpleMode) {
@@ -116,7 +148,7 @@ public class DownscaleScrollableNoiseSuppressor {
         } else if (index == DRAW_GLASS) {
             return isLiquidGlassEnabled ? 0 : 1;
         } else if (index == DRAW_FROSTED_GLASS_NO_SATURATION) {
-            return 0;
+            return 2;
         } else if (index == DRAW_FROSTED_GLASS) {
             return 1;
         }
@@ -131,14 +163,23 @@ public class DownscaleScrollableNoiseSuppressor {
         return isDisplayListReadyAt(a) ? resultRenderNodes[a] : null;
     }
     private boolean isDisplayListReadyAt(int a) {
-        if (a < 0 || recordingPos != null || capturedPositionsGeneration != capturePositionsGeneration
+        if (a < 0 || a >= resultRenderNodes.length || recordingPos != null || capturedPositionsGeneration != capturePositionsGeneration
                 || rectRenderNodesCount == 0) return false;
         RenderNode result = resultRenderNodes[a];
-        if (!result.hasDisplayList() || result.getWidth() <= 0 || result.getHeight() <= 0) return false;
+        if (!result.hasDisplayList() || result.getWidth() <= 0 || result.getHeight() <= 0) {
+            hasLostDisplayLists = true;
+            return false;
+        }
         for (int b = 0; b < rectRenderNodesCount; b++) {
-            if (!rectRenderNodes.get(b).isReady()) return false;
+            if (!rectRenderNodes.get(b).isReady()) {
+                hasLostDisplayLists = true;
+                return false;
+            }
             RenderNode node = getRenderNode(a, b);
-            if (!node.hasDisplayList() || node.getWidth() <= 0 || node.getHeight() <= 0) return false;
+            if (!node.hasDisplayList() || node.getWidth() <= 0 || node.getHeight() <= 0) {
+                hasLostDisplayLists = true;
+                return false;
+            }
         }
         return true;
     }
@@ -158,9 +199,21 @@ public class DownscaleScrollableNoiseSuppressor {
             canvas.save();
             canvas.translate(sourcePart.position.left, sourcePart.position.top);
             final RenderNode rn = getRenderNode(a, b);
+            if (!rn.hasDisplayList()) {
+                hasLostDisplayLists = true;
+            }
             canvas.drawRenderNode(rn);
             canvas.restore();
         }
+    }
+
+    public int getDownsample(int index) {
+        if (!isLiquidGlassEnabled || rectRenderNodesCount == 0) {
+            return 1;
+        }
+        final SourcePart sourcePart = rectRenderNodes.get(0);
+        final boolean glass = (index == DRAW_GLASS || index == DRAW_FROSTED_GLASS_NO_SATURATION) && sourcePart.renderNodesForGlass != null;
+        return glass ? sourcePart.renderNodesForGlass.scaleX : sourcePart.renderNodesForBlur.scaleX;
     }
 
     public class DownscaledRenderNode {
@@ -216,7 +269,7 @@ public class DownscaleScrollableNoiseSuppressor {
                 setStableBlur(radius, secondEffect);
             } else {
                 RenderEffect blur = RenderEffect.createBlurEffect(
-                        downscaleRadius(radius, scaleX), downscaleRadius(radius, scaleY), Shader.TileMode.CLAMP);
+                        compensatedBlurRadius(radius, scaleX), compensatedBlurRadius(radius, scaleY), Shader.TileMode.CLAMP);
                 setPrimaryEffect(secondEffect == null ? blur : RenderEffect.createChainEffect(blur, secondEffect));
             }
         }
@@ -376,6 +429,15 @@ public class DownscaleScrollableNoiseSuppressor {
      * Glass Mode: [0] - weak blur, saturation up.      [1] - strong blur, saturation up
      * Blur Mode:  [0] - strong blur, no color matrix.  [1] - strong blur, saturation up
      * */
+    public void resetScrollPhase() {
+        if (scrollPhaseX == 0f && scrollPhaseY == 0f) return;
+        scrollPhaseX = scrollPhaseY = 0f;
+        invalidateCapturePositions();
+        updateGlassMode();
+        for (int a = 0; a < rectRenderNodesCount; a++) {
+            rectRenderNodes.get(a).updateSamplingPhase();
+        }
+    }
     private final RenderNode[] resultRenderNodes;
 
     long lastHash;
@@ -437,13 +499,15 @@ public class DownscaleScrollableNoiseSuppressor {
     private RenderNode getRenderNode(int a, int b) {
         final SourcePart sourcePart = rectRenderNodes.get(b);
         if (isLiquidGlassEnabled && sourcePart.renderNodesForGlass != null) {
-            if (a == 0) {
+            if (a == 2) {
                 return (sourcePart.renderNodesForGlass.renderNodeRestored[0]);
+            } else if (a == 0) {
+                return (sourcePart.renderNodesForGlass.renderNodeRestored[sourcePart.renderNodesForGlass.renderNodeRestored.length - 1]);
             } else {
                 return (sourcePart.renderNodesForBlur.renderNodeRestored[0]);
             }
         } else {
-            return (sourcePart.renderNodesForBlur.renderNodeRestored[Math.min(a, sourcePart.renderNodesForBlur.renderNodeRestored.length - 1)]);
+            return (sourcePart.renderNodesForBlur.renderNodeRestored[a == 2 ? 0 : Math.min(a, sourcePart.renderNodesForBlur.renderNodeRestored.length - 1)]);
         }
     }
 
@@ -451,10 +515,6 @@ public class DownscaleScrollableNoiseSuppressor {
     private final Blur3HashImpl builder = new Blur3HashImpl();
 
     public boolean invalidateResultRenderNodes(IBlur3Capture capture, int width, int height) {
-        return invalidateResultRenderNodes(capture, width, height, null);
-    }
-    public boolean invalidateResultRenderNodes(IBlur3Capture capture, int width, int height,
-                                               @Nullable RectF damage) {
         updateGlassMode();
         final long captureGeneration = capturePositionsGeneration;
         final boolean positionsChanged = capturedPositionsGeneration != captureGeneration;
@@ -465,9 +525,8 @@ public class DownscaleScrollableNoiseSuppressor {
             final Rect position = sourcePart.position;
             tmpRectF.set(position);
 
-            if (damage != null && !positionsChanged && !materialChanged && sourcePart.isReady()
-                    && !RectF.intersects(tmpRectF, damage)) {
-                continue;
+            if (isCaptureFilterEnabled()) {
+                tmpRectF.inset(-CAPTURE_FILTER_PADDING, -CAPTURE_FILTER_PADDING);
             }
             builder.start();
             builder.add(position.left);
@@ -503,9 +562,12 @@ public class DownscaleScrollableNoiseSuppressor {
     private class SourcePart {
         private boolean isReady() {
             return renderNode.hasDisplayList() && renderNodesForBlur.isReady()
+                    && (!isCaptureFilterEnabled() || captureFilterNode != null
+                            && captureFilterNode.hasDisplayList())
                     && (renderNodesForGlass == null || renderNodesForGlass.isReady());
         }
         final RenderNode renderNode = new RenderNode(null);
+        @Nullable RenderNode captureFilterNode;
         DownscaledRenderNode renderNodesForBlur;
         @Nullable DownscaledRenderNode renderNodesForGlass;
         final Rect position = new Rect();
@@ -514,11 +576,26 @@ public class DownscaleScrollableNoiseSuppressor {
         private SourcePart() {
             setupEffects();
         }
+        private void clearCaptureFilter() {
+            if (captureFilterNode == null) return;
+            captureFilterNode.discardDisplayList();
+            captureFilterNode.setRenderEffect(null);
+            captureFilterNode.setUseCompositingLayer(false, null);
+            captureFilterNode = null;
+            renderNode.discardDisplayList();
+        }
         private void setupEffects() {
             if (isLiquidGlassEnabled) {
+                if (simpleMode) {
                 renderNodesForGlass = new DownscaledRenderNode("glass", 0, true);
                 renderNodesForGlass.setScale(enhanced ? 2 : 4, enhanced ? 2 : 4);
                 renderNodesForGlass.setPrimaryEffectBlur(dpf2(enhanced ? 12f : 6f), RenderNodeEffects.getSaturationX3RenderEffect());
+                } else {
+                    renderNodesForGlass = new DownscaledRenderNode("glass", 1, true);
+                    renderNodesForGlass.setScale(enhanced ? 2 : 4, enhanced ? 2 : 4);
+                    renderNodesForGlass.setPrimaryEffectBlur(dpf2(enhanced ? 12f : 6f));
+                    renderNodesForGlass.setSecondaryEffect(0, RenderNodeEffects.getSaturationX3RenderEffect());
+                }
                 renderNodesForBlur = new DownscaledRenderNode("blur", 0);
                 renderNodesForBlur.setScale(8, 8);
                 renderNodesForBlur.setPrimaryEffectBlur(dpf2(40 - 1.66f));
@@ -593,6 +670,7 @@ public class DownscaleScrollableNoiseSuppressor {
         for (int a = 0; a < rectRenderNodesCount; a++) {
             rectRenderNodes.get(a).setPosition(positions.get(a));
         }
+        clearDormantCaptureFilters();
     }
 
     public void setupRenderNodes(List<RectF> positions, int count) {
@@ -619,6 +697,13 @@ public class DownscaleScrollableNoiseSuppressor {
         for (int a = 0; a < rectRenderNodesCount; a++) {
             rectRenderNodes.get(a).setPosition(mergedAlignedPositions.get(a));
         }
+        clearDormantCaptureFilters();
+    }
+
+    private void clearDormantCaptureFilters() {
+        for (int a = rectRenderNodesCount; a < rectRenderNodes.size(); a++) {
+            rectRenderNodes.get(a).clearCaptureFilter();
+        }
     }
 
     private int recordingIndex;
@@ -636,6 +721,23 @@ public class DownscaleScrollableNoiseSuppressor {
         recordingPos = rectF;
         recordingIndex = index;
 
+        if (isCaptureFilterEnabled()) {
+            if (sourcePart.captureFilterNode == null) {
+                sourcePart.captureFilterNode = new RenderNode("capture_prefilter");
+                sourcePart.captureFilterNode.setUseCompositingLayer(true, null);
+                sourcePart.captureFilterNode.setScaleX(1f);
+                sourcePart.captureFilterNode.setScaleY(1f);
+                final float radius = convertSigmaToRadius(captureFilterSigma());
+                sourcePart.captureFilterNode.setRenderEffect(
+                        RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
+            }
+            final int width = rectF.width() + CAPTURE_FILTER_PADDING * 2;
+            final int height = rectF.height() + CAPTURE_FILTER_PADDING * 2;
+            sourcePart.captureFilterNode.setPosition(0, 0, width, height);
+            RecordingCanvas c = sourcePart.captureFilterNode.beginRecording(width, height);
+            c.translate(CAPTURE_FILTER_PADDING, CAPTURE_FILTER_PADDING);
+            return c;
+        }
         final int width = rectF.width() / k;
         final int height = rectF.height() / k;
 
@@ -654,6 +756,16 @@ public class DownscaleScrollableNoiseSuppressor {
         }
 
         final SourcePart sourcePart = rectRenderNodes.get(recordingIndex);
+        if (isCaptureFilterEnabled()) {
+            sourcePart.captureFilterNode.endRecording();
+            final int width = recordingPos.width() / k;
+            final int height = recordingPos.height() / k;
+            sourcePart.renderNode.setPosition(0, 0, width, height);
+            RecordingCanvas c = sourcePart.renderNode.beginRecording(width, height);
+            c.scale(1f / k, 1f / k);
+            c.translate(-CAPTURE_FILTER_PADDING, -CAPTURE_FILTER_PADDING);
+            c.drawRenderNode(sourcePart.captureFilterNode);
+        }
         sourcePart.renderNode.endRecording();
         sourcePart.invalidate();
 

@@ -31,7 +31,6 @@ import androidx.core.content.FileProvider;
 import com.chaquo.python.PyException;
 import com.chaquo.python.PyObject;
 import com.chaquo.python.Python;
-import com.chaquo.python.android.AndroidPlatform;
 
 import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.CrashContext;
@@ -1959,7 +1958,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 try {
                     if (!ensurePineReady()) {
                         FileLog.w("nimarko: Pine unavailable; Python starts with method hooks disabled");
-                    } else {
+                    } else if (org.telegram.messenger.BuildConfig.DEBUG) {
                         PluginDexTracking.install();
                     }
                 } catch (Throwable pineError) {
@@ -1970,7 +1969,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
                 synchronized (Python.class) {
                     if (!Python.isStarted()) {
-                        Python.start(new AndroidPlatform(ApplicationLoader.applicationContext));
+                        Python.start(new PythonStartupPlatform(ApplicationLoader.applicationContext));
                     }
                     candidate = Python.getInstance();
                 }
@@ -2314,12 +2313,12 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     || SharedConfig.versionBiggerOrEqual(
                     BuildVars.BUILD_VERSION_STRING, minVersion))) {
                 plugin = new com.exteragram.messenger.plugins.Plugin(id, name);
-                plugin.setAuthor(metadata.getOrDefault(
-                        "author", LocaleController.getString(
-                        R.string.PluginNoAuthor)));
-                plugin.setDescription(metadata.getOrDefault(
-                        "description", LocaleController.getString(
-                        R.string.PluginNoDescription)));
+                if (metadata.containsKey("author")) {
+                    plugin.setAuthor(metadata.get("author"));
+                }
+                if (metadata.containsKey("description")) {
+                    plugin.setDescription(metadata.get("description"));
+                }
                 plugin.setIcon(metadata.get("icon"));
                 plugin.setVersion(metadata.getOrDefault("version", "1.0"));
                 plugin.setMinVersion(minVersion);
@@ -2330,8 +2329,6 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         }
         if (plugin == null) {
             plugin = new com.exteragram.messenger.plugins.Plugin(expectedId, expectedId);
-            plugin.setAuthor(LocaleController.getString(
-                    R.string.PluginNoAuthor));
             plugin.setVersion("1.0");
             plugin.setEngine(PluginsConstants.PYTHON);
         }
@@ -5665,14 +5662,12 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
         Plugin plugin = new com.exteragram.messenger.plugins.Plugin(pluginId, pluginName);
         plugin.setEngine(PluginsConstants.PYTHON);
-        plugin.setAuthor(pluginMetadata.getOrDefault(
-                "author",
-                LocaleController.getString(
-                        R.string.PluginNoAuthor)));
-        plugin.setDescription(pluginMetadata.getOrDefault(
-                "description",
-                LocaleController.getString(
-                        R.string.PluginNoDescription)));
+        if (pluginMetadata.containsKey("author")) {
+            plugin.setAuthor(pluginMetadata.get("author"));
+        }
+        if (pluginMetadata.containsKey("description")) {
+            plugin.setDescription(pluginMetadata.get("description"));
+        }
         plugin.setIcon(pluginMetadata.get("icon"));
         plugin.setVersion(
                 pluginMetadata.getOrDefault("version", "1.0"));

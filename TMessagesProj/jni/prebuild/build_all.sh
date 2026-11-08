@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Modifications Copyright (C) 2026 Ettacent
+
 # Clean all prebuilt archives and build every bundled static library in order.
 
 set -Eeuo pipefail
@@ -30,7 +32,6 @@ build_scripts=(
     build_wallet_engine.sh
     build_tdlib.sh
     build_wamr.sh
-    build_prisma.sh
 )
 
 for script in "${build_scripts[@]}"; do

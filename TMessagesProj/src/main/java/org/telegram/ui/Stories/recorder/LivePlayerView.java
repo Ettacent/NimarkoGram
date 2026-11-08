@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Stories.recorder;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
@@ -107,7 +109,7 @@ public class LivePlayerView extends FrameLayout implements RendererCommon.Render
         if (currentAccount == account) return;
         if (isAttachedToWindow()) {
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.liveStoryUpdated);
-            NotificationCenter.getInstance(currentAccount = account).addObserver(this, NotificationCenter.liveStoryUpdated);
+            NotificationCenter.getInstance(currentAccount = account).addWeakObserver(this, NotificationCenter.liveStoryUpdated);
         } else {
             currentAccount = account;
         }
@@ -125,7 +127,7 @@ public class LivePlayerView extends FrameLayout implements RendererCommon.Render
             textureView.setBackgroundRenderer(blurRenderer);
         }
 
-        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.liveStoryUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.liveStoryUpdated);
     }
 
     @Override

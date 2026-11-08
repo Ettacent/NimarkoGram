@@ -36,7 +36,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Text;
 import org.telegram.ui.GradientClip;
 
-public class BotFullscreenButtons extends View {
+public class BotFullscreenButtons extends View implements org.telegram.ui.ActionBar.MenuOverlayHost.IconSource {
 
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -58,6 +58,7 @@ public class BotFullscreenButtons extends View {
     private final RectF collapseClickRect = new RectF();
     private final ButtonBounce collapseBounce = new ButtonBounce(this);
     private final RectF menuRect = new RectF();
+    private boolean menuIconOverlayOwned;
     private final RectF menuClickRect = new RectF();
     private final ButtonBounce menuBounce = new ButtonBounce(this);
 
@@ -224,9 +225,21 @@ public class BotFullscreenButtons extends View {
         }
         canvas.restore();
 
+        if (!menuIconOverlayOwned) drawMenuIcon(canvas);
+        else animatedDownloading.set(downloading);
+    }
+
+    public void setMenuIconOverlayOwned(boolean owned) {
+        if (menuIconOverlayOwned != owned) {
+            menuIconOverlayOwned = owned;
+            invalidate();
+        }
+    }
+
+    public void drawMenuIcon(Canvas canvas) {
         canvas.save();
         canvas.translate(menuRect.centerX() + dp(1), menuRect.centerY());
-        s = menuBounce.getScale(0.1f);
+        float s = menuBounce.getScale(0.1f);
         canvas.scale(s, s);
         if (!packIcons.drawOverflow(canvas, iconPaint, dp(1.66f), dp(5))) {
         canvas.drawCircle(0, -dp(5), dp(1.66f), iconPaint);
@@ -314,6 +327,10 @@ public class BotFullscreenButtons extends View {
     }
     public void setOnCollapseClickListener(Runnable listener) {
         onCollapseClickListener = listener;
+    }
+    public void getMenuIconBounds(RectF out) {
+        out.set(menuRect);
+        out.offset(dp(1), 0);
     }
     public void setOnMenuClickListener(Runnable listener) {
         onMenuClickListener = listener;
