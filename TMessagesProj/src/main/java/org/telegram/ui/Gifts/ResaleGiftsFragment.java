@@ -14,13 +14,18 @@ import static org.telegram.ui.Stars.StarsController.findAttributes;
 import org.telegram.messenger.FileLog;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.annotation.SuppressLint;
+import android.graphics.RectF;
+import android.view.MotionEvent;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -36,6 +41,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -53,9 +59,12 @@ import org.telegram.messenger.utils.tlutils.AmountUtils;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
+import org.telegram.ui.ActionBar.ActionBarPopupWindow;
+import org.telegram.ui.ActionBar.MenuOverlayHost;
+import org.telegram.ui.ActionBar.SimpleActionBarMenuOverlay;
 import org.telegram.ui.ActionBar.AlertDialog;
-import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
@@ -63,6 +72,7 @@ import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
+import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BottomSheetWithRecyclerListView;
 import org.telegram.ui.Components.BulletinFactory;
@@ -76,6 +86,7 @@ import org.telegram.ui.Components.FragmentFloatingButton;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.LoadingSpan;
 import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
@@ -85,8 +96,11 @@ import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
-import org.telegram.utils.glass.source.GlassSourceColor;
+import org.telegram.utils.glass.source.GlassSourceCrossfade;
+import org.telegram.utils.glass.BaseFragmentSimpleGlass;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.Stars.StarGiftSheet;
 import org.telegram.ui.Stars.StarsController;
@@ -128,9 +142,8 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         return this;
     }
 
-    private BackDrawable backDrawable;
-    private View filtersDivider;
     private UniversalRecyclerView listView;
+    private View listTopOverlay;
     private FrameLayout clearFiltersContainer;
     private FrameLayout onlyStarsContainer;
     private TextView clearFiltersButton;
@@ -146,18 +159,21 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
 
     private FireworksOverlay fireworksOverlay;
 
+    private int insetTop;
+    private int insetBottom;
+    private float filtersHiddenFactor;
+
+    private static final int FILTER_HEIGHT_DP = 40;
+    private static final float LIST_SIDE_DP = 7.33f;
+
+    @Override
+    protected boolean useSimpleActionBar() {
+        return true;
+    }
     @Override
     public View createView(Context context) {
-        iBlur3SourceColor = new GlassSourceColor();
-        iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
-        iBlur3Factory = new BlurredBackgroundDrawableViewFactory(iBlur3SourceColor);
-
-        actionBar.setBackButtonDrawable(backDrawable = new BackDrawable(false));
-        backDrawable.setAnimationTime(240);
-        actionBar.setCastShadows(false);
-        actionBar.setAddToContainer(false);
-
-        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
+        simpleActionBar.setBackButtonImage(R.drawable.ic_ab_back);
+        simpleActionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
@@ -165,48 +181,14 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 }
             }
         });
-        actionBar.setTitle(gift_name);
-        ThemeBind.backgroundColor(actionBar, Theme.key_windowBackgroundWhite, getResourceProvider());
-        ThemeBind.actionBarItemsColor(actionBar, Theme.key_windowBackgroundWhiteBlackText, getResourceProvider(), false);
-        ThemeBind.actionBarItemsColor(actionBar, Theme.key_windowBackgroundWhiteBlackText, getResourceProvider(), true);
-        ThemeBind.actionBarItemsBackgroundColor(actionBar, Theme.key_actionBarActionModeDefaultSelector, getResourceProvider(), false);
-        ThemeBind.actionBarTitleColor(actionBar, Theme.key_windowBackgroundWhiteBlackText, getResourceProvider());
-        ThemeBind.actionBarSubtitleColor(actionBar, Theme.key_windowBackgroundWhiteGrayText2, getResourceProvider());
+        simpleActionBar.setTitle(gift_name);
+        updateSubtitle();
 
-        SizeNotifierFrameLayout fragmentView = new SizeNotifierFrameLayout(context) {
-            @Override
-            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                LayoutParams lp = (LayoutParams) filterScrollView.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-
-                lp = (LayoutParams) filtersDivider.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0) + dp(47);
-
-                lp = (LayoutParams) listView.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-
-                lp = (LayoutParams) emptyView.getLayoutParams();
-                lp.topMargin = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-            }
-        };
-        final int backgroundColor = Theme.blendOver(
-            Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider),
-            Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider), 0.04f)
-        );
-        fragmentView.setBackgroundColor(backgroundColor);
-        themedBackgroundColor = backgroundColor;
+        final SizeNotifierFrameLayout fragmentView = new SizeNotifierFrameLayout(context);
+        ThemeBind.backgroundColor(fragmentView, Theme.key_windowBackgroundGray, getResourceProvider());
         this.fragmentView = fragmentView;
 
-        StarsIntroActivity.StarsBalanceView balanceView = new StarsIntroActivity.StarsBalanceView(context, currentAccount, resourceProvider);
-        balanceView.withTon();
-        ScaleStateListAnimator.apply(balanceView);
-        balanceView.setOnClickListener(v -> {
-            if (balanceView.lastBalance <= 0) return;
-            presentFragment(new StarsIntroActivity(currentAccount));
-        });
-        actionBar.addView(balanceView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 4, 0));
+        final BaseFragmentSimpleGlass glass = getBaseSimpleGlass();
 
         listView = new UniversalRecyclerView(this, this::fillItems, this::onItemClick, this::onItemLongClick) {
             @Override
@@ -222,17 +204,9 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 if (isLoadingVisible()) {
                     list.load();
                 }
-                filtersDivider.animate()
-                    .alpha(!filtersShown || !listView.canScrollVertically(-1) ? 0.0f : 1.0f)
-                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                    .setDuration(320)
-                    .start();
             }
         });
-        listView.setPadding(0, dp(45), 0, dp(56 + 45));
-        listView.setClipToPadding(false);
-        fragmentView.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 7.33f, 0, 7.33f, -45));
-        fragmentView.addView(actionBar);
+        fragmentView.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
 
         emptyView = new LargeEmptyView(context, v -> {
             list.notSelectedBackdropAttributes.clear();
@@ -245,23 +219,40 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         emptyView.setScaleX(0.95f);
         emptyView.setScaleY(0.95f);
         emptyView.setVisibility(View.GONE);
-        fragmentView.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, 0, 0, 0, -45));
+        fragmentView.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
+
+        listTopOverlay = new View(context);
+        fragmentView.addView(listTopOverlay, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 0, Gravity.TOP));
+
+        glass.setViews(fragmentView, listView, simpleActionBar, resourceProvider);
+        listTopOverlay.setBackground(glass.createActionBarFadeDrawable(listTopOverlay));
+        simpleActionBar.setBackground(null);
+
+        final BalancePill balanceView = new BalancePill(context, currentAccount, resourceProvider);
+        balanceView.setBackground(glass.factory.create(balanceView)
+            .setColorProvider(BlurredBackgroundProviderImpl.simpleActionBar(resourceProvider))
+            .setRadius(dp(23))
+            .setPadding(dp(BalancePill.GLASS_PADDING_DP)));
+        ScaleStateListAnimator.apply(balanceView);
+        balanceView.setOnClickListener(v -> {
+            if (balanceView.lastBalance <= 0) return;
+            presentFragment(new StarsIntroActivity());
+        });
+        balanceView.setOnWidthChanged(width -> simpleActionBar.setTitleMinSideInset(width + dp(6)));
+        simpleActionBar.addView(balanceView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 46 + BalancePill.GLASS_PADDING_DP * 2, Gravity.RIGHT));
+
+        filterGlassColors = BlurredBackgroundProviderImpl.simpleActionBar(resourceProvider);
 
         filtersContainer = new LinearLayout(context);
-        filtersContainer.setPadding(dp(11), 0, dp(11), 0);
         filtersContainer.setOrientation(LinearLayout.HORIZONTAL);
 
+        filtersContainer.setClipChildren(false);
         filterScrollView = new HorizontalScrollView(context);
         filterScrollView.setHorizontalScrollBarEnabled(false);
+        filterScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         filterScrollView.addView(filtersContainer);
-        filterScrollView.setBackgroundColor(backgroundColor);
         filterScrollView.setClipChildren(false);
-        fragmentView.addView(filterScrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 47, Gravity.TOP | Gravity.FILL_HORIZONTAL));
-
-        filtersDivider = new View(context);
-        ThemeBind.backgroundColor(filtersDivider, Theme.key_divider, getResourceProvider());
-        filtersDivider.setAlpha(0.0f);
-        fragmentView.addView(filtersDivider, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 2.0f / AndroidUtilities.density, Gravity.TOP | Gravity.FILL_HORIZONTAL));
+        fragmentView.addView(filterScrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, FILTER_HEIGHT_DP + Filter.GLASS_PADDING_DP * 2, Gravity.TOP | Gravity.FILL_HORIZONTAL));
 
 
         final LinearLayout checkboxLayout = new LinearLayout(context);
@@ -279,20 +270,20 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         checkboxLayout.addView(checkbox, LayoutHelper.createLinear(26, 26, Gravity.CENTER_VERTICAL));
 
         final TextView checkboxTextView = new TextView(context);
-        ThemeBind.textColor(checkboxTextView, Theme.key_dialogTextBlack, resourceProvider);
+        ThemeBind.textColor(checkboxTextView, Theme.key_windowBackgroundWhiteBlackText, resourceProvider);
         checkboxTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         checkboxTextView.setText(LocaleController.getString(R.string.GiftResaleStarsOnly));
         checkboxLayout.addView(checkboxTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 9, 0, 0, 0));
-        checkboxLayout.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(18), 0, Theme.blendOver(getThemedColor(Theme.key_windowBackgroundWhite), Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f))));
+        checkboxLayout.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(FILTER_HEIGHT_DP / 2f), 0, Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f)));
 
 
         onlyStarsCheckboxLayout = checkboxLayout;
         onlyStarsContainer = new FrameLayout(context);
         onlyStarsContainer.setPadding(dp(8), dp(8), dp(8), dp(8));
-        onlyStarsContainer.setBackground(iBlur3Factory.create(onlyStarsContainer)
-            .setColorProvider(BlurredBackgroundProviderImpl.shadow(resourceProvider))
+        onlyStarsContainer.setBackground(glass.factory.create(onlyStarsContainer)
+            .setColorProvider(BlurredBackgroundProviderImpl.simpleActionBar(resourceProvider))
             .setPadding(dp(8))
-            .setRadius(dp(18)));
+            .setRadius(dp(FILTER_HEIGHT_DP / 2f)));
         onlyStarsContainer.setOnClickListener(v -> {
             if (list != null) {
                 list.starsOnly = !list.starsOnly;
@@ -302,21 +293,16 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         });
         onlyStarsContainer.addView(checkboxLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
         ScaleStateListAnimator.apply(onlyStarsContainer, 0.04f, 1.5f);
-        fragmentView.addView(onlyStarsContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 36 + 8 + 8, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 0, 0, 0, AndroidUtilities.navigationBarHeight / AndroidUtilities.density));
-
-        StarsController tc = StarsController.getTonInstance(currentAccount);
-        if (tc.balanceAvailable() && !tc.getBalanceAmount().isZero()) {
-            onlyStarsContainer.setVisibility(View.GONE);
-        }
+        fragmentView.addView(onlyStarsContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, FILTER_HEIGHT_DP + 8 + 8, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
 
 
         clearFiltersContainer = new FrameLayout(context);
         clearFiltersContainer.setPadding(dp(8), dp(8), dp(8), dp(8));
-        clearFiltersContainer.setBackground(iBlur3Factory.create(clearFiltersContainer)
-            .setColorProvider(BlurredBackgroundProviderImpl.shadow(resourceProvider))
+        clearFiltersContainer.setBackground(glass.factory.create(clearFiltersContainer)
+            .setColorProvider(BlurredBackgroundProviderImpl.simpleActionBar(resourceProvider))
             .setPadding(dp(8))
             .setRadius(dp(22)));
-        fragmentView.addView(clearFiltersContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 44 + 8 + 8, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 0, 0, 0, AndroidUtilities.navigationBarHeight / AndroidUtilities.density));
+        fragmentView.addView(clearFiltersContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 44 + 8 + 8, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
 
         clearFiltersButton = new TextView(context);
         SpannableStringBuilder sb = new SpannableStringBuilder("x");
@@ -326,7 +312,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         ThemeBind.textColor(clearFiltersButton, Theme.key_featuredStickers_addButton, getResourceProvider());
         clearFiltersButton.setTypeface(AndroidUtilities.bold());
         clearFiltersButton.setPadding(dp(20), 0, dp(20), 0);
-        clearFiltersButton.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(22), 0, Theme.blendOver(getThemedColor(Theme.key_windowBackgroundWhite), Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f))));
+        clearFiltersButton.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(22), 0, Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f)));
         clearFiltersButton.setGravity(Gravity.CENTER);
         clearFiltersContainer.setOnClickListener(v -> {
             list.notSelectedBackdropAttributes.clear();
@@ -339,12 +325,15 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         ScaleStateListAnimator.apply(clearFiltersContainer, 0.05f, 1.5f);
 
 
-        sortButton = new Filter(context, resourceProvider);
+        onInsets(0, 0, 0, 0);
+
+
+        sortButton = new Filter(context, resourceProvider, true);
         sortButton.setSorting(list.getSorting());
-        filtersContainer.addView(sortButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
+        addFilterPill(sortButton, false);
         sortButton.setOnClickListener(v -> {
             if (!filtersShown) return;
-            ItemOptions.makeOptions(this, sortButton)
+            final ItemOptions options = ItemOptions.makeOptions(this, sortButton)
                 .add(R.drawable.menu_sort_value, getString(ResaleGiftsList.Sorting.BY_PRICE.buttonStringResId), () -> {
                     list.setSorting(ResaleGiftsList.Sorting.BY_PRICE);
                 })
@@ -371,13 +360,13 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 })
                 .setDrawScrim(false)
                 .setOnTopOfScrim()
-                .translate(0, dp(-8))
-                .show();
+                .translate(0, dp(-8));
+            showFilterMenu(sortButton, options);
         });
 
-        modelButton = new Filter(context, resourceProvider);
+        modelButton = new Filter(context, resourceProvider, true);
         modelButton.setValue(getString(R.string.Gift2AttributeModel));
-        filtersContainer.addView(modelButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
+        addFilterPill(modelButton, false);
         modelButton.setOnClickListener(v -> {
             if (!filtersShown) return;
             if (list.modelAttributes.isEmpty()) return;
@@ -485,12 +474,12 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 });
             }
             ie.addView(listView);
-            ie.show();
+            showFilterMenu(modelButton, ie);
         });
 
-        backdropButton = new Filter(context, resourceProvider);
+        backdropButton = new Filter(context, resourceProvider, true);
         backdropButton.setValue(getString(R.string.Gift2AttributeBackdrop));
-        filtersContainer.addView(backdropButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
+        addFilterPill(backdropButton, false);
         backdropButton.setOnClickListener(v -> {
             if (!filtersShown) return;
             if (list.backdropAttributes.isEmpty()) return;
@@ -598,12 +587,12 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 });
             }
             ie.addView(listView);
-            ie.show();
+            showFilterMenu(backdropButton, ie);
         });
 
-        patternButton = new Filter(context, resourceProvider);
+        patternButton = new Filter(context, resourceProvider, true);
         patternButton.setValue(getString(R.string.Gift2AttributeSymbol));
-        filtersContainer.addView(patternButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, 0, 0));
+        addFilterPill(patternButton, true);
         patternButton.setOnClickListener(v -> {
             if (!filtersShown) return;
             if (list.patternAttributes.isEmpty()) return;
@@ -711,7 +700,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 });
             }
             ie.addView(listView);
-            ie.show();
+            showFilterMenu(patternButton, ie);
         });
 
         fireworksOverlay = new FireworksOverlay(getContext());
@@ -722,43 +711,205 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         return fragmentView;
     }
 
+    private void addFilterPill(Filter filter, boolean last) {
+        final int padding = dp(Filter.GLASS_PADDING_DP);
+        final FrameLayout pill = new FrameLayout(getContext());
+        pill.setPadding(padding, padding, padding, padding);
+        pill.setBackground(getBaseSimpleGlass().factory.create(pill)
+            .setColorProvider(filterGlassColors)
+            .setRadius(dp(FILTER_HEIGHT_DP / 2f))
+            .setPadding(padding));
+        pill.addView(filter, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, FILTER_HEIGHT_DP));
+        pill.setOnClickListener(v -> filter.performClick());
+        ScaleStateListAnimator.apply(pill);
+        filtersContainer.addView(pill, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, last ? 0 : Filter.GAP_MARGIN_DP, 0));
+    }
+
+    private void showFilterMenu(Filter filter, ItemOptions options) {
+        final SimpleActionBarMenuOverlay overlay = getSimpleMenuOverlay();
+        if (overlay == null || !(options.getLayout() instanceof ActionBarPopupWindow.ActionBarPopupWindowLayout) || !(filter.getParent() instanceof FrameLayout)) {
+            options.show();
+            return;
+        }
+        final ActionBarPopupWindow.ActionBarPopupWindowLayout layout = (ActionBarPopupWindow.ActionBarPopupWindowLayout) options.getLayout();
+        filterMenuHost.set((FrameLayout) filter.getParent(), filter, overlay);
+        options.setOnDismiss(() -> overlay.close(true));
+        overlay.setOnClosed(() -> AndroidUtilities.hideKeyboard(layout));
+        overlay.open(filterMenuHost, layout);
+    }
+
+    private BlurredBackgroundColorProvider filterGlassColors;
+    private final FilterMenuHost filterMenuHost = new FilterMenuHost();
+
+    private class FilterMenuHost implements MenuOverlayHost {
+        private FrameLayout pill;
+        private Filter filter;
+        private SimpleActionBarMenuOverlay overlay;
+        private boolean shown;
+
+        void set(FrameLayout pill, Filter filter, SimpleActionBarMenuOverlay overlay) {
+            if (shown && this.pill != null && this.pill != pill) {
+                this.pill.setVisibility(View.VISIBLE);
+            }
+            this.pill = pill;
+            this.filter = filter;
+            this.overlay = overlay;
+        }
+
+        @Nullable
+        @Override
+        public BlurredBackgroundDrawable createMenuGlass(View owner) {
+            return getBaseSimpleGlass().menuFactory.create(owner).setColorProvider(filterGlassColors).setRadius(dp(23)).setPadding(dp(6));
+        }
+
+        @Nullable
+        @Override
+        public BlurredBackgroundColorProvider getMenuGlassColorProvider() {
+            return filterGlassColors;
+        }
+
+        @Override
+        public int getButtonsGlassBackgroundColor() {
+            return filterGlassColors.getBackgroundColor();
+        }
+
+        @Nullable
+        @Override
+        public BlurredBackgroundColorProvider getButtonsGlassColorProvider() {
+            return filterGlassColors;
+        }
+
+        @Override
+        public boolean hasMenuGlassStroke() {
+            return true;
+        }
+
+        @Override
+        public void setMenuGlassFrostedProgress(float progress) {
+            final GlassSourceCrossfade source = getBaseSimpleGlass().menuGlassSource;
+            if (source != null) {
+                source.setProgress(progress);
+            }
+        }
+
+        @Override
+        public boolean getMenuItemGlassRect(@Nullable ActionBarMenuItem item, RectF out) {
+            final int padding = dp(Filter.GLASS_PADDING_DP);
+            out.set(padding, padding, pill.getWidth() - padding, pill.getHeight() - padding);
+            return true;
+        }
+
+        @Override
+        public View getMenuView() {
+            return filter;
+        }
+
+        @Override
+        public void setMenuOverlay(@Nullable SimpleActionBarMenuOverlay overlay, @Nullable ActionBarMenuItem item) {
+            shown = overlay != null;
+            pill.setVisibility(shown ? View.INVISIBLE : View.VISIBLE);
+        }
+
+        @Nullable
+        @Override
+        public SimpleActionBarMenuOverlay getOpenMenuOverlay() {
+            return shown ? overlay : null;
+        }
+
+        @Nullable
+        @Override
+        public Theme.ResourcesProvider getMenuResourcesProvider() {
+            return resourceProvider;
+        }
+
+        @NonNull
+        @Override
+        public View getMenuHostView() {
+            return pill;
+        }
+
+        @Override
+        public boolean isMenuCentered() {
+            return true;
+        }
+
+        @Override
+        public int getMenuRise() {
+            return dp(8);
+        }
+    }
     private boolean filtersShown = true;
+    private ValueAnimator filtersAnimator;
     private void setFiltersShown(boolean show, boolean animated) {
         if (filtersShown == show) return;
         filtersShown = show;
-        if (animated) {
-            filterScrollView.setVisibility(View.VISIBLE);
-            filterScrollView.animate()
-                .translationY(show ? 0 : -dp(45))
-                .alpha(show ? 1.0f : 0.0f)
-                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                .setDuration(420)
-                .setListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (!show) {
-                            filterScrollView.setVisibility(View.GONE);
-                        }
-                    }
-                })
-                .start();
-            filtersDivider.animate()
-                .translationY(show ? 0 : -dp(45))
-                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                .setDuration(420)
-                .start();
-            listView.animate()
-                .translationY(show ? 0 : -dp(45 - 6))
-                .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                .setDuration(420)
-                .start();
-        } else {
-            filterScrollView.setVisibility(show ? View.VISIBLE : View.GONE);
-            filterScrollView.setTranslationY(show ? 0 : -dp(45));
-            filterScrollView.setAlpha(show ? 1.0f : 0.0f);
-            filtersDivider.setTranslationY(show ? 0 : -dp(45));
-            listView.setTranslationY(show ? 0 : -dp(45 - 6));
+        if (filtersAnimator != null) {
+            filtersAnimator.cancel();
+            filtersAnimator = null;
         }
+        final float to = show ? 0.0f : 1.0f;
+        if (animated) {
+            filtersAnimator = ValueAnimator.ofFloat(filtersHiddenFactor, to);
+            filtersAnimator.addUpdateListener(a -> {
+                filtersHiddenFactor = (float) a.getAnimatedValue();
+                updateFiltersPosition();
+            });
+            filtersAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+            filtersAnimator.setDuration(420);
+            filtersAnimator.start();
+        } else {
+            filtersHiddenFactor = to;
+            updateFiltersPosition();
+        }
+    }
+
+    private int getFiltersShift() {
+        return dp(FILTER_HEIGHT_DP + BaseFragmentSimpleGlass.PILLS_GAP_DP);
+    }
+
+    private void updateFiltersPosition() {
+        if (filterScrollView == null) return;
+        final float f = filtersHiddenFactor;
+        final float shift = getFiltersShift() * f;
+        filterScrollView.setTranslationY(BaseFragmentSimpleGlass.getPillGlassTop(insetTop) - dp(Filter.GLASS_PADDING_DP) - shift);
+        filterScrollView.setAlpha(1.0f - f);
+        filterScrollView.setVisibility(f >= 1.0f ? View.GONE : View.VISIBLE);
+        listView.setTranslationY(-shift);
+        listTopOverlay.setTranslationY(-shift);
+    }
+
+    private void updateInsets() {
+        if (listView == null) return;
+        final int filtersBottom = BaseFragmentSimpleGlass.getPillGlassTop(insetTop) + dp(FILTER_HEIGHT_DP);
+        final int shift = getFiltersShift();
+
+        final int marginTop = -BaseFragmentSimpleGlass.getOverscan(insetTop);
+        final int marginBottom = -BaseFragmentSimpleGlass.getOverscan(insetBottom) - shift;
+        AndroidUtilities.setViewLayoutMargins(listView, dp(LIST_SIDE_DP), marginTop, dp(LIST_SIDE_DP), marginBottom);
+        listView.setPadding(0, filtersBottom + dp(4) - marginTop, 0, insetBottom + dp(56) - marginBottom);
+
+        listTopOverlay.getLayoutParams().height = filtersBottom + dp(6);
+        listTopOverlay.requestLayout();
+
+        AndroidUtilities.setViewLayoutMargins(emptyView, 0, insetTop + ActionBar.getCurrentActionBarHeight(), 0, 0);
+        ((FrameLayout.LayoutParams) onlyStarsContainer.getLayoutParams()).bottomMargin = insetBottom;
+        ((FrameLayout.LayoutParams) clearFiltersContainer.getLayoutParams()).bottomMargin = insetBottom;
+        onlyStarsContainer.requestLayout();
+        clearFiltersContainer.requestLayout();
+
+        updateFiltersPosition();
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        insetTop = simpleActionBar != null && simpleActionBar.getOccupyStatusBar() ? Math.max(top, AndroidUtilities.statusBarHeight) : top;
+        insetBottom = Math.max(bottom, AndroidUtilities.navigationBarHeight);
+        updateInsets();
+    }
+
+    private void updateSubtitle() {
+        if (simpleActionBar == null) return;
+        simpleActionBar.setSubtitle(list.getTotalCount() <= 0 ? getString(R.string.Gift2ResaleNoCount) : LocaleController.formatPluralStringComma("Gift2ListingsCount", list.getTotalCount()));
     }
 
     private void updateList(boolean first) {
@@ -771,10 +922,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                 listView.scrollToPosition(0);
             }
         }
-        if (actionBar != null) {
-            actionBar.setTitle(gift_name);
-            actionBar.setSubtitle(list.getTotalCount() <= 0 ? getString(R.string.Gift2ResaleNoCount) : LocaleController.formatPluralStringComma("Gift2ListingsCount", list.getTotalCount()));
-        }
+        updateSubtitle();
         if (sortButton != null) {
             sortButton.setSorting(list.getSorting());
         }
@@ -1169,14 +1317,8 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         if (getLastStoryViewer() != null && getLastStoryViewer().isShown()) {
             return false;
         }
-        int color = Theme.getColor(Theme.key_windowBackgroundWhite);
-        if (actionBar.isActionModeShowed()) {
-            color = Theme.getColor(Theme.key_actionBarActionModeDefault);
-        }
-        return ColorUtils.calculateLuminance(color) > 0.7f;
+        return ColorUtils.calculateLuminance(getThemedColor(Theme.key_windowBackgroundGray)) > 0.7f;
     }
-
-    private int themedBackgroundColor;
     private int lastPressedColor;
     private View onlyStarsCheckboxLayout;
 
@@ -1186,43 +1328,39 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         }
     }
 
-    private static boolean hasColorBackground(View view, int color) {
-        return view != null && view.getBackground() instanceof android.graphics.drawable.ColorDrawable
-            && ((android.graphics.drawable.ColorDrawable) view.getBackground()).getColor() == color;
-    }
-
-    private void updateFragmentBackground() {
-        try {
-            final int color = Theme.blendOver(
-                Theme.getColor(Theme.key_windowBackgroundWhite, resourceProvider),
-                Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourceProvider), 0.04f)
-            );
-            if (color != themedBackgroundColor) {
-                if (hasColorBackground(filterScrollView, themedBackgroundColor)) {
-                    filterScrollView.setBackgroundColor(color);
-                }
-                if (hasColorBackground(fragmentView, themedBackgroundColor)) {
-                    fragmentView.setBackgroundColor(color);
-                }
-                themedBackgroundColor = color;
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
     public static class Filter extends TextView {
+        public static final int GLASS_PADDING_DP = 6;
+        public static final int GAP_MARGIN_DP = 8 - GLASS_PADDING_DP * 2;
         private ColoredImageSpan span;
+        private final int fixedHeight;
+        private final boolean onGlass;
         public Filter(Context context, Theme.ResourcesProvider resourcesProvider) {
+            this(context, resourcesProvider, false);
+        }
+
+        public Filter(Context context, Theme.ResourcesProvider resourcesProvider, boolean onGlass) {
             super(context);
 
+            this.onGlass = onGlass;
+
+            if (onGlass) {
+                ThemeBind.textColor(this, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+                setPadding(dp(14), 0, dp(14), 0);
+                setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+                fixedHeight = dp(FILTER_HEIGHT_DP);
+            } else {
             final int color = Theme.getColor(Theme.key_actionBarActionModeDefaultIcon, resourcesProvider);
             ThemeBind.textColor(this, Theme.key_actionBarActionModeDefaultIcon, resourcesProvider);
             ThemeBind.selectorBackground(this, Theme.createRadSelectorDrawable(Theme.multAlpha(color, 0.08f), Theme.multAlpha(color, 0.15f), dp(13), dp(13)), ThemeBind.multAlpha(Theme.key_actionBarActionModeDefaultIcon, 0.08f), ThemeBind.multAlpha(Theme.key_actionBarActionModeDefaultIcon, 0.15f), resourcesProvider);
             setPadding(dp(11), 0, dp(11), 0);
+                fixedHeight = dp(26);
+            }
             setGravity(Gravity.CENTER);
             setTypeface(AndroidUtilities.bold());
+            if (!onGlass) {
             ScaleStateListAnimator.apply(this);
 
+            }
             span = new ColoredImageSpan(R.drawable.arrows_select);
             span.spaceScaleX = 0.8f;
             span.translate(0, dp(1));
@@ -1255,7 +1393,112 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(26), MeasureSpec.EXACTLY));
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(fixedHeight, MeasureSpec.EXACTLY));
+        }
+
+        @SuppressLint("ClickableViewAccessibility")
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            return !onGlass && super.onTouchEvent(event);
+        }
+    }
+
+    public static class BalancePill extends LinearLayout implements NotificationCenter.NotificationCenterDelegate {
+        public static final int GLASS_PADDING_DP = 6;
+
+        private final int currentAccount;
+        private final AnimatedTextView starsTextView;
+        private final AnimatedTextView tonTextView;
+        private final ColoredImageSpan[] starRef = new ColoredImageSpan[1];
+        private final ColoredImageSpan[] tonRef = new ColoredImageSpan[1];
+        private SpannableString loadingString;
+        private Utilities.Callback<Integer> onWidthChanged;
+        public long lastBalance = -1;
+
+        public BalancePill(Context context, int currentAccount, Theme.ResourcesProvider resourcesProvider) {
+            super(context);
+            this.currentAccount = currentAccount;
+            setOrientation(VERTICAL);
+            setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+            final int padding = dp(GLASS_PADDING_DP);
+            setPadding(padding + dp(13), padding, padding + dp(14), padding);
+
+            starsTextView = createText(context, resourcesProvider);
+            addView(starsTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 18, Gravity.RIGHT));
+            tonTextView = createText(context, resourcesProvider);
+            addView(tonTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 18, Gravity.RIGHT));
+
+            updateBalance(false);
+        }
+
+        private static AnimatedTextView createText(Context context, Theme.ResourcesProvider resourcesProvider) {
+            final AnimatedTextView textView = new AnimatedTextView(context, false, true, false);
+            textView.adaptWidth = true;
+            textView.setTypeface(AndroidUtilities.bold());
+            textView.setTextSize(dp(14));
+            textView.setGravity(Gravity.RIGHT);
+            ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+            return textView;
+        }
+
+        public void setOnWidthChanged(Utilities.Callback<Integer> onWidthChanged) {
+            this.onWidthChanged = onWidthChanged;
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            if (onWidthChanged != null && w != oldw) {
+                onWidthChanged.run(w);
+            }
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            updateBalance(false);
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.starBalanceUpdated);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.starBalanceUpdated);
+        }
+
+        @Override
+        public void didReceivedNotification(int id, int account, Object... args) {
+            if (id == NotificationCenter.starBalanceUpdated) {
+                updateBalance(true);
+            }
+        }
+
+        private void updateBalance(boolean animated) {
+            final StarsController c = StarsController.getInstance(currentAccount);
+            final StarsController tc = StarsController.getTonInstance(currentAccount);
+            final long balance = c.getBalance().amount;
+            final AmountUtils.Amount ton = tc.getBalanceAmount();
+            if (!c.balanceAvailable() || !tc.balanceAvailable()) {
+                if (loadingString == null) {
+                    loadingString = new SpannableString("x");
+                    loadingString.setSpan(new LoadingSpan(starsTextView, dp(48)), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                }
+                starsTextView.setText(loadingString, false);
+                tonTextView.setVisibility(GONE);
+                lastBalance = -1;
+                return;
+            }
+            starsTextView.setText(StarsIntroActivity.replaceStarsWithPlain("⭐️" + LocaleController.formatNumber(balance, ' '), 0.7f, starRef), animated);
+            if (ton.isZero()) {
+                tonTextView.setVisibility(GONE);
+            } else {
+                tonTextView.setVisibility(VISIBLE);
+                tonTextView.setText(StarsIntroActivity.replaceStarsWithPlain(true, "⭐️" + ton.asFormatString(), 0.7f, tonRef), animated);
+                if (tonRef[0] != null) {
+                    tonRef[0].setColorKey(Theme.key_telegram_color_text);
+                }
+            }
+            lastBalance = balance;
         }
     }
 
@@ -2322,8 +2565,6 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         }
     }
 
-    private GlassSourceColor iBlur3SourceColor;
-    private BlurredBackgroundDrawableViewFactory iBlur3Factory;
 
 
     @Override
@@ -2334,8 +2575,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
     public void onThemeColorsChanged() {
         try {
             super.onThemeColorsChanged();
-            iBlur3SourceColor.setColor(getThemedColor(Theme.key_windowBackgroundWhite));
-            final int pressedColor = Theme.blendOver(getThemedColor(Theme.key_windowBackgroundWhite), Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f));
+            final int pressedColor = Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), 0.10f);
             if (pressedColor != lastPressedColor) {
                 lastPressedColor = pressedColor;
                 setSelectorRippleColor(clearFiltersButton, pressedColor);
@@ -2345,6 +2585,5 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         } catch (Exception e) {
             FileLog.e(e);
         }
-        updateFragmentBackground();
     }
 }

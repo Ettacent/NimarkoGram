@@ -689,13 +689,15 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
         if (selectedAudios.size() == 0 || delegate == null || sendPressed) {
             return false;
         }
-        sendPressed = true;
+        final AudioSelectDelegate sendDelegate = delegate;
         ArrayList<MessageObject> audios = new ArrayList<>();
         for (MediaController.AudioEntry entry : selectedAudios) {
             audios.add(entry.messageObject);
         }
         return AlertsCreator.ensurePaidMessageConfirmation(parentAlert.currentAccount, parentAlert.getDialogId(), audios.size() + parentAlert.getAdditionalMessagesCount(), payStars -> {
-            delegate.didSelectAudio(audios, parentAlert.getCommentView().getText(), notify, scheduleDate, scheduleRepeatPeriod, effectId, invertMedia, payStars);
+            if (sendPressed) return;
+            sendPressed = true;
+            sendDelegate.didSelectAudio(audios, parentAlert.getCommentView().getText(), notify, scheduleDate, scheduleRepeatPeriod, effectId, invertMedia, payStars);
             parentAlert.dismiss(true);
         });
     }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -24,6 +26,13 @@ class ByteArray;
 class TLObject;
 class Config;
 class Handshake;
+
+struct PacketBuildResult {
+    PacketBuildStatus status;
+    NativeByteBuffer *buffer = nullptr;
+    int32_t quickAckId = 0;
+    size_t invalidMessage = static_cast<size_t>(-1);
+};
 
 class Datacenter : public HandshakeDelegate {
 
@@ -76,7 +85,8 @@ private:
     void onHandshakeConnectionConnected(Connection *connection);
     void onHandshakeComplete(Handshake *handshake, int64_t keyId, ByteArray *authKey, int32_t timeDifference);
     void processHandshakeResponse(bool media, TLObject *message, int64_t messageId);
-    NativeByteBuffer *createRequestsData(std::vector<std::unique_ptr<NetworkMessage>> &requests, int32_t *quickAckId, Connection *connection, bool pfsInit);
+    PacketBuildResult createRequestsData(const std::vector<std::unique_ptr<NetworkMessage>> &requests,
+            size_t begin, size_t end, Connection *connection, bool pfsInit);
     bool decryptServerResponse(int64_t keyId, uint8_t *key, uint8_t *data, uint32_t length, Connection *connection);
     TLObject *getCurrentHandshakeRequest(bool media);
     ByteArray *getAuthKey(ConnectionType connectionType, bool perm, int64_t *authKeyId, int32_t allowPendingKey);

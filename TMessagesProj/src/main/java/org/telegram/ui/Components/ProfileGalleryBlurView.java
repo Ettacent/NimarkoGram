@@ -20,6 +20,7 @@ import android.graphics.RenderEffect;
 import android.graphics.RenderNode;
 import android.graphics.Shader;
 import android.os.Build;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 
@@ -27,20 +28,32 @@ import androidx.annotation.RequiresApi;
 import androidx.viewpager.widget.ViewPager;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.ProfileActivity;
 
+import java.util.HashSet;
 public class ProfileGalleryBlurView extends View {
 
     private boolean usingRenderNode = Build.VERSION.SDK_INT >= 31;
-    private final Object lock = new Object();
 
     private final ProfileMetaballView.BlurBitmapHolder[] nextFrame = new ProfileMetaballView.BlurBitmapHolder[3];
     private final ProfileMetaballView.BlurBitmapHolder[] currentFrame = new ProfileMetaballView.BlurBitmapHolder[3];
 
-    private volatile boolean isBluring = false;
+    private final HashSet<ProfileMetaballView.BlurBitmapHolder> hardwareFrames = new HashSet<>();
+    private final View[] sourceViews = new View[3];
+    private final int[] sourceWidths = new int[3];
+    private final int[] sourceHeights = new int[3];
+    private final Runnable[] sourceCallbacks = new Runnable[3];
+    private BlurBatch activeBatch;
+    private long captureGeneration;
+    private boolean capturing;
+    private boolean softwareDetached = true;
+    private Runnable captureInvalidation;
+    private int captureWidth, captureHeight, captureBlurSize, captureActionSize;
+    private long captureDialogId = Long.MIN_VALUE;
 
     private final Paint[] paints = new Paint[]{
             new Paint(),
@@ -51,18 +64,16 @@ public class ProfileGalleryBlurView extends View {
     public int actionSize;
     public int size;
 
-    private final Runnable blurTask = this::doBlur;
     private final Runnable invalidateTask = this::updateContent;
 
     private int currentPosition = -1;
     private int offset;
 
-    private int frameWidth, frameHeight;
     private boolean loopInvalidate = false;
 
     private boolean sizeChanged = false;
     private boolean needNewFrame = false;
-    private long lastCaptureTime;
+    private long lastCaptureTime = -1;
 
     private RenderNode blurNode;
 
@@ -71,21 +82,71 @@ public class ProfileGalleryBlurView extends View {
 
     private final AnimatedFloat alpha = new AnimatedFloat(this, 0, 350, CubicBezierInterpolator.DEFAULT);
 
-    private final ViewPager.OnPageChangeListener listener = new ViewPager.OnPageChangeListener() {
+    private static final class FrameCapture {
+        final int slot, page, width, height;
+        final View source;
+        final ProfileMetaballView.BlurBitmapHolder holder;
+        final Bitmap bitmap;
+
+        FrameCapture(int slot, int page, View source, ProfileMetaballView.BlurBitmapHolder holder) {
+            this.slot = slot;
+            this.page = page;
+            this.source = source;
+            this.holder = holder;
+            bitmap = holder.bitmap;
+            width = source.getMeasuredWidth();
+            height = source.getMeasuredHeight();
+        }
+    }
+
+    private static final class BlurBatch {
+        final ProfileGalleryBlurView owner;
+        final ProfileGalleryView gallery;
+        final long generation, dialogId;
+        final int position, width, height, blurSize, actionSize;
+        final FrameCapture[] frames = new FrameCapture[3];
+
+        BlurBatch(ProfileGalleryBlurView owner, ProfileGalleryView gallery) {
+            this.owner = owner;
+            this.gallery = gallery;
+            generation = owner.captureGeneration;
+            dialogId = gallery.getDialogId();
+            position = owner.currentPosition;
+            width = gallery.getMeasuredWidth();
+            height = gallery.getMeasuredHeight();
+            blurSize = owner.size;
+            actionSize = owner.actionSize;
+        }
+    }
+
+    private ViewPager.OnPageChangeListener listener;
+
+    private ViewPager.OnPageChangeListener createPageListener(ProfileGalleryView gallery) {
+        return new ViewPager.OnPageChangeListener() {
         @Override
         public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+                if (view != gallery || listener != this) return;
+                int oldPosition = currentPosition;
+                int oldOffset = offset;
             if (!usingRenderNode) {
+                    if (position != oldPosition) {
+                        captureGeneration++;
+                        clearSourceListeners();
+                    }
                 if (Math.abs(position - currentPosition) == 1) {
                     if (position > currentPosition) {
                         swap(0, 1, 1);
+                            swapFrames(1, 2);
+                            clearOutput(1);
                     } else if (position < currentPosition) {
                         swap(1, 0, 0);
                         swap(2, 0, -1);
+                            clearOutput(2);
+                        }
+                    } else if (position != oldPosition) {
+                        clearCurrentFrames();
                     }
                 }
-            }
-            int oldPosition = currentPosition;
-            int oldOffset = offset;
 
             currentPosition = position;
             offset = positionOffsetPixels;
@@ -93,20 +154,30 @@ public class ProfileGalleryBlurView extends View {
             if (oldPosition != currentPosition) {
                 updateContent();
             } else if (oldOffset != offset) {
+                    if (!usingRenderNode && (oldOffset == 0 || offset == 0)) {
+                        needNewFrame = true;
+                    }
                 postInvalidateOnAnimation();
+                } else if (!usingRenderNode && view != null && haveSourceChanges(view)) {
+                    updateContent();
             }
         }
 
         @Override
         public void onPageSelected(int position) {
+                if (view != gallery || listener != this) return;
+                if (!usingRenderNode) updateContent();
         }
 
         @Override
         public void onPageScrollStateChanged(int state) {
 
+                if (view != gallery || listener != this) return;
+                if (!usingRenderNode && state == ViewPager.SCROLL_STATE_IDLE) updateContent();
         }
     };
 
+    }
     public ProfileGalleryBlurView(Context context) {
         super(context);
         alpha.set(1f, true);
@@ -139,7 +210,28 @@ public class ProfileGalleryBlurView extends View {
 
 
     private void swap(int from, int to, int clear) {
-        synchronized (lock) {
+        swapFrames(from, to);
+
+        if (from == 2) {
+            paints[to].setShader(null);
+            if (isDrawable(currentFrame[to])) {
+                applyShader(currentFrame[to].bitmap, to);
+            }
+        } else {
+            Paint tmp = paints[from];
+            paints[from] = paints[to];
+            paints[to] = tmp;
+        }
+
+        if (clear != -1) {
+            paints[clear].setShader(null);
+            if (hasBitmap(nextFrame[clear]) && !nextFrame[clear].isBusy) {
+                nextFrame[clear].clear();
+            }
+        }
+    }
+
+    private void swapFrames(int from, int to) {
             ProfileMetaballView.BlurBitmapHolder tmp2 = nextFrame[from];
             nextFrame[from] = nextFrame[to];
             nextFrame[to] = tmp2;
@@ -148,31 +240,30 @@ public class ProfileGalleryBlurView extends View {
             currentFrame[from] = currentFrame[to];
             currentFrame[to] = tmp2;
 
-            if (from == 2) {
-                if (currentFrame[to].hasContent) {
-                    applyShader(currentFrame[to].bitmap, to);
-                }
-            } else {
-                Paint tmp = paints[from];
-                paints[from] = paints[to];
-                paints[to] = tmp;
-            }
+    }
 
-            if (clear != -1) {
-                paints[clear].setShader(null);
-                if (nextFrame[clear] != null && !nextFrame[clear].isBusy) {
-                    nextFrame[clear].clear();
-                }
-            }
+    private void clearOutput(int slot) {
+        if (slot < paints.length) paints[slot].setShader(null);
+        final ProfileMetaballView.BlurBitmapHolder frame = currentFrame[slot];
+        if (hardwareFrames.remove(frame)) {
+            currentFrame[slot] = null;
+        } else if (hasBitmap(frame)) {
+            frame.clear();
         }
     }
 
     private void updateContent() {
+        if (view == null) return;
         needNewFrame = true;
-        postInvalidateOnAnimation();
+        if (usingRenderNode) {
+            postInvalidateOnAnimation();
+            } else {
+            requestCapture();
+        }
     }
 
     public void notifyUpdateSize() {
+        captureGeneration++;
         sizeChanged = true;
         postInvalidateOnAnimation();
     }
@@ -184,6 +275,7 @@ public class ProfileGalleryBlurView extends View {
         }
         this.actionSize = size;
         this.size = blurSize;
+        captureGeneration++;
         sizeChanged = true;
         requestLayout();
         postInvalidateOnAnimation();
@@ -192,194 +284,369 @@ public class ProfileGalleryBlurView extends View {
     public void setView(ProfileGalleryView view) {
         destroy();
         this.view = view;
+        if (view == null) return;
         currentPosition = view.getCurrentItem();
         offset = 0;
+        needNewFrame = sizeChanged = true;
+        listener = createPageListener(view);
         view.addOnPageChangeListener(listener);
+        if (!usingRenderNode) requestCapture();
     }
 
     public void destroy() {
-        if (view != null) {
-            view.removeOnPageChangeListener(listener);
+        captureGeneration++;
+        cancelCaptureInvalidation();
+        final ProfileGalleryView gallery = view;
+        final ViewPager.OnPageChangeListener oldListener = listener;
             view = null;
-        }
-        isBluring = false;
-        profileBlurQueue.cancelRunnable(blurTask);
+        listener = null;
+        if (gallery != null && oldListener != null) gallery.removeOnPageChangeListener(oldListener);
+        clearSourceListeners();
+        loopInvalidate = false;
+        needNewFrame = sizeChanged = true;
+        captureWidth = captureHeight = captureBlurSize = captureActionSize = 0;
+        captureDialogId = Long.MIN_VALUE;
+        lastCaptureTime = -1;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             if (blurNode != null) {
                 blurNode.discardDisplayList();
                 blurNode = null;
             }
         }
-        synchronized (lock) {
-            for (int i = 0; i < 3; i++) {
-                if (nextFrame[i] != null) {
-                    nextFrame[i].recycle();
+        retireNextFrames();
+        clearCurrentFrames();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        softwareDetached = false;
+        if (!usingRenderNode) {
+            captureGeneration++;
+            needNewFrame = sizeChanged = true;
+            requestCapture();
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        softwareDetached = true;
+        if (!usingRenderNode) {
+            captureGeneration++;
+            cancelCaptureInvalidation();
+            clearSourceListeners();
+            retireNextFrames();
+            loopInvalidate = false;
+            needNewFrame = sizeChanged = true;
+            lastCaptureTime = -1;
+        }
+        super.onDetachedFromWindow();
+    }
+
+    private static boolean hasBitmap(ProfileMetaballView.BlurBitmapHolder frame) {
+        return frame != null && !frame.destroying && !frame.destroyed
+                && frame.bitmap != null && !frame.bitmap.isRecycled();
+    }
+
+    private static boolean isDrawable(ProfileMetaballView.BlurBitmapHolder frame) {
+        return hasBitmap(frame) && !frame.isBusy && frame.hasContent;
+    }
+
+    private static void retire(ProfileMetaballView.BlurBitmapHolder frame) {
+        if (frame != null && !frame.destroying && !frame.destroyed) frame.recycle();
+    }
+
+    private void retireNextFrames() {
+        for (int i = 0; i < nextFrame.length; i++) {
+            retire(nextFrame[i]);
                     nextFrame[i] = null;
                 }
-                if (currentFrame[i] != null) {
-                    currentFrame[i].recycle();
+    }
+
+    private void clearCurrentFrames() {
+        paints[0].setShader(null);
+        paints[1].setShader(null);
+        for (int i = 0; i < currentFrame.length; i++) {
+            if (!hardwareFrames.remove(currentFrame[i])) retire(currentFrame[i]);
                     currentFrame[i] = null;
                 }
+    }
+
+    private void clearSourceListeners() {
+        for (int i = 0; i < listeners.length; i++) {
+            sourceCallbacks[i] = null;
+            sourceViews[i] = null;
+            sourceWidths[i] = sourceHeights[i] = 0;
                 if (listeners[i] != null) {
                     listeners[i].listenInvalidate(null);
                     listeners[i] = null;
                 }
             }
-            paints[0].setShader(null);
-            paints[1].setShader(null);
+    }
+
+    private void updateSoftwareSources(ProfileGalleryView gallery) {
+        if (captureDialogId != gallery.getDialogId()) {
+            captureDialogId = gallery.getDialogId();
+            captureGeneration++;
+            needNewFrame = sizeChanged = true;
+            clearSourceListeners();
+            retireNextFrames();
+            clearCurrentFrames();
+        }
+        final int width = gallery.getMeasuredWidth(), height = gallery.getMeasuredHeight();
+        if (captureWidth != width || captureHeight != height || captureBlurSize != size || captureActionSize != actionSize) {
+            captureWidth = width;
+            captureHeight = height;
+            captureBlurSize = size;
+            captureActionSize = actionSize;
+            captureGeneration++;
+            needNewFrame = sizeChanged = true;
+            retireNextFrames();
+        }
+        boolean changed = false;
+        for (int i = 0; i < sourceViews.length; i++) {
+            final int slot = i;
+            final View source = gallery.getItemViewAt(currentPosition + (i == 2 ? -1 : i));
+            if (sourceViews[i] != source) {
+                sourceCallbacks[i] = null;
+                if (listeners[i] != null) listeners[i].listenInvalidate(null);
+                listeners[i] = null;
+                sourceViews[i] = source;
+                changed = true;
+                if (source instanceof SizeNotifierFrameLayout.IViewWithInvalidateCallback) {
+                    final Runnable callback = new Runnable() {
+                        @Override
+                        public void run() {
+                            if (Looper.myLooper() != Looper.getMainLooper()) {
+                                AndroidUtilities.runOnUIThread(this);
+                                return;
+                            }
+                            if (view == gallery && !softwareDetached && sourceViews[slot] == source
+                                    && sourceCallbacks[slot] == this) updateContent();
+                        }
+            };
+                    sourceCallbacks[i] = callback;
+                    listeners[i] = (SizeNotifierFrameLayout.IViewWithInvalidateCallback) source;
+                    listeners[i].listenInvalidate(callback);
+                }
+            }
+            int w = source == null ? 0 : source.getMeasuredWidth();
+            int h = source == null ? 0 : source.getMeasuredHeight();
+            if (sourceWidths[i] != w || sourceHeights[i] != h) {
+                sourceWidths[i] = w;
+                sourceHeights[i] = h;
+                changed = true;
+            }
+        }
+        if (changed) {
+            captureGeneration++;
+            needNewFrame = true;
+        }
+        loopInvalidate = sourceViews[0] != null && listeners[0] == null
+                || offset != 0 && sourceViews[1] != null && listeners[1] == null;
+    }
+
+    private boolean haveSourceChanges(ProfileGalleryView gallery) {
+        if (captureDialogId != gallery.getDialogId()) return true;
+        for (int i = 0; i < sourceViews.length; i++) {
+            final View source = gallery.getItemViewAt(currentPosition + (i == 2 ? -1 : i));
+            if (sourceViews[i] != source || source != null
+                    && (sourceWidths[i] != source.getMeasuredWidth() || sourceHeights[i] != source.getMeasuredHeight())) return true;
+        }
+        return false;
+    }
+
+    private boolean canCapture(ProfileGalleryView gallery) {
+        return gallery != null && view == gallery && !softwareDetached && gallery.isAttachedToWindow()
+                && gallery.getVisibility() != GONE && !gallery.isZooming();
+    }
+
+    private void cancelCaptureInvalidation() {
+        if (captureInvalidation != null) {
+            AndroidUtilities.cancelRunOnUIThread(captureInvalidation);
+            captureInvalidation = null;
         }
     }
 
-    private void doBlur() {
-        boolean invalidateNeeded = false;
-        ProfileMetaballView.BlurBitmapHolder[] syncHolders;
-        synchronized (lock) {
-            syncHolders = new ProfileMetaballView.BlurBitmapHolder[]{
-                    nextFrame[0], currentFrame[0],
-                    nextFrame[1], currentFrame[1],
-                    nextFrame[2], currentFrame[2],
-            };
-        }
-
-        for (int i = 0; i < syncHolders.length; i += 2) {
-            ProfileMetaballView.BlurBitmapHolder nextFrameHolder = syncHolders[i];
-            ProfileMetaballView.BlurBitmapHolder currentFrameHolder = syncHolders[i + 1];
-
-            if (nextFrameHolder != null && !nextFrameHolder.destroying && nextFrameHolder.hasContent) {
-                nextFrameHolder.lock();
-                if (currentFrameHolder == null || !currentFrameHolder.canUse(nextFrameHolder)) {
-                    if (currentFrameHolder != null) currentFrameHolder.recycle();
-                    currentFrameHolder = new ProfileMetaballView.BlurBitmapHolder(nextFrameHolder);
-                    synchronized (lock) {
-                        currentFrame[indexOf(nextFrameHolder)] = currentFrameHolder;
-                    }
+    private void requestCapture() {
+        final ProfileGalleryView gallery = view;
+        if (usingRenderNode || capturing || activeBatch != null || !canCapture(gallery)
+                || !(needNewFrame || sizeChanged || loopInvalidate)) return;
+        if (captureInvalidation != null) return;
+        final long generation = captureGeneration;
+        final long delay = sizeChanged || lastCaptureTime < 0 ? 0
+                : Math.max(0, 32L - (SystemClock.uptimeMillis() - lastCaptureTime));
+        captureInvalidation = new Runnable() {
+            @Override
+            public void run() {
+                if (captureInvalidation != this) return;
+                captureInvalidation = null;
+                if (captureGeneration != generation || !canCapture(gallery)) {
+                    if (view == gallery) requestCapture();
+                    return;
                 }
-                Bitmap blurFrame = nextFrameHolder.bitmap;
-                Utilities.stackBlurBitmap(blurFrame, Math.max(10, blurFrame.getWidth() / 180));
-                synchronized (lock) {
-                    currentFrameHolder.clear();
-                    currentFrameHolder.canvas.drawBitmap(blurFrame, 0, 0, null);
-                    currentFrameHolder.ready();
-                    applyShader(currentFrameHolder.bitmap, indexOf(nextFrameHolder));
-                }
-                nextFrameHolder.clear();
-                nextFrameHolder.unlock();
-                invalidateNeeded = true;
-            }
-        }
-
-        if (invalidateNeeded && isBluring && view != null) {
             postInvalidateOnAnimation();
         }
 
-        if (isBluring && (loopInvalidate || needNewFrame)) {
-            AndroidUtilities.runOnUIThread(() -> {
-                captureNextFrame();
-                profileBlurQueue.postRunnable(blurTask);
-            });
-        } else {
-            isBluring = false;
+        };
+        AndroidUtilities.runOnUIThread(captureInvalidation, delay);
+    }
+
+    private boolean isBatchCurrent(BlurBatch batch) {
+        final ProfileGalleryView gallery = batch.gallery;
+        return view == gallery && !softwareDetached && gallery.isAttachedToWindow()
+                && gallery.getVisibility() != GONE && captureGeneration == batch.generation
+                && gallery.getDialogId() == batch.dialogId
+                && currentPosition == batch.position && size == batch.blurSize && actionSize == batch.actionSize
+                && gallery.getMeasuredWidth() == batch.width && gallery.getMeasuredHeight() == batch.height;
+    }
+
+    private boolean isFrameCurrent(BlurBatch batch, FrameCapture frame) {
+        return nextFrame[frame.slot] == frame.holder && hasBitmap(frame.holder)
+                && frame.holder.isBusy && frame.holder.bitmap == frame.bitmap
+                && batch.gallery.getItemViewAt(frame.page) == frame.source
+                && frame.source.getMeasuredWidth() == frame.width && frame.source.getMeasuredHeight() == frame.height;
+    }
+
+    private void releaseInput(FrameCapture frame) {
+        final ProfileMetaballView.BlurBitmapHolder holder = frame.holder;
+        holder.unlock();
+        if (hasBitmap(holder)) {
+            boolean retained = false;
+            for (ProfileMetaballView.BlurBitmapHolder next : nextFrame) {
+                if (next == holder) retained = true;
+            }
+            if (retained) holder.clear();
+            else retire(holder);
         }
     }
 
-    private int indexOf(ProfileMetaballView.BlurBitmapHolder next) {
-        for (int i = 0; i < nextFrame.length; i++) {
-            if (nextFrame[i] == next) {
-                return i;
+    private static void blur(BlurBatch batch) {
+        final boolean[] ready = new boolean[batch.frames.length];
+        try {
+            for (int i = 0; i < batch.frames.length; i++) {
+                final FrameCapture frame = batch.frames[i];
+                if (frame == null) continue;
+                try {
+                    Utilities.stackBlurBitmap(frame.bitmap, Math.max(10, frame.bitmap.getWidth() / 180));
+                    ready[i] = true;
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
             }
+        } finally {
+            AndroidUtilities.runOnUIThread(() -> batch.owner.onBlurFinished(batch, ready));
         }
-        return 0;
+    }
+
+    private void onBlurFinished(BlurBatch batch, boolean[] ready) {
+        if (activeBatch != batch) return;
+        final boolean current = isBatchCurrent(batch);
+        boolean stale = !current, published = false;
+        for (int i = 0; i < batch.frames.length; i++) {
+            final FrameCapture frame = batch.frames[i];
+            if (frame == null) continue;
+            if (current && isFrameCurrent(batch, frame)) {
+                if (ready[i]) {
+                    final ProfileMetaballView.BlurBitmapHolder previous = currentFrame[i];
+                    frame.holder.unlock();
+                    currentFrame[i] = frame.holder;
+                    final boolean recordedOnHardware = hardwareFrames.remove(previous);
+                    nextFrame[i] = recordedOnHardware ? null : previous;
+                    applyShader(frame.bitmap, i);
+                    if (!recordedOnHardware) {
+                        if (hasBitmap(previous) && previous.canUse(frame.bitmap.getWidth(), frame.bitmap.getHeight())) {
+                            previous.clear();
+        } else {
+                            retire(previous);
+                            nextFrame[i] = null;
+                        }
+                    }
+                    published = true;
+                    continue;
+                }
+            } else {
+                stale = true;
+            }
+            releaseInput(frame);
+        }
+        activeBatch = null;
+        if (stale) needNewFrame = true;
+        if (published) postInvalidateOnAnimation();
+        if (stale || needNewFrame || sizeChanged || published && loopInvalidate) requestCapture();
     }
 
     private boolean captureNextFrame() {
-        if (view == null || view.isZooming()) return false;
-
-        int viewportWidth = view.getMeasuredWidth();
-
-        int w = (int) (viewportWidth / 6.0f);
-        int h = (int) (size / 6.0f);
-        if (w <= 0 || h <= 0) {
+        final ProfileGalleryView gallery = view;
+        if (activeBatch != null || capturing || !canCapture(gallery)) return false;
+        final int w = (int) (gallery.getMeasuredWidth() / 6.0f), h = (int) (size / 6.0f);
+        if (w <= 0 || h <= 0) return false;
+        cancelCaptureInvalidation();
+        final BlurBatch batch = new BlurBatch(this, gallery);
+        boolean submitted = false, retry = false;
+        capturing = true;
+        needNewFrame = sizeChanged = false;
+        lastCaptureTime = SystemClock.uptimeMillis();
+        try {
+            boolean hasFrames = false;
+            for (int i = 0; i < batch.frames.length; i++) {
+                if (i == 2 && offset != 0) continue;
+                final View source = sourceViews[i];
+                if (source == null) continue;
+                ProfileMetaballView.BlurBitmapHolder frame = nextFrame[i];
+                if (frame != null && frame.isBusy) {
+                    needNewFrame = true;
             return false;
         }
-        frameWidth = w;
-        frameHeight = h;
-
-        int checkCount = sizeChanged && !needNewFrame ? 1 : nextFrame.length;
-
-        needNewFrame = sizeChanged = false;
-        for (int i = 0; i < checkCount; i++) {
-            if (listeners[i] != null) {
-                listeners[i].listenInvalidate(null);
-            }
-
-            ProfileMetaballView.BlurBitmapHolder nextFrameHolder = nextFrame[i];
-            if (nextFrameHolder == null || !nextFrameHolder.canUse(w, h)) {
-                if (nextFrameHolder != null) nextFrameHolder.recycle();
-
-                nextFrame[i] = new ProfileMetaballView.BlurBitmapHolder(w, h);
-            }
-
-            if (nextFrame[i].isBusy) {
-                if (checkCount == 1) {
-                    sizeChanged = true;
-                } else {
-                    needNewFrame = true;
+                if (!hasBitmap(frame) || !frame.canUse(w, h)) {
+                    retire(frame);
+                    nextFrame[i] = frame = new ProfileMetaballView.BlurBitmapHolder(w, h);
                 }
-            }
-        }
-
-        final View v1 = view.getItemViewAt(currentPosition);
-        drawView(v1, 0);
-
-        if (checkCount == 1) {
-            if (listeners[0] != null) {
-                listeners[0].listenInvalidate(invalidateTask);
-            }
-            return !sizeChanged;
-        }
-
-        final View v2 = view.getItemViewAt(currentPosition + 1);
-        drawView(v2, 1);
-
-        if (offset == 0) {
-            final View v3 = view.getItemViewAt(currentPosition - 1);
-            drawView(v3, 2);
-        }
-
-        for (int i = 0; i < listeners.length; i++) {
-            if (listeners[i] != null) {
-                listeners[i].listenInvalidate(invalidateTask);
-            }
-        }
-
-        loopInvalidate = (v1 != null && listeners[0] == null) ||
-                (offset != 0 && v2 != null && listeners[1] == null);
-
-        return true;
-    }
-
-    private void drawView(View view, int index) {
-        ProfileMetaballView.BlurBitmapHolder frame = nextFrame[index];
-        if (view != null && !frame.isBusy) {
-            Canvas canvas = frame.canvas;
-            canvas.save();
-            canvas.scale(1.0f / 6.0f, 1.0f / 6.0f);
-            canvas.translate(0, size - view.getMeasuredHeight());
-            view.draw(canvas);
-            canvas.restore();
+                frame.clear();
+                final FrameCapture capture = new FrameCapture(i, currentPosition + (i == 2 ? -1 : i), source, frame);
+                batch.frames[i] = capture;
+                frame.lock();
+                final Canvas canvas = frame.canvas;
+                final int save = canvas.save();
+                try {
+                    canvas.scale(1f / 6f, 1f / 6f);
+                    canvas.translate(0, batch.blurSize - capture.height);
+                    source.draw(canvas);
+                } finally {
+                    canvas.restoreToCount(save);
+                }
+                if (!isBatchCurrent(batch) || !isFrameCurrent(batch, capture)) {
+                    retry = true;
+                    needNewFrame = true;
+                    return false;
+                }
             frame.ready();
-        }
-        if (index == 0 || (offset != 0 && index == 1)) {
-            if (view instanceof SizeNotifierFrameLayout.IViewWithInvalidateCallback) {
-                listeners[index] = (SizeNotifierFrameLayout.IViewWithInvalidateCallback) view;
-            } else {
-                listeners[index] = null;
+                hasFrames = true;
             }
+            if (!hasFrames) return false;
+            activeBatch = batch;
+            submitted = profileBlurQueue.postRunnable(() -> blur(batch));
+            if (!submitted) {
+                activeBatch = null;
+                needNewFrame = true;
+            }
+            return submitted;
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (activeBatch == batch) activeBatch = null;
+            needNewFrame = true;
+            return false;
+        } finally {
+            if (!submitted) {
+                for (FrameCapture frame : batch.frames) if (frame != null) releaseInput(frame);
+            }
+            capturing = false;
+            if (retry) requestCapture();
         }
     }
 
     private void applyShader(Bitmap bitmap, int i) {
-        if (i >= 2 || bitmap == null || bitmap.isRecycled()) {
+        if (i < 0 || i >= 2 || size <= 0 || bitmap == null || bitmap.isRecycled()) {
             return;
         }
 
@@ -405,11 +672,14 @@ public class ProfileGalleryBlurView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
-        draw(canvas, null, view.getMeasuredWidth(), view.getMeasuredHeight(), false, 0f, 1f);
+        final ProfileGalleryView gallery = view;
+        if (gallery == null) return;
+        draw(canvas, null, gallery.getMeasuredWidth(), gallery.getMeasuredHeight(), false, 0f, 1f);
     }
 
     public void draw(Canvas canvas, ProfileActivity.AvatarImageView avatarImageView, float width, float height, boolean translate, float fraction, float alpha) {
-        if (view == null || !view.isAttachedToWindow() || view.getVisibility() == GONE) {
+        final ProfileGalleryView gallery = view;
+        if (gallery == null || !gallery.isAttachedToWindow() || gallery.getVisibility() == GONE) {
             return;
         }
 
@@ -423,6 +693,9 @@ public class ProfileGalleryBlurView extends View {
                 return;
             } else if (avatarImageView == null && !AndroidUtilities.makingGlobalBlurBitmap) {
                 usingRenderNode = false;
+                captureGeneration++;
+                clearSourceListeners();
+                needNewFrame = sizeChanged = true;
                 setLayerType(View.LAYER_TYPE_SOFTWARE, paints[0]);
                 setLayerType(View.LAYER_TYPE_SOFTWARE, paints[1]);
             } else {
@@ -430,68 +703,51 @@ public class ProfileGalleryBlurView extends View {
             }
         }
 
-        boolean shouldCapture = needNewFrame || sizeChanged || loopInvalidate ||
-                (paints[0].getShader() == null && paints[1].getShader() == null && !isBluring);
-        if (shouldCapture && loopInvalidate && !needNewFrame && !sizeChanged) {
-            long now = SystemClock.uptimeMillis();
-            if (lastCaptureTime != 0 && now - lastCaptureTime < 32L) {
-                postInvalidateOnAnimation();
-                shouldCapture = false;
+        if (softwareDetached || width <= 0) return;
+        updateSoftwareSources(gallery);
+        if (gallery.isZooming()) {
+            needNewFrame = true;
+        } else if (activeBatch == null && !capturing && (needNewFrame || sizeChanged || loopInvalidate)) {
+            if (!sizeChanged && lastCaptureTime >= 0 && SystemClock.uptimeMillis() - lastCaptureTime < 32L) {
+                requestCapture();
+            } else {
+                captureNextFrame();
             }
         }
-        if (shouldCapture) {
-            lastCaptureTime = SystemClock.uptimeMillis();
-            boolean newFrame = captureNextFrame();
+        if (view != gallery || softwareDetached) return;
+        final int targetWidth = (int) (gallery.getMeasuredWidth() / 6f), targetHeight = (int) (size / 6f);
+        if (targetWidth <= 0 || targetHeight <= 0) return;
+        final float stripHeight = width * targetHeight / targetWidth;
+        drawSoftwareFrame(canvas, 0, width, stripHeight, translate, fraction, alpha);
+        if (offset != 0) drawSoftwareFrame(canvas, 1, width, stripHeight, translate, fraction, alpha);
+    }
 
-            if (!isBluring && newFrame) {
-                isBluring = true;
-                profileBlurQueue.cancelRunnable(blurTask);
-                profileBlurQueue.postRunnable(blurTask);
-            }
-        }
-
-        if (paints[0].getShader() == null && paints[1].getShader() == null) {
+    private void drawSoftwareFrame(Canvas canvas, int slot, float width, float stripHeight, boolean translate, float fraction, float alpha) {
+        final ProfileMetaballView.BlurBitmapHolder frame = currentFrame[slot];
+        if (!isDrawable(frame)) {
+            paints[slot].setShader(null);
             return;
         }
-
-        synchronized (lock) {
-            float scale = width / frameWidth;
-            if (translate) {
-                canvas.translate(0f, -scale * frameHeight);
-            }
-            canvas.scale(scale, scale);
-            float hAction = actionSize / scale;
-
-            if (paints[0].getShader() != null) {
-                canvas.save();
-                canvas.translate(-offset / scale, 0f);
+        if (paints[slot].getShader() == null) return;
+        final int frameWidth = frame.bitmap.getWidth(), frameHeight = frame.bitmap.getHeight();
+        if (frameWidth <= 0 || frameHeight <= 0 || stripHeight <= 0) return;
+        if (canvas.isHardwareAccelerated()) hardwareFrames.add(frame);
+        final int save = canvas.save();
+        if (translate) canvas.translate(0, -stripHeight);
+        canvas.translate(slot == 0 ? -offset : -offset + width, 0);
+        final float scaleY = stripHeight / frameHeight;
+        canvas.scale(width / frameWidth, scaleY);
+        final float hAction = actionSize / scaleY;
 
                 canvas.save();
                 canvas.scale(1f, 2f, 0, frameHeight);
-                canvas.drawRect(0, frameHeight, frameWidth, frameHeight + hAction, paints[0]);
+        canvas.drawRect(0, frameHeight, frameWidth, frameHeight + hAction, paints[slot]);
                 canvas.restore();
 
-                paints[0].setAlpha((int) (0xFF * alpha));
-                canvas.drawRect(0, frameHeight * fraction, frameWidth, frameHeight, paints[0]);
-                paints[0].setAlpha(0xFF);
-                canvas.restore();
-            }
-
-            if (offset != 0 && paints[1].getShader() != null) {
-                canvas.save();
-                canvas.translate((-offset + width) / scale, 0f);
-
-                canvas.save();
-                canvas.scale(1f, 2f, 0, frameHeight);
-                canvas.drawRect(0, frameHeight, frameWidth, frameHeight + hAction, paints[1]);
-                canvas.restore();
-
-                paints[1].setAlpha((int) (0xFF * alpha));
-                canvas.drawRect(0, frameHeight * fraction, frameWidth, frameHeight, paints[1]);
-                paints[1].setAlpha(0xFF);
-                canvas.restore();
-            }
-        }
+        paints[slot].setAlpha((int) (0xFF * alpha));
+        canvas.drawRect(0, frameHeight * fraction, frameWidth, frameHeight, paints[slot]);
+        paints[slot].setAlpha(0xFF);
+        canvas.restoreToCount(save);
     }
 
     @RequiresApi(api = Build.VERSION_CODES.S)

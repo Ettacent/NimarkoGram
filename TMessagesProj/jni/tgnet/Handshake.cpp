@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/bn.h>
@@ -51,6 +52,7 @@ void Handshake::beginHandshake(bool reconnect) {
     if (LOGS_ENABLED) DEBUG_D("account%u dc%u handshake: begin, type = %d", currentDatacenter->instanceNum, currentDatacenter->datacenterId, handshakeType);
     cleanupHandshake();
     Connection *connection = getConnection();
+    attemptAlive = std::make_shared<std::atomic<bool>>(true);
     handshakeState = 1;
 
     if (reconnect) {
@@ -66,6 +68,7 @@ void Handshake::beginHandshake(bool reconnect) {
 }
 
 void Handshake::cleanupHandshake() {
+    if (attemptAlive != nullptr) attemptAlive->store(false, std::memory_order_release);
     handshakeState = 0;
     if (handshakeRequest != nullptr) {
         delete handshakeRequest;
@@ -868,8 +871,10 @@ void Handshake::processHandshakeResponse_serverDHParamsAnswer(TLObject *message,
             }
             handshakeServerSalt = nullptr;
 
+            const auto ownerGuard = attemptAlive;
             if (handshakeType == HandshakeTypePerm) {
-                ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([&] {
+                ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([this, ownerGuard] {
+                    if (ownerGuard == nullptr || !ownerGuard->load(std::memory_order_acquire)) return;
                     ByteArray *authKey = handshakeAuthKey;
                     handshakeAuthKey = nullptr;
                     delegate->onHandshakeComplete(this, authKeyTempPendingId, authKey, timeDifference);
@@ -881,46 +886,61 @@ void Handshake::processHandshakeResponse_serverDHParamsAnswer(TLObject *message,
                 Connection *connection = getConnection();
 
                 TL_auth_bindTempAuthKey *request = new TL_auth_bindTempAuthKey();
-                request->initFunc = [&, request, connection](int64_t messageId) {
-                    TL_bind_auth_key_inner *inner = new TL_bind_auth_key_inner();
+                request->initFunc = [this, ownerGuard, request, connection](int64_t messageId) -> PacketBuildStatus {
+                    if (ownerGuard == nullptr || !ownerGuard->load(std::memory_order_acquire)) return PacketBuildStatus::InvalidSize;
+                  try {
+                    auto inner = std::make_unique<TL_bind_auth_key_inner>();
                     inner->expires_at = ConnectionsManager::getInstance(currentDatacenter->instanceNum).getCurrentTime() + timeDifference + TEMP_AUTH_KEY_EXPIRE_TIME;
                     inner->perm_auth_key_id = currentDatacenter->authKeyPermId;
                     inner->temp_auth_key_id = authKeyTempPendingId;
                     RAND_bytes((uint8_t *) &inner->nonce, 8);
                     inner->temp_session_id = connection->getSessionId();
 
-                    NetworkMessage *networkMessage = new NetworkMessage();
+                    auto networkMessage = std::make_unique<NetworkMessage>();
                     networkMessage->message = std::make_unique<TL_message>();
-                    networkMessage->message->msg_id = authKeyPendingMessageId = messageId;
+                    networkMessage->message->msg_id = messageId;
                     networkMessage->message->bytes = inner->getObjectSize();
-                    networkMessage->message->body = std::unique_ptr<TLObject>(inner);
                     networkMessage->message->seqno = 0;
+                    const int64_t permId = inner->perm_auth_key_id;
+                    const int64_t nonce = inner->nonce;
+                    const int32_t expires = inner->expires_at;
+                    networkMessage->message->body = std::move(inner);
 
                     std::vector<std::unique_ptr<NetworkMessage>> array;
-                    array.push_back(std::unique_ptr<NetworkMessage>(networkMessage));
-
-                    request->perm_auth_key_id = inner->perm_auth_key_id;
-                    request->nonce = inner->nonce;
-                    request->expires_at = inner->expires_at;
-                    request->encrypted_message = currentDatacenter->createRequestsData(array, nullptr, connection, true);
+                    array.push_back(std::move(networkMessage));
+                    PacketBuildResult result = currentDatacenter->createRequestsData(array, 0, array.size(), connection, true);
+                    if (result.status != PacketBuildStatus::Ready) return result.status;
+                    std::unique_ptr<NativeByteBuffer> previous(request->encrypted_message);
+                    request->encrypted_message = result.buffer;
+                    request->perm_auth_key_id = permId;
+                    request->nonce = nonce;
+                    request->expires_at = expires;
+                    authKeyPendingMessageId = messageId;
+                    return PacketBuildStatus::Ready;
+                  } catch (const std::bad_alloc &) {
+                    return PacketBuildStatus::NoMemory;
+                  }
                 };
 
-                authKeyPendingRequestId = ConnectionsManager::getInstance(currentDatacenter->instanceNum).sendRequest(request, [&](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime, int64_t msgId, int32_t dcId) {
+                authKeyPendingRequestId = ConnectionsManager::getInstance(currentDatacenter->instanceNum).sendRequest(request, [this, ownerGuard](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime, int64_t msgId, int32_t dcId) {
+                    if (ownerGuard == nullptr || !ownerGuard->load(std::memory_order_acquire)) return;
                     authKeyPendingMessageId = 0;
                     authKeyPendingRequestId = 0;
                     if (response != nullptr && typeid(*response) == typeid(TL_boolTrue)) {
                         if (LOGS_ENABLED) DEBUG_D("account%u dc%u handshake: bind completed", currentDatacenter->instanceNum, currentDatacenter->datacenterId);
-                        ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([&] {
+                        ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([this, ownerGuard] {
+                            if (ownerGuard == nullptr || !ownerGuard->load(std::memory_order_acquire)) return;
                             ByteArray *authKey = authKeyTempPending;
                             authKeyTempPending = nullptr;
                             delegate->onHandshakeComplete(this, authKeyTempPendingId, authKey, timeDifference);
                         });
                     } else if (error == nullptr || error->code != 400 || error->text.find("ENCRYPTED_MESSAGE_INVALID") == std::string::npos) {
-                        ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([&] {
+                        ConnectionsManager::getInstance(currentDatacenter->instanceNum).scheduleTask([this, ownerGuard] {
+                            if (ownerGuard == nullptr || !ownerGuard->load(std::memory_order_acquire)) return;
                             beginHandshake(true);
                         });
                     }
-                }, nullptr, nullptr, RequestFlagWithoutLogin | RequestFlagEnableUnauthorized | RequestFlagUseUnboundKey, currentDatacenter->datacenterId, connection->getConnectionType(), true, 0);
+                }, nullptr, nullptr, RequestFlagWithoutLogin | RequestFlagEnableUnauthorized | RequestFlagUseUnboundKey, currentDatacenter->datacenterId, connection->getConnectionType(), true, 0, ownerGuard);
             }
         }
     } else if (typeInfo == typeid(TL_dh_gen_retry)) {

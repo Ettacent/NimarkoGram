@@ -833,7 +833,9 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String[] result) {
-            if (result[0] != null) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
+            if (result != null && result[0] != null) {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("start play youtube video " + result[1] + " " + result[0]);
                 }
@@ -897,6 +899,8 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String result) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
             if (result != null) {
                 initied = true;
                 playVideoUrl = result;
@@ -953,6 +957,8 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String result) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
             if (result != null) {
                 initied = true;
                 playVideoUrl = result;
@@ -1003,6 +1009,8 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String result) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
             if (result != null) {
                 initied = true;
                 playVideoUrl = result;
@@ -1068,6 +1076,8 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String result) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
             if (result != null) {
                 initied = true;
                 playVideoUrl = result;
@@ -1130,6 +1140,8 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         @Override
         protected void onPostExecute(String result) {
+            if (isCancelled() || currentTask != this) return;
+            currentTask = null;
             if (result != null) {
                 initied = true;
                 playVideoUrl = result;
@@ -1360,7 +1372,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
         private void checkNeedHide() {
             AndroidUtilities.cancelRunOnUIThread(hideRunnable);
-            if (isVisible && videoPlayer.isPlaying()) {
+            if (isVisible && isPlaying()) {
                 AndroidUtilities.runOnUIThread(hideRunnable, 3000);
             }
         }
@@ -1419,12 +1431,12 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
                 }
                 AndroidUtilities.cancelRunOnUIThread(hideRunnable);
             } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-                if (initied && videoPlayer.isPlaying()) {
+                if (initied && isPlaying()) {
                     AndroidUtilities.runOnUIThread(hideRunnable, 3000);
                 }
                 if (progressPressed) {
                     progressPressed = false;
-                    if (initied) {
+                    if (initied && videoPlayer != null) {
                         progress = (int) (duration * ((float) (currentProgressX - progressLineX) / (progressLineEndX - progressLineX)));
                         videoPlayer.seekTo((long) progress * 1000);
                     }
@@ -1463,7 +1475,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
                 imageReceiver.setAlpha(currentAlpha);
                 imageReceiver.draw(canvas);
             }
-            if (videoPlayer.isPlayerPrepared() && !isStream) {
+            if (isPlayerPrepared() && !isStream) {
                 int width = getMeasuredWidth();
                 int height = getMeasuredHeight();
                 if (!isInline) {
@@ -1597,9 +1609,6 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
             textureViewContainer.addView(textureImageView);
         }
 
-        videoPlayer = new VideoPlayer();
-        videoPlayer.setDelegate(this);
-        videoPlayer.setTextureView(textureView);
 
         controlsView = new ControlsView(context);
         if (textureViewContainer != null) {
@@ -1630,9 +1639,10 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
             if (!initied || playVideoUrl == null) {
                 return;
             }
-            if (!videoPlayer.isPlayerPrepared()) {
+            if (!isPlayerPrepared()) {
                 preparePlayer();
             }
+            if (videoPlayer == null) return;
             if (videoPlayer.isPlaying()) {
                 videoPlayer.pause();
             } else {
@@ -1753,25 +1763,28 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
     @Override
     public void onStateChanged(boolean playWhenReady, int playbackState) {
+        final VideoPlayer player = videoPlayer;
+        if (player == null) return;
         if (playbackState != ExoPlayer.STATE_BUFFERING) {
-            if (videoPlayer.getDuration() != C.TIME_UNSET) {
-                controlsView.setDuration((int) (videoPlayer.getDuration() / 1000));
+            if (player.getDuration() != C.TIME_UNSET) {
+                controlsView.setDuration((int) (player.getDuration() / 1000));
             } else {
                 controlsView.setDuration(0);
             }
         }
-        if (playbackState != ExoPlayer.STATE_ENDED && playbackState != ExoPlayer.STATE_IDLE && videoPlayer.isPlaying()) {
+        if (playbackState != ExoPlayer.STATE_ENDED && playbackState != ExoPlayer.STATE_IDLE && player.isPlaying()) {
             delegate.onPlayStateChanged(this, true);
         } else {
             delegate.onPlayStateChanged(this, false);
         }
-        if (videoPlayer.isPlaying() && playbackState != ExoPlayer.STATE_ENDED) {
+        if (videoPlayer != player) return;
+        if (player.isPlaying() && playbackState != ExoPlayer.STATE_ENDED) {
             updatePlayButton();
         } else {
             if (playbackState == ExoPlayer.STATE_ENDED) {
                 isCompleted = true;
-                videoPlayer.pause();
-                videoPlayer.seekTo(0);
+                player.pause();
+                player.seekTo(0);
                 updatePlayButton();
                 controlsView.show(true, true);
             }
@@ -1785,6 +1798,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
     @Override
     public void onError(VideoPlayer player, Exception e) {
+        if (player != videoPlayer) return;
         FileLog.e(e);
         onInitFailed();
     }
@@ -1877,7 +1891,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
     private void updatePlayButton() {
         controlsView.checkNeedHide();
         AndroidUtilities.cancelRunOnUIThread(progressRunnable);
-        if (!videoPlayer.isPlaying()) {
+        if (!isPlaying()) {
             if (isCompleted) {
                 MediaControlIconHelper.setImageResource(playButton, isInline ? R.drawable.ic_againinline : R.drawable.ic_again);
             } else {
@@ -1902,10 +1916,12 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
 
     @Override
     public void onAudioFocusChange(int focusChange) {
+        final VideoPlayer player = videoPlayer;
         AndroidUtilities.runOnUIThread(() -> {
+            if (player == null || videoPlayer != player) return;
             if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
-                if (videoPlayer.isPlaying()) {
-                    videoPlayer.pause();
+                if (player.isPlaying()) {
+                    player.pause();
                     updatePlayButton();
                 }
                 hasAudioFocus = false;
@@ -1914,15 +1930,15 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
                 audioFocus = AUDIO_FOCUSED;
                 if (resumeAudioOnFocusGain) {
                     resumeAudioOnFocusGain = false;
-                    videoPlayer.play();
+                    player.play();
                 }
             } else if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
                 audioFocus = AUDIO_NO_FOCUS_CAN_DUCK;
             } else if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
                 audioFocus = AUDIO_NO_FOCUS_NO_DUCK;
-                if (videoPlayer.isPlaying()) {
+                if (player.isPlaying()) {
                     resumeAudioOnFocusGain = true;
-                    videoPlayer.pause();
+                    player.pause();
                     updatePlayButton();
                 }
             }
@@ -1930,7 +1946,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
     }
 
     private void updateFullscreenButton() {
-        if (!videoPlayer.isPlayerPrepared() || isInline) {
+        if (!isPlayerPrepared() || isInline) {
             fullscreenButton.setVisibility(GONE);
             return;
         }
@@ -1948,7 +1964,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         if (shareButton == null) {
             return;
         }
-        shareButton.setVisibility(isInline || !videoPlayer.isPlayerPrepared() ? GONE : VISIBLE);
+        shareButton.setVisibility(isInline || !isPlayerPrepared() ? GONE : VISIBLE);
     }
 
     private View getControlView() {
@@ -1964,7 +1980,7 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
             return;
         }
         inlineButton.setImageResource(isInline ? R.drawable.ic_goinline : R.drawable.ic_outinline);
-        inlineButton.setVisibility(videoPlayer.isPlayerPrepared() ? VISIBLE : GONE);
+        inlineButton.setVisibility(isPlayerPrepared() ? VISIBLE : GONE);
         if (isInline) {
             inlineButton.setLayoutParams(LayoutHelper.createFrame(40, 40, Gravity.RIGHT | Gravity.TOP));
         } else {
@@ -1972,21 +1988,36 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         }
     }
 
+    private boolean isPlayerPrepared() {
+        return videoPlayer != null && videoPlayer.isPlayerPrepared();
+    }
+
+    private boolean isPlaying() {
+        return videoPlayer != null && videoPlayer.isPlaying();
+    }
     private void preparePlayer() {
-        if (playVideoUrl == null) {
+        if (!initied || playVideoUrl == null) {
             return;
         }
-        if (playVideoUrl != null && playAudioUrl != null) {
-            videoPlayer.preparePlayerLoop(Uri.parse(playVideoUrl), playVideoType, Uri.parse(playAudioUrl), playAudioType);
-        } else {
-            videoPlayer.preparePlayer(Uri.parse(playVideoUrl), playVideoType);
+        if (videoPlayer == null) {
+            videoPlayer = new VideoPlayer();
+            videoPlayer.setDelegate(this);
+            videoPlayer.setTextureView(textureView);
         }
-        videoPlayer.setPlayWhenReady(isAutoplay);
+        final VideoPlayer player = videoPlayer;
+        if (playVideoUrl != null && playAudioUrl != null) {
+            player.preparePlayerLoop(Uri.parse(playVideoUrl), playVideoType, Uri.parse(playAudioUrl), playAudioType);
+        } else {
+            player.preparePlayer(Uri.parse(playVideoUrl), playVideoType);
+        }
+        if (videoPlayer != player) return;
+        player.setPlayWhenReady(isAutoplay);
+        if (videoPlayer != player) return;
 
         isLoading = false;
 
-        if (videoPlayer.getDuration() != C.TIME_UNSET) {
-            controlsView.setDuration((int) (videoPlayer.getDuration() / 1000));
+        if (player.getDuration() != C.TIME_UNSET) {
+            controlsView.setDuration((int) (player.getDuration() / 1000));
         } else {
             controlsView.setDuration(0);
         }
@@ -1995,12 +2026,12 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         updateInlineButton();
         controlsView.invalidate();
         if (seekToTime != -1) {
-            videoPlayer.seekTo(seekToTime * 1000);
+            player.seekTo(seekToTime * 1000);
         }
     }
 
     public void pause() {
-        videoPlayer.pause();
+        if (videoPlayer != null) videoPlayer.pause();
         updatePlayButton();
         controlsView.show(true, true);
     }
@@ -2325,10 +2356,6 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
         destroy();
         firstFrameRendered = false;
         currentAlpha = 1.0f;
-        if (currentTask != null) {
-            currentTask.cancel(true);
-            currentTask = null;
-        }
         updateFullscreenButton();
         updateShareButton();
         updateInlineButton();
@@ -2438,10 +2465,25 @@ public class WebPlayerView extends ViewGroup implements VideoPlayer.VideoPlayerD
     }
 
     public void destroy() {
-        videoPlayer.releasePlayer(false);
+        final VideoPlayer player = videoPlayer;
+        videoPlayer = null;
+        initied = false;
+        playVideoUrl = null;
+        playAudioUrl = null;
+        resumeAudioOnFocusGain = false;
+        AndroidUtilities.cancelRunOnUIThread(progressRunnable);
+        AndroidUtilities.cancelRunOnUIThread(controlsView.hideRunnable);
         if (currentTask != null) {
-            currentTask.cancel(true);
+            AsyncTask task = currentTask;
             currentTask = null;
+            task.cancel(true);
+        }
+        if (player != null) player.releasePlayer(false);
+        if (hasAudioFocus) {
+            hasAudioFocus = false;
+            audioFocus = AUDIO_NO_FOCUS_NO_DUCK;
+            AudioManager audioManager = (AudioManager) ApplicationLoader.applicationContext.getSystemService(Context.AUDIO_SERVICE);
+            audioManager.abandonAudioFocus(this);
         }
         webView.stopLoading();
     }

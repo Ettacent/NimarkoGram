@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
  *
@@ -22,7 +24,7 @@ ScopedJavaLocalRef<jobject> CreateJavaNativeCapturerObserver(
     JNIEnv* env,
     rtc::scoped_refptr<AndroidVideoTrackSource> native_source) {
   return Java_NativeCapturerObserver_Constructor(
-      env, NativeToJavaPointer(native_source.release()));
+      env, NativeToJavaPointer(native_source.get()));
 }
 
 }  // namespace jni

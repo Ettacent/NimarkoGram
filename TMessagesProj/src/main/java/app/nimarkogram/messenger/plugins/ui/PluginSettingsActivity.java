@@ -7,7 +7,6 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import app.nimarkogram.messenger.plugins.models.CustomSetting;
 import java.util.HashMap;
-import org.telegram.ui.LaunchActivity;
 import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
@@ -66,13 +65,17 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     private final String customTitle;
     private final Plugin plugin;
     private final PluginsController.PluginRuntimeToken runtimeToken;
+    private final PluginsController.PluginSettingsUiSource settingsUiSource;
     private ActionBarMenuItem resetItem;
-    private List<SettingItem> settingItems;
     private String settingsLinkPrefix;
     private Integer targetSettingItemId;
     private String targetSettingName;
     private boolean runtimeLossFinishScheduled;
-    
+
+    private volatile boolean settingsUiDestroyed;
+    private boolean resetPending;
+    private long resetOperation;
+    private long resetRevision;
     private final HashMap<Object, View[]> customViewCache = new HashMap<>();
 
     public PluginSettingsActivity(Plugin plugin) {
@@ -96,8 +99,11 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                         ? PluginsController.getInstance().getCurrentPluginRuntime(plugin.getId())
                         : null;
         this.customTitle = str;
-        this.settingItems = list;
         this.createSubFragmentCallback = pyObject;
+        final PluginsController.PluginRuntimeToken definitionsRuntime = runtimeToken;
+        this.settingsUiSource = PluginsController.getInstance().createPluginSettingsUiSource(
+                plugin != null ? plugin.getId() : null, runtimeToken, list,
+                pyObject == null ? null : () -> parseSettingsResult(pyObject.call(), definitionsRuntime));
         this.targetSettingName = str2;
         this.targetSettingItemId = null;
         this.settingsLinkPrefix = null;
@@ -121,7 +127,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
             return staleResult;
         }
         PluginsController controller = PluginsController.getInstance();
-        
+
         boolean entered = runtimeToken != null
                 && controller.getPluginRuntimeTaskDecision(runtimeToken)
                         == PluginsController.RUNTIME_TASK_RUN
@@ -154,24 +160,23 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     }
 
     private List<SettingItem> callSettingsCallback(PyObject callback) {
-        return callPluginCallback(callback, result -> {
+        return callPluginCallback(callback, result -> parseSettingsResult(result, runtimeToken), null);
+    }
+
+    private static List<SettingItem> parseSettingsResult(PyObject result,
+            PluginsController.PluginRuntimeToken runtimeToken) {
             ArrayList<SettingItem> items = new ArrayList<>();
-            if (result == null) {
+        if (result == null) return items;
+        PluginsController.PluginsEngine engine = PluginsController.engines.get(PluginsConstants.PYTHON);
+        if (engine instanceof PythonPluginsEngine) {
+            items.addAll(((PythonPluginsEngine) engine).parsePySettingDefinitions(result.asList(), runtimeToken));
+        }
                 return items;
             }
-            PluginsController.PluginsEngine engine =
-                    PluginsController.engines.get(PluginsConstants.PYTHON);
-            if (engine instanceof PythonPluginsEngine) {
-                items.addAll(((PythonPluginsEngine) engine)
-                        .parsePySettingDefinitions(
-                                result.asList(), runtimeToken));
-            }
-            return items;
-        }, null);
-    }
 
     @Override
     public boolean onFragmentCreate() {
+        settingsUiDestroyed = false;
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.pluginSettingsRegistered);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.pluginSettingsUnregistered);
         if (!super.onFragmentCreate()) {
@@ -191,14 +196,23 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
 
     @Override
     public void onFragmentDestroy() {
+        settingsUiDestroyed = true;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsRegistered);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.pluginSettingsUnregistered);
         PluginUiRegistry.unregisterRuntimeOwnedUi(runtimeToken, this);
-        
+
         createSubFragmentCallback = null;
-        settingItems = null;
+        resetOperation++;
+        resetPending = false;
+        resetItem = null;
         customViewCache.clear();
         super.onFragmentDestroy();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (resetItem != null) resetItem.setEnabled(!resetPending);
     }
 
     @Override
@@ -213,25 +227,14 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
 
     private void clearRetainedPythonReferences() {
         createSubFragmentCallback = null;
-        List<SettingItem> oldItems = settingItems;
-        settingItems = new ArrayList<>();
-        clearSettingItems(oldItems);
+        settingsUiSource.clearPluginUiReferences(runtimeToken);
         customViewCache.clear();
     }
 
-    private static void clearSettingItems(List<SettingItem> items) {
-        if (items == null) {
-            return;
-        }
-        for (SettingItem item : items) {
-            if (item != null) {
-                item.clearPythonReferences();
-            }
-        }
-    }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (settingsUiDestroyed || isFinished) return;
         if (id == NotificationCenter.pluginSettingsRegistered) {
             String pluginId = (args.length > 0 && args[0] instanceof String) ? (String) args[0] : null;
             if (this.plugin != null && (pluginId == null || this.plugin.getId().equals(pluginId))) {
@@ -273,13 +276,13 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     }
 
     private void scheduleFinishForRuntimeLoss() {
-        if (runtimeLossFinishScheduled || isFinished) {
+        if (runtimeLossFinishScheduled || settingsUiDestroyed || isFinished) {
             return;
         }
         runtimeLossFinishScheduled = true;
         PluginUiRegistry.runAfterTraversal(() -> {
             runtimeLossFinishScheduled = false;
-            if (isFinished || plugin == null) {
+            if (settingsUiDestroyed || isFinished || plugin == null) {
                 return;
             }
             PluginsController controller =
@@ -292,18 +295,15 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     }
 
     private void lambda$didReceivedNotification$1() {
+        if (settingsUiDestroyed || createSubFragmentCallback == null) return;
         try {
-            final List<SettingItem> arrayList =
-                    callSettingsCallback(this.createSubFragmentCallback);
-            if (arrayList == null) {
+            if (!PluginsController.getInstance().refreshPluginSettingsUiSource(settingsUiSource)) {
                 return;
             }
             AndroidUtilities.runOnUIThread(() -> {
                 if (!isRuntimeCurrentForUi()) {
-                    clearSettingItems(arrayList);
                     return;
                 }
-                this.settingItems = arrayList;
                 customViewCache.clear();
                 if (this.listView != null && this.listView.adapter != null) {
                     this.listView.adapter.update(true);
@@ -321,22 +321,41 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     @Override
     public View createView(Context context) {
         super.createView(context);
-        
+
         if (this.createSubFragmentCallback == null && this.plugin != null) {
             ActionBarMenuItem actionBarMenuItemAddItem = this.actionBar.createMenu().addItem(0, R.drawable.msg_reset);
             this.resetItem = actionBarMenuItemAddItem;
             actionBarMenuItemAddItem.setContentDescription(LocaleController.getString(R.string.Reset));
+            actionBarMenuItemAddItem.setEnabled(!resetPending);
             AndroidUtilities.updateViewVisibilityAnimated(this.resetItem, PluginsController.getInstance().hasPluginSettingsPreferences(this.plugin.getId()), 0.5f, false);
             this.resetItem.setTag(null);
             this.resetItem.setOnClickListener(view -> {
+                if (resetPending || !isSettingsUiActive()) return;
                 AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), getResourceProvider());
                 builder.setTitle(LocaleController.getString(R.string.Reset));
                 builder.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.ResetPluginSettingsInfo, this.plugin.getName())));
                 builder.setPositiveButton(LocaleController.getString(R.string.Reset), (alertDialog, i) -> {
-                    AndroidUtilities.updateViewVisibilityAnimated(this.resetItem, false, 0.5f, true);
-                    PluginsController.getInstance().clearPluginSettingsPreferences(this.plugin.getId(), false);
-                    PluginsController.getInstance().loadPluginSettings(this.plugin.getId());
-                    AndroidUtilities.runOnUIThread(() -> BulletinFactory.of(this).createSimpleBulletin(R.raw.info, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.ResetPluginSettings, this.plugin.getName()))).show());
+                    if (resetPending || !isSettingsUiActive()) return;
+                    resetPending = true;
+                    final long operation = ++resetOperation;
+                    if (resetItem != null) resetItem.setEnabled(false);
+                    PluginsController controller = PluginsController.getInstance();
+                    resetRevision = controller.resetPluginSettingsUi(settingsUiSource, result -> {
+                        if (operation != resetOperation) return;
+                        resetPending = false;
+                        if (!isSettingsUiActive()) return;
+                        if (resetItem != null) resetItem.setEnabled(true);
+                        refreshSettingsUi();
+                        if (resetRevision != controller.getPluginSettingsUiRevision(plugin.getId())) return;
+                        if (result == PluginsController.PluginSettingsUiResult.APPLIED) {
+                            BulletinFactory.of(this).createSimpleBulletin(R.raw.info,
+                                    AndroidUtilities.replaceTags(LocaleController.formatString(
+                                            R.string.ResetPluginSettings, plugin.getName()))).show();
+                        } else if (result == PluginsController.PluginSettingsUiResult.FAILED) {
+                            BulletinFactory.of(this).createErrorBulletin(
+                                    LocaleController.getString(R.string.PluginCallbackError)).show();
+                        }
+                    });
                 });
                 builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
                 AlertDialog alertDialogCreate = builder.create();
@@ -360,20 +379,17 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                 });
             }
             this.targetSettingItemId = null;
-        } 
+        }
     }
 
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         if (this.plugin == null) return;
 
-        List<SettingItem> currentSettings = this.settingItems;
-        if (currentSettings == null) {
-            currentSettings = PluginsController.getInstance().getPluginSettingsList(this.plugin.getId());
-        }
+        List<SettingItem> currentSettings = settingsUiSource.getDefinitions();
 
         if (currentSettings == null && this.createSubFragmentCallback != null) {
-            
+
             for (int i = 0; i < 3; i++) {
                 items.add(UItem.asFlicker(0xF11C0000 + i, FlickerLoadingView.CHECKBOX_TYPE));
             }
@@ -408,7 +424,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
             int iconRes = 0;
             if (!TextUtils.isEmpty(item.icon)) {
                 try {
-                    
+
                     Context context = ApplicationLoader.applicationContext;
                     iconRes = context.getResources().getIdentifier(item.icon, "drawable", context.getPackageName());
                 } catch (Exception ignored) {}
@@ -420,7 +436,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
             switch (type) {
                 case "divider":
                     DividerSetting ds = (DividerSetting) item;
-                    
+
                     uItem = UItem.asShadow(ds.text != null ? ds.text : "");
                     break;
                 case "selector":
@@ -484,7 +500,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                 case "edit_text":
                     EditTextSetting ets = (EditTextSetting) item;
                     if (ets.key != null && ets.hint != null) {
-                        uItem = PluginEditTextCell.Factory.as(this.plugin, ets);
+                        uItem = PluginEditTextCell.Factory.as(this.plugin, ets, settingsUiSource);
                     }
                     break;
                 case "custom":
@@ -495,7 +511,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                         try {
                             View[] cachedCustom = customViewCache.get(custs);
                             if (cachedCustom != null && cachedCustom[0] != null) {
-                                
+
                                 com.chaquo.python.PyObject bvCbR = custs.getBindViewCallback();
                                 if (bvCbR != null && cachedCustom[1] != null) {
                                     try {
@@ -509,7 +525,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                 if (cachedPluginView == null
                                         || cachedPluginView.getParent()
                                                 != cachedHost) {
-                                    
+
                                     customViewCache.remove(custs);
                                     FileLog.e(
                                             "nimarko: plugin custom setting "
@@ -520,7 +536,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                 uItem.settingItem = custs;
                                 break;
                             }
-                            
+
                             Context vctx = getParentActivity();
                             if (vctx == null || !isRuntimeCurrentForUi()) {
                                 break;
@@ -553,7 +569,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
                                                     + "view; row rejected");
                                     break;
                                 }
-                                
+
                                 final View pluginView = v;
                                 View hosted = null;
                                 FrameLayout host = null;
@@ -618,29 +634,32 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
 
     @Override
     public void onClick(final UItem uItem, View view, int i, float f, float f2) {
-        if (uItem == null || this.plugin == null) return;
+        if (uItem == null || this.plugin == null || !isSettingsUiActive()) return;
 
         SettingItem settingItem = uItem.settingItem;
         if (settingItem instanceof TextSetting) {
             final TextSetting textSetting = (TextSetting) settingItem;
-            if (textSetting.createSubFragmentCallback != null) {
+            final PyObject subFragmentCallback = textSetting.createSubFragmentCallback;
+            if (subFragmentCallback != null) {
+                final View ownerView = fragmentView;
+                final String subTitle = uItem.text == null ? "" : uItem.text.toString();
+                final String prefix = (settingsLinkPrefix == null ? "" : settingsLinkPrefix + ":") + textSetting.linkAlias;
                 Utilities.pluginsQueue.postRunnable(() -> {
+                    if (settingsUiDestroyed || !isExactRuntimeCurrent()) return;
                     try {
-                        List<SettingItem> items = callSettingsCallback(
-                                textSetting.createSubFragmentCallback);
+                        List<SettingItem> items = callSettingsCallback(subFragmentCallback);
                         if (items == null) {
                             return;
                         }
                         AndroidUtilities.runOnUIThread(() -> {
-                            if (isRuntimeCurrentForUi() && !items.isEmpty()
-                                    && fragmentView != null && getParentActivity() != null) {
-                                String prefix = (this.settingsLinkPrefix == null ? "" : this.settingsLinkPrefix + ":") + uItem.settingItem.linkAlias;
-                                PluginSettingsActivity sub = new PluginSettingsActivity(this.plugin, uItem.text.toString(), items, textSetting.createSubFragmentCallback);
+                            if (isSettingsUiActive() && fragmentView == ownerView && !items.isEmpty()
+                                    && getParentActivity() != null) {
+                                PluginSettingsActivity sub = new PluginSettingsActivity(plugin, subTitle, items, subFragmentCallback);
                                 presentFragment(sub.setSettingsLinkPrefix(prefix));
                             }
                         });
                     } catch (Throwable t) {
-                        
+
                         FileLog.e("nimarko: plugin create_sub_fragment failed", t);
                     }
                 });
@@ -659,25 +678,19 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
         if (uItem.object2 instanceof String) {
             String key = (String) uItem.object2;
             if (view instanceof TextCheckCell) {
+                PluginsController.PluginSettingsUiEdit edit =
+                        PluginsController.getInstance().capturePluginSettingsUiEdit(settingsUiSource, settingItem);
                 boolean newState = !((TextCheckCell) view).isChecked();
                 ((TextCheckCell) view).setChecked(newState);
                 uItem.setChecked(newState);
-                Utilities.pluginsQueue.postRunnable(() -> {
-                    PluginsController.getInstance().setPluginSetting(this.plugin.getId(), key, newState);
-                    if (settingItem instanceof SwitchSetting) {
-                        triggerOnChange(((SwitchSetting) settingItem).onChangeCallback, key, newState);
-                    }
-                });
+                applySettingsUiEdit(edit, newState);
             } else if (view instanceof NotificationsCheckCell) {
+                PluginsController.PluginSettingsUiEdit edit =
+                        PluginsController.getInstance().capturePluginSettingsUiEdit(settingsUiSource, settingItem);
                 boolean newState = !((NotificationsCheckCell) view).isChecked();
                 ((NotificationsCheckCell) view).setChecked(newState);
                 uItem.setChecked(newState);
-                Utilities.pluginsQueue.postRunnable(() -> {
-                    PluginsController.getInstance().setPluginSetting(this.plugin.getId(), key, newState);
-                    if (settingItem instanceof SwitchSetting) {
-                        triggerOnChange(((SwitchSetting) settingItem).onChangeCallback, key, newState);
-                    }
-                });
+                applySettingsUiEdit(edit, newState);
             } else if (view instanceof TextCell) {
                 if (settingItem instanceof SelectorSetting) {
                     showSelectorDialog(uItem, view, key);
@@ -689,15 +702,40 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
     }
 
     private boolean isRuntimeCurrentForUi() {
-        if (plugin == null || fragmentView == null) return false;
+        if (settingsUiDestroyed || isFinished || plugin == null || fragmentView == null) return false;
         PluginsController controller = PluginsController.getInstance();
         return runtimeToken != null
                 && controller.getPluginRuntimeTaskDecision(runtimeToken)
                         == PluginsController.RUNTIME_TASK_RUN;
     }
 
+    private boolean isSettingsUiActive() {
+        return isRuntimeCurrentForUi() && PluginUiRegistry.isFragmentUiActive(this);
+    }
+
+    private void refreshSettingsUi() {
+        if (listView != null && listView.adapter != null) listView.adapter.update(true);
+        if (resetItem != null) {
+            resetItem.setEnabled(!resetPending);
+            AndroidUtilities.updateViewVisibilityAnimated(resetItem,
+                    PluginsController.getInstance().hasPluginSettingsPreferences(plugin.getId()), 0.5f, true);
+        }
+    }
+
+    private void applySettingsUiEdit(PluginsController.PluginSettingsUiEdit edit, Object value) {
+        PluginsController controller = PluginsController.getInstance();
+        controller.applyPluginSettingsUiEdit(edit, value, result -> {
+            if (!isSettingsUiActive() || edit != null && !controller.isPluginSettingsUiEditCurrent(edit)) return;
+            refreshSettingsUi();
+            if (result == PluginsController.PluginSettingsUiResult.FAILED) {
+                BulletinFactory.of(this).createErrorBulletin(
+                        LocaleController.getString(R.string.PluginCallbackError)).show();
+            }
+        });
+    }
     @Override
     public boolean onLongClick(final UItem uItem, View view, int i, float f, float f2) {
+        if (!isSettingsUiActive()) return false;
         if (uItem != null && this.plugin != null && uItem.settingItem != null) {
             String alias = uItem.settingItem.linkAlias;
             if (!TextUtils.isEmpty(alias)) {
@@ -723,14 +761,17 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
 
     private void showStringInputDialog(UItem uItem, final View view, final String key) {
         if (getParentActivity() == null) return;
-        
+
         InputSetting setting = (InputSetting) uItem.settingItem;
+        final PluginsController.PluginSettingsUiEdit edit = PluginsController.getInstance()
+                .capturePluginSettingsUiEdit(settingsUiSource, setting);
+        if (edit == null) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), getResourceProvider());
         builder.setTitle(uItem.text);
-        
+
         LinearLayout layout = new LinearLayout(getContext());
         layout.setOrientation(LinearLayout.VERTICAL);
-        
+
         if (setting.subtext != null) {
             TextView textView = new TextView(getContext());
             textView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, getResourceProvider()));
@@ -738,7 +779,7 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
             textView.setText(setting.subtext);
             layout.addView(textView, LayoutHelper.createLinear(-1, -2, 24.0f, 5.0f, 24.0f, 12.0f));
         }
-        
+
         EditTextBoldCursor editText = new EditTextBoldCursor(getContext());
         editText.lineYFix = true;
         editText.setTextSize(1, 18.0f);
@@ -757,18 +798,14 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
         editText.setBackgroundDrawable(null);
         editText.setPadding(0, AndroidUtilities.dp(6.0f), 0, AndroidUtilities.dp(6.0f));
         layout.addView(editText, LayoutHelper.createLinear(-1, -2, 24.0f, 0.0f, 24.0f, 10.0f));
-        
+
         builder.setView(layout);
         builder.setPositiveButton(LocaleController.getString(R.string.Done), (dialog, which) -> {
             String val = editText.getText().toString();
-            ((TextCell) view).setValue(val, true);
-            Utilities.pluginsQueue.postRunnable(() -> {
-                PluginsController.getInstance().setPluginSetting(this.plugin.getId(), key, val);
-                triggerOnChange(setting.onChangeCallback, key, val);
-            });
+            if (isSettingsUiActive()) applySettingsUiEdit(edit, val);
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-        
+
         AlertDialog dialog = builder.create();
         dialog.setOnShowListener(d -> {
             editText.requestFocus();
@@ -780,31 +817,32 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
 
     private void showSelectorDialog(UItem uItem, final View view, final String key) {
         if (getParentActivity() == null) return;
-        
+
         SelectorSetting setting = (SelectorSetting) uItem.settingItem;
+        final PluginsController.PluginSettingsUiEdit edit = PluginsController.getInstance()
+                .capturePluginSettingsUiEdit(settingsUiSource, setting);
+        if (edit == null) return;
+        final String[] displayedItems = edit.getSelectorItems();
+        if (displayedItems == null || displayedItems.length == 0) return;
         AtomicReference<AlertDialog> dialogRef = new AtomicReference<>();
-        
+
         LinearLayout layout = new LinearLayout(getContext());
         layout.setOrientation(LinearLayout.VERTICAL);
-        
-        for (int i = 0; i < setting.items.length; i++) {
+
+        for (int i = 0; i < displayedItems.length; i++) {
             final int index = i;
             RadioColorCell cell = new RadioColorCell(getParentActivity());
             cell.setPadding(AndroidUtilities.dp(4.0f), 0, AndroidUtilities.dp(4.0f), 0);
             cell.setCheckColor(Theme.getColor(Theme.key_radioBackground), Theme.getColor(Theme.key_dialogRadioBackgroundChecked));
-            cell.setTextAndValue(setting.items[i], PluginsController.getInstance().getPluginSettingInt(this.plugin.getId(), key, setting.defaultValue) == i);
+            cell.setTextAndValue(displayedItems[i], PluginsController.getInstance().getPluginSettingInt(this.plugin.getId(), key, setting.defaultValue) == i);
             cell.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 2));
             layout.addView(cell);
             cell.setOnClickListener(v -> {
                 if (dialogRef.get() != null) dialogRef.get().dismiss();
-                ((TextCell) view).setValue(setting.items[index], true);
-                Utilities.pluginsQueue.postRunnable(() -> {
-                    PluginsController.getInstance().setPluginSetting(this.plugin.getId(), key, index);
-                    triggerOnChange(setting.onChangeCallback, key, index);
-                });
+                if (isSettingsUiActive()) applySettingsUiEdit(edit, index);
             });
         }
-        
+
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity()).setTitle(uItem.text).setView(layout).setNegativeButton(LocaleController.getString(R.string.Cancel), null);
         dialogRef.set(builder.create());
         showDialog(dialogRef.get());
@@ -821,20 +859,4 @@ public class PluginSettingsActivity extends BasePreferencesActivity implements
         return settingItem.hashCode();
     }
 
-    private void triggerOnChange(final PyObject pyObject, final String str, final Object obj) {
-        if (pyObject != null) {
-            try {
-                runPluginCallback(pyObject, obj);
-            } catch (Exception e) {
-                FileLog.e("Error executing on_change callback for " + this.plugin.getId() + "/" + str, e);
-                
-                AndroidUtilities.runOnUIThread(() -> {
-                    org.telegram.ui.ActionBar.BaseFragment last = LaunchActivity.getSafeLastFragment();
-                    if (last != null) {
-                        BulletinFactory.of(last).createErrorBulletin(LocaleController.getString(R.string.PluginCallbackError)).show();
-                    }
-                });
-            }
-        }
-    }
 }

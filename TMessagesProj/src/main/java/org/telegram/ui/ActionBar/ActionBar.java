@@ -870,8 +870,10 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         if (subtitleTextView != null) {
             boolean isEmpty = TextUtils.isEmpty(value);
-            subtitleTextView.setVisibility(!isEmpty && !isSearchFieldVisible ? VISIBLE : GONE);
-            subtitleTextView.setAlpha(1f);
+            final float visibleFraction = onSearchChangedIgnoreTitles() ? 1f
+                    : Utilities.clamp01(1f - searchFieldVisibleAlpha);
+            subtitleTextView.setVisibility(!isEmpty && visibleFraction > 0f ? VISIBLE : GONE);
+            subtitleTextView.setAlpha(visibleFraction);
             if (!isEmpty) {
                 subtitleTextView.setText(value);
             }
@@ -1783,6 +1785,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void onSearchFieldVisibilityChanged(boolean visible) {
+        if (visible == isSearchFieldVisible && searchVisibleAnimator != null) return;
         if (visible && !isSearchFieldVisible && searchFactor == 0f) {
             captureSearchMenuGeometry();
         }
@@ -1790,7 +1793,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         isSearchFieldVisible = visible;
         checkMenuItemsWidth();
         if (searchVisibleAnimator != null) {
-            if (standardSearchGlassProgress) searchVisibleAnimator.removeAllListeners();
+            searchVisibleAnimator.removeAllListeners();
             searchVisibleAnimator.cancel();
         }
         searchVisibleAnimator = new AnimatorSet();
@@ -1804,7 +1807,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
             if (subtitleTextView != null && !TextUtils.isEmpty(subtitle)) {
                 viewsToHide.add(subtitleTextView);
-                subtitleTextView.setVisibility(visible ? INVISIBLE : VISIBLE);
             }
         }
 
@@ -1832,12 +1834,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         for (int i = 0; i < viewsToHide.size(); i++) {
             View view = viewsToHide.get(i);
-            if (!visible) {
-                view.setVisibility(View.VISIBLE);
+            if (!visible && view.getVisibility() != View.VISIBLE) {
                 view.setAlpha(0);
                 view.setScaleX(0.95f);
                 view.setScaleY(0.95f);
             }
+            view.setVisibility(View.VISIBLE);
             searchVisibleAnimator.playTogether(ObjectAnimator.ofFloat(view, View.ALPHA, visible ? 0f : 1f));
             searchVisibleAnimator.playTogether(ObjectAnimator.ofFloat(view, View.SCALE_Y, visible ? 0.95f : 1f));
             searchVisibleAnimator.playTogether(ObjectAnimator.ofFloat(view, View.SCALE_X, visible ? 0.95f : 1f));
@@ -1851,7 +1853,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         searchVisibleAnimator.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (standardSearchGlassProgress && animation != searchVisibleAnimator) return;
+                if (animation != searchVisibleAnimator) return;
                 for (int i = 0; i < viewsToHide.size(); i++) {
                     View view = viewsToHide.get(i);
                     if (visible) {
@@ -1879,7 +1881,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             }
         });
 
-        searchVisibleAnimator.setDuration(standardSearchGlassProgress && !SharedConfig.animationsEnabled() ? 0 : 150).start();
+        searchVisibleAnimator.setDuration(SharedConfig.animationsEnabled() ? 150 : 0).start();
 
         if (backButtonImageView != null) {
             Drawable drawable = backButtonImageView.getDrawable();

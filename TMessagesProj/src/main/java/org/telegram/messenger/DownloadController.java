@@ -32,11 +32,13 @@ import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
+import java.lang.ref.ReferenceQueue;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 
+import java.util.function.Consumer;
 public class DownloadController extends BaseController implements NotificationCenter.NotificationCenterDelegate {
 
     public interface FileDownloadProgressListener {
@@ -71,11 +73,11 @@ public class DownloadController extends BaseController implements NotificationCe
     private HashMap<Pair<Long, Integer>, DownloadObject> downloadQueuePairs = new HashMap<>();
 
     private HashMap<String, ArrayList<WeakReference<FileDownloadProgressListener>>> loadingFileObservers = new HashMap<>();
-    private HashMap<String, ArrayList<MessageObject>> loadingFileMessagesObservers = new HashMap<>();
+    private final HashMap<String, ArrayList<LoadingMessageReference>> loadingFileMessagesObservers = new HashMap<>();
+    private final ReferenceQueue<MessageObject> collectedLoadingMessages = new ReferenceQueue<>();
     private SparseArray<String> observersByTag = new SparseArray<>();
-    private boolean listenerInProgress = false;
-    private HashMap<String, FileDownloadProgressListener> addLaterArray = new HashMap<>();
-    private ArrayList<FileDownloadProgressListener> deleteLaterArray = new ArrayList<>();
+    private int listenerDispatchDepth;
+    private final ArrayList<Runnable> deferredObserverChanges = new ArrayList<>();
     private int lastTag = 0;
 
     private boolean loadingAutoDownloadConfig;
@@ -1259,8 +1261,8 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public void addLoadingFileObserver(String fileName, MessageObject messageObject, FileDownloadProgressListener observer) {
-        if (listenerInProgress) {
-            addLaterArray.put(fileName, observer);
+        if (listenerDispatchDepth != 0) {
+            deferredObserverChanges.add(() -> addLoadingFileObserver(fileName, messageObject, observer));
             return;
         }
         removeLoadingFileObserver(observer);
@@ -1271,23 +1273,17 @@ public class DownloadController extends BaseController implements NotificationCe
             loadingFileObservers.put(fileName, arrayList);
         }
         arrayList.add(new WeakReference<>(observer));
-        if (messageObject != null) {
-            ArrayList<MessageObject> messageObjects = loadingFileMessagesObservers.get(fileName);
-            if (messageObjects == null) {
-                messageObjects = new ArrayList<>();
-                loadingFileMessagesObservers.put(fileName, messageObjects);
-            }
-            messageObjects.add(messageObject);
-        }
+        if (messageObject != null) watchLoadingMessage(fileName, messageObject);
 
         observersByTag.put(observer.getObserverTag(), fileName);
     }
 
     public void removeLoadingFileObserver(FileDownloadProgressListener observer) {
-        if (listenerInProgress) {
-            deleteLaterArray.add(observer);
+        if (listenerDispatchDepth != 0) {
+            deferredObserverChanges.add(() -> removeLoadingFileObserver(observer));
             return;
         }
+        pruneLoadingMessages();
         String fileName = observersByTag.get(observer.getObserverTag());
         if (fileName != null) {
             ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
@@ -1307,15 +1303,76 @@ public class DownloadController extends BaseController implements NotificationCe
         }
     }
 
-    private void processLaterArrays() {
-        for (HashMap.Entry<String, FileDownloadProgressListener> listener : addLaterArray.entrySet()) {
-            addLoadingFileObserver(listener.getKey(), listener.getValue());
+    private static final class LoadingMessageReference extends WeakReference<MessageObject> {
+        final String fileName;
+
+        LoadingMessageReference(String fileName, MessageObject message, ReferenceQueue<MessageObject> collected) {
+            super(message, collected);
+            this.fileName = fileName;
         }
-        addLaterArray.clear();
-        for (FileDownloadProgressListener listener : deleteLaterArray) {
-            removeLoadingFileObserver(listener);
+    }
+
+    private void pruneLoadingMessages() {
+        LoadingMessageReference reference;
+        while ((reference = (LoadingMessageReference) collectedLoadingMessages.poll()) != null) {
+            ArrayList<LoadingMessageReference> messages = loadingFileMessagesObservers.get(reference.fileName);
+            if (messages != null && messages.remove(reference) && messages.isEmpty()) {
+                loadingFileMessagesObservers.remove(reference.fileName);
+            }
         }
-        deleteLaterArray.clear();
+    }
+
+    private void watchLoadingMessage(String fileName, MessageObject message) {
+        ArrayList<LoadingMessageReference> messages = loadingFileMessagesObservers.get(fileName);
+        if (messages == null) {
+            messages = new ArrayList<>();
+            loadingFileMessagesObservers.put(fileName, messages);
+        } else {
+            for (int i = 0; i < messages.size(); ++i) {
+                MessageObject watched = messages.get(i).get();
+                if (watched == message) return;
+                if (watched == null) messages.remove(i--);
+            }
+        }
+        messages.add(new LoadingMessageReference(fileName, message, collectedLoadingMessages));
+    }
+
+    private void markLoadingMessagesComplete(String fileName) {
+        pruneLoadingMessages();
+        ArrayList<LoadingMessageReference> messages = loadingFileMessagesObservers.remove(fileName);
+        if (messages == null) return;
+        for (LoadingMessageReference reference : messages) {
+            MessageObject message = reference.get();
+            if (message != null) message.mediaExists = true;
+        }
+    }
+
+    private void dispatchFileObservers(String fileName, boolean terminal, Consumer<FileDownloadProgressListener> callback) {
+        ArrayList<WeakReference<FileDownloadProgressListener>> listeners = terminal
+                ? loadingFileObservers.remove(fileName) : loadingFileObservers.get(fileName);
+        if (listeners == null) return;
+        if (terminal) {
+            for (WeakReference<FileDownloadProgressListener> reference : listeners) {
+                FileDownloadProgressListener listener = reference.get();
+                if (listener != null) observersByTag.remove(listener.getObserverTag());
+            }
+        }
+        listenerDispatchDepth++;
+        try {
+            for (WeakReference<FileDownloadProgressListener> reference : listeners) {
+                if (!terminal && loadingFileObservers.get(fileName) != listeners) break;
+                FileDownloadProgressListener listener = reference.get();
+                if (listener != null) callback.accept(listener);
+            }
+        } finally {
+            if (--listenerDispatchDepth == 0) {
+                try {
+                    for (int i = 0; i < deferredObserverChanges.size(); ++i) deferredObserverChanges.get(i).run();
+                } finally {
+                    deferredObserverChanges.clear();
+                }
+            }
+        }
     }
 
     @Override
@@ -1323,83 +1380,24 @@ public class DownloadController extends BaseController implements NotificationCe
         if (id == NotificationCenter.fileLoadFailed || id == NotificationCenter.httpFileDidFailedLoad) {
             String fileName = (String) args[0];
             Integer canceled = (Integer) args[1];
-            listenerInProgress = true;
-            ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
-            if (arrayList != null) {
-                for (int a = 0, size = arrayList.size(); a < size; a++) {
-                    WeakReference<FileDownloadProgressListener> reference = arrayList.get(a);
-                    if (reference.get() != null) {
-                        reference.get().onFailedDownload(fileName, canceled == 1);
-                        if (canceled != 1) {
-                            observersByTag.remove(reference.get().getObserverTag());
-                        }
-                    }
-                }
-                if (canceled != 1) {
-                    loadingFileObservers.remove(fileName);
-                }
-            }
-            listenerInProgress = false;
-            processLaterArrays();
+            dispatchFileObservers(fileName, canceled != 1, listener -> listener.onFailedDownload(fileName, canceled == 1));
             checkDownloadFinished(fileName, canceled);
         } else if (id == NotificationCenter.fileLoaded || id == NotificationCenter.httpFileDidLoad) {
-            listenerInProgress = true;
             String fileName = (String) args[0];
-            ArrayList<MessageObject> messageObjects = loadingFileMessagesObservers.get(fileName);
-            if (messageObjects != null) {
-                for (int a = 0, size = messageObjects.size(); a < size; a++) {
-                    MessageObject messageObject = messageObjects.get(a);
-                    messageObject.mediaExists = true;
-                }
-                loadingFileMessagesObservers.remove(fileName);
-            }
-            ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
-            if (arrayList != null) {
-                for (int a = 0, size = arrayList.size(); a < size; a++) {
-                    WeakReference<FileDownloadProgressListener> reference = arrayList.get(a);
-                    if (reference.get() != null) {
-                        reference.get().onSuccessDownload(fileName);
-                        observersByTag.remove(reference.get().getObserverTag());
-                    }
-                }
-                loadingFileObservers.remove(fileName);
-            }
-            listenerInProgress = false;
-            processLaterArrays();
+            markLoadingMessagesComplete(fileName);
+            dispatchFileObservers(fileName, true, listener -> listener.onSuccessDownload(fileName));
             checkDownloadFinished(fileName, 0);
         } else if (id == NotificationCenter.fileLoadProgressChanged) {
-            listenerInProgress = true;
             String fileName = (String) args[0];
-            ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
-            if (arrayList != null) {
-                Long loadedSize = (Long) args[1];
-                Long totalSize = (Long) args[2];
-                for (int a = 0, size = arrayList.size(); a < size; a++) {
-                    WeakReference<FileDownloadProgressListener> reference = arrayList.get(a);
-                    if (reference.get() != null) {
-                        reference.get().onProgressDownload(fileName, loadedSize, totalSize);
-                    }
-                }
-            }
-            listenerInProgress = false;
-            processLaterArrays();
+            long loadedSize = (Long) args[1];
+            long totalSize = (Long) args[2];
+            dispatchFileObservers(fileName, false, listener -> listener.onProgressDownload(fileName, loadedSize, totalSize));
         } else if (id == NotificationCenter.fileUploadProgressChanged) {
-            listenerInProgress = true;
             String fileName = (String) args[0];
-            ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
-            if (arrayList != null) {
-                Long loadedSize = (Long) args[1];
-                Long totalSize = (Long) args[2];
-                Boolean enc = (Boolean) args[3];
-                for (int a = 0, size = arrayList.size(); a < size; a++) {
-                    WeakReference<FileDownloadProgressListener> reference = arrayList.get(a);
-                    if (reference.get() != null) {
-                        reference.get().onProgressUpload(fileName, loadedSize, totalSize, enc);
-                    }
-                }
-            }
-            listenerInProgress = false;
-            processLaterArrays();
+            long loadedSize = (Long) args[1];
+            long totalSize = (Long) args[2];
+            boolean enc = (Boolean) args[3];
+            dispatchFileObservers(fileName, false, listener -> listener.onProgressUpload(fileName, loadedSize, totalSize, enc));
             try {
                 ArrayList<SendMessagesHelper.DelayedMessage> delayedMessages = getSendMessagesHelper().getDelayedMessages(fileName);
                 if (delayedMessages != null) {

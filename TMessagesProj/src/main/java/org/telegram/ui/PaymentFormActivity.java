@@ -473,6 +473,10 @@ public class PaymentFormActivity extends BaseFragment implements NotificationCen
         init(null, form, message, invoiceSlug, STEP_CHECKOUT, null, null, null, null, null, null, false, null, parentFragment, false, false);
     }
 
+    public PaymentFormActivity(int currentAccount, TLRPC.PaymentForm form, MessageObject message, String invoiceSlug, BaseFragment parentFragment) {
+        this(currentAccount, null, form, message, invoiceSlug, STEP_CHECKOUT, null, null, null, null, null, null, false, null, parentFragment, false);
+        isCheckoutPreview = true;
+    }
     private PaymentFormActivity(
         int currentAccount,
         TLRPC.InputInvoice premiumGiftCode,

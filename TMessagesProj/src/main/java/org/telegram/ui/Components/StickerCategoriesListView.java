@@ -286,13 +286,14 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
             show = false;
         }
 
-        if (categoriesShownT == (show ? 1 : 0)) {
-            return;
-        }
 
         if (categoriesShownAnimator != null) {
             categoriesShownAnimator.cancel();
             categoriesShownAnimator = null;
+        }
+
+        if (categoriesShownT == (show ? 1 : 0)) {
+            return;
         }
 
         if (animated) {
@@ -303,8 +304,10 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
             categoriesShownAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    setCategoriesShownT((float) categoriesShownAnimator.getAnimatedValue());
+                    if (animation == categoriesShownAnimator) {
+                        setCategoriesShownT((float) ((ValueAnimator) animation).getAnimatedValue());
                     categoriesShownAnimator = null;
+                    }
                 }
             });
             categoriesShownAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -590,6 +593,16 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
         }
 
         @Override
+        public void onViewRecycled(@NonNull ViewHolder holder) {
+            super.onViewRecycled(holder);
+            if (holder.getItemViewType() == VIEW_TYPE_CATEGORY) {
+                final CategoryButton button = (CategoryButton) holder.itemView;
+                button.invalidateBinding();
+                button.clearAnimationDrawable();
+            }
+        }
+
+        @Override
         public int getItemViewType(int position) {
             return position == 0 ? VIEW_TYPE_PADDING : VIEW_TYPE_CATEGORY;
         }
@@ -646,6 +659,10 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
         private ValueAnimator selectedAnimator;
         private int index;
 
+        private int bindingGeneration;
+        private int bindingAccount = -1;
+        private long bindingDocumentId;
+        private Runnable delayedLoad;
         public CategoryButton(Context context) {
             super(context);
 
@@ -656,6 +673,10 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
         }
 
         public void set(EmojiCategory category, int index, boolean selected) {
+            invalidateBinding();
+            final int generation = bindingGeneration;
+            final int account = bindingAccount = UserConfig.selectedAccount;
+            final long documentId = bindingDocumentId = category.remote ? category.documentId : 0;
             this.index = index;
             if (!TextUtils.isEmpty(category.title)) {
                 setContentDescription(category.title);
@@ -675,13 +696,20 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
                 boolean animated = isTabIconsAnimationEnabled(true);
                 loaded = false;
                 loadProgress = 1;
-                AnimatedEmojiDrawable.getDocumentFetcher(UserConfig.selectedAccount)
-                    .fetchDocument(category.documentId, document -> {
+                AnimatedEmojiDrawable.getDocumentFetcher(account)
+                    .fetchDocument(documentId, document -> {
+                        if (!isCurrentBinding(generation, account, documentId) || document == null || document.id != documentId) {
+                            return;
+                        }
                         setOnlyLastFrame(!animated);
                         setAnimation(document, 24, 24);
                         playAnimation();
                     });
-                AndroidUtilities.runOnUIThread(() -> {
+                AndroidUtilities.runOnUIThread(delayedLoad = () -> {
+                    if (!isCurrentBinding(generation, account, documentId)) {
+                        return;
+                    }
+                    delayedLoad = null;
                     if (!loaded) {
                         loadProgress = 0;
                     }
@@ -698,6 +726,20 @@ public class StickerCategoriesListView extends RecyclerListView implements Theme
                 loadProgress = 1;
             }
             setSelected(selected, false);
+        }
+
+        private void invalidateBinding() {
+            bindingGeneration++;
+            bindingAccount = -1;
+            bindingDocumentId = 0;
+            if (delayedLoad != null) {
+                AndroidUtilities.cancelRunOnUIThread(delayedLoad);
+                delayedLoad = null;
+            }
+        }
+
+        private boolean isCurrentBinding(int generation, int account, long documentId) {
+            return generation == bindingGeneration && account == bindingAccount && documentId == bindingDocumentId;
         }
 
         private boolean loaded = false;

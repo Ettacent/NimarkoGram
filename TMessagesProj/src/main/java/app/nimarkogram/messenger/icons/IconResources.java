@@ -16,11 +16,20 @@ import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.PorterDuff;
 import android.graphics.drawable.BitmapDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.SparseArray;
+import android.view.View;
+import android.view.ViewGroup;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Utilities;
 import android.annotation.SuppressLint;
@@ -44,6 +53,12 @@ public class IconResources extends Resources {
 
     private static final int CACHE_LIMIT = 300;
 
+    private static final Handler ICON_UI_HANDLER = new Handler(Looper.getMainLooper());
+    private static final ExecutorService ICON_PREPARATION_QUEUE = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "ng-icon-prepare");
+        thread.setPriority(Thread.NORM_PRIORITY - 1);
+        return thread;
+    });
     private static final Set<Integer> RENDER_24DP_ICONS = new HashSet<>(
             Arrays.asList(org.telegram.messenger.R.drawable.group_edit_profile));
 
@@ -66,10 +81,18 @@ public class IconResources extends Resources {
         final int selection;
         final long generation;
 
-        ReplacementState(BaseIconReplace replacement, int selection, long generation) {
+        final Configuration configuration;
+        final int densityDpi;
+        final float density;
+
+        ReplacementState(BaseIconReplace replacement, int selection, long generation, Resources resources) {
             this.replacement = replacement;
             this.selection = selection;
             this.generation = generation;
+            configuration = new Configuration(resources.getConfiguration());
+            DisplayMetrics metrics = resources.getDisplayMetrics();
+            densityDpi = metrics.densityDpi;
+            density = metrics.density;
         }
     }
 
@@ -77,8 +100,9 @@ public class IconResources extends Resources {
     private final Object replacementLock = new Object();
     private volatile ReplacementState replacementState;
     private final Object folderWarmLock = new Object();
-    private volatile int warmedFolderSelection = Integer.MIN_VALUE;
-    private static volatile IconResources sInstalled;
+    private volatile ReplacementState warmedFolderState;
+    private ReplacementState queuedFolderState;
+    private static volatile WeakReference<IconResources> sInstalled = new WeakReference<>(null);
 
     private Bitmap backArrowBitmap;
     private boolean backArrowBitmapResolved;
@@ -86,6 +110,8 @@ public class IconResources extends Resources {
 
     private NavigationIcons navigationIcons;
 
+    private boolean iconPreparationQueued;
+    private final ArrayList<Runnable> appliedCallbacks = new ArrayList<>();
     public static final class PreparedIcon {
         public final Bitmap bitmap;
         public final boolean noTint;
@@ -125,10 +151,11 @@ public class IconResources extends Resources {
     }
 
     public static NavigationIcons activeNavigationIcons() {
-        IconResources self = sInstalled;
+        IconResources self = sInstalled.get();
         if (self == null) return null;
+        ReplacementState state = self.refreshConfiguration();
         synchronized (self.backArrowLock) {
-            return self.navigationIcons;
+            return self.replacementState == state && self.matchesConfiguration(state) ? self.navigationIcons : null;
         }
     }
 
@@ -138,16 +165,33 @@ public class IconResources extends Resources {
     }
     @SuppressWarnings("deprecation")
     public IconResources(Resources wrapped) {
+        this(wrapped, true);
+    }
+
+    @SuppressWarnings("deprecation")
+    public IconResources(Resources wrapped, boolean activate) {
         super(wrapped.getAssets(), wrapped.getDisplayMetrics(), wrapped.getConfiguration());
         this.wrapped = wrapped;
         applySelection(AppConfig.iconReplacement, 1L);
-        prepareBackArrowBitmap();
-        sInstalled = this;
+        if (activate) activate();
+    }
+
+    public void activate() {
+        publishAsInstalled();
+        prepareAsync();
+    }
+
+    public final void publishAsInstalled() {
+        sInstalled = new WeakReference<>(this);
+    }
+
+    public final void prepareAsync() {
+        prepareIconsAsync();
         prewarmFolderIconsAsync();
     }
 
     public static Bitmap activeBackArrowBitmap() {
-        IconResources self = sInstalled;
+        IconResources self = sInstalled.get();
         return self == null ? null : self.preparedBackArrowBitmap();
     }
 
@@ -165,38 +209,117 @@ public class IconResources extends Resources {
     }
 
     private Bitmap preparedBackArrowBitmap() {
+        ReplacementState state = refreshConfiguration();
         synchronized (backArrowLock) {
-            return backArrowBitmapResolved ? backArrowBitmap : null;
+            return replacementState == state && matchesConfiguration(state) && backArrowBitmapResolved ? backArrowBitmap : null;
         }
     }
 
-    private Bitmap prepareBackArrowBitmap() {
-        while (true) {
-            final ReplacementState state = replacementState;
-            synchronized (backArrowLock) {
-                if (replacementState != state) {
-                    continue;
-                }
-                if (backArrowBitmapResolved) {
-                    return backArrowBitmap;
-                }
-            }
+    private boolean matchesConfiguration(ReplacementState state) {
+        DisplayMetrics metrics = wrapped.getDisplayMetrics();
+        return state.densityDpi == metrics.densityDpi && state.density == metrics.density
+                && state.configuration.equals(wrapped.getConfiguration());
+    }
 
-            final NavigationIcons loaded = loadNavigationIcons(state);
-            synchronized (backArrowLock) {
-                if (replacementState != state) {
-                    recycleUnpublishedIcons(loaded);
-                    continue;
+    private ReplacementState refreshConfiguration() {
+        ReplacementState state = replacementState;
+        if (!matchesConfiguration(state)) {
+            synchronized (replacementLock) {
+                state = replacementState;
+                if (!matchesConfiguration(state)) {
+                    publishReplacementState(new ReplacementState(state.replacement,
+                            state.selection, state.generation + 1L, wrapped));
+                    clearCache();
                 }
-                if (!backArrowBitmapResolved) {
+                state = replacementState;
+            }
+            prepareIconsAsync();
+            prewarmFolderIconsAsync();
+        }
+        return state;
+    }
+
+    private void prepareIconsAsync() {
+        synchronized (backArrowLock) {
+            if (iconPreparationQueued || backArrowBitmapResolved) return;
+            iconPreparationQueued = true;
+        }
+        WeakReference<IconResources> reference = new WeakReference<>(this);
+        try {
+            ICON_PREPARATION_QUEUE.execute(() -> {
+                IconResources resources = reference.get();
+                if (resources != null) resources.prepareIconsInBackground();
+            });
+        } catch (Throwable ignored) {
+            synchronized (backArrowLock) {
+                iconPreparationQueued = false;
+            }
+        }
+    }
+
+    private void prepareIconsInBackground() {
+        ReplacementState state = null;
+        NavigationIcons loaded = null;
+        boolean published = false;
+        try {
+            if (Looper.myLooper() == Looper.getMainLooper()) return;
+            state = refreshConfiguration();
+            loaded = loadNavigationIcons(state);
+            synchronized (backArrowLock) {
+                if (loaded != null && replacementState == state && matchesConfiguration(state)) {
                     navigationIcons = loaded;
                     backArrowBitmap = loaded.back;
                     backArrowBitmapResolved = true;
-                return backArrowBitmap;
+                    published = true;
+                }
             }
-                recycleUnpublishedIcons(loaded);
-                return backArrowBitmap;
+            if (published) postIconsReady(state);
+        } catch (Throwable ignored) {
+        } finally {
+            if (loaded != null && !published) recycleUnpublishedIcons(loaded);
+            final boolean superseded;
+            synchronized (backArrowLock) {
+                iconPreparationQueued = false;
+                superseded = state != null
+                        && (replacementState != state || !matchesConfiguration(state));
             }
+            if (superseded) {
+                refreshConfiguration();
+                prepareIconsAsync();
+            }
+        }
+    }
+
+    private void postIconsReady(ReplacementState state) {
+        ICON_UI_HANDLER.post(() -> {
+            final ArrayList<Runnable> callbacks;
+            synchronized (backArrowLock) {
+                if (replacementState != state || !matchesConfiguration(state) || !backArrowBitmapResolved) {
+                    return;
+                }
+                callbacks = new ArrayList<>(appliedCallbacks);
+                appliedCallbacks.clear();
+            }
+            for (Runnable callback : callbacks) {
+                if (isReplacementGenerationCurrent(state.generation)) callback.run();
+            }
+            if (sInstalled.get() == this && replacementState == state && matchesConfiguration(state)) {
+                List<View> roots = AndroidUtilities.allGlobalViews();
+                if (roots != null) {
+                    for (View root : roots) invalidateIconViews(root);
+                } else if (org.telegram.ui.LaunchActivity.instance != null) {
+                    invalidateIconViews(org.telegram.ui.LaunchActivity.instance.getWindow().peekDecorView());
+                }
+            }
+        });
+    }
+
+    private static void invalidateIconViews(View view) {
+        if (view == null) return;
+        view.invalidate();
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) invalidateIconViews(group.getChildAt(i));
         }
     }
 
@@ -231,6 +354,7 @@ public class IconResources extends Resources {
         try {
             for (int[] group : groups) {
                 for (int id : group) {
+                    if (replacementState != state || !matchesConfiguration(state)) return null;
                     if (!visited.add(id)) continue;
                     pending = loadAnimatedIconBitmap(state, id);
                     if (pending != null) {
@@ -239,7 +363,7 @@ public class IconResources extends Resources {
                     }
                 }
             }
-            NavigationIcons result = new NavigationIcons(state, wrapped.getDisplayMetrics().densityDpi, icons);
+            NavigationIcons result = new NavigationIcons(state, state.densityDpi, icons);
             complete = true;
             return result;
         } finally {
@@ -268,12 +392,12 @@ public class IconResources extends Resources {
             if (wrappedId == stockId) {
                 return null;
             }
-            Drawable d = wrapped.getDrawable(wrappedId);
+            Drawable d = wrapped.getDrawableForDensity(wrappedId, state.densityDpi);
             if (d == null) {
                 return null;
             }
             d = d.mutate();
-            int size = Math.max(1, Math.min(256, (int) Math.ceil(24f * wrapped.getDisplayMetrics().density)));
+            int size = Math.max(1, Math.min(256, (int) Math.ceil(24f * state.density)));
             int w = d.getIntrinsicWidth(), h = d.getIntrinsicHeight();
             if (w <= 0 || h <= 0) {
                 w = h = size;
@@ -298,48 +422,49 @@ public class IconResources extends Resources {
     }
 
     public long reloadReplacements(final Runnable onApplied) {
-        final long generation;
+        final ReplacementState applied;
         synchronized (replacementLock) {
             final int selection = AppConfig.iconReplacement;
             ReplacementState state = replacementState;
             if (state == null || state.selection != selection) {
-                generation = state == null ? 1L : state.generation + 1L;
-                applySelection(selection, generation);
+                applySelection(selection, state == null ? 1L : state.generation + 1L);
                 clearCache();
-            } else {
-                generation = state.generation;
+            } else if (!matchesConfiguration(state)) {
+                publishReplacementState(new ReplacementState(state.replacement,
+                        selection, state.generation + 1L, wrapped));
+                clearCache();
+            }
+            applied = replacementState;
+        }
+        if (onApplied != null) {
+            synchronized (backArrowLock) {
+                if (replacementState == applied) {
+                    appliedCallbacks.add(onApplied);
+                }
             }
         }
-        prepareBackArrowBitmap();
-        prewarmFolderIconsAsync();
-        sInstalled = this;
-        if (onApplied != null) {
-            AndroidUtilities.runOnUIThread(() -> {
-                if (isReplacementGenerationCurrent(generation)) {
-                    onApplied.run();
-                }
-            });
-        }
-        return generation;
+        activate();
+        postIconsReady(applied);
+        return applied.generation;
     }
 
     public boolean isReplacementGenerationCurrent(long generation) {
-        ReplacementState state = replacementState;
+        ReplacementState state = refreshConfiguration();
         return state != null
                 && state.generation == generation
                 && state.selection == AppConfig.iconReplacement;
     }
 
     public boolean hasReplacement(int id) {
-        return !NON_SKINNABLE_DRAWABLES.contains(id) && replacementState.replacement.wrap(id) != id;
+        return !NON_SKINNABLE_DRAWABLES.contains(id) && refreshConfiguration().replacement.wrap(id) != id;
     }
 
     public long getReplacementGeneration() {
-        return replacementState.generation;
+        return refreshConfiguration().generation;
     }
 
     public int getAppliedSelection() {
-        return replacementState.selection;
+        return refreshConfiguration().selection;
     }
 
     public static Drawable preserveTintPolicy(Drawable source, Resources resources, Bitmap bitmap) {
@@ -374,7 +499,6 @@ public class IconResources extends Resources {
     }
 
     private void applySelection(int selection, long generation) {
-        warmedFolderSelection = Integer.MIN_VALUE;
         final BaseIconReplace replacement;
         switch (selection) {
             case AppConfig.ICON_REPLACE_SOLAR:
@@ -390,39 +514,59 @@ public class IconResources extends Resources {
                 replacement = new NoIconReplace();
                 break;
         }
+        publishReplacementState(new ReplacementState(replacement, selection, generation, wrapped));
+    }
+
+    private void publishReplacementState(ReplacementState state) {
         synchronized (backArrowLock) {
+            warmedFolderState = null;
             backArrowBitmap = null;
             backArrowBitmapResolved = false;
             navigationIcons = null;
-            replacementState = new ReplacementState(replacement, selection, generation);
+            appliedCallbacks.clear();
+            replacementState = state;
         }
     }
 
     public void prewarmFolderIconsAsync() {
         final ReplacementState state = replacementState;
-        if (warmedFolderSelection == state.selection) {
-            return;
+        synchronized (backArrowLock) {
+            if (warmedFolderState == state || queuedFolderState == state) return;
+            queuedFolderState = state;
         }
+        WeakReference<IconResources> reference = new WeakReference<>(this);
         try {
             Utilities.globalQueue.postRunnable(() -> {
-                if (replacementState == state) {
-                    prewarmFolderIconsBlocking();
+                IconResources resources = reference.get();
+                if (resources == null) return;
+                try {
+                    resources.prewarmFolderIcons(state);
+                } finally {
+                    synchronized (resources.backArrowLock) {
+                        if (resources.queuedFolderState == state) resources.queuedFolderState = null;
+                    }
                 }
             });
         } catch (Throwable ignored) {
+            synchronized (backArrowLock) {
+                if (queuedFolderState == state) queuedFolderState = null;
+            }
         }
     }
 
     public void prewarmFolderIconsBlocking() {
-        final ReplacementState state = replacementState;
-        final int selection = state.selection;
-        if (warmedFolderSelection == selection) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            prewarmFolderIconsAsync();
             return;
         }
+        prewarmFolderIcons(refreshConfiguration());
+    }
+
+    private void prewarmFolderIcons(ReplacementState state) {
+        if (Looper.myLooper() == Looper.getMainLooper()
+                || replacementState != state || !matchesConfiguration(state) || warmedFolderState == state) return;
         synchronized (folderWarmLock) {
-            if (warmedFolderSelection == selection) {
-                return;
-            }
+            if (replacementState != state || !matchesConfiguration(state) || warmedFolderState == state) return;
             boolean complete = true;
             for (Integer drawableId : new HashSet<>(
                     app.nimarkogram.messenger.preferences.folders.helpers
@@ -430,14 +574,15 @@ public class IconResources extends Resources {
                 if (drawableId == null) {
                     continue;
                 }
+                if (replacementState != state || !matchesConfiguration(state)) return;
                 try {
                     getDrawable(drawableId);
                 } catch (Throwable ignored) {
                     complete = false;
                 }
             }
-            if (complete && replacementState == state) {
-                warmedFolderSelection = selection;
+            if (complete && replacementState == state && matchesConfiguration(state)) {
+                warmedFolderState = state;
             }
         }
     }
@@ -537,7 +682,7 @@ public class IconResources extends Resources {
 
     private Drawable getSkinnedDrawable(int id, int density, Theme theme) {
         while (true) {
-            final ReplacementState state = replacementState;
+            final ReplacementState state = refreshConfiguration();
             final CacheKey key = new CacheKey(id, density, theme, state.generation,
                     wrapped.getConfiguration(), wrapped.getDisplayMetrics().densityDpi);
             final Drawable drawable = cachedGetOrLoad(

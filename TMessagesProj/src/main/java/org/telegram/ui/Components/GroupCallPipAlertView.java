@@ -33,6 +33,7 @@ import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.voip.VoIPPreNotificationService;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -70,6 +71,12 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
     int currentAccount;
     private boolean mutedByAdmin;
 
+    private VoIPService attachedService;
+    private Intent openCallAction;
+
+    private VoIPService getActionService() {
+        return VoIPPreNotificationService.isCurrentServiceAction(attachedService, openCallAction) ? attachedService : null;
+    }
     public GroupCallPipAlertView(Context context, int account) {
         super(context);
         setOrientation(VERTICAL);
@@ -98,10 +105,8 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         groupInfoContainer.addView(avatarImageView, LayoutHelper.createFrame(44, 44));
         groupInfoContainer.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(6), 0, ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.3f))));
         groupInfoContainer.setOnClickListener(view -> {
-            if (VoIPService.getSharedInstance() != null) {
-                Intent intent = new Intent(getContext(), LaunchActivity.class).setAction("voip_chat");
-                intent.putExtra("currentAccount", VoIPService.getSharedInstance().getAccount());
-                getContext().startActivity(intent);
+            if (getActionService() != null) {
+                getContext().startActivity(new Intent(openCallAction));
             }
         });
 
@@ -129,10 +134,11 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         soundButton = new VoIPToggleButton(context, 44f);
         soundButton.setTextSize(12);
         soundButton.setOnClickListener(v -> {
-            if (VoIPService.getSharedInstance() == null) {
+            VoIPService service = getActionService();
+            if (service == null) {
                 return;
             }
-            VoIPService.getSharedInstance().toggleSpeakerphoneOrShowRouteSheet(getContext(), Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context));
+            service.toggleSpeakerphoneOrShowRouteSheet(getContext(), Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context));
         });
         soundButton.setCheckable(true);
         soundButton.setBackgroundColor(ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.15f)), ColorUtils.setAlphaComponent(Color.WHITE, (int) (255 * 0.3f)));
@@ -140,8 +146,9 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         muteButton = new VoIPToggleButton(context, 44f);
         muteButton.setTextSize(12);
         muteButton.setOnClickListener(v -> {
-            if (VoIPService.getSharedInstance() != null) {
-                if (VoIPService.getSharedInstance().mutedByAdmin()) {
+            VoIPService service = getActionService();
+            if (service != null) {
+                if (service.mutedByAdmin()) {
                     muteButton.shakeView();
                     try {
                         Vibrator vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
@@ -152,7 +159,7 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
                         FileLog.e(e);
                     }
                 } else {
-                    VoIPService.getSharedInstance().setMicMute(!VoIPService.getSharedInstance().isMicMute(), false, true);
+                    service.setMicMute(!service.isMicMute(), false, true);
                 }
             }
         });
@@ -160,7 +167,11 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         leaveButton = new VoIPToggleButton(context, 44f);
         leaveButton.setTextSize(12);
         leaveButton.setData(R.drawable.calls_decline, 0xffffffff, 0xFFCE4A4A, 0.3f, false, getString(R.string.VoipGroupLeave), false, false);
-        leaveButton.setOnClickListener(v -> GroupCallActivity.onLeaveClick(getContext(), () -> GroupCallPip.updateVisibility(context), Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context)));
+        leaveButton.setOnClickListener(v -> {
+            if (getActionService() != null) {
+                GroupCallActivity.onLeaveClick(getContext(), () -> GroupCallPip.updateVisibility(context), Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(context));
+            }
+        });
 
         VoIPButtonsLayout buttonsContainer = new VoIPButtonsLayout(context);
         buttonsContainer.setChildSize(68);
@@ -286,6 +297,9 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
         super.onAttachedToWindow();
         VoIPService service = VoIPService.getSharedInstance();
         if (service != null && service.groupCall != null) {
+            attachedService = service;
+            openCallAction = VoIPPreNotificationService.bindOwner(
+                    new Intent(getContext(), LaunchActivity.class).setAction("voip_chat"), service);
             AvatarDrawable avatarDrawable = new AvatarDrawable();
             final TLRPC.Chat chat = service.getChat();
             avatarDrawable.setColor(
@@ -345,7 +359,9 @@ public class GroupCallPipAlertView extends LinearLayout implements VoIPService.S
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        VoIPService service = VoIPService.getSharedInstance();
+        VoIPService service = attachedService;
+        attachedService = null;
+        openCallAction = null;
         if (service != null) {
             service.unregisterStateListener(this);
         }

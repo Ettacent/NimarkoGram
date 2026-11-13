@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Tarixə görə filtr</string>
+    <string name="NM_SearchDatesDay">Gün</string>
+    <string name="NM_SearchDatesPeriod">Aralıq</string>
+    <string name="NM_SearchDatesFrom">Başlanğıc</string>
+    <string name="NM_SearchDatesUntil">Son</string>
+    <string name="NM_SearchDatesAddEnd">Son tarix əlavə et</string>
+    <string name="NM_SearchDatesToday">Bu gün</string>
+    <string name="NM_SearchDatesYesterday">Dünən</string>
+    <string name="NM_SearchDatesLast7">Son 7 gün</string>
+    <string name="NM_SearchDatesLast30">Son 30 gün</string>
+    <string name="NM_SearchDatesApply">Filtri tətbiq et</string>
+    <string name="NM_SearchDatesReset">Bütün tarixlər</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Tarix filtri: %1$s</string>
+    <string name="NM_SearchDatesChange">Tarixləri dəyiş</string>
+    <string name="NM_SearchDatesClear">Tarix filtrini sil</string>
+    <string name="NM_SearchDatesJump">Tarixə keç</string>
+    <string name="NM_SearchDatesInvalid">Son tarix başlanğıcdan əvvəl ola bilməz.</string>
+    <string name="NM_SearchDatesDayValue">Gün: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Ay: %1$s</string>
+    <string name="NM_SearchDatesYearValue">İl: %1$s</string>
+</resources>

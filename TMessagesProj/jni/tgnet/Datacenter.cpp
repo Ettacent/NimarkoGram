@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -8,6 +10,7 @@
 
 #include <stdlib.h>
 #include <algorithm>
+#include <new>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/bn.h>
@@ -1110,137 +1113,119 @@ ByteArray *Datacenter::getAuthKey(ConnectionType connectionType, bool perm, int6
     }
 }
 
-NativeByteBuffer *Datacenter::createRequestsData(std::vector<std::unique_ptr<NetworkMessage>> &requests, int32_t *quickAckId, Connection *connection, bool pfsInit) {
+namespace {
+class BorrowedMessageRange final : public TLObject {
+public:
+    BorrowedMessageRange(const std::vector<std::unique_ptr<NetworkMessage>> &messages, size_t begin, size_t end)
+            : messages(messages), begin(begin), end(end) {}
+    void serializeToStream(NativeByteBuffer *stream) override {
+        stream->writeInt32(TL_msg_container::constructor);
+        stream->writeInt32(static_cast<int32_t>(end - begin));
+        for (size_t i = begin; i < end; ++i) messages[i]->message->serializeToStream(stream);
+    }
+private:
+    const std::vector<std::unique_ptr<NetworkMessage>> &messages;
+    const size_t begin, end;
+};
+}
+
+PacketBuildResult Datacenter::createRequestsData(const std::vector<std::unique_ptr<NetworkMessage>> &requests,
+        size_t begin, size_t end, Connection *connection, bool pfsInit) {
+    if (connection == nullptr || begin >= end || end > requests.size() || end - begin > INT32_MAX) {
+        return {PacketBuildStatus::InvalidSize};
+    }
     int64_t authKeyId;
     ByteArray *authKey = getAuthKey(connection->getConnectionType(), pfsInit, &authKeyId, 1);
-    if (authKey == nullptr) {
-        return nullptr;
-    }
+    if (authKey == nullptr) return {PacketBuildStatus::NoAuthKey};
 
-    int64_t messageId;
-    TLObject *messageBody;
-    bool freeMessageBody = false;
-    int32_t messageSeqNo;
-
-    if (requests.size() == 1) {
-        NetworkMessage *networkMessage = requests[0].get();
-
-        if (networkMessage->message->outgoingBody != nullptr) {
-            messageBody = networkMessage->message->outgoingBody;
-        } else {
-            messageBody = networkMessage->message->body.get();
+    try {
+        bool container = end - begin != 1;
+        TL_message *first = requests[begin] == nullptr ? nullptr : requests[begin]->message.get();
+        if (first == nullptr) return {PacketBuildStatus::InvalidSize, nullptr, 0, begin};
+        if (!container && !pfsInit) {
+            auto messageTime = static_cast<int64_t>(first->msg_id / 4294967296.0 * 1000);
+            int64_t currentTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMillis()
+                    + static_cast<int64_t>(ConnectionsManager::getInstance(instanceNum).getTimeDifference()) * 1000;
+            container = requests[begin]->forceContainer || messageTime < currentTime - 30000 || messageTime > currentTime + 25000;
         }
-        if (LOGS_ENABLED) DEBUG_D("connection(%p, account%u, dc%u, type %d) send message (session: 0x%" PRIx64 ", seqno: %d, messageid: 0x%" PRIx64 "): %s(%p)", connection, instanceNum, datacenterId, connection->getConnectionType(), (uint64_t) connection->getSessionId(), networkMessage->message->seqno, (uint64_t) networkMessage->message->msg_id, typeid(*messageBody).name(), messageBody);
 
-        auto messageTime = (int64_t) (networkMessage->message->msg_id / 4294967296.0 * 1000);
-        int64_t currentTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMillis() + (int64_t) ConnectionsManager::getInstance(instanceNum).getTimeDifference() * 1000;
-
-        if (!pfsInit && (networkMessage->forceContainer || messageTime < currentTime - 30000 || messageTime > currentTime + 25000)) {
-            if (LOGS_ENABLED) DEBUG_D("wrap message in container");
-            auto messageContainer = new TL_msg_container();
-            messageContainer->messages.push_back(std::move(networkMessage->message));
-
-            messageId = ConnectionsManager::getInstance(instanceNum).generateMessageId();
-            messageBody = messageContainer;
-            messageSeqNo = connection->generateMessageSeqNo(false);
-            freeMessageBody = true;
-        } else {
-            messageId = networkMessage->message->msg_id;
-            messageSeqNo = networkMessage->message->seqno;
-        }
-    } else {
-        if (LOGS_ENABLED) DEBUG_D("start write messages to container");
-        auto messageContainer = new TL_msg_container();
-        size_t count = requests.size();
-        for (uint32_t a = 0; a < count; a++) {
-            NetworkMessage *networkMessage = requests[a].get();
-            if (networkMessage->message->outgoingBody != nullptr) {
-                messageBody = networkMessage->message->outgoingBody;
-            } else {
-                messageBody = networkMessage->message->body.get();
+        uint64_t checkedSize = container ? 8 : 0;
+        constexpr uint64_t maxMessageSize = INT32_MAX - 56 - 255;
+        for (size_t i = begin; i < end; ++i) {
+            TL_message *message = requests[i] == nullptr ? nullptr : requests[i]->message.get();
+            TLObject *body = message == nullptr ? nullptr
+                    : (message->outgoingBody != nullptr ? message->outgoingBody : message->body.get());
+            uint32_t bodySize = 0;
+            if (body == nullptr || message->bytes < 0 || !body->getObjectSizeChecked(bodySize)
+                    || bodySize < 4 || (bodySize & 3) != 0
+                    || bodySize != static_cast<uint32_t>(message->bytes)) {
+                return {PacketBuildStatus::InvalidSize, nullptr, 0, i};
             }
-            if (LOGS_ENABLED) DEBUG_D("connection(%p, account%u, dc%u, type %d) send message (session: 0x%" PRIx64 ", seqno: %d, messageid: 0x%" PRIx64 "): %s(%p)", connection, instanceNum, datacenterId, connection->getConnectionType(), (uint64_t) connection->getSessionId(), networkMessage->message->seqno, (uint64_t) networkMessage->message->msg_id, typeid(*messageBody).name(), messageBody);
-            messageContainer->messages.push_back(std::unique_ptr<TL_message>(std::move(networkMessage->message)));
+            checkedSize += static_cast<uint64_t>(bodySize) + (container ? 16 : 0);
+            if (checkedSize > maxMessageSize) return {PacketBuildStatus::InvalidSize, nullptr, 0, i};
+            if (LOGS_ENABLED) DEBUG_D("connection(%p, account%u, dc%u, type %d) send message (session: 0x%" PRIx64 ", seqno: %d, messageid: 0x%" PRIx64 "): %s(%p)",
+                    connection, instanceNum, datacenterId, connection->getConnectionType(),
+                    (uint64_t) connection->getSessionId(), message->seqno, (uint64_t) message->msg_id, typeid(*body).name(), body);
         }
-        messageId = ConnectionsManager::getInstance(instanceNum).generateMessageId();
-        messageBody = messageContainer;
-        freeMessageBody = true;
-        messageSeqNo = connection->generateMessageSeqNo(false);
-    }
 
-    int32_t mtProtoVersion;
-    if (pfsInit) {
-        mtProtoVersion = 1;
-    } else {
-        mtProtoVersion = 2;
-    }
-    uint32_t messageSize = messageBody->getObjectSize();
-    uint32_t additionalSize = (32 + messageSize) % 16;
-    if (additionalSize != 0) {
-        additionalSize = 16 - additionalSize;
-    }
-    if (mtProtoVersion == 2) {
-        uint8_t index;
-        RAND_bytes(&index, 1);
-        additionalSize += (2 + (index % 14)) * 16;
-    }
-    NativeByteBuffer *buffer = BuffersStorage::getInstance().getFreeBuffer(24 + 32 + messageSize + additionalSize);
-    buffer->writeInt64(authKeyId);
-    buffer->position(24);
+        BorrowedMessageRange range(requests, begin, end);
+        TLObject *messageBody = container ? static_cast<TLObject *>(&range)
+                : (first->outgoingBody != nullptr ? first->outgoingBody : first->body.get());
+        int64_t messageId = container ? ConnectionsManager::getInstance(instanceNum).generateMessageId() : first->msg_id;
+        int32_t messageSeqNo = container ? connection->generateMessageSeqNo(false) : first->seqno;
+        const uint32_t messageSize = static_cast<uint32_t>(checkedSize);
+        const int32_t mtProtoVersion = pfsInit ? 1 : 2;
+        uint32_t additionalSize = (32 + messageSize) % 16;
+        if (additionalSize != 0) additionalSize = 16 - additionalSize;
+        if (mtProtoVersion == 2) {
+            uint8_t index;
+            RAND_bytes(&index, 1);
+            additionalSize += (2 + (index % 14)) * 16;
+        }
+        std::unique_ptr<NativeByteBuffer> buffer(BuffersStorage::getInstance().getFreeBuffer(
+                24 + 32 + messageSize + additionalSize));
+        buffer->writeInt64(authKeyId);
+        buffer->position(24);
+        if (pfsInit) {
+            int64_t value;
+            RAND_bytes(reinterpret_cast<uint8_t *>(&value), 8);
+            buffer->writeInt64(value);
+            RAND_bytes(reinterpret_cast<uint8_t *>(&value), 8);
+            buffer->writeInt64(value);
+        } else {
+            buffer->writeInt64(getServerSalt(Connection::isMediaConnectionType(connection->getConnectionType())));
+            buffer->writeInt64(connection->getSessionId());
+        }
+        buffer->writeInt64(messageId);
+        buffer->writeInt32(messageSeqNo);
+        buffer->writeInt32(messageSize);
+        messageBody->serializeToStream(buffer.get());
+        if (buffer->hasWriteError() || buffer->position() != 56 + messageSize) {
+            return {PacketBuildStatus::InvalidSize, nullptr, 0, begin};
+        }
+        if (additionalSize != 0) RAND_bytes(buffer->bytes() + 56 + messageSize, additionalSize);
 
-    if (pfsInit) {
-        int64_t value;
-        RAND_bytes((uint8_t *) &value, 8);
-        buffer->writeInt64(value);
-        RAND_bytes((uint8_t *) &value, 8);
-        buffer->writeInt64(value);
-    } else {
-        buffer->writeInt64(getServerSalt(Connection::isMediaConnectionType(connection->getConnectionType())));
-        buffer->writeInt64(connection->getSessionId());
-    }
-    buffer->writeInt64(messageId);
-    buffer->writeInt32(messageSeqNo);
-    buffer->writeInt32(messageSize);
-    messageBody->serializeToStream(buffer);
-    if (freeMessageBody) {
-        delete messageBody;
-    }
-
-    if (additionalSize != 0) {
-        RAND_bytes(buffer->bytes() + 24 + 32 + messageSize, additionalSize);
-    }
-    thread_local static uint8_t messageKey[96];
-    switch (mtProtoVersion) {
-        case 2: {
+        thread_local static uint8_t messageKey[96];
+        int32_t quickAckId;
+        if (mtProtoVersion == 2) {
             SHA256_Init(&sha256Ctx);
             SHA256_Update(&sha256Ctx, authKey->bytes + 88, 32);
             SHA256_Update(&sha256Ctx, buffer->bytes() + 24, 32 + messageSize + additionalSize);
             SHA256_Final(messageKey, &sha256Ctx);
-            if (quickAckId != nullptr) {
-                *quickAckId = (((messageKey[0] & 0xff)) |
-                               ((messageKey[1] & 0xff) << 8) |
-                               ((messageKey[2] & 0xff) << 16) |
-                               ((messageKey[3] & 0xff) << 24)) & 0x7fffffff;
-            }
-            break;
-        }
-        default: {
+            quickAckId = (((messageKey[0] & 0xff)) | ((messageKey[1] & 0xff) << 8)
+                    | ((messageKey[2] & 0xff) << 16) | ((messageKey[3] & 0xff) << 24)) & 0x7fffffff;
+        } else {
             SHA1(buffer->bytes() + 24, 32 + messageSize, messageKey + 4);
-            if (quickAckId != nullptr) {
-                *quickAckId = (((messageKey[4] & 0xff)) |
-                               ((messageKey[5] & 0xff) << 8) |
-                               ((messageKey[6] & 0xff) << 16) |
-                               ((messageKey[7] & 0xff) << 24)) & 0x7fffffff;
-            }
-            break;
+            quickAckId = (((messageKey[4] & 0xff)) | ((messageKey[5] & 0xff) << 8)
+                    | ((messageKey[6] & 0xff) << 16) | ((messageKey[7] & 0xff) << 24)) & 0x7fffffff;
         }
+        memcpy(buffer->bytes() + 8, messageKey + 8, 16);
+        generateMessageKey(instanceNum, authKey->bytes, messageKey + 8, messageKey + 32, false, mtProtoVersion);
+        aesIgeEncryption(buffer->bytes() + 24, messageKey + 32, messageKey + 64, true, false, buffer->limit() - 24);
+        return {PacketBuildStatus::Ready, buffer.release(), quickAckId};
+    } catch (const std::bad_alloc &) {
+        return {PacketBuildStatus::NoMemory};
     }
-    memcpy(buffer->bytes() + 8, messageKey + 8, 16);
-
-    generateMessageKey(instanceNum, authKey->bytes, messageKey + 8, messageKey + 32, false, mtProtoVersion);
-    aesIgeEncryption(buffer->bytes() + 24, messageKey + 32, messageKey + 64, true, false, buffer->limit() - 24);
-
-    return buffer;
 }
 
 bool Datacenter::decryptServerResponse(int64_t keyId, uint8_t *key, uint8_t *data, uint32_t length, Connection *connection) {

@@ -41,6 +41,7 @@ import org.telegram.ui.Components.ClickableAnimatedTextView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LoadingDrawable;
+import org.telegram.ui.Components.MessagePreviewCrossfade;
 import org.telegram.ui.Stories.StoriesController;
 import org.telegram.ui.Stories.StoriesListPlaceProvider;
 
@@ -160,12 +161,15 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
     private final AnimatedFloat loadingAlpha = new AnimatedFloat(320, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final AnimatedFloat contentAlpha = new AnimatedFloat(220, CubicBezierInterpolator.EASE_OUT_QUINT);
     private final LoadingDrawable loadingDrawable;
+    private final MessagePreviewCrossfade contentTransition = new MessagePreviewCrossfade(this);
     private final Paint contentMaskPaint = new Paint();
 
     private final Rect previewVisibleRect = new Rect();
     private PreviewState previewState;
     private long previewBinding;
     private int boundMessageId;
+    private int boundMessageDate, boundMessageEditDate, boundMessageCount;
+    private String boundChannelTitle, boundMessageText;
     private int previewCaptureDepth;
     private PreviewReplayObserver previewReplayObserver;
     private PreviewRevealObserver previewRevealObserver;
@@ -226,16 +230,35 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         }
 
         public void onPresentationChanged() {
+            if (!previewMotionEnabled() && revealObserver != null) {
+                revealObserver.onPreDraw();
+                return;
+            }
+            ProfileChannelCell cell = presentingCell;
+            if (!previewMotionEnabled()) {
+                finish();
+                if (cell != null && cell.ownsPreviewState()) cell.invalidate();
+                return;
+            }
+            if (UiAnimationClock.isPaused() || !presentationVisible.getAsBoolean() || !canStartReveal.getAsBoolean()) {
+                suspend(cell);
+                if (cell != null && cell.ownsPreviewState()) cell.watchPreviewReveal();
+            }
             if (revealObserver != null) revealObserver.onPreDraw();
         }
 
         private void suspend(ProfileChannelCell cell) {
             if (presentingCell != cell) return;
+            if (revealObserver != null) revealObserver.cancelFrame();
             presentingCell = null;
             lastFrame = -1;
         }
 
         private boolean present(ProfileChannelCell cell) {
+            return present(cell, UiAnimationClock.now());
+        }
+
+        private boolean present(ProfileChannelCell cell, long now) {
             if (loading) {
                 loadingPresented = true;
                 return true;
@@ -249,7 +272,6 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                 revealing = true;
             }
             if (!revealing) return false;
-            final long now = UiAnimationClock.now();
             if (lastFrame >= 0) {
                 elapsed += Math.min(34L, Math.max(0L, now - lastFrame));
             }
@@ -275,10 +297,19 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
     }
 
     private boolean isPreviewPresentationVisible() {
+        return isContentTransitionVisible() && previewState.presentationVisible.getAsBoolean();
+    }
+
+    private boolean isContentTransitionVisible() {
         if (UiAnimationClock.isPaused()
                 || !isAttachedToWindow() || !isShown() || !hasWindowFocus() || getWindowVisibility() != View.VISIBLE
-                || getWidth() <= 0 || getHeight() <= 0 || !getGlobalVisibleRect(previewVisibleRect)
-                || !previewState.presentationVisible.getAsBoolean()) return false;
+                || getWidth() <= 0 || getHeight() <= 0 || !getGlobalVisibleRect(previewVisibleRect)) return false;
+        if (getParent() instanceof View) {
+            View parent = (View) getParent();
+            if (!parent.getLocalVisibleRect(previewVisibleRect)
+                    || getX() >= previewVisibleRect.right || getX() + getWidth() <= previewVisibleRect.left
+                    || getY() >= previewVisibleRect.bottom || getY() + getHeight() <= previewVisibleRect.top) return false;
+        }
         for (View view = this; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
             if (view.getAlpha() <= 0f) return false;
         }
@@ -324,15 +355,13 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
             stopped = true;
             if (previewReplayObserver == this) previewReplayObserver = null;
             if (state.replayObserver == this) state.replayObserver = null;
-            if (fromDraw) {
-                post(this::remove);
-            } else {
-                remove();
-            }
+            AndroidUtilities.runOnUIThread(this::remove);
         }
 
         private void remove() {
             if (observer.isAlive()) observer.removeOnDrawListener(this);
+            ViewTreeObserver current = getViewTreeObserver();
+            if (current != observer && current.isAlive()) current.removeOnDrawListener(this);
         }
     }
 
@@ -353,23 +382,38 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
     private boolean needsPreviewRevealWake() {
         return ownsPreviewState() && !loading && !previewState.loading
-                && (previewState.revealPending
-                || previewState.revealing && previewState.presentingCell != this);
+                && (previewState.revealPending || previewState.revealing);
     }
 
-    private class PreviewRevealObserver implements ViewTreeObserver.OnPreDrawListener {
+    private class PreviewRevealObserver implements ViewTreeObserver.OnPreDrawListener, ViewTreeObserver.OnDrawListener {
         final PreviewState state = previewState;
         final long binding = previewBinding;
         final ViewTreeObserver observer = getViewTreeObserver();
         boolean stopped;
 
+        boolean framePosted;
+        long presentedFrameTime;
+        final Runnable advanceFrame = this::advance;
+
+        private boolean isCurrent() {
+            return !stopped && previewRevealObserver == this && state.revealObserver == this
+                    && state == previewState && binding == previewBinding && needsPreviewRevealWake()
+                    && isAttachedToWindow() && observer.isAlive() && observer == getViewTreeObserver();
+        }
+
+        private boolean canPresent() {
+            return previewCaptureDepth == 0 && isHardwareAccelerated() && isPreviewPresentationVisible()
+                    && state.canStartReveal.getAsBoolean()
+                    && getLocalVisibleRect(previewVisibleRect)
+                    && previewVisibleRect.intersect(
+                            (int) (dialogCell.getX() + dp(dialogCell.messagePaddingStart + 2)),
+                            (int) (dialogCell.getY() + dp(31)),
+                            dialogCell.getRight(), dialogCell.getBottom());
+        }
         @Override
         public boolean onPreDraw() {
             if (stopped || previewCaptureDepth > 0) return true;
-            if (previewRevealObserver != this || state.revealObserver != this || state != previewState
-                    || binding != previewBinding || !needsPreviewRevealWake()
-                    || !isAttachedToWindow()
-                    || !observer.isAlive() || observer != getViewTreeObserver()) {
+            if (!isCurrent()) {
                 stop();
                 return true;
             }
@@ -378,24 +422,70 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                 invalidate();
                 return true;
             }
-            if (!isHardwareAccelerated() || !isPreviewPresentationVisible()
-                    || !state.canStartReveal.getAsBoolean()
-                    || !getLocalVisibleRect(previewVisibleRect)
-                    || !previewVisibleRect.intersect(
-                            (int) (dialogCell.getX() + dp(dialogCell.messagePaddingStart + 2)),
-                            (int) (dialogCell.getY() + dp(31)),
-                            dialogCell.getRight(), dialogCell.getBottom())) return true;
-            stop();
+            if (!canPresent()) {
+                cancelFrame();
+                state.suspend(ProfileChannelCell.this);
+                return true;
+            }
             invalidate();
             return true;
+        }
+
+        @Override
+        public void onDraw() {
+            if (!isCurrent()) {
+                stop();
+                return;
+            }
+            if (framePosted || !canPresent()) return;
+            presentedFrameTime = UiAnimationClock.now();
+            framePosted = true;
+            AndroidUtilities.runOnUIThread(advanceFrame);
+        }
+
+        private void advance() {
+            framePosted = false;
+            if (!isCurrent()) {
+                stop();
+                return;
+            }
+            if (!previewMotionEnabled()) {
+                state.finish();
+                invalidate();
+                return;
+            }
+            if (!canPresent()) {
+                state.suspend(ProfileChannelCell.this);
+                return;
+            }
+            state.present(ProfileChannelCell.this, presentedFrameTime);
+            invalidate();
         }
 
         void stop() {
             if (stopped) return;
             stopped = true;
+            cancelFrame();
             if (previewRevealObserver == this) previewRevealObserver = null;
             if (state.revealObserver == this) state.revealObserver = null;
-            if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+            AndroidUtilities.runOnUIThread(this::remove);
+        }
+
+        void cancelFrame() {
+            AndroidUtilities.cancelRunOnUIThread(advanceFrame);
+            framePosted = false;
+        }
+
+        private void remove() {
+            if (observer.isAlive()) {
+                observer.removeOnPreDrawListener(this);
+                observer.removeOnDrawListener(this);
+            }
+            ViewTreeObserver current = getViewTreeObserver();
+            if (current != observer && current.isAlive()) {
+                current.removeOnPreDrawListener(this);
+                current.removeOnDrawListener(this);
+            }
         }
     }
 
@@ -410,6 +500,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         if (!observer.observer.isAlive()) return;
         previewRevealObserver = previewState.revealObserver = observer;
         observer.observer.addOnPreDrawListener(observer);
+        observer.observer.addOnDrawListener(observer);
     }
 
     public void beginPreviewCapture() {
@@ -421,13 +512,20 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
     }
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        contentTransition.draw(canvas, this::drawPreviewContents);
+    }
+
+    private void drawPreviewContents(Canvas canvas) {
         float loading, content;
         final boolean capturingPreview = previewCaptureDepth > 0;
         boolean invalidatePreview = !capturingPreview && previewState == null;
         if (matchesPreviewIdentity() && previewState.loading == this.loading) {
             if (!capturingPreview && ownsPreviewState()) {
-                if (!previewMotionEnabled()) previewState.finish();
-                else if (canPresentPreview(canvas)) invalidatePreview = previewState.present(this);
+                if (!previewMotionEnabled() || !canvas.isHardwareAccelerated()) previewState.finish();
+                else if (canPresentPreview(canvas)) {
+                    if (this.loading) invalidatePreview = previewState.present(this);
+                    else watchPreviewReveal();
+                }
                 else if (canvas.isHardwareAccelerated()) previewState.suspend(this);
             }
             loading = previewState.loadingValue;
@@ -573,23 +671,49 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         }
         final long channelId = channel == null ? expectedChannelId : channel.id;
         final boolean nextLoading = channel == null || messageObjects == null || messageObjects.isEmpty();
-        final int messageId = nextLoading ? 0 : messageObjects.get(messageObjects.size() - 1).getId();
+        final MessageObject lastMessage = nextLoading ? null : messageObjects.get(messageObjects.size() - 1);
+        final int messageId = lastMessage == null ? 0 : lastMessage.getId();
+        final int messageDate = lastMessage == null ? 0 : lastMessage.messageOwner.date;
+        final int messageEditDate = lastMessage == null ? 0 : lastMessage.messageOwner.edit_date;
+        final int messageCount = nextLoading ? 0 : messageObjects.size();
+        final String channelTitle = channel == null ? null : channel.title;
+        final String messageText = lastMessage == null || lastMessage.messageText == null ? null : lastMessage.messageText.toString();
         final boolean sameOwner = previewState == presentation;
         final boolean sameChannel = set && boundChannelId == channelId && sameOwner;
-        final boolean keepRecordedLoader = sameChannel && loading && nextLoading
-                && ownsPreviewState() && previewReplayObserver != null;
+        final boolean contentChanged = boundMessageId != messageId || boundMessageDate != messageDate
+                || boundMessageEditDate != messageEditDate || boundMessageCount != messageCount
+                || !TextUtils.equals(boundChannelTitle, channelTitle) || !TextUtils.equals(boundMessageText, messageText);
+        final boolean animateContents = sameChannel && !loading && !nextLoading && contentChanged
+                && presentation != null && ownsPreviewState() && previewState.contentValue >= 1f
+                && previewState.loadingValue == 0f && previewCaptureDepth == 0
+                && previewMotionEnabled() && isContentTransitionVisible();
+        if (animateContents) {
+            beginPreviewCapture();
+            try {
+                contentTransition.capture(this::drawPreviewContents);
+            } finally {
+                endPreviewCapture();
+            }
+        } else if (!sameChannel || nextLoading || contentChanged || !previewMotionEnabled()) {
+            contentTransition.finish();
+        }
         stopPreviewReplayObservation();
         stopPreviewRevealObservation();
         if (!sameOwner && ownsPreviewState()) previewState.suspend(this);
         previewState = presentation;
         previewBinding = presentation != null ? presentation.bind(this, currentAccount, channelId, nextLoading) : 0;
-        final boolean animated = sameChannel && isAttachedToWindow()
+        final boolean animated = !animateContents && sameChannel && isAttachedToWindow()
                 && previewMotionEnabled();
         final boolean subscribersShown = channel == null || channel.participants_count > 0;
         if (!animated) subscribersView.cancelAnimation();
         subscribersView.animate().cancel();
         boundChannelId = channelId;
         boundMessageId = messageId;
+        boundMessageDate = messageDate;
+        boundMessageEditDate = messageEditDate;
+        boundMessageCount = messageCount;
+        boundChannelTitle = channelTitle;
+        boundMessageText = messageText;
         subscribersView.setPivotX(0);
         if (animated) {
             subscribersView.animate().alpha(subscribersShown ? 1f : 0f).scaleX(subscribersShown ? 1f : .8f).scaleY(subscribersShown ? 1f : .8f).setDuration(420).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
@@ -609,8 +733,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
             if (loading) {
                 dialogCell.setDialog(-channel.id, null, 0, false, animated);
             } else {
-                final MessageObject lastMessage = messageObjects.get(messageObjects.size() - 1);
-                dialogCell.setDialog(-channel.id, lastMessage, messageObjects, lastMessage.messageOwner.date, false, animated);
+                dialogCell.setDialog(-channel.id, lastMessage, new ArrayList<>(messageObjects), lastMessage.messageOwner.date, false, animated);
             }
         } else {
             dialogCell.setDialog(0, null, 0, false, false);
@@ -625,11 +748,12 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         invalidate();
 
         set = true;
-        if (keepRecordedLoader) watchRecordedPreviewLoader();
+        watchRecordedPreviewLoader();
         watchPreviewReveal();
     }
 
     public void finishPreviewReveal() {
+        contentTransition.finish();
         stopPreviewReplayObservation();
         stopPreviewRevealObservation();
         if (ownsPreviewState()) previewState.finish();
@@ -640,6 +764,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
     @Override
     protected void onDetachedFromWindow() {
+        contentTransition.finish();
         stopPreviewReplayObservation();
         stopPreviewRevealObservation();
         if (previewState == null) finishPreviewReveal();
@@ -650,6 +775,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        watchRecordedPreviewLoader();
         watchPreviewReveal();
         invalidate();
     }
@@ -705,6 +831,10 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         public int message_id;
 
         public void fetch(TLRPC.UserFull userInfo) {
+            fetch(userInfo, false);
+        }
+
+        public void fetch(TLRPC.UserFull userInfo, boolean refreshCache) {
             if (userInfo == null || (userInfo.flags2 & 64) == 0) {
                 searchId++;
                 loading = false;
@@ -715,10 +845,14 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                 done(false);
                 return;
             }
-            fetch(userInfo.personal_channel_id, userInfo.personal_channel_message);
+            fetch(userInfo.personal_channel_id, userInfo.personal_channel_message, refreshCache);
         }
 
         public void fetch(long channel_id, int message_id) {
+            fetch(channel_id, message_id, false);
+        }
+
+        private void fetch(long channel_id, int message_id, boolean refreshCache) {
             final long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
             if (channel_id <= 0) {
                 ++searchId;
@@ -730,7 +864,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                 return;
             }
             if (searchUserId == selfId && this.channel_id == channel_id && this.message_id == message_id
-                    && (loading || loaded && !error)) {
+                    && (loading || !refreshCache && loaded && !error)) {
                 return;
             }
             final int thisSearchId = ++this.searchId;
@@ -875,7 +1009,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                         return;
                     }
                             }
-                            done(true);
+                done(true, err != null && (err.code < 0 || err.code >= 500) && !messageObjects.isEmpty());
                     }));
         }
 
@@ -890,10 +1024,14 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         }
 
         private void done(boolean error) {
+            done(error, false);
+        }
+
+        private void done(boolean error, boolean keepPreview) {
             loading = false;
             loaded = true;
             this.error = error;
-            if (error) messageObjects.clear();
+            if (error && !keepPreview) messageObjects.clear();
             final ArrayList<Runnable> completedCallbacks = new ArrayList<>(callbacks);
             callbacks.clear();
             for (Runnable callback : completedCallbacks) callback.run();

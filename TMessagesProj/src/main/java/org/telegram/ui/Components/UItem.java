@@ -368,6 +368,9 @@ public class UItem extends AdapterWithDiffUtils.Item {
         return i;
     }
 
+    public static UItem asShadow() {
+        return asShadow(null);
+    }
     public static UItem asShadow(CharSequence text) {
         UItem i = new UItem(UniversalAdapter.VIEW_TYPE_SHADOW, false);
         i.text = text;

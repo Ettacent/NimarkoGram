@@ -4,12 +4,16 @@ package app.nimarkogram.messenger.wsbypass.voip;
 
 import android.content.SharedPreferences;
 import android.os.SystemClock;
+import android.os.Looper;
 import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
 import app.nimarkogram.messenger.wsbypass.RelayRegion;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.telegram.tgnet.ConnectionsManager;
@@ -58,14 +62,39 @@ public final class VoipRelayAuth {
 
     private static final class PrefetchOwner {
         final long generation;
-        final long uid;
-        PrefetchOwner(long generation, long uid) {
+        volatile long uid;
+        boolean running, waiting, retired, forceRefresh, authRunning, resumeRequested, retryForced;
+        Runnable listener;
+        PrefetchOwner(long generation) {
             this.generation = generation;
-            this.uid = uid;
         }
     }
     private static final ConcurrentHashMap<Integer, PrefetchOwner>
             prefetchOwners = new ConcurrentHashMap<>();
+    private static final class PrefetchReady implements Runnable {
+        final int account;
+        final PrefetchOwner owner;
+        PrefetchReady(int account, PrefetchOwner owner) {
+            this.account = account;
+            this.owner = owner;
+        }
+        @Override public void run() {
+            synchronized (owner) {
+                if (owner.retired || owner.listener != this || !currentPrefetch(account, owner)) return;
+                owner.waiting = false;
+                owner.listener = null;
+                owner.resumeRequested = true;
+                if (owner.running) return;
+                owner.running = true;
+                owner.resumeRequested = false;
+            }
+            startPrefetch(account, owner);
+        }
+    }
+    private static final ThreadPoolExecutor PREFETCH_WORKER = new ThreadPoolExecutor(
+            UserConfig.MAX_ACCOUNT_COUNT, UserConfig.MAX_ACCOUNT_COUNT, 60, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(UserConfig.MAX_ACCOUNT_COUNT), runnable -> new Thread(runnable, "voip-relay-auth"));
+    static { PREFETCH_WORKER.allowCoreThreadTimeOut(true); }
     private static final Set<HttpURLConnection> activeConnections =
             ConcurrentHashMap.newKeySet();
     private static final AtomicLong authGeneration =
@@ -85,6 +114,9 @@ public final class VoipRelayAuth {
 
     private static void cancelPendingAuthLocked() {
         authGeneration.incrementAndGet();
+        for (java.util.Map.Entry<Integer, PrefetchOwner> entry : prefetchOwners.entrySet()) {
+            retirePrefetch(entry.getKey(), entry.getValue());
+        }
         for (HttpURLConnection connection : activeConnections) {
             try { connection.disconnect(); } catch (Throwable ignore) {}
         }
@@ -118,53 +150,167 @@ public final class VoipRelayAuth {
         prefetchAsync(account, true);
     }
 
+    private static boolean currentPrefetch(int account, PrefetchOwner owner) {
+        return owner.generation == authGeneration.get() && prefetchOwners.get(account) == owner;
+    }
+
+    private static void retirePrefetch(int account, PrefetchOwner owner) {
+        Runnable listener;
+        synchronized (owner) {
+            owner.retired = true;
+            listener = owner.listener;
+            owner.listener = null;
+            owner.waiting = false;
+        }
+        prefetchOwners.remove(account, owner);
+        if (listener != null) ConnectionsManager.clearInitializationListener(account, listener);
+    }
     private static void prefetchAsync(final int account, boolean forceRefresh) {
-        if (!isAuthAllowed()) return;
-
-        RelayRegion.invalidate();
-        long now = nowSeconds(account);
-        Credential c = memoryOrDisk(account);
-        long uid = uidOf(account);
-        if (uid <= 0) return;
-
-        if (!forceRefresh && c != null && c.uid == uid && isFresh(c, now)) return;
-
-        final PrefetchOwner owner = new PrefetchOwner(authGeneration.get(), uidOf(account));
-        if (owner.uid <= 0 || !claimPrefetchOwner(account, owner)) return;
-        Thread worker = new Thread(() -> {
-            try {
-                if (owner.generation == authGeneration.get()
-                        && owner.uid == uidOf(account) && isAuthAllowed()) {
-                    get(account, true);
-                }
+        if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) return;
+        final long generation = authGeneration.get();
+        while (generation == authGeneration.get()) {
+            PrefetchOwner owner = prefetchOwners.get(account);
+            if (owner == null || owner.generation != generation) {
+                PrefetchOwner fresh = new PrefetchOwner(generation);
+                boolean installed = owner == null ? prefetchOwners.putIfAbsent(account, fresh) == null
+                        : prefetchOwners.replace(account, owner, fresh);
+                if (!installed) continue;
+                if (owner != null) retirePrefetch(account, owner);
+                owner = fresh;
             }
-            catch (Throwable ignore) {}
-            finally { prefetchOwners.remove(account, owner); }
-        }, "voip-relay-auth");
-        try {
-            worker.start();
-        } catch (Throwable t) {
-            prefetchOwners.remove(account, owner);
-            Log.e(TAG, "prefetch start failed", t);
+            synchronized (owner) {
+                if (owner.retired || !currentPrefetch(account, owner)) continue;
+                if (forceRefresh && !owner.authRunning) owner.forceRefresh = true;
+                if (owner.running || owner.waiting) return;
+                owner.running = true;
+            }
+            startPrefetch(account, owner);
+            return;
         }
     }
 
-    private static boolean claimPrefetchOwner(int account, PrefetchOwner owner) {
-        while (true) {
-            PrefetchOwner current = prefetchOwners.putIfAbsent(account, owner);
-            if (current == null) return true;
-            if (current.generation == owner.generation && current.uid == owner.uid) return false;
-            if (prefetchOwners.replace(account, current, owner)) return true;
+    private static void startPrefetch(int account, PrefetchOwner owner) {
+        try {
+            PREFETCH_WORKER.execute(() -> {
+                try {
+                    runPrefetch(account, owner);
+                } catch (Throwable ignored) {
+                } finally {
+                    finishPrefetch(account, owner);
+                }
+            });
+        } catch (Throwable error) {
+            retirePrefetch(account, owner);
+            Log.e(TAG, "prefetch start failed", error);
         }
+    }
+
+    private static void deferPrefetch(int account, PrefetchOwner owner) {
+        final Runnable listener = new PrefetchReady(account, owner);
+        synchronized (authGenerationLock) {
+            if (!currentPrefetch(account, owner)) return;
+            synchronized (owner) {
+                if (owner.retired) return;
+                owner.waiting = true;
+                owner.listener = listener;
+            }
+            ConnectionsManager.setInitializationListener(account, listener);
+        }
+        ConnectionsManager.dispatchInitializationListener(account);
+    }
+
+    private static void runPrefetch(int account, PrefetchOwner owner) {
+        if (!currentPrefetch(account, owner) || !isAuthAllowed()) return;
+        synchronized (owner) { owner.retryForced = false; }
+        long uid = uidOf(account);
+        if (owner.uid > 0 && owner.uid != uid) return;
+        if (uid > 0) owner.uid = uid;
+        long now = readyNowSeconds(account);
+        if (now <= 0) {
+            deferPrefetch(account, owner);
+            return;
+        }
+        long loadedUid = uidOf(account);
+        if (owner.uid > 0 && owner.uid != loadedUid) return;
+        uid = loadedUid;
+        if (uid > 0) owner.uid = uid;
+        if (uid <= 0 || !currentPrefetch(account, owner) || !isAuthAllowed()) return;
+
+        RelayRegion.invalidate();
+        Credential credential = memoryOrDisk(account);
+        if (!currentPrefetch(account, owner) || uidOf(account) != uid) return;
+        now = readyNowSeconds(account);
+        if (now <= 0) {
+            deferPrefetch(account, owner);
+            return;
+        }
+        boolean force;
+        synchronized (owner) {
+            force = owner.forceRefresh;
+            owner.forceRefresh = false;
+        }
+        if (!force && credential != null && credential.uid == uid && isFresh(credential, now)) {
+            synchronized (owner) { owner.retryForced = true; }
+            return;
+        }
+        synchronized (owner) {
+            if (owner.retired || !currentPrefetch(account, owner)) return;
+            owner.authRunning = true;
+            owner.forceRefresh = false;
+        }
+        get(account, true, owner);
+        if (currentPrefetch(account, owner) && readyNowSeconds(account) <= 0) {
+            synchronized (owner) { owner.forceRefresh = true; }
+            deferPrefetch(account, owner);
+        }
+    }
+
+    private static void finishPrefetch(int account, PrefetchOwner owner) {
+        boolean restart = false;
+        Runnable listener = null;
+        synchronized (owner) {
+            owner.running = false;
+            owner.authRunning = false;
+            if (!owner.retired && currentPrefetch(account, owner)) {
+                if (owner.waiting) return;
+                if (owner.resumeRequested || owner.retryForced && owner.forceRefresh) {
+                    owner.resumeRequested = false;
+                    owner.running = true;
+                    restart = true;
+                } else {
+                    owner.retired = true;
+                    listener = owner.listener;
+                    owner.listener = null;
+            prefetchOwners.remove(account, owner);
+                }
+            } else {
+                owner.retired = true;
+                listener = owner.listener;
+                owner.listener = null;
+                prefetchOwners.remove(account, owner);
+            }
+        }
+        if (listener != null) ConnectionsManager.clearInitializationListener(account, listener);
+        if (restart) startPrefetch(account, owner);
     }
 
     public static Credential getCached(int account) {
+        long now = readyNowSeconds(account);
+        if (now <= 0) {
+            prefetchAsync(account);
+            return null;
+        }
         if (!isAuthAllowed()) return null;
         long ownerUid = uidOf(account);
         if (ownerUid <= 0) return null;
-        long now = nowSeconds(account);
         Credential c = memoryOrDisk(account);
         if (uidOf(account) != ownerUid || c != null && c.uid != ownerUid) return null;
+        now = readyNowSeconds(account);
+        if (now <= 0) {
+            prefetchAsync(account);
+            return null;
+        }
+        if (uidOf(account) != ownerUid) return null;
         if (isUsable(c, now)) {
 
             if (!isFresh(c, now)) prefetchAsync(account);
@@ -180,11 +326,21 @@ public final class VoipRelayAuth {
     }
 
     private static Credential get(int account, boolean forceRefresh) {
+        return get(account, forceRefresh, null);
+    }
+
+    private static Credential get(int account, boolean forceRefresh, PrefetchOwner expectedOwner) {
+        if (expectedOwner != null && !currentPrefetch(account, expectedOwner)) return null;
+        if (Looper.myLooper() == Looper.getMainLooper() || readyNowSeconds(account) <= 0) {
+            if (expectedOwner == null) prefetchAsync(account, forceRefresh);
+            return null;
+        }
         if (!isAuthAllowed()) return null;
-        final long generation = authGeneration.get();
+        final long generation = expectedOwner == null ? authGeneration.get() : expectedOwner.generation;
         final InlineAuth.EnablePredicate permit = new InlineAuth.EnablePredicate() {
             @Override public boolean isEnabled() {
-                return generation == authGeneration.get() && isAuthAllowed();
+                return generation == authGeneration.get()
+                        && (expectedOwner == null || currentPrefetch(account, expectedOwner)) && isAuthAllowed();
             }
             @Override public boolean runIfEnabled(Runnable action) {
                 synchronized (authGenerationLock) {
@@ -197,14 +353,17 @@ public final class VoipRelayAuth {
         synchronized (lock) {
             if (!permit.isEnabled()) return null;
             final long ownerUid = uidOf(account);
-            if (ownerUid <= 0) return null;
+            if (ownerUid <= 0 || expectedOwner != null && ownerUid != expectedOwner.uid) return null;
             Long previousDeadline = authDeadlineMs.get();
             authDeadlineMs.set(SystemClock.elapsedRealtime() + AUTH_FLOW_BUDGET_MS);
             try {
                 final InlineAuth.EnablePredicate freshPermit = freshWorkPermit(permit);
-                long now = nowSeconds(account);
+                long now = readyNowSeconds(account);
+                if (now <= 0) return null;
                 Credential old = memoryOrDisk(account);
                 if (old != null && old.uid != ownerUid) old = null;
+                now = readyNowSeconds(account);
+                if (now <= 0) return null;
                 if (!forceRefresh && isUsable(old, now)
                         && uidOf(account) == ownerUid) {
                     return old;
@@ -246,20 +405,20 @@ public final class VoipRelayAuth {
                     }
                     fresh = fetchCredential(token, status);
                 }
-                if (fresh != null && fresh.uid == uid && isUsable(fresh, nowSeconds(account))) {
+                if (fresh != null && fresh.uid == uid && isUsable(fresh, readyNowSeconds(account))) {
                     final Credential credential = fresh;
                     final AtomicBoolean committed =
                             new AtomicBoolean(false);
                     if (!freshPermit.runIfEnabled(() -> {
                         if (UserConfig.getInstance(account).getClientUserId() == credential.uid
-                                && isUsable(credential, nowSeconds(account))) {
+                                && isUsable(credential, readyNowSeconds(account))) {
                             cached.put(account, credential);
                             saveCredentialToDisk(account, credential);
                             committed.set(true);
                         }
                     }) || !committed.get() || !freshPermit.isEnabled()
                             || UserConfig.getInstance(account).getClientUserId() != credential.uid
-                            || !isUsable(credential, nowSeconds(account))) {
+                            || !isUsable(credential, readyNowSeconds(account))) {
                         cached.remove(account, credential);
                         fresh = null;
                     }
@@ -278,7 +437,7 @@ public final class VoipRelayAuth {
     private static Credential usableFallback(int account, long ownerUid, Credential old,
                                              InlineAuth.EnablePredicate permit) {
         return permit.isEnabled() && uidOf(account) == ownerUid
-                && isUsable(old, nowSeconds(account)) ? old : null;
+                && isUsable(old, readyNowSeconds(account)) ? old : null;
     }
     public static void invalidateCredential(int account) {
         invalidateCredential(account, null);
@@ -323,11 +482,20 @@ public final class VoipRelayAuth {
     }
 
     private static boolean isUsable(Credential c, long now) {
-        return c != null && c.hmac != null && c.hmac.length == 32 && c.expiry - ACCEPT_SKEW_S > now;
+        return now > 0 && c != null && c.hmac != null && c.hmac.length == 32 && c.expiry - ACCEPT_SKEW_S > now;
     }
 
     private static boolean isFresh(Credential c, long now) {
         return isUsable(c, now) && c.expiry - REFRESH_AHEAD_S > now;
+    }
+
+    private static long readyNowSeconds(int account) {
+        ConnectionsManager manager = ConnectionsManager.getInstanceIfInitialized(account);
+        if (manager == null) return 0;
+        try {
+            int now = manager.getCurrentTime();
+            return now > 0 ? now : 0;
+        } catch (Throwable ignored) { return 0; }
     }
 
     public static long nowSeconds(int account) {

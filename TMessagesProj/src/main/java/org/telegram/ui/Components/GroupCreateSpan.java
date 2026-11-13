@@ -41,6 +41,7 @@ import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
@@ -74,6 +75,9 @@ public class GroupCreateSpan extends View implements Theme.Colorable {
         this(context, object, null);
     }
 
+    public GroupCreateSpan(Context context, Object object, int account) {
+        this(context, object, null, false, null, account);
+    }
     public GroupCreateSpan(Context context, ContactsController.Contact contact) {
         this(context, null, contact);
     }
@@ -87,6 +91,10 @@ public class GroupCreateSpan extends View implements Theme.Colorable {
     }
 
     public GroupCreateSpan(Context context, Object object, ContactsController.Contact contact, boolean small, Theme.ResourcesProvider resourcesProvider) {
+        this(context, object, contact, small, resourcesProvider, UserConfig.selectedAccount);
+    }
+
+    private GroupCreateSpan(Context context, Object object, ContactsController.Contact contact, boolean small, Theme.ResourcesProvider resourcesProvider, int account) {
         super(context);
         this.resourcesProvider = resourcesProvider;
         this.small = small;
@@ -189,21 +197,21 @@ public class GroupCreateSpan extends View implements Theme.Colorable {
                 imageLocation = null;
                 imageParent = null;
             } else {
-                avatarDrawable.setInfo(user);
+                avatarDrawable.setInfo(account, user);
                 firstName = UserObject.getFirstName(user);
                 int index;
                 if ((index = firstName.indexOf(' ')) >= 0) {
                     firstName = firstName.substring(0, index);
                 }
-                imageLocation = ImageLocation.getForUserOrChat(user, ImageLocation.TYPE_SMALL);
+                imageLocation = ImageLocation.getForUserOrChat(account, user, ImageLocation.TYPE_SMALL);
                 imageParent = user;
             }
         } else if (object instanceof TLRPC.Chat) {
             TLRPC.Chat chat = (TLRPC.Chat) object;
-            avatarDrawable.setInfo(chat);
+            avatarDrawable.setInfo(account, chat);
             uid = -chat.id;
             firstName = chat.title;
-            imageLocation = ImageLocation.getForUserOrChat(chat, ImageLocation.TYPE_SMALL);
+            imageLocation = ImageLocation.getForUserOrChat(account, chat, ImageLocation.TYPE_SMALL);
             imageParent = chat;
         } else if (object instanceof TLRPC.TL_help_country) {
             TLRPC.TL_help_country country = (TLRPC.TL_help_country) object;
@@ -233,6 +241,7 @@ public class GroupCreateSpan extends View implements Theme.Colorable {
         }
 
         imageReceiver = new ImageReceiver();
+        imageReceiver.setCurrentAccount(account);
         imageReceiver.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(32));
         imageReceiver.setParentView(this);
         imageReceiver.setImageCoords(drawAvatarBackground ? 0 : dp(4), 0, dp(small ? 28 : 32), dp(small ? 28 : 32));

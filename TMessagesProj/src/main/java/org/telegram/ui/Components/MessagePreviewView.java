@@ -944,7 +944,7 @@ public class MessagePreviewView extends FrameLayout {
                                     return;
                                 } else {
                                     messagePreviewParams.quoteStart = 0;
-                                    messagePreviewParams.quoteEnd = Math.min(MessagesController.getInstance(currentAccount).quoteLengthMax, ChatActivity.ReplyQuote.getFullLength(replyMessage));
+                                    messagePreviewParams.quoteEnd = ChatActivity.ReplyQuote.getSafeQuoteEnd(replyMessage, MessagesController.getInstance(currentAccount).quoteLengthMax);
                                     messagePreviewParams.quote = ChatActivity.ReplyQuote.from(replyMessage, messagePreviewParams.quoteStart, messagePreviewParams.quoteEnd);
                                     final View cell = getReplyMessageCell();
                                     if (cell instanceof ChatMessageCell) {
@@ -1736,7 +1736,7 @@ public class MessagePreviewView extends FrameLayout {
                     messagePreviewParams.quoteEnd = range[1];
                 } else {
                     messagePreviewParams.quoteStart = 0;
-                    messagePreviewParams.quoteEnd = Math.min(MessagesController.getInstance(currentAccount).quoteLengthMax, ChatActivity.ReplyQuote.getFullLength(msg));
+                    messagePreviewParams.quoteEnd = ChatActivity.ReplyQuote.getSafeQuoteEnd(msg, MessagesController.getInstance(currentAccount).quoteLengthMax);
                 }
             }
             private int offset(ChatMessageCell cell, int index, boolean lineBottom) {
@@ -2384,7 +2384,7 @@ public class MessagePreviewView extends FrameLayout {
                         msg = page.getReplyMessage(msg);
                         if (msg != null) {
                             messagePreviewParams.quoteStart = 0;
-                            messagePreviewParams.quoteEnd = Math.min(MessagesController.getInstance(currentAccount).quoteLengthMax, ChatActivity.ReplyQuote.getFullLength(msg));
+                            messagePreviewParams.quoteEnd = ChatActivity.ReplyQuote.getSafeQuoteEnd(msg, MessagesController.getInstance(currentAccount).quoteLengthMax);
                             messagePreviewParams.quote = ChatActivity.ReplyQuote.from(msg, messagePreviewParams.quoteStart, messagePreviewParams.quoteEnd);
                             final View cell = page.getReplyMessageCell();
                             if (cell instanceof ChatMessageCell) {

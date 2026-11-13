@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -192,6 +193,7 @@ public final class WsBypassCore {
     private final Object trackedLock = new Object();
     private final Set<Object> tracked = new HashSet<>();
 
+    private final Map<RawWebSocket, WlAccess.Grant> wlTransports = new IdentityHashMap<>();
     private final WebSocketPool wsPool = new WebSocketPool();
 
     public boolean isRunning() {
@@ -459,6 +461,7 @@ public final class WsBypassCore {
 
     private void handleClient(Socket conn, long generation) {
         boolean handshakePending = true;
+        RawWebSocket ws = null;
         try {
             if (!isBridgeGenerationCurrent(generation)) {
                 return;
@@ -492,7 +495,6 @@ public final class WsBypassCore {
             final long routeDeadline = System.nanoTime()
                     + TimeUnit.MILLISECONDS.toNanos(WS_ROUTE_DEADLINE_MS);
 
-            RawWebSocket ws = null;
             try {
                 ws = connectWsCf(dc, isMedia, Math.min(routeDeadline,
                         System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WS_RELAY_BUDGET_MS)),
@@ -508,6 +510,7 @@ public final class WsBypassCore {
 
             if (!trackIfGenerationCurrent(ws, generation)) {
                 try { ws.close(); } catch (Throwable ignored) {}
+                untrack(ws);
                 return;
             }
             if (!runIfBridgeGenerationCurrent(generation, () -> failClear(dcKey))) {
@@ -539,6 +542,10 @@ public final class WsBypassCore {
 
         } finally {
             if (handshakePending) handshakeSlots.release();
+            if (ws != null) {
+                try { ws.close(); } catch (Throwable ignored) {}
+                untrack(ws);
+            }
             closeQuietly(conn);
             untrack(conn);
         }
@@ -559,10 +566,21 @@ public final class WsBypassCore {
             }
             String path = DomainPool.relayPathForDc(dc);
             try {
-                return RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, WlAccess.PORT, path,
+                RawWebSocket ws = RawWebSocket.connectUntil(WlAccess.HOST, WlAccess.HOST, WlAccess.PORT, path,
                         WlAccess.headers(grant, "GET", path, null), wlDeadlineNanos,
                         () -> isBridgeGenerationCurrent(generation) && WlAccess.enabled()
                                 && WlAccess.isCurrent(grant));
+                boolean admitted = false;
+                try {
+                    admitted = trackWlIfCurrent(ws, grant, generation);
+                    if (!admitted) throw new IOException("wl connect cancelled");
+                    return ws;
+                } finally {
+                    if (!admitted) {
+                        try { ws.close(); } catch (Throwable ignored) {}
+                        untrack(ws);
+                    }
+                }
             } catch (RawWebSocket.HandshakeException error) {
                 if (error.statusCode == 429 && isBridgeGenerationCurrent(generation)) {
                     wlRetryGate.rejected(nowElapsedMs(), error.retryAfterMillis);
@@ -1031,10 +1049,61 @@ public final class WsBypassCore {
         if (closer == null) return false;
         synchronized (bridgeStateLock) {
             if (generation != bridgeGeneration) return false;
+            if (closer instanceof RawWebSocket) {
+                RawWebSocket ws = (RawWebSocket) closer;
+                WlAccess.Grant grant;
+                synchronized (trackedLock) {
+                    grant = wlTransports.get(ws);
+                }
+                if (grant != null) {
+                    boolean[] admitted = {false};
+                    return WlAccess.admitTransport(grant, () -> {
+                        synchronized (trackedLock) {
+                            if (!ws.isClosed() && wlTransports.get(ws) == grant) {
+                                tracked.add(ws);
+                                admitted[0] = true;
+                            }
+                        }
+                    }) && admitted[0];
+                }
+                if (ws.isClosed()) return false;
+            }
             synchronized (trackedLock) {
                 tracked.add(closer);
             }
             return true;
+        }
+    }
+
+    private boolean trackWlIfCurrent(RawWebSocket ws, WlAccess.Grant grant, long generation) {
+        synchronized (bridgeStateLock) {
+            if (generation != bridgeGeneration) return false;
+            boolean[] admitted = {false};
+            return WlAccess.admitTransport(grant, () -> {
+                synchronized (trackedLock) {
+                    if (!ws.isClosed()) {
+                        wlTransports.put(ws, grant);
+                        tracked.add(ws);
+                        admitted[0] = true;
+                    }
+                }
+            }) && admitted[0];
+        }
+    }
+
+    static void closeWlTransports(WlAccess.Grant grant) {
+        WsBypassCore core = instance;
+        if (core == null || grant == null) return;
+        List<RawWebSocket> snapshot = new ArrayList<>();
+        synchronized (core.trackedLock) {
+            for (Map.Entry<RawWebSocket, WlAccess.Grant> entry : core.wlTransports.entrySet()) {
+                if (entry.getValue() == grant) snapshot.add(entry.getKey());
+            }
+        }
+        for (RawWebSocket ws : snapshot) {
+            try { ws.close(); }
+            catch (Throwable ignored) { }
+            finally { core.untrack(ws); }
         }
     }
 
@@ -1050,6 +1119,7 @@ public final class WsBypassCore {
         if (closer == null) return;
         synchronized (trackedLock) {
             tracked.remove(closer);
+            wlTransports.remove(closer);
         }
     }
 
@@ -1058,6 +1128,7 @@ public final class WsBypassCore {
         synchronized (trackedLock) {
             snapshot = new ArrayList<>(tracked);
             tracked.clear();
+            wlTransports.clear();
         }
         for (Object o : snapshot) {
             try {

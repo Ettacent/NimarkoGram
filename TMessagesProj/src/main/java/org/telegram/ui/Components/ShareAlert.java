@@ -4116,7 +4116,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
             outlinePaint.setStrokeWidth(Math.max(2, dp(1f)));
             outlinePaint.setColor(ColorUtils.setAlphaComponent(color, 0x3F));
 
-            filterTabsView = new FilterTabsView(context, resourcesProvider) {
+            filterTabsView = new FilterTabsView(context, currentAccount, resourcesProvider) {
                 @Override
                 public boolean onInterceptTouchEvent(MotionEvent ev) {
                     getParent().requestDisallowInterceptTouchEvent(true);

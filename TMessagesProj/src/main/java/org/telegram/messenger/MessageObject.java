@@ -4284,22 +4284,43 @@ public class MessageObject {
         if (message == null || reactions == null) {
             return;
         }
-        boolean chosenReactionfound = false;
+        if (reactions.min) {
+            TLRPC.TL_messageReactions copy = new TLRPC.TL_messageReactions();
+            copy.flags = reactions.flags;
+            copy.min = reactions.min;
+            copy.can_see_list = reactions.can_see_list;
+            copy.reactions_as_tags = reactions.reactions_as_tags;
+            for (TLRPC.ReactionCount reactionCount : reactions.results) {
+                TLRPC.TL_reactionCount countCopy = new TLRPC.TL_reactionCount();
+                countCopy.flags = reactionCount.flags;
+                countCopy.chosen = reactionCount.chosen;
+                countCopy.chosen_order = reactionCount.chosen_order;
+                countCopy.lastDrawnPosition = reactionCount.lastDrawnPosition;
+                countCopy.reaction = reactionCount.reaction;
+                countCopy.count = reactionCount.count;
+                copy.results.add(countCopy);
+            }
+            if (reactions.recent_reactions != null) {
+                copy.recent_reactions.addAll(reactions.recent_reactions);
+            }
+            if (reactions.top_reactors != null) {
+                copy.top_reactors.addAll(reactions.top_reactors);
+            }
+            reactions = copy;
+        }
         if (message.reactions != null) {
             for (int a = 0, N = message.reactions.results.size(); a < N; a++) {
                 TLRPC.ReactionCount reaction = message.reactions.results.get(a);
                 for (int b = 0, N2 = reactions.results.size(); b < N2; b++) {
                     TLRPC.ReactionCount newReaction = reactions.results.get(b);
                     if (ReactionsLayoutInBubble.equalsTLReaction(reaction.reaction, newReaction.reaction)) {
-                        if (!chosenReactionfound && reactions.min && reaction.chosen) {
+                        if (reactions.min && reaction.chosen) {
                             newReaction.chosen = true;
-                            chosenReactionfound = true;
+                            newReaction.chosen_order = reaction.chosen_order;
+                            newReaction.flags |= 1;
                         }
                         newReaction.lastDrawnPosition = reaction.lastDrawnPosition;
                     }
-                }
-                if (reaction.chosen) {
-                    chosenReactionfound = true;
                 }
             }
         }
@@ -13010,6 +13031,7 @@ public class MessageObject {
             return false;
         }
 
+        ArrayList<TLRPC.ReactionCount> reactionsToRemove = new ArrayList<>();
         while (!choosenReactions.isEmpty() && choosenReactions.size() >= maxReactionsCount) {
             int minIndex = 0;
             for (int i = 1; i < choosenReactions.size(); i++) {
@@ -13021,16 +13043,34 @@ public class MessageObject {
                 }
             }
             TLRPC.ReactionCount choosenReaction = choosenReactions.get(minIndex);
+            reactionsToRemove.add(choosenReaction);
+            choosenReactions.remove(minIndex);
+        }
+
+        if (newReaction == null) {
+            int maxChatReactions = MessagesController.getInstance(currentAccount).getChatMaxUniqReactions(getDialogId());
+            int chosenCount = 0;
+            for (TLRPC.ReactionCount reactionCount : messageOwner.reactions.results) {
+                if (!(reactionCount.reaction instanceof TLRPC.TL_reactionPaid)
+                        && !(reactionCount.count <= 1 && reactionsToRemove.contains(reactionCount))) {
+                    chosenCount++;
+                }
+            }
+            if (chosenCount + 1 > maxChatReactions) {
+                return false;
+            }
+        }
+
+        for (TLRPC.ReactionCount choosenReaction : reactionsToRemove) {
             choosenReaction.chosen = false;
             choosenReaction.count--;
             if (choosenReaction.count <= 0) {
                 messageOwner.reactions.results.remove(choosenReaction);
             }
-            choosenReactions.remove(choosenReaction);
 
             if (messageOwner.reactions.can_see_list) {
                 for (int i = 0; i < messageOwner.reactions.recent_reactions.size(); i++) {
-                    if (MessageObject.getPeerId(messageOwner.reactions.recent_reactions.get(i).peer_id) == UserConfig.getInstance(currentAccount).getClientUserId() && ReactionsUtils.compare(messageOwner.reactions.recent_reactions.get(i).reaction, visibleReaction)) {
+                    if (MessageObject.getPeerId(messageOwner.reactions.recent_reactions.get(i).peer_id) == UserConfig.getInstance(currentAccount).getClientUserId() && ReactionsUtils.compare(messageOwner.reactions.recent_reactions.get(i).reaction, choosenReaction.reaction)) {
                         messageOwner.reactions.recent_reactions.remove(i);
                         i--;
                     }
@@ -13039,18 +13079,6 @@ public class MessageObject {
         }
 
         if (newReaction == null) {
-            int maxChatReactions = MessagesController.getInstance(currentAccount).getChatMaxUniqReactions(getDialogId());
-            int chosenCount = 0;
-            if (messageOwner != null && messageOwner.reactions != null) {
-                for (TLRPC.ReactionCount reactionCount : messageOwner.reactions.results) {
-                    if (!(reactionCount.reaction instanceof TLRPC.TL_reactionPaid)) {
-                        chosenCount++;
-                    }
-                }
-            }
-            if (chosenCount + 1 > maxChatReactions) {
-                return false;
-            }
             newReaction = new TLRPC.TL_reactionCount();
             newReaction.reaction = visibleReaction.toTLReaction();
             messageOwner.reactions.results.add(newReaction);
@@ -13097,14 +13125,15 @@ public class MessageObject {
     }
 
     public byte[] getWaveform() {
-        if (getDocument() == null) {
+        TLRPC.Document document = getDocument();
+        if (document == null) {
             return null;
         }
-        for (int a = 0; a < getDocument().attributes.size(); a++) {
-            TLRPC.DocumentAttribute attribute = getDocument().attributes.get(a);
+        for (int a = 0; a < document.attributes.size(); a++) {
+            TLRPC.DocumentAttribute attribute = document.attributes.get(a);
             if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
                 if (attribute.waveform == null || attribute.waveform.length == 0) {
-                    MediaController.getInstance().generateWaveform(this);
+                    return MediaController.getInstance().getOrGenerateWaveform(this, document);
                 }
                 return attribute.waveform;
             }

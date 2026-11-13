@@ -368,6 +368,60 @@ public class MonetHelper {
         return ensureReadableForeground(foreground, background, ICON_CONTRAST);
     }
 
+    public static int ensureReadableWidgetForeground(int foreground, int background) {
+        return ensureReadableForeground(foreground, background, 4.5);
+    }
+
+    public static final class GlassContrast {
+        private static final double MINIMUM_CONTRAST = 4.5;
+        private volatile Cache cached;
+
+        private static final class Cache {
+            final int tint, first, second, result;
+
+            Cache(int tint, int first, int second, int result) {
+                this.tint = tint;
+                this.first = first;
+                this.second = second;
+                this.result = result;
+            }
+        }
+
+        public int color(int tint, int first, int second) {
+            if (!isActiveMonetTheme()) return tint;
+            final Cache last = cached;
+            if (last != null && last.tint == tint && last.first == first && last.second == second) return last.result;
+            int low = Color.alpha(tint), high = 255;
+            final int opaque = ColorUtils.setAlphaComponent(tint, 255);
+            if (readable(opaque, first, opaque) && readable(opaque, second, opaque)) {
+                while (low < high) {
+                    final int alpha = (low + high) / 2;
+                    final int candidate = ColorUtils.setAlphaComponent(tint, alpha);
+                    if (readable(candidate, first, opaque) && readable(candidate, second, opaque)) high = alpha;
+                    else low = alpha + 1;
+                }
+            } else {
+                low = 255;
+            }
+            final int result = ColorUtils.setAlphaComponent(tint, low);
+            cached = new Cache(tint, first, second, result);
+            return result;
+        }
+
+        private static boolean readable(int tint, int foreground, int opaque) {
+            final boolean lightText = ColorUtils.calculateLuminance(ColorUtils.compositeColors(foreground, opaque))
+                    > ColorUtils.calculateLuminance(opaque);
+            return readableOn(tint, foreground, Color.BLACK, lightText)
+                    && readableOn(tint, foreground, Color.WHITE, lightText);
+        }
+
+        private static boolean readableOn(int tint, int foreground, int backdrop, boolean lightText) {
+            final int background = ColorUtils.compositeColors(tint, backdrop);
+            final int text = ColorUtils.compositeColors(foreground, background);
+            if ((ColorUtils.calculateLuminance(text) > ColorUtils.calculateLuminance(background)) != lightText) return false;
+            return ColorUtils.calculateContrast(text, background) >= MINIMUM_CONTRAST;
+        }
+    }
     private static int ensureReadableForeground(int foreground, int background, double minimumContrast) {
         if (!isActiveMonetTheme()) {
             return foreground;

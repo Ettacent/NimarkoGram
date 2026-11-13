@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 import atexit
 import json
 import os
@@ -9,6 +11,7 @@ import time
 import traceback
 from typing import Any, NamedTuple
 from android_utils import log
+
 
 _previous_reload_shutdown = globals().get('_shutdown_for_reload')
 if callable(_previous_reload_shutdown):
@@ -28,10 +31,12 @@ _WRITER_WAIT_SECONDS = 5.0
 _ATEXIT_WAIT_SECONDS = 1.0
 _QUARANTINE_ID = '__legacy_quarantine__'
 
+
 class _Snapshot(NamedTuple):
     generation: int
     path: str
     values: dict
+
 
 class SettingsWriteCompletion:
     """A durable-generation barrier returned without waiting for disk I/O."""
@@ -65,8 +70,8 @@ class SettingsWriteCompletion:
     wait = result
 
     def __bool__(self):
-        
         return True
+
 
 class _WriterState:
     def __init__(self, durable_generation):
@@ -129,6 +134,7 @@ class _WriterState:
                 f'{generation} became durable')
         return None
 
+
 def _deadline(timeout):
     if timeout is None:
         return None
@@ -137,10 +143,12 @@ def _deadline(timeout):
         raise ValueError('timeout must be non-negative')
     return time.monotonic() + timeout
 
+
 def _remaining(deadline):
     if deadline is None:
         return None
     return max(0.0, deadline - time.monotonic())
+
 
 def init(plugins_dir_path: str, all_shared_prefs: dict,
          timeout=_WRITER_WAIT_SECONDS):
@@ -233,6 +241,7 @@ def init(plugins_dir_path: str, all_shared_prefs: dict,
             log(f'Migrated/repaired settings for {len(_settings_cache)} plugins.')
         return keys_to_delete
 
+
 def _known_plugin_ids(plugins_dir_path):
     try:
         return sorted(
@@ -241,6 +250,7 @@ def _known_plugin_ids(plugins_dir_path):
             key=len, reverse=True)
     except Exception:
         return []
+
 
 def _setting_schemas(plugins_dir_path, known_ids):
     """Extract literal setting keys without importing plugin code.
@@ -273,9 +283,9 @@ def _setting_schemas(plugins_dir_path, known_ids):
                 if isinstance(literal, str) and literal:
                     schemas[plugin_id].add(literal)
         except Exception:
-            
             pass
     return schemas
+
 
 def _candidate_splits(payload, known_ids):
     candidates = []
@@ -285,6 +295,7 @@ def _candidate_splits(payload, known_ids):
             candidates.append((plugin_id, payload[len(marker):]))
     return candidates
 
+
 def _choose_candidate(candidates, schemas):
     if len(candidates) == 1:
         return candidates[0]
@@ -293,6 +304,7 @@ def _choose_candidate(candidates, schemas):
     if len(evidenced) == 1:
         return evidenced[0]
     return None
+
 
 def _needs_setting_schemas(legacy_entries, known_ids, settings_cache):
     for key, _value in legacy_entries:
@@ -312,9 +324,11 @@ def _needs_setting_schemas(legacy_entries, known_ids, settings_cache):
                 return True
     return False
 
+
 def _split_legacy_setting_key(payload, known_ids, schemas=None):
     candidates = _candidate_splits(payload, known_ids)
     return _choose_candidate(candidates, schemas or {})
+
 
 def _quarantine_legacy_value(source, value, reason, **metadata):
     bucket = _settings_cache.setdefault(_QUARANTINE_ID, {})
@@ -327,6 +341,7 @@ def _quarantine_legacy_value(source, value, reason, **metadata):
         key = f'{source}#{suffix}'
     bucket[key] = record
     return key
+
 
 def _accept_migrated_value(plugin_id, setting_key, value, source,
                            source_kind, conflict_reason):
@@ -352,6 +367,7 @@ def _accept_migrated_value(plugin_id, setting_key, value, source,
         destination=destination, destination_value=bucket[setting_key])
     return 'quarantined'
 
+
 def _repair_underscore_ids(known_ids, schemas=None):
     global _settings_cache
     changed = False
@@ -372,7 +388,6 @@ def _repair_underscore_ids(known_ids, schemas=None):
         for old_key in list(old_values.keys()):
             combined = old_id + '_' + old_key
             candidates = _candidate_splits(combined, known_ids)
-            
             if old_id in known and (old_id, old_key) not in candidates:
                 candidates.append((old_id, old_key))
             longer = [candidate for candidate in candidates if candidate[0] != old_id]
@@ -401,6 +416,7 @@ def _repair_underscore_ids(known_ids, schemas=None):
             changed = True
     return changed
 
+
 def _invalidate_java_cache(plugin_id, key=None):
     try:
         from app.nimarkogram.messenger.plugins import PluginsController
@@ -409,6 +425,7 @@ def _invalidate_java_cache(plugin_id, key=None):
             engine.invalidatePluginSettingCache(plugin_id, key)
     except Exception:
         pass
+
 
 def _read_settings_file(path, validate_buckets):
     try:
@@ -430,11 +447,13 @@ def _read_settings_file(path, validate_buckets):
                     f'Plugin settings bucket {plugin_id!r} must be an object')
     return loaded_settings
 
+
 def _snapshot_locked():
     """Return the current copy-on-write cache root as an immutable snapshot."""
     if not _settings_file_path:
         raise RuntimeError('Plugin settings path is not initialized')
     return _Snapshot(_generation, _settings_file_path, _settings_cache)
+
 
 def _write_snapshot(snapshot):
     """Crash-safe replace. This function is called only by the writer thread."""
@@ -464,6 +483,7 @@ def _write_snapshot(snapshot):
             except OSError:
                 pass
 
+
 def _writer_main(state):
     while True:
         with state.condition:
@@ -479,7 +499,6 @@ def _writer_main(state):
 
         attempted_generation = snapshot.generation
         try:
-            
             _write_snapshot(snapshot)
         except BaseException as error:
             with state.condition:
@@ -509,6 +528,7 @@ def _writer_main(state):
                 state.active_generation = None
                 state.condition.notify_all()
 
+
 def _start_writer_locked(durable_generation):
     global _writer_state
     state = _WriterState(durable_generation)
@@ -516,10 +536,12 @@ def _start_writer_locked(durable_generation):
     state.start()
     return state
 
+
 def _schedule_write_locked():
     if _writer_state is None:
         raise RuntimeError('Plugin settings writer is not initialized')
     return _writer_state.request(_snapshot_locked())
+
 
 def _save_settings_to_file(strict=False):
     """Compatibility shim: schedule a write and return its completion.
@@ -534,6 +556,7 @@ def _save_settings_to_file(strict=False):
             return False
         return _schedule_write_locked()
 
+
 def flush_settings_async():
     """Return a non-blocking durable barrier for the current generation."""
     with _lock:
@@ -541,13 +564,16 @@ def flush_settings_async():
             raise RuntimeError('Plugin settings path is not initialized')
         return _writer_state.request(_snapshot_locked(), force=True)
 
+
 def flush_settings(timeout=_WRITER_WAIT_SECONDS):
     """Wait a bounded amount of time for the current generation to be durable."""
     return flush_settings_async().result(timeout)
 
+
 def _load_settings_from_file(validate_buckets=False):
     """Compatibility entry point with host-transaction safety."""
     return _reload_settings(validate_buckets)
+
 
 def _reload_settings(validate_buckets=True):
     global _settings_cache
@@ -561,7 +587,6 @@ def _reload_settings(validate_buckets=True):
             raise RuntimeError('Plugin settings path is not initialized')
         loaded_settings = _read_settings_file(
             _settings_file_path, validate_buckets)
-        
         with _lock:
             _settings_cache = loaded_settings
             _generation += 1
@@ -572,9 +597,11 @@ def _reload_settings(validate_buckets=True):
         if owns_transaction:
             end_host_transaction()
 
+
 def reload_settings():
     """Atomically adopt a host-side backup replacement."""
     return _reload_settings(validate_buckets=True)
+
 
 def begin_host_transaction(timeout=_WRITER_WAIT_SECONDS):
     """Acquire an atomic host file transaction after a bounded durable flush."""
@@ -623,6 +650,7 @@ def begin_host_transaction(timeout=_WRITER_WAIT_SECONDS):
             raise TimeoutError(
                 'Plugin settings changed continuously during transaction start')
 
+
 def end_host_transaction():
     depth = getattr(_transaction_local, 'depth', 0)
     if depth <= 0:
@@ -630,6 +658,7 @@ def end_host_transaction():
     _transaction_local.depth = depth - 1
     _lock.release()
     return True
+
 
 def _shutdown_writer(timeout=_WRITER_WAIT_SECONDS, raise_on_error=True):
     """Stop the current writer without waiting longer than timeout."""
@@ -679,6 +708,7 @@ def _shutdown_writer(timeout=_WRITER_WAIT_SECONDS, raise_on_error=True):
         return False
     return True
 
+
 def _stop_writer_without_flush(timeout):
     """Abort queued work after an init failure; active filesystem calls finish."""
     global _writer_state
@@ -702,10 +732,12 @@ def _stop_writer_without_flush(timeout):
             _writer_state = None
     return True
 
+
 def shutdown(timeout=_WRITER_WAIT_SECONDS):
     """Flush and stop the writer; init() may safely start a new generation."""
     with _lifecycle_lock:
         return _shutdown_writer(timeout=timeout, raise_on_error=True)
+
 
 def _shutdown_for_reload():
     try:
@@ -728,21 +760,26 @@ def _runtime_mutation_allowed(plugin_id: str) -> bool:
     be live and must belong to the bucket they are trying to mutate.
     """
     try:
-        from plugin_runtime import capture_callback_owner, is_callback_allowed
-        token = capture_callback_owner()
+        import plugin_runtime
+        token = plugin_runtime.capture_callback_owner()
         if token is None:
             return True
         token_plugin_id = str(token.getPluginId())
-        return token_plugin_id == str(plugin_id) and is_callback_allowed(token)
+        if token_plugin_id != str(plugin_id):
+            return False
+        admission = getattr(plugin_runtime, 'is_settings_mutation_allowed', None)
+        if not callable(admission):
+            admission = plugin_runtime.is_callback_allowed
+        return bool(admission(token))
     except Exception:
         return False
 
 def set_setting(plugin_id: str, key: str, value: Any):
-    if not _runtime_mutation_allowed(plugin_id):
-        return False
     with _lock:
         global _settings_cache
         global _generation
+        if not _runtime_mutation_allowed(plugin_id):
+            return False
         if _writer_state is None or not _writer_state.accepting:
             return False
         old_cache = _settings_cache
@@ -762,11 +799,11 @@ def set_setting(plugin_id: str, key: str, value: Any):
     return completion
 
 def clear_settings(plugin_id: str):
-    if not _runtime_mutation_allowed(plugin_id):
-        return False
     with _lock:
         global _settings_cache
         global _generation
+        if not _runtime_mutation_allowed(plugin_id):
+            return False
         if _writer_state is None or not _writer_state.accepting:
             return False
         if plugin_id not in _settings_cache:
@@ -790,11 +827,11 @@ def get_all_settings(plugin_id: str) -> Any:
         return copy.deepcopy(_settings_cache.get(plugin_id, {}))
 
 def set_all_settings(plugin_id: str, settings: dict):
-    if not _runtime_mutation_allowed(plugin_id):
-        return False
     with _lock:
         global _settings_cache
         global _generation
+        if not _runtime_mutation_allowed(plugin_id):
+            return False
         if _writer_state is None or not _writer_state.accepting:
             return False
         old_cache = _settings_cache
@@ -811,8 +848,10 @@ def set_all_settings(plugin_id: str, settings: dict):
     _invalidate_java_cache(plugin_id)
     return completion
 
+
 def _atexit_shutdown():
     _shutdown_for_reload()
+
 
 if not globals().get('_atexit_registered', False):
     atexit.register(_atexit_shutdown)

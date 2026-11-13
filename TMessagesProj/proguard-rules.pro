@@ -1,4 +1,5 @@
 # Modifications Copyright (C) 2026 Ettacent
+
 -dontwarn javax.script.**
 -dontwarn org.mvel2.jsr223.**
 ## NimarkoGram: keep MVEL — reflectively constructed expressions
@@ -109,7 +110,11 @@
 # https://developers.google.com/ml-kit/known-issues#android_issues
 -keep class com.google.mlkit.nl.languageid.internal.LanguageIdentificationJni { *; }
 -keep class org.telegram.utils.twidget.WidgetSandboxNative { *; }
+-keepclasseswithmembers,includedescriptorclasses class org.telegram.utils.twidget.WidgetClientNative {
+    native <methods>;
+}
 -keep class org.telegram.utils.twidget.WidgetSandboxBackend { *; }
+-keep class org.telegram.utils.twidget.WidgetEngineBackend { *; }
 
 # Huawei Services
 -keep class com.huawei.hianalytics.**{ *; }

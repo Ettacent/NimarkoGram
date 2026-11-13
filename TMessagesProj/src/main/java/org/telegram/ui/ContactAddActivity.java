@@ -423,44 +423,14 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
             oldPhotoCell.setBackground(Theme.getSelectorDrawable(true, resourcesProvider));
             oldPhotoCell.setColors(Theme.key_windowBackgroundWhiteBlueIcon, Theme.key_windowBackgroundWhiteBlueButton);
             oldPhotoCell.setOnClickListener(v -> {
+                final int resetAccount = currentAccount;
+                final long resetUserId = user_id;
+                final long resetOwnerId = getUserConfig().getClientUserId();
                 AlertsCreator.createSimpleAlert(context,
                         LocaleController.getString(R.string.ResetToOriginalPhotoTitle),
                         LocaleController.formatString(R.string.ResetToOriginalPhotoMessage, user.first_name),
-                        LocaleController.getString(R.string.Reset), () -> {
-                            avatar = null;
-                            sendPhotoChangedRequest(null, null,null, null, null, 0, TYPE_SET);
-
-                            TLRPC.User user1 = getMessagesController().getUser(user_id);
-                            user1.photo.personal = false;
-                            TLRPC.UserFull fullUser = MessagesController.getInstance(currentAccount).getUserFull(user_id);
-                            if (fullUser != null) {
-                                fullUser.personal_photo = null;
-                                fullUser.flags &= ~2097152;
-                                getMessagesStorage().updateUserInfo(fullUser, true);
-                            }
-                            if (prevAvatar != null) {
-                                user1.photo.photo_id = prevAvatar.id;
-                                ArrayList<TLRPC.PhotoSize> sizes = prevAvatar.sizes;
-                                TLRPC.PhotoSize smallSize2 = FileLoader.getClosestPhotoSizeWithSize(sizes, 100);
-                                TLRPC.PhotoSize bigSize2 = FileLoader.getClosestPhotoSizeWithSize(sizes, 1000);
-
-                                if (smallSize2 != null) {
-                                    user1.photo.photo_small = smallSize2.location;
-                                }
-                                if (bigSize2 != null) {
-                                    user1.photo.photo_big = bigSize2.location;
-                                }
-                            } else {
-                                user1.photo = null;
-                                user1.flags &= ~32;
-                            }
-                            ArrayList<TLRPC.User> users = new ArrayList<>();
-                            users.add(user);
-                            getMessagesStorage().putUsersAndChats(users, null, false, true);
-                            updateCustomPhotoInfo();
-                            getNotificationCenter().postNotificationName(NotificationCenter.reloadDialogPhotos);
-                            getNotificationCenter().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_AVATAR);
-                        }, resourcesProvider).show();
+                        LocaleController.getString(R.string.Reset),
+                        () -> resetPersonalPhoto(resetAccount, resetUserId, resetOwnerId), resourcesProvider).show();
             });
 
             suggestBirthday = new TextCell(context, resourcesProvider);
@@ -520,6 +490,43 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         return fragmentView = frameLayout;
     }
 
+    private void resetPersonalPhoto(int account, long targetUserId, long ownerId) {
+        if (isFinished || currentAccount != account || user_id != targetUserId || ownerId == 0
+                || getUserConfig().getClientUserId() != ownerId) {
+            return;
+        }
+        final TLRPC.User user = getMessagesController().getUser(targetUserId);
+        final TLRPC.UserFull fullUser = getMessagesController().getUserFull(targetUserId);
+        final TLRPC.Photo originalPhoto = fullUser != null
+                ? (fullUser.profile_photo != null ? fullUser.profile_photo : fullUser.fallback_photo) : prevAvatar;
+
+        avatar = null;
+        sendPhotoChangedRequest(null, null, null, null, null, 0, TYPE_SET);
+        if (fullUser != null) {
+            fullUser.personal_photo = null;
+            fullUser.flags &= ~2097152;
+            getMessagesStorage().updateUserInfo(fullUser, true);
+        }
+        if (user != null && user.id == targetUserId) {
+            if (originalPhoto != null && !(originalPhoto instanceof TLRPC.TL_photoEmpty)) {
+                PhotoUtilities.applyPhotoToUser(originalPhoto, user, false);
+                user.photo.dc_id = originalPhoto.dc_id;
+            } else if (user.photo == null || user.photo.personal) {
+                user.photo = null;
+                user.flags &= ~32;
+            }
+            ArrayList<TLRPC.User> users = new ArrayList<>();
+            users.add(user);
+            getMessagesStorage().putUsersAndChats(users, null, false, true);
+        }
+        prevAvatar = originalPhoto;
+        updateCustomPhotoInfo();
+        if (listView != null) {
+            listView.adapter.update(false);
+        }
+        getNotificationCenter().postNotificationName(NotificationCenter.reloadDialogPhotos);
+        getNotificationCenter().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_AVATAR);
+    }
     private boolean checkShare = false;
 
     private boolean firstSet = true;
@@ -746,6 +753,9 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
             return;
         }
         TLRPC.User user = getMessagesController().getUser(user_id);
+        if (user == null) {
+            return;
+        }
         if (user.photo != null && user.photo.personal) {
             if (prevAvatar != null) {
                 TLRPC.PhotoSize photoSize = FileLoader.getClosestPhotoSizeWithSize(prevAvatar.sizes, 1000);

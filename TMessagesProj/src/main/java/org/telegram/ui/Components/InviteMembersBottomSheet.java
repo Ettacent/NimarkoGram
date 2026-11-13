@@ -210,7 +210,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
                         selectedContacts.remove(id);
                         spansContainer.removeSpan(groupCreateSpan);
                     } else {
-                        GroupCreateSpan groupCreateSpan = new GroupCreateSpan(context, object);
+                        GroupCreateSpan groupCreateSpan = new GroupCreateSpan(context, object, currentAccount);
                         groupCreateSpan.setOnClickListener(spanClickListener);
                         selectedContacts.put(id, groupCreateSpan);
                         spansContainer.addSpan(groupCreateSpan, true);
@@ -333,7 +333,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
             } else {
                 object = MessagesController.getInstance(currentAccount).getUser(dialogId);
             }
-            GroupCreateSpan span = new GroupCreateSpan(spansContainer.getContext(), object);
+            GroupCreateSpan span = new GroupCreateSpan(spansContainer.getContext(), object, currentAccount);
             spansContainer.addSpan(span, false);
             span.setOnClickListener(spanClickListener);
         }
@@ -507,7 +507,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
                     };
                     break;
                 case 3:
-                    view = new GroupCreateUserCell(context, 1, 0, dialogsDelegate != null);
+                    view = new GroupCreateUserCell(context, 1, 0, dialogsDelegate != null, currentAccount);
                     break;
                 case 4:
                     view = new View(context);
@@ -658,7 +658,7 @@ public class InviteMembersBottomSheet extends UsersAlertBase implements Notifica
                     view = new GroupCreateSectionCell(context);
                     break;
                 case 1:
-                    view = new GroupCreateUserCell(context, 1, 0, false);
+                    view = new GroupCreateUserCell(context, 1, 0, false, currentAccount);
                     break;
                 case 2:
                     view = new View(context) {

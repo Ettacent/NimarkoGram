@@ -211,6 +211,7 @@ public class WebActionBar extends FrameLayout {
             if (!(getParent() instanceof ViewGroup)) return;
             Utilities.CallbackReturn<Integer, Runnable> click = id -> () -> menuListener.run(id);
             ItemOptions o = ItemOptions.makeOptions((ViewGroup) getParent(), menuButton);
+            Runnable cancelInstantViewListener = null;
             o.setDimAlpha(0);
             o.setColors(menuTextColor, menuIconColor);
             o.translate(0, -dp(52));
@@ -242,11 +243,10 @@ public class WebActionBar extends FrameLayout {
                     ActionBarMenuSubItem item = o.getLast();
                     item.setEnabled(instantView.getWebPage() != null);
                     item.setAlpha(item.isEnabled() ? 1f : 0.5f);
-                    Runnable cancel = instantView.listen(() -> {
+                    cancelInstantViewListener = instantView.listen(() -> {
                         item.setEnabled(instantView.getWebPage() != null);
                         item.animate().alpha(item.isEnabled() ? 1f : 0.5f);
                     });
-                    o.setOnDismiss(cancel);
                 }
                 o.add(R.drawable.msg_reset, getString(R.string.Refresh), click.run(reload_item));
                 o.add(R.drawable.msg_search, getString(R.string.Search), click.run(search_item));
@@ -259,8 +259,10 @@ public class WebActionBar extends FrameLayout {
                 o.add(R.drawable.menu_browser_bookmarks, getString(R.string.WebBookmarks), click.run(bookmarks_item));
                 o.add(R.drawable.msg_settings_old, getString(R.string.Settings), click.run(settings_item));
             }
+            final Runnable cleanupInstantViewListener = cancelInstantViewListener;
             o.setOnDismiss(() -> {
                 isMenuShown = false;
+                if (cleanupInstantViewListener != null) cleanupInstantViewListener.run();
             });
             o.show();
             isMenuShown = true;

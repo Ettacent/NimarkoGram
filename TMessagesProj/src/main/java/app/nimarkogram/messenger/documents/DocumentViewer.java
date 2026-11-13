@@ -21,6 +21,7 @@ import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 
+import java.util.Locale;
 import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.utils.chats.ChatsPasswordHelper;
 
@@ -51,6 +52,7 @@ public final class DocumentViewer {
         if (!AppConfig.documentViewer && !secure) return false;
         DocumentTypes.Kind kind = DocumentTypes.detect(fileName, mimeType);
         if (kind == DocumentTypes.Kind.NONE) {
+            if (canInstallPackage(fileName, source, secure)) return false;
             if (secure && activity != null && !activity.isFinishing() && Looper.myLooper() == Looper.getMainLooper()) {
                 new AlertDialog.Builder(activity).setMessage(LocaleController.getString(R.string.NM_DocProtectedError))
                         .setPositiveButton(LocaleController.getString(R.string.OK), null).show();
@@ -71,6 +73,15 @@ public final class DocumentViewer {
         DocumentViewerActivity viewer = new DocumentViewerActivity(file, displayName, mimeType, kind, source, account, secure, restrict);
         boolean presented = owner.presentFragment(viewer);
         return presented || secure;
+    }
+
+    private static boolean canInstallPackage(String fileName, MessageObject source, boolean secure) {
+        if (fileName == null || !fileName.toLowerCase(Locale.ROOT).endsWith(".apk")) return false;
+        if (source == null) return !secure;
+        long dialogId = source.getDialogId();
+        return !DialogObject.isEncryptedDialog(dialogId) && !source.isSecretMedia()
+                && !source.hasRevealedExtendedMedia()
+                && !ChatsPasswordHelper.isChatLocked(source.currentAccount, dialogId);
     }
 
     private static String resolveDisplayName(File file, String fileName, MessageObject source) {

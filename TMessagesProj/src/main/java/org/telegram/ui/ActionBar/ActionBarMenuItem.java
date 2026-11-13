@@ -70,6 +70,7 @@ import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.utils.GradientProtectionDrawable;
@@ -1157,7 +1158,8 @@ public class ActionBarMenuItem extends FrameLayout {
 
     public void openSearch(boolean openKeyboard) {
         checkCreateSearchField();
-        if (searchContainer == null || searchContainer.getVisibility() == VISIBLE || parentMenu == null) {
+        if (searchContainer == null || searchContainer.getTag() != null
+                || isSearchFieldVisible() && !isSearchFieldClosing() || parentMenu == null) {
             return;
         }
         parentMenu.parentActionBar.onSearchFieldVisibilityChanged(toggleSearch(openKeyboard));
@@ -1173,6 +1175,11 @@ public class ActionBarMenuItem extends FrameLayout {
 
     public boolean isSearchFieldVisible2() {
         return searchContainer != null && searchContainer.getTag() != null;
+    }
+
+    boolean isSearchFieldClosing() {
+        return isSearchFieldVisible() && !isSearchFieldVisible2()
+                && (externalSearchTransitionActive || searchContainerAnimator != null);
     }
 
     AnimatorSet searchContainerAnimator;
@@ -1225,10 +1232,9 @@ public class ActionBarMenuItem extends FrameLayout {
             searchContainerAnimator = new AnimatorSet();
             if (!externalSearchTransition) searchContainerAnimator.playTogether(ObjectAnimator.ofFloat(searchContainer, View.ALPHA, searchContainer.getAlpha(), 0f));
             for (int i = 0; i < menuIcons.size(); i++) {
-                menuIcons.get(i).setAlpha(0f);
                 searchContainerAnimator.playTogether(ObjectAnimator.ofFloat(menuIcons.get(i), View.ALPHA, menuIcons.get(i).getAlpha(), 1f));
             }
-            searchContainerAnimator.setDuration(150);
+            searchContainerAnimator.setDuration(SharedConfig.animationsEnabled() ? 150 : 0);
             searchContainerAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
@@ -1258,6 +1264,7 @@ public class ActionBarMenuItem extends FrameLayout {
             if (listener != null) {
                 listener.onSearchCollapse();
             }
+            updateSearchTransitionProgress();
             if (openKeyboard) {
                 AndroidUtilities.hideKeyboard(searchField);
             }
@@ -1265,8 +1272,9 @@ public class ActionBarMenuItem extends FrameLayout {
             requestLayout();
             return false;
         } else {
+            final boolean wasVisible = searchContainer.getVisibility() == VISIBLE;
             searchContainer.setVisibility(VISIBLE);
-            if (!externalSearchTransition) searchContainer.setAlpha(0);
+            if (!externalSearchTransition && !wasVisible) searchContainer.setAlpha(0);
             if (searchContainerAnimator != null) {
                 searchContainerAnimator.removeAllListeners();
                 searchContainerAnimator.cancel();
@@ -1276,7 +1284,7 @@ public class ActionBarMenuItem extends FrameLayout {
             for (int i = 0; i < menuIcons.size(); i++) {
                 searchContainerAnimator.playTogether(ObjectAnimator.ofFloat(menuIcons.get(i), View.ALPHA, menuIcons.get(i).getAlpha(), 0f));
             }
-            searchContainerAnimator.setDuration(150);
+            searchContainerAnimator.setDuration(SharedConfig.animationsEnabled() ? 150 : 0);
             searchContainerAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
@@ -1303,6 +1311,7 @@ public class ActionBarMenuItem extends FrameLayout {
             if (listener != null) {
                 listener.onSearchExpand();
             }
+            updateSearchTransitionProgress();
             return true;
         }
     }
@@ -1324,6 +1333,34 @@ public class ActionBarMenuItem extends FrameLayout {
             selectedFilterIndex = currentSearchFilters.size() - 1;
         }
         onFiltersChanged();
+    }
+
+    public void replaceSearchFilter(FiltersView.MediaFilterData oldFilter, FiltersView.MediaFilterData newFilter) {
+        if (oldFilter != newFilter) {
+            int index = oldFilter == null ? -1 : currentSearchFilters.indexOf(oldFilter);
+            if (index >= 0) {
+                if (!oldFilter.removable) return;
+                if (newFilter == null) currentSearchFilters.remove(index);
+                else currentSearchFilters.set(index, newFilter);
+            } else if (newFilter != null) {
+                currentSearchFilters.add(newFilter);
+            } else {
+                return;
+            }
+            if (selectedFilterIndex >= currentSearchFilters.size()) selectedFilterIndex = currentSearchFilters.size() - 1;
+            onFiltersChanged();
+        }
+        if (!SharedConfig.animationsEnabled() && searchFilterLayout != null && searchField != null) {
+            TransitionManager.endTransitions(searchFilterLayout);
+            searchField.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                @Override public boolean onPreDraw() {
+                    searchField.getViewTreeObserver().removeOnPreDrawListener(this);
+                    searchField.animate().cancel();
+                    searchField.setTranslationX(0);
+                    return true;
+                }
+            });
+        }
     }
 
     public void clearSearchFilters() {

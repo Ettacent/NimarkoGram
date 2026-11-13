@@ -736,6 +736,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public boolean isReplyTo, isQuote;
     public long replyMessageAuthor;
+    public long replyChannelDirect;
     public long forwardOriginalChannel;
     private int initialDialogsType;
     private int initialDialogFilterId;
@@ -744,6 +745,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     private boolean checkingImportDialog;
 
+    private int importDialogGeneration;
+    private int importDialogRequestId;
+    private ConnectionsManager importDialogConnections;
+    private AlertDialog importDialogProgress;
     private int messagesCount;
     private int hasPoll;
     private boolean hasInvoice;
@@ -3520,6 +3525,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             isQuote = arguments.getBoolean("quote", false);
             isReplyTo = arguments.getBoolean("reply_to", false);
             replyMessageAuthor = arguments.getLong("reply_to_author", 0L);
+            replyChannelDirect = arguments.getLong("reply_to_channel_direct", 0L);
             forwardOriginalChannel = arguments.getLong("forward_into_channel", 0L);
             selectAlertString = arguments.getString("selectAlertString");
             selectAlertStringGroup = arguments.getString("selectAlertStringGroup");
@@ -3776,6 +3782,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onFragmentDestroy() {
         dialogsLifecycleDestroyed = true;
+        finishImportDialogCheck(true);
         if (viewPositionWatcher != null) {
             viewPositionWatcher.shutdown();
             viewPositionWatcher = null;
@@ -4370,7 +4377,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             (initialDialogsType == DIALOGS_TYPE_DEFAULT && !onlySelect || initialDialogsType == DIALOGS_TYPE_FORWARD) &&
             folderId == 0 && communityId == 0 && TextUtils.isEmpty(searchString)
         ) {
-            filterTabsView = new FilterTabsView(context, resourceProvider) {
+            filterTabsView = new FilterTabsView(context, currentAccount, resourceProvider) {
                 private final Paint cardEdgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 private final Paint cardClipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 private final Path cardClipPath = new Path();
@@ -4471,6 +4478,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             filterTabsView.setDelegate(new FilterTabsView.FilterTabsViewDelegate() {
 
                 private void showDeleteAlert(MessagesController.DialogFilter dialogFilter) {
+                    if (dialogFilter == null || dialogFilter.isDefault()) {
+                        return;
+                    }
                     if (dialogFilter.isChatlist()) {
                         FolderBottomSheet.showForDeletion(DialogsActivity.this, dialogFilter.id, null);
                     } else {
@@ -4771,7 +4781,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
                 @Override
                 public void onDeletePressed(int id) {
-                    showDeleteAlert(getMessagesController().getDialogFilters().get(id));
+                    ArrayList<MessagesController.DialogFilter> filters = getMessagesController().getDialogFilters();
+                    if (id >= 0 && id < filters.size()) {
+                        showDeleteAlert(filters.get(id));
+                    }
                 }
             });
         }
@@ -7762,12 +7775,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             ArrayList<FiltersView.DateData> finalDates = (dates != null && !dates.isEmpty() && !hasDateFilter) ? dates : null;
             if (finalUsers != null || finalDates != null || archive) {
                 visible = true;
-                filtersView.setUsersAndDates(finalUsers, finalDates, archive);
+                filtersView.setUsersAndDates(finalUsers, finalDates, archive, currentAccount);
             }
         }
 
         if (!visible) {
-            filtersView.setUsersAndDates(null, null, false);
+            filtersView.setUsersAndDates(null, null, false, currentAccount);
         }
         if (!animated) {
             filtersView.getAdapter().notifyDataSetChanged();
@@ -8522,6 +8535,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     @Override
     public void onPause() {
         dialogsResumeGeneration++;
+        if (checkingImportDialog) {
+            finishImportDialogCheck(true);
+        }
         resetStoriesScrollHaptics();
         if (viewPages != null && viewPages.length > 0 && viewPages[0] != null
                 && viewPages[0].dialogsAdapter != null && viewPages[0].listView != null
@@ -13531,12 +13547,36 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         didSelectResult(dialogId, topicId, useAlert, param, null);
     }
 
+    private void finishImportDialogCheck(boolean cancel) {
+        if (cancel) importDialogGeneration++;
+        final int requestId = importDialogRequestId;
+        final ConnectionsManager connections = importDialogConnections;
+        final AlertDialog progress = importDialogProgress;
+        checkingImportDialog = false;
+        importDialogRequestId = 0;
+        importDialogConnections = null;
+        importDialogProgress = null;
+        if (cancel && requestId != 0 && connections != null) {
+            try {
+                connections.cancelRequest(requestId, true);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+        if (progress != null) {
+            try {
+                progress.dismiss();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+    }
     public void didSelectResult(final long dialogId, long topicId, boolean useAlert, final boolean param, TopicsFragment topicsFragment) {
         if (!checkCanWrite(dialogId)) {
             return;
         }
         if (initialDialogsType == DIALOGS_TYPE_IMPORT_HISTORY_GROUPS || initialDialogsType == DIALOGS_TYPE_IMPORT_HISTORY_USERS || initialDialogsType == DIALOGS_TYPE_IMPORT_HISTORY) {
-            if (checkingImportDialog) {
+            if (checkingImportDialog || dialogsLifecycleDestroyed || getParentActivity() == null || delegate == null) {
                 return;
             }
             TLRPC.User user;
@@ -13544,7 +13584,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (DialogObject.isUserDialog(dialogId)) {
                 user = getMessagesController().getUser(dialogId);
                 chat = null;
-                if (!user.mutual_contact) {
+                if (user == null || !user.mutual_contact) {
                     final UndoView undoView = getUndoView();
                     if (undoView != null) {
                         undoView.showWithAction(dialogId, UndoView.ACTION_IMPORT_NOT_MUTUAL, null);
@@ -13563,31 +13603,62 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 }
             }
             final AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+            final int generation = ++importDialogGeneration;
+            final int importAccount = currentAccount;
+            final long importUserId = getUserConfig().getClientUserId();
+            final long importSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(importAccount);
+            final View importView = fragmentView;
+            final DialogsActivityDelegate importDelegate = delegate;
+            final ConnectionsManager connections = getConnectionsManager();
+            final java.util.function.BooleanSupplier navigationCurrent = captureNavigationRequest();
+            final java.util.function.BooleanSupplier ownerCurrent = () -> generation == importDialogGeneration
+                    && !dialogsLifecycleDestroyed && fragmentView == importView && delegate == importDelegate
+                    && navigationCurrent.getAsBoolean()
+                    && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(importAccount, importUserId, importSession);
+            checkingImportDialog = true;
+            importDialogConnections = connections;
+            importDialogProgress = progressDialog;
+            progressDialog.setOnCancelListener(dialog -> {
+                if (generation == importDialogGeneration) finishImportDialogCheck(true);
+            });
             TLRPC.TL_messages_checkHistoryImportPeer req = new TLRPC.TL_messages_checkHistoryImportPeer();
             req.peer = getMessagesController().getInputPeer(dialogId);
-            getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 try {
-                    progressDialog.dismiss();
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-                checkingImportDialog = false;
-                if (response != null) {
+                final int requestId = connections.sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                    if (generation != importDialogGeneration || !checkingImportDialog) return;
+                    finishImportDialogCheck(false);
+                    if (!ownerCurrent.getAsBoolean()) return;
+                    if (error == null && response instanceof TLRPC.TL_messages_checkedHistoryImportPeer) {
                     TLRPC.TL_messages_checkedHistoryImportPeer res = (TLRPC.TL_messages_checkedHistoryImportPeer) response;
                     AlertsCreator.createImportDialogAlert(this, arguments.getString("importTitle"), res.confirm_text, user, chat, () -> {
+                            if (!ownerCurrent.getAsBoolean()) return;
+                            importDialogGeneration++;
                         setDialogsListFrozen(true);
                         ArrayList<MessagesStorage.TopicKey> dids = new ArrayList<>();
                         dids.add(MessagesStorage.TopicKey.of(dialogId, 0));
-                        delegate.didSelectDialogs(DialogsActivity.this, dids, null, param, notify, scheduleDate, scheduleRepeatPeriod, null);
+                            importDelegate.didSelectDialogs(DialogsActivity.this, dids, null, param, notify, scheduleDate, scheduleRepeatPeriod, null);
                     });
                 } else {
-                    AlertsCreator.processError(currentAccount, error, this, req);
+                        AlertsCreator.processError(importAccount, error, this, req);
+                        if (ownerCurrent.getAsBoolean()) {
                     getNotificationCenter().postNotificationName(NotificationCenter.historyImportProgressChanged, dialogId, req, error);
                 }
+                    }
             }));
-            try {
+                if (generation != importDialogGeneration || !checkingImportDialog) {
+                    if (requestId != 0) connections.cancelRequest(requestId, true);
+                    return;
+                }
+                importDialogRequestId = requestId;
+                if (requestId == 0 || !ownerCurrent.getAsBoolean()) {
+                    finishImportDialogCheck(true);
+                    return;
+                }
+                connections.bindRequestToGuid(requestId, classGuid);
                 progressDialog.showDelayed(300);
-            } catch (Exception ignore) {
+            } catch (Exception e) {
+                if (generation == importDialogGeneration) finishImportDialogCheck(true);
+                FileLog.e(e);
 
             }
         } else if (useAlert && (selectAlertString != null && selectAlertStringGroup != null || addToGroupAlertString != null)) {

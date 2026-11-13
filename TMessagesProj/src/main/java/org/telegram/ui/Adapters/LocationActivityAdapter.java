@@ -55,6 +55,7 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
     private String overrideAddressName;
     private String addressName;
     private Location previousFetchedLocation;
+    private Location requestedAddressLocation;
     private int locationType;
     private long dialogId;
     private int shareLiveLocationPotistion = -1;
@@ -88,6 +89,18 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
         this.resourcesProvider = resourcesProvider;
     }
 
+    @Override
+    public void destroy() {
+        super.destroy();
+        LocationController.cancelLocationAddressFetch(this);
+        requestedAddressLocation = null;
+        previousFetchedLocation = null;
+        fetchingLocation = false;
+        addressName = null;
+        city = street = null;
+        sendLocationCell = null;
+        updateRunnable = null;
+    }
     private SharedMediaLayout sharedMediaLayout;
     private boolean sharedMediaLayoutVisible;
     public void setSharedMediaLayout(SharedMediaLayout layout) {
@@ -136,8 +149,9 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
     }
 
     public void setGpsLocation(Location location) {
+        if (destroyed) return;
         boolean notSet = gpsLocation == null;
-        gpsLocation = location;
+        gpsLocation = location == null ? null : new Location(location);
         if (customLocation == null) {
             fetchLocationAddress();
         }
@@ -167,7 +181,8 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
     }
 
     public void setCustomLocation(Location location) {
-        customLocation = location;
+        if (destroyed) return;
+        customLocation = location == null ? null : new Location(location);
         fetchLocationAddress();
         updateCell();
     }
@@ -214,7 +229,9 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
                 sendLocationCell.setHasLocation(true);
             } else if (locationType == LocationActivity.LOCATION_TYPE_GROUP || customLocation != null) {
                 String address = "";
-                if (!TextUtils.isEmpty(overrideAddressName)) {
+                if (locationType == LocationActivity.LOCATION_TYPE_GROUP && fetchingLocation) {
+                    address = LocaleController.getString(R.string.Loading);
+                } else if (!TextUtils.isEmpty(overrideAddressName)) {
                     address = overrideAddressName;
                 } else if (!TextUtils.isEmpty(addressName)) {
                     address = addressName;
@@ -234,7 +251,9 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
                 } else {
                     sendLocationCell.setText(LocaleController.getString(R.string.SendSelectedLocation), address);
                 }
-                sendLocationCell.setHasLocation(true);
+                final boolean hasLocation = locationType != LocationActivity.LOCATION_TYPE_GROUP || hasCurrentAddress();
+                sendLocationCell.setHasLocation(hasLocation);
+                if (locationType == LocationActivity.LOCATION_TYPE_GROUP) sendLocationCell.setEnabled(hasLocation);
             } else {
                 if (gpsLocation != null) {
                     sendLocationCell.setText(LocaleController.getString(R.string.SendLocation), LocaleController.formatString(R.string.AccurateTo, LocaleController.formatPluralString("Meters", (int) gpsLocation.getAccuracy())));
@@ -248,13 +267,16 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
     }
 
     public String getAddressName() {
-        return addressName;
+        return hasCurrentAddress() ? addressName : null;
     }
 
     @Override
     public void onLocationAddressAvailable(String address, String displayAddress, TLRPC.TL_messageMediaVenue city, TLRPC.TL_messageMediaVenue street, Location location) {
+        if (destroyed || location != null && (!sameCoordinates(requestedAddressLocation, location)
+                || !sameCoordinates(getAddressLocation(), location))) return;
+        requestedAddressLocation = null;
         fetchingLocation = false;
-        previousFetchedLocation = location;
+        previousFetchedLocation = location == null ? null : new Location(location);
         if (locationType == ChatAttachAlertLocationLayout.LOCATION_TYPE_BIZ) {
             addressName = displayAddress;
         } else {
@@ -289,47 +311,55 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
 
     }
 
+    private Location getAddressLocation() {
+        if (customLocation != null) return customLocation;
+        return locationType == LocationActivity.LOCATION_TYPE_GROUP
+                || locationType == ChatAttachAlertLocationLayout.LOCATION_TYPE_BIZ ? gpsLocation : null;
+    }
+
+    private static boolean sameCoordinates(Location first, Location second) {
+        return first != null && second != null && Double.compare(first.getLatitude(), second.getLatitude()) == 0
+                && Double.compare(first.getLongitude(), second.getLongitude()) == 0;
+    }
+
+    private boolean hasCurrentAddress() {
+        return !destroyed && !fetchingLocation && addressName != null
+                && sameCoordinates(previousFetchedLocation, getAddressLocation());
+    }
+
+    private void requestAddress(Location location, int type) {
+        final Location requested = requestedAddressLocation = new Location(location);
+            fetchingLocation = true;
+            updateCell();
+        if (!destroyed && requestedAddressLocation == requested) {
+            LocationController.fetchLocationAddress(requested, type, this);
+        }
+    }
+
     public void fetchLocationAddress() {
+        if (destroyed) return;
+        Location location = getAddressLocation();
+        if (location == null) {
+            if (requestedAddressLocation != null || previousFetchedLocation != null || fetchingLocation || addressName != null) {
+                LocationController.cancelLocationAddressFetch(this);
+                onLocationAddressAvailable(null, null, null, null, null);
+            }
+            return;
+        }
+        if (sameCoordinates(requestedAddressLocation, location)
+                || locationType == LocationActivity.LOCATION_TYPE_GROUP && hasCurrentAddress()) {
+            return;
+        }
         if (locationType == ChatAttachAlertLocationLayout.LOCATION_TYPE_BIZ) {
-            Location location;
-            if (customLocation != null) {
-                location = customLocation;
-            } else if (gpsLocation != null) {
-                location = gpsLocation;
-            } else {
-                return;
-            }
-            fetchingLocation = true;
-            updateCell();
-            LocationController.fetchLocationAddress(location, biz ? LocationController.TYPE_BIZ : 0, this);
+            requestAddress(location, biz ? LocationController.TYPE_BIZ : 0);
         } else if (locationType == LocationActivity.LOCATION_TYPE_GROUP) {
-            Location location;
-            if (customLocation != null) {
-                location = customLocation;
-            } else if (gpsLocation != null) {
-                location = gpsLocation;
-            } else {
-                return;
-            }
-            if (previousFetchedLocation == null || previousFetchedLocation.distanceTo(location) > 100) {
                 addressName = null;
-            }
-            fetchingLocation = true;
-            updateCell();
-            LocationController.fetchLocationAddress(location, this);
+            requestAddress(location, 0);
         } else {
-            Location location;
-            if (customLocation != null) {
-                location = customLocation;
-            } else {
-                return;
-            }
             if (previousFetchedLocation == null || previousFetchedLocation.distanceTo(location) > 20) {
                 addressName = null;
             }
-            fetchingLocation = true;
-            updateCell();
-            LocationController.fetchLocationAddress(location, stories ? LocationController.TYPE_STORY : 0, this);
+            requestAddress(location, stories ? LocationController.TYPE_STORY : 0);
         }
     }
 
@@ -522,7 +552,7 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
 
     public Object getItem(int i) {
         if (locationType == LocationActivity.LOCATION_TYPE_GROUP) {
-            if (addressName == null) {
+            if (!hasCurrentAddress()) {
                 return null;
             } else {
                 TLRPC.TL_messageMediaVenue venue = new TLRPC.TL_messageMediaVenue();
@@ -638,6 +668,9 @@ public class LocationActivityAdapter extends BaseLocationAdapter implements Loca
     @Override
     public boolean isEnabled(RecyclerView.ViewHolder holder) {
         int viewType = holder.getItemViewType();
+        if (locationType == LocationActivity.LOCATION_TYPE_GROUP && viewType == VIEW_TYPE_SEND_LOCATION) {
+            return hasCurrentAddress();
+        }
         if (viewType == VIEW_TYPE_LIVE_LOCATION) {
             return !(LocationController.getInstance(currentAccount).getSharingLocationInfo(dialogId) == null && gpsLocation == null);
         }

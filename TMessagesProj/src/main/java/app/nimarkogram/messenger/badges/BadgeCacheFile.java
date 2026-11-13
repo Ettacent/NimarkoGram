@@ -12,7 +12,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 final class BadgeCacheFile {
-    private static final int MAX_BYTES = 4 * 1024 * 1024;
+    static final int MAX_BYTES = 4 * 1024 * 1024;
     private final AtomicFile file;
 
     BadgeCacheFile(Context context) {
@@ -32,6 +32,8 @@ final class BadgeCacheFile {
             }
             return new String(bytes.toByteArray(), StandardCharsets.UTF_8);
         } catch (FileNotFoundException absent) {
+            File base = file.getBaseFile();
+            if (base.exists() || new File(base.getPath() + ".bak").exists()) throw absent;
             return null;
         }
     }

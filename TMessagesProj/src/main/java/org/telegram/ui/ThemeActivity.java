@@ -806,7 +806,6 @@ public class ThemeActivity extends BaseFragment implements NotificationCenter.No
                 raiseToSpeakRow = rowCount++;
             }
             pauseOnRecordRow = rowCount++;
-            pauseOnMediaRow = rowCount++;
             bluetoothScoRow = rowCount++;
             mediaSoundSectionRow = rowCount++;
 

@@ -48,6 +48,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ChatsWidgetProvider;
 import org.telegram.messenger.ContactsController;
@@ -59,6 +60,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -322,16 +324,16 @@ public class EditWidgetActivity extends BaseFragment {
                         result.eraseColor(Color.TRANSPARENT);
                         Canvas canvas = new Canvas(result);
                         if (bitmap == null) {
-                            AvatarDrawable avatarDrawable;
+                            AvatarDrawable avatarDrawable = new AvatarDrawable();
                             if (user != null) {
-                                avatarDrawable = new AvatarDrawable(user);
+                                avatarDrawable.setInfo(currentAccount, user);
                                 if (UserObject.isReplyUser(user)) {
                                     avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REPLIES);
                                 } else if (UserObject.isUserSelf(user)) {
                                     avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                                 }
                             } else {
-                                avatarDrawable = new AvatarDrawable(chat);
+                                avatarDrawable.setInfo(currentAccount, chat);
                             }
                             avatarDrawable.setBounds(0, 0, size, size);
                             avatarDrawable.draw(canvas);
@@ -602,16 +604,16 @@ public class EditWidgetActivity extends BaseFragment {
                             result.eraseColor(Color.TRANSPARENT);
                             Canvas canvas = new Canvas(result);
                             if (bitmap == null) {
-                                AvatarDrawable avatarDrawable;
+                                AvatarDrawable avatarDrawable = new AvatarDrawable();
                                 if (user != null) {
-                                    avatarDrawable = new AvatarDrawable(user);
+                                    avatarDrawable.setInfo(currentAccount, user);
                                     if (UserObject.isReplyUser(user)) {
                                         avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_REPLIES);
                                     } else if (UserObject.isUserSelf(user)) {
                                         avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_SAVED);
                                     }
                                 } else {
-                                    avatarDrawable = new AvatarDrawable(chat);
+                                    avatarDrawable.setInfo(currentAccount, chat);
                                 }
                                 avatarDrawable.setBounds(0, 0, size, size);
                                 avatarDrawable.draw(canvas);
@@ -862,6 +864,15 @@ public class EditWidgetActivity extends BaseFragment {
     }
     @Override
     public boolean onFragmentCreate() {
+        if (currentWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("shortcut_widget", Activity.MODE_PRIVATE);
+            int savedAccount = preferences.getInt("account" + currentWidgetId, -1);
+            if (UserConfig.isValidAccount(savedAccount)
+                    && preferences.getInt("type" + currentWidgetId, widgetType) == widgetType
+                    && !preferences.getBoolean("deleted" + currentWidgetId, false)) {
+                setCurrentAccount(savedAccount);
+            }
+        }
         loadSelectedDialogs();
         DialogsActivity.loadDialogs(AccountInstance.getInstance(currentAccount));
         getMediaDataController().loadHints(true);
@@ -1074,7 +1085,7 @@ public class EditWidgetActivity extends BaseFragment {
                     break;
                 case 3:
                 default:
-                    GroupCreateUserCell cell = new GroupCreateUserCell(mContext, 0, 0, false);
+                    GroupCreateUserCell cell = new GroupCreateUserCell(mContext, 0, 0, false, currentAccount);
                     ImageView sortImageView = new ImageView(mContext);
                     sortImageView.setImageResource(R.drawable.list_reorder);
                     sortImageView.setScaleType(ImageView.ScaleType.CENTER);

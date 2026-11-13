@@ -71,6 +71,7 @@ import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.FlickerLoadingView;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ListContentReveal;
 import org.telegram.ui.Components.ProfileGalleryView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.StickerEmptyView;
@@ -81,6 +82,7 @@ import org.telegram.ui.ProfileActivity;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener {
@@ -106,6 +108,15 @@ public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener
     private RecyclerListView recyclerView;
     private FlickerLoadingView loadingView;
 
+    private final IdentityHashMap<View, VisibilityTransition> visibilityTransitions = new IdentityHashMap<>();
+
+    private static final class VisibilityTransition {
+        final boolean visible;
+
+        VisibilityTransition(boolean visible) {
+            this.visible = visible;
+        }
+    }
     private TLRPC.TL_chatInviteImporter importer;
     private PreviewDialog previewDialog;
 
@@ -450,7 +461,7 @@ public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener
                 searchEmptyView.setVisibility(isListVisible ? INVISIBLE : VISIBLE);
             }
         }
-        setViewVisible(recyclerView, isListVisible, true);
+        setViewVisible(recyclerView, isListVisible, !fromCache);
         if (allImporters.isEmpty()) {
             if (emptyView != null) {
                 emptyView.setVisibility(VISIBLE);
@@ -539,23 +550,57 @@ public class MemberRequestsDelegate implements MemberRequestCell.OnClickListener
         if (view == null) {
             return;
         }
-        boolean isCurrentVisible = view.getVisibility() == VISIBLE;
-        float targetAlpha = isVisible ? 1f : 0f;
-        if (isVisible == isCurrentVisible && targetAlpha == view.getAlpha()) {
+        final float targetAlpha = isVisible ? 1f : 0f;
+        final boolean animate = isAnimated && ListContentReveal.isMotionEnabled()
+                && view.isAttachedToWindow() && view.getWindowVisibility() == VISIBLE
+                && view.hasWindowFocus() && !fragment.isPaused()
+                && (fragment.getParentLayout() == null || !fragment.getParentLayout().isTransitionAnimationInProgress()
+                && !fragment.getParentLayout().isSwipeInProgress());
+        VisibilityTransition current = visibilityTransitions.get(view);
+        if (animate && current != null && current.visible == isVisible) {
             return;
         }
-        if (isAnimated) {
-            if (isVisible) {
+        visibilityTransitions.remove(view);
+        view.animate().setListener(null);
+        view.animate().cancel();
+        if (!animate) {
+            view.setAlpha(targetAlpha);
+            view.setVisibility(isVisible ? VISIBLE : INVISIBLE);
+            return;
+        }
+        if (view.getVisibility() != VISIBLE) {
                 view.setAlpha(0f);
             }
+        if (view.getAlpha() == targetAlpha) {
+            view.setVisibility(isVisible ? VISIBLE : INVISIBLE);
+            return;
+        }
+        final VisibilityTransition transition = new VisibilityTransition(isVisible);
+        visibilityTransitions.put(view, transition);
             view.setVisibility(VISIBLE);
             view.animate()
                     .alpha(targetAlpha)
-                    .setDuration(150)
-                    .start();
-        } else {
+                .setDuration(180)
+                .setInterpolator(CubicBezierInterpolator.EASE_OUT)
+                .setListener(new AnimatorListenerAdapter() {
+                    private void settle() {
+                        if (visibilityTransitions.get(view) != transition) return;
+                        visibilityTransitions.remove(view);
+                        view.setAlpha(targetAlpha);
             view.setVisibility(isVisible ? VISIBLE : INVISIBLE);
-        }
+                        view.animate().setListener(null);
+                    }
+
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        settle();
+                    }
+
+                    @Override
+                    public void onAnimationCancel(Animator animation) {
+                        settle();
+                    }
+                }).start();
     }
 
     private final Runnable loadMembersRunnable = () -> loadMembers();

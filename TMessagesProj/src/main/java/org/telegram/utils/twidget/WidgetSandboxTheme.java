@@ -12,6 +12,7 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.Theme;
 
+import app.nimarkogram.messenger.utils.ui.MonetHelper;
 import java.util.Locale;
 import org.telegram.ui.Components.RichWidgetBlock;
 
@@ -36,8 +37,17 @@ public final class WidgetSandboxTheme {
             int accent = Theme.getColor(keys[4], resourcesProvider);
             int button = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
             int buttonText = Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider);
+            int destructive = Theme.getColor(Theme.key_text_RedRegular, resourcesProvider);
             int secondary = Theme.blendOver(bubble, Theme.multAlpha(accent, .1f));
 
+            if (MonetHelper.isActiveMonetTheme()) {
+                text = MonetHelper.ensureReadableWidgetForeground(text, bubble);
+                hint = MonetHelper.ensureReadableWidgetForeground(hint, bubble);
+                link = MonetHelper.ensureReadableWidgetForeground(link, bubble);
+                accent = MonetHelper.ensureReadableWidgetForeground(accent, bubble);
+                buttonText = MonetHelper.ensureReadableWidgetForeground(buttonText, Theme.blendOver(bubble, button));
+                destructive = MonetHelper.ensureReadableWidgetForeground(destructive, bubble);
+            }
             JSONObject params = new JSONObject();
             params.put("bg_color", hex(bubble, bubble));
             params.put("text_color", hex(text, bubble));
@@ -48,7 +58,7 @@ public final class WidgetSandboxTheme {
             params.put("secondary_bg_color", hex(secondary, bubble));
             params.put("accent_text_color", hex(accent, bubble));
             params.put("subtitle_text_color", hex(hint, bubble));
-            params.put("destructive_text_color", hex(Theme.getColor(Theme.key_text_RedRegular, resourcesProvider), bubble));
+            params.put("destructive_text_color", hex(destructive, bubble));
             params.put("section_bg_color", hex(bubble, bubble));
             params.put("section_header_text_color", hex(accent, bubble));
             params.put("section_separator_color", hex(Theme.multAlpha(text, .12f), bubble));
@@ -56,8 +66,13 @@ public final class WidgetSandboxTheme {
             params.put("bottom_bar_bg_color", hex(secondary, bubble));
 
             JSONObject buttonTokens = new JSONObject();
+            if (MonetHelper.isActiveMonetTheme()) {
+                buttonTokens.put("bg", hex(secondary, bubble));
+                buttonTokens.put("text", hex(MonetHelper.ensureReadableWidgetForeground(accent, secondary), secondary));
+            } else {
             buttonTokens.put("text", hex(accent, bubble));
 
+            }
             JSONObject theme = new JSONObject();
             theme.put("colorScheme", dark ? "dark" : "light");
             theme.put("params", params);
@@ -72,6 +87,8 @@ public final class WidgetSandboxTheme {
 
     public static int signature(Theme.ResourcesProvider resourcesProvider, boolean out) {
         int hash = (resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark()) ? 1 : 0;
+        hash = 31 * hash + (MonetHelper.isActiveMonetTheme() ? 1 : 0);
+        hash = 31 * hash + fill(resourcesProvider, out);
         for (int key : out ? OUT : IN) hash = 31 * hash + Theme.getColor(key, resourcesProvider);
         if (out) for (int key : GRADIENT) hash = 31 * hash + gradientColor(key, resourcesProvider);
         hash = 31 * hash + Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
@@ -104,6 +121,10 @@ public final class WidgetSandboxTheme {
             Theme.key_chat_outBubbleGradient3};
 
     private static int fill(Theme.ResourcesProvider resourcesProvider, boolean out) {
+        if (Theme.isCompactMode(resourcesProvider)) {
+            int background = Theme.getColor(Theme.key_chat_compact_background, resourcesProvider);
+            return out ? Theme.blendOver(background, Theme.getColor(Theme.key_chat_compact_outBackground, resourcesProvider)) : background;
+        }
         int bubble = Theme.getColor(out ? OUT[0] : IN[0], resourcesProvider);
         if (!out || gradientColor(GRADIENT[0], resourcesProvider) == 0) return bubble;
         int r = Color.red(bubble), g = Color.green(bubble), b = Color.blue(bubble), n = 1;
@@ -118,6 +139,13 @@ public final class WidgetSandboxTheme {
         return Color.argb(Color.alpha(bubble), r / n, g / n, b / n);
     }
 
+    public static Integer solidOutBubble(Theme.ResourcesProvider resourcesProvider, boolean selected) {
+        if (gradientColor(GRADIENT[0], resourcesProvider) == 0) return null;
+        boolean dark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+        int color = opaque(fill(resourcesProvider, true), dark);
+        if (selected) color = Theme.blendOver(color, Theme.getColor(Theme.key_chat_outBubbleGradientSelectedOverlay, resourcesProvider));
+        return color;
+    }
     private static int gradientColor(int key, Theme.ResourcesProvider resourcesProvider) {
         return resourcesProvider != null ? resourcesProvider.getCurrentColor(key) : Theme.getCurrentColor(key);
     }

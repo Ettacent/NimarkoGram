@@ -696,10 +696,10 @@ public class ChatAttachAlertContactsLayout extends ChatAttachAlert.AttachAlertLa
 
     @Override
     public boolean sendSelectedItems(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia) {
-        if (selectedContacts.size() == 0 && delegate == null || sendPressed) {
+        if (selectedContacts.size() == 0 || delegate == null || sendPressed) {
             return false;
         }
-        sendPressed = true;
+        final PhonebookShareAlertDelegate sendDelegate = delegate;
 
         ArrayList<TLRPC.User> users = new ArrayList<>(selectedContacts.size());
         for (ListItemID id : selectedContactsOrder) {
@@ -707,7 +707,9 @@ public class ChatAttachAlertContactsLayout extends ChatAttachAlert.AttachAlertLa
             users.add(prepareContact(object));
         }
         return AlertsCreator.ensurePaidMessageConfirmation(parentAlert.currentAccount, parentAlert.getDialogId(), users.size() + parentAlert.getAdditionalMessagesCount(), payStars -> {
-            delegate.didSelectContacts(users, parentAlert.getCommentView().getText().toString(), notify, scheduleDate, effectId, invertMedia, payStars);
+            if (sendPressed) return;
+            sendPressed = true;
+            sendDelegate.didSelectContacts(users, parentAlert.getCommentView().getText().toString(), notify, scheduleDate, effectId, invertMedia, payStars);
             parentAlert.dismiss();
         });
     }
@@ -989,16 +991,16 @@ public class ChatAttachAlertContactsLayout extends ChatAttachAlert.AttachAlertLa
         }
 
         public void search(final String query) {
+            final int searchId = ++lastSearchId;
             if (searchRunnable != null) {
                 Utilities.searchQueue.cancelRunnable(searchRunnable);
                 searchRunnable = null;
             }
-            if (query == null) {
+            if (TextUtils.isEmpty(query) || query.trim().isEmpty()) {
                 searchResult.clear();
                 searchResultNames.clear();
                 notifyDataSetChanged();
             } else {
-                int searchId = ++lastSearchId;
                 Utilities.searchQueue.postRunnable(searchRunnable = () -> processSearch(query, searchId), 300);
             }
         }
@@ -1010,11 +1012,6 @@ public class ChatAttachAlertContactsLayout extends ChatAttachAlert.AttachAlertLa
                 final ArrayList<TLRPC.TL_contact> contactsCopy2 = new ArrayList<>(ContactsController.getInstance(currentAccount).contacts);
                 Utilities.searchQueue.postRunnable(() -> {
                     String search1 = query.trim().toLowerCase();
-                    if (search1.length() == 0) {
-                        lastSearchId = -1;
-                        updateSearchResults(query, new ArrayList<>(), new ArrayList<>(), lastSearchId);
-                        return;
-                    }
                     String search2 = LocaleController.getInstance().getTranslitString(search1);
                     if (search1.equals(search2) || search2.length() == 0) {
                         search2 = null;
@@ -1116,7 +1113,7 @@ public class ChatAttachAlertContactsLayout extends ChatAttachAlert.AttachAlertLa
                 if (searchId != lastSearchId) {
                     return;
                 }
-                if (searchId != -1 && listView.getAdapter() != searchAdapter) {
+                if (listView.getAdapter() != searchAdapter) {
                     listView.setAdapter(searchAdapter);
                 }
                 searchResult = users;

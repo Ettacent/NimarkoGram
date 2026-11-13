@@ -164,6 +164,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private DefaultBandwidthMeter bandwidthMeter;
     private MappingTrackSelector trackSelector;
     private ExtendedDefaultDataSourceFactory mediaDataSourceFactory;
+    private final FileLoader.PlayerStreamScope playerStreamScope;
     private TextureView textureView;
     private SurfaceView surfaceView;
     private Surface surface;
@@ -227,8 +228,13 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
 
     static int playerCounter = 0;
     public VideoPlayer(boolean pauseOther, boolean audioDisabled) {
+        this(pauseOther, audioDisabled, null);
+    }
+
+    public VideoPlayer(boolean pauseOther, boolean audioDisabled, FileLoader.PlayerStreamScope playerStreamScope) {
         this.audioDisabled = audioDisabled;
-        mediaDataSourceFactory = new ExtendedDefaultDataSourceFactory(ApplicationLoader.applicationContext, "Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/47.0 (Chrome)");
+        this.playerStreamScope = playerStreamScope;
+        mediaDataSourceFactory = new ExtendedDefaultDataSourceFactory(ApplicationLoader.applicationContext, "Mozilla/5.0 (X11; Linux x86_64; rv:10.0) Gecko/20150101 Firefox/47.0 (Chrome)", null, playerStreamScope);
         trackSelector = new DefaultTrackSelector(ApplicationLoader.applicationContext, new AdaptiveTrackSelection.Factory());
         if (audioDisabled) {
             trackSelector.setParameters(trackSelector.getParameters().buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build());
@@ -1411,6 +1417,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             return;
         }
         released = true;
+        if (playerStreamScope != null) playerStreamScope.close();
         activePlayers.remove(playerId);
         audioUpdateHandler.removeCallbacksAndMessages(null);
         audioVisualizerDelegate = null;

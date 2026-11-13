@@ -41,7 +41,7 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
         this.colorKey = colorKey;
         if (sourceColor == null) {
             sourceColor = new GlassSourceColor();
-            sourceColor.setColor(Theme.getColor(colorKey));
+            sourceColor.setColor(Theme.getColor(colorKey, resourcesProvider));
             factory = new BlurredBackgroundDrawableViewFactory(sourceColor);
             setup(factory);
         }
@@ -68,7 +68,11 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
     }
 
     public void setFadeHeightBottom(int height) {
-        fadeDrawableBottom.setFadeHeight(height, true);
+        setFadeHeightBottom(height, true);
+    }
+
+    public void setFadeHeightBottom(int height, boolean opacity) {
+        fadeDrawableBottom.setFadeHeight(height, opacity);
     }
 
     @Override
@@ -132,6 +136,7 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
 
     public void setResourcesProvider(Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
+        invalidate();
     }
 
     public void setOverlayColor(int color) {
@@ -198,8 +203,8 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
     private int compactShaderColor, compactShaderTopHeight, compactShaderBottomHeight, compactShaderHeight;
 
     private void drawCompactFades(Canvas canvas) {
-        final int color = Theme.getColor(Theme.key_chat_compact_fadeEdge);
-        final int middle = Theme.getColor(Theme.key_chat_compact_fadeMiddle);
+        final int color = Theme.getColor(Theme.key_chat_compact_fadeEdge, resourcesProvider);
+        final int middle = Theme.getColor(Theme.key_chat_compact_fadeMiddle, resourcesProvider);
         final int h = getMeasuredHeight();
         if (compactShaderTop == null || compactShaderColor != color || compactShaderMiddle != middle || compactShaderTopHeight != fadeZoneTop || compactShaderBottomHeight != fadeZoneBottom || compactShaderHeight != h) {
             compactShaderColor = color;
@@ -226,12 +231,14 @@ public class ChatActivityFadeView extends View implements Theme.Colorable {
     @Override
     public void updateColors() {
         if (sourceColor != null && colorKey != -1) {
-            sourceColor.setColor(Theme.getColor(colorKey));
-            invalidate();
+            sourceColor.setColor(Theme.getColor(colorKey, resourcesProvider));
         }
+        invalidate();
     }
     @Override
     public void addColorKeys(HashSet<Integer> colors) {
         colors.add(colorKey);
+        colors.add(Theme.key_chat_compact_fadeEdge);
+        colors.add(Theme.key_chat_compact_fadeMiddle);
     }
 }

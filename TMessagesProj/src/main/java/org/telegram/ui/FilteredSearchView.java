@@ -120,6 +120,7 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
 
     private int columnsCount = 3;
     private int nextSearchRate;
+    private MediaController.PlaylistGlobalSearchParams acceptedMusicPlaylistParams;
     String lastMessagesSearchString;
     String lastSearchFilterQueryString;
 
@@ -138,6 +139,59 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
     private int totalCount;
     private int requestIndex;
 
+    private SearchOwner searchOwner;
+    private Runnable resumeSearchRunnable;
+    private boolean searchDetached;
+    private boolean searchWindowHidden;
+
+    private static class SearchOwner {
+        final int account;
+        final long userId;
+        final int loginTime;
+        final long dialogId;
+        final long communityId;
+        final long minDate;
+        final long maxDate;
+        final FiltersView.MediaFilterData filter;
+        final TLRPC.MessagesFilter messagesFilter;
+        final int filterType;
+        final boolean includeFolder;
+        final String query;
+        final String key;
+        Object musicPlaylistSource = new Object();
+        volatile boolean active = true;
+        boolean requestPending;
+        int requestToken;
+        boolean localTipsRequested;
+        boolean localTipsReady;
+        MessagesStorage localTipsStorage;
+        Runnable localTipsRunnable;
+
+        SearchOwner(int account, long userId, int loginTime, long dialogId, long communityId, long minDate, long maxDate, FiltersView.MediaFilterData filter, boolean includeFolder, String query) {
+            this.account = account;
+            this.userId = userId;
+            this.loginTime = loginTime;
+            this.dialogId = dialogId;
+            this.communityId = communityId;
+            this.minDate = minDate;
+            this.maxDate = maxDate;
+            this.filter = filter;
+            messagesFilter = filter == null ? null : filter.filter;
+            filterType = filter == null ? -1 : filter.filterType;
+            this.includeFolder = includeFolder;
+            this.query = query;
+            key = String.format(Locale.ENGLISH, "%d_%d_%d_%d_%d_%d_%d_%d_%s_%s", account, userId, loginTime, dialogId, communityId, minDate, maxDate, filterType, includeFolder, query);
+        }
+
+        boolean matches(SearchOwner other) {
+            return key.equals(other.key) && filter == other.filter && messagesFilter == other.messagesFilter;
+        }
+
+        boolean isCurrentAccount() {
+            UserConfig config = UserConfig.getInstance(account);
+            return userId != 0 && config.getClientUserId() == userId && config.loginTime == loginTime;
+        }
+    }
     private String currentDataQuery;
 
     private static SpannableStringBuilder[] arrowSpan = new SpannableStringBuilder[3];
@@ -167,6 +221,7 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
         public void run() {
             if (isLoading) {
                 messages.clear();
+                acceptedMusicPlaylistParams = null;
                 sections.clear();
                 sectionArrays.clear();
                 if (adapter != null) {
@@ -592,11 +647,186 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
         return fromName == null ? "" : fromName;
     }
 
+    private boolean canRunSearch() {
+        if (searchDetached || searchWindowHidden) {
+            return false;
+        }
+        View view = this;
+        while (view != null) {
+            if (view.getVisibility() != View.VISIBLE) {
+                return false;
+            }
+            view = view.getParent() instanceof View ? (View) view.getParent() : null;
+        }
+        return true;
+    }
+
+    private boolean isCurrentSearchOwner(SearchOwner owner) {
+        return searchOwner == owner && owner.active && canRunSearch() && parentFragment.getCurrentAccount() == owner.account && owner.isCurrentAccount()
+                && currentSearchFilter == owner.filter && (owner.filter == null || owner.filter.filterType == owner.filterType && owner.filter.filter == owner.messagesFilter);
+    }
+
+    private void cancelSearchRequest(SearchOwner owner) {
+        if (owner.requestToken != 0) {
+            if (owner.isCurrentAccount()) {
+                ConnectionsManager.getInstance(owner.account).cancelRequest(owner.requestToken, true);
+            }
+            owner.requestToken = 0;
+        }
+    }
+
+    private void suspendSearch() {
+        if (resumeSearchRunnable != null) {
+            removeCallbacks(resumeSearchRunnable);
+            resumeSearchRunnable = null;
+        }
+        SearchOwner owner = searchOwner;
+        if (owner == null || !owner.active) {
+            return;
+        }
+        owner.active = false;
+        requestIndex++;
+        cancelSearchRequest(owner);
+        if (searchRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(searchRunnable);
+            searchRunnable = null;
+        }
+        AndroidUtilities.cancelRunOnUIThread(clearCurrentResultsRunnable);
+        if (owner.localTipsRunnable != null) {
+            owner.localTipsStorage.getStorageQueue().cancelRunnable(owner.localTipsRunnable);
+            owner.localTipsRunnable = null;
+        }
+        isLoading = false;
+    }
+
+    private void resumeSearch() {
+        SearchOwner owner = searchOwner;
+        if (owner == null || owner.active || resumeSearchRunnable != null || !canRunSearch() || parentFragment.getCurrentAccount() != owner.account || !owner.isCurrentAccount()) {
+            return;
+        }
+        resumeSearchRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (resumeSearchRunnable != this) {
+                    return;
+                }
+                resumeSearchRunnable = null;
+                if (searchOwner != owner || owner.active || !canRunSearch() || parentFragment.getCurrentAccount() != owner.account || !owner.isCurrentAccount()) {
+                    return;
+                }
+                if (owner.requestPending) {
+                    search(owner.dialogId, owner.communityId, owner.minDate, owner.maxDate, owner.filter, owner.includeFolder, owner.query, false);
+                } else {
+                    SearchOwner resumedOwner = new SearchOwner(owner.account, owner.userId, owner.loginTime, owner.dialogId, owner.communityId, owner.minDate, owner.maxDate, owner.filter, owner.includeFolder, owner.query);
+                    final boolean sameScope = resumedOwner.matches(owner);
+                    if (sameScope) resumedOwner.musicPlaylistSource = owner.musicPlaylistSource;
+                    resumedOwner.localTipsReady = owner.localTipsReady && sameScope;
+                    searchOwner = resumedOwner;
+                    startLocalTips(resumedOwner);
+                }
+            }
+        };
+        if (!post(resumeSearchRunnable)) {
+            resumeSearchRunnable = null;
+        }
+    }
+
+    private void startLocalTips(SearchOwner owner) {
+        if (!isCurrentSearchOwner(owner) || owner.localTipsRequested || owner.localTipsReady) {
+            return;
+        }
+        owner.localTipsRequested = true;
+        final ArrayList<FiltersView.DateData> dateData = new ArrayList<>();
+        FiltersView.fillTipDates(owner.query, dateData);
+        final ArrayList<Object> resultArray = new ArrayList<>();
+        if (TextUtils.isEmpty(owner.query) || owner.dialogId != 0 && owner.communityId == 0) {
+            publishLocalTips(owner, resultArray, dateData);
+            return;
+        }
+        owner.localTipsStorage = MessagesStorage.getInstance(owner.account);
+        owner.localTipsRunnable = () -> {
+            if (!owner.active || !owner.isCurrentAccount()) {
+                return;
+            }
+            try {
+                owner.localTipsStorage.localSearch(0, owner.query, resultArray, new ArrayList<>(), new ArrayList<>(), null, owner.includeFolder ? 1 : 0);
+            } catch (Exception e) {
+                FileLog.e(e);
+                resultArray.clear();
+            }
+            AndroidUtilities.runOnUIThread(() -> publishLocalTips(owner, resultArray, dateData));
+        };
+        boolean posted = false;
+        try {
+            posted = owner.localTipsStorage.getStorageQueue().postRunnable(owner.localTipsRunnable);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        if (!posted) {
+            publishLocalTips(owner, resultArray, dateData);
+        }
+    }
+
+    private void publishLocalTips(SearchOwner owner, ArrayList<Object> resultArray, ArrayList<FiltersView.DateData> dateData) {
+        if (!isCurrentSearchOwner(owner)) {
+            return;
+        }
+        MessagesController.getInstance(owner.account).cacheLocalSearchPeers(resultArray);
+        if (!isCurrentSearchOwner(owner)) return;
+        owner.localTipsRunnable = null;
+        owner.localTipsReady = true;
+        localTipChats.clear();
+        localTipChats.addAll(resultArray);
+        TLRPC.User self = UserConfig.getInstance(owner.account).getCurrentUser();
+        if (self != null && owner.query.length() >= 3 && (LocaleController.getString(R.string.SavedMessages).toLowerCase().startsWith(owner.query) || "saved messages".startsWith(owner.query))) {
+            boolean found = false;
+            for (int i = 0; i < localTipChats.size(); i++) {
+                if (localTipChats.get(i) instanceof TLRPC.User && self.id == ((TLRPC.User) localTipChats.get(i)).id) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                localTipChats.add(0, self);
+            }
+        }
+        localTipDates.clear();
+        localTipDates.addAll(dateData);
+        localTipArchive = owner.query.length() >= 3 && (LocaleController.getString(R.string.ArchiveSearchFilter).toLowerCase().startsWith(owner.query) || "archive".startsWith(owner.query));
+        if (delegate != null) {
+            delegate.updateFiltersView(TextUtils.isEmpty(owner.query), localTipChats, localTipDates, localTipArchive);
+        }
+    }
     public void search(long dialogId, long communityId, long minDate, long maxDate, FiltersView.MediaFilterData currentSearchFilter, boolean includeFolder, String query, boolean clearOldResults) {
         if (query == null) query = "";
         final String finalQuery = query;
-        String currentSearchFilterQueryString = String.format(Locale.ENGLISH, "%d%d%d%d%d%s%s", dialogId, communityId, minDate, maxDate, currentSearchFilter == null ? -1 : currentSearchFilter.filterType, query, includeFolder);
-        boolean filterAndQueryIsSame = lastSearchFilterQueryString != null && lastSearchFilterQueryString.equals(currentSearchFilterQueryString);
+        final int currentAccount = parentFragment.getCurrentAccount();
+        UserConfig config = UserConfig.getInstance(currentAccount);
+        SearchOwner previousOwner = searchOwner;
+        SearchOwner nextOwner = new SearchOwner(currentAccount, config.getClientUserId(), config.loginTime, dialogId, communityId, minDate, maxDate, currentSearchFilter, includeFolder, query);
+        boolean sameOwner = previousOwner != null && previousOwner.matches(nextOwner);
+        boolean restartPending = sameOwner && !previousOwner.active && previousOwner.requestPending;
+        final SearchOwner owner;
+        if (sameOwner && previousOwner.active) {
+            owner = previousOwner;
+        } else {
+            suspendSearch();
+            owner = nextOwner;
+            if (sameOwner) {
+                owner.musicPlaylistSource = previousOwner.musicPlaylistSource;
+                owner.localTipsReady = previousOwner.localTipsReady;
+                owner.requestPending = previousOwner.requestPending;
+            } else {
+                lastSearchFilterQueryString = null;
+                localTipChats.clear();
+                localTipDates.clear();
+                localTipArchive = false;
+            }
+            owner.active = canRunSearch();
+            searchOwner = owner;
+        }
+        String currentSearchFilterQueryString = owner.key;
+        boolean filterAndQueryIsSame = sameOwner && lastSearchFilterQueryString != null && lastSearchFilterQueryString.equals(currentSearchFilterQueryString);
         boolean forceClear = !filterAndQueryIsSame && clearOldResults;
         this.currentSearchFilter = currentSearchFilter;
         this.currentSearchDialogId = dialogId;
@@ -605,15 +835,21 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
         this.currentSearchMaxDate = maxDate;
         this.currentSearchString = query;
         this.currentIncludeFolder = includeFolder;
-        if (searchRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(searchRunnable);
-        }
-        AndroidUtilities.cancelRunOnUIThread(clearCurrentResultsRunnable);
-        if (filterAndQueryIsSame && clearOldResults) {
+        if (filterAndQueryIsSame && clearOldResults && !restartPending) {
+            startLocalTips(owner);
             return;
         }
+        if (searchRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(searchRunnable);
+            searchRunnable = null;
+        }
+        AndroidUtilities.cancelRunOnUIThread(clearCurrentResultsRunnable);
+        final int requestId = ++requestIndex;
+        cancelSearchRequest(owner);
+        owner.requestPending = true;
         if (forceClear || currentSearchFilter == null && communityId == 0 && dialogId == 0 && minDate == 0 && maxDate == 0) {
             messages.clear();
+            acceptedMusicPlaylistParams = null;
             sections.clear();
             sectionArrays.clear();
             isLoading = true;
@@ -621,7 +857,6 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
             if (adapter != null) {
                 adapter.notifyDataSetChanged();
             }
-            requestIndex++;
             firstLoading = true;
             if (recyclerListView.getPinnedHeader() != null) {
                 recyclerListView.getPinnedHeader().setAlpha(0);
@@ -629,9 +864,11 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
             localTipChats.clear();
             localTipDates.clear();
             if (!forceClear) {
+                owner.requestPending = false;
                 return;
             }
-        } else if (clearOldResults && !messages.isEmpty()) {
+        } else if (clearOldResults && !messages.isEmpty() && !restartPending) {
+            owner.requestPending = false;
             return;
         }
         isLoading = true;
@@ -651,19 +888,27 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                 delegate.updateFiltersView(false, null, null, false);
             }
         }
-        requestIndex++;
-        final int requestId = requestIndex;
-        int currentAccount = UserConfig.selectedAccount;
+        if (requestId != requestIndex || searchOwner != owner) {
+            return;
+        }
+        if (!isCurrentSearchOwner(owner)) {
+            suspendSearch();
+            isLoading = false;
+            return;
+        }
 
         AndroidUtilities.runOnUIThread(searchRunnable = () -> {
+            if (requestId != requestIndex || !isCurrentSearchOwner(owner)) {
+                return;
+            }
+            searchRunnable = null;
             TLMethod<TLRPC.messages_Messages> request;
 
-            ArrayList<Object> resultArray = null;
             if (dialogId != 0 && communityId == 0) {
                 final TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
                 req.q = finalQuery;
                 req.limit = 20;
-                req.filter = currentSearchFilter == null ? new TLRPC.TL_inputMessagesFilterEmpty() : currentSearchFilter.filter;
+                req.filter = owner.messagesFilter == null ? new TLRPC.TL_inputMessagesFilterEmpty() : owner.messagesFilter;
                 req.peer = AccountInstance.getInstance(currentAccount).getMessagesController().getInputPeer(dialogId);
                 if (minDate > 0) {
                     req.min_date = (int) (minDate / 1000);
@@ -679,17 +924,11 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                 }
                 request = req;
             } else {
-                if (!TextUtils.isEmpty(finalQuery)) {
-                    resultArray = new ArrayList<>();
-                    ArrayList<CharSequence> resultArrayNames = new ArrayList<>();
-                    ArrayList<TLRPC.User> encUsers = new ArrayList<>();
-                    MessagesStorage.getInstance(currentAccount).localSearch(0, finalQuery, resultArray, resultArrayNames, encUsers, null, includeFolder ? 1 : 0);
-                }
 
                 final TLRPC.TL_messages_searchGlobal req = new TLRPC.TL_messages_searchGlobal();
                 req.limit = 20;
                 req.q = finalQuery;
-                req.filter = currentSearchFilter == null ? new TLRPC.TL_inputMessagesFilterEmpty() : currentSearchFilter.filter;
+                req.filter = owner.messagesFilter == null ? new TLRPC.TL_inputMessagesFilterEmpty() : owner.messagesFilter;
                 req.community = MessagesController.getInstance(currentAccount).getInputChannel(communityId);
                 if (minDate > 0) {
                     req.min_date = (int) (minDate / 1000);
@@ -716,10 +955,10 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
             lastMessagesSearchString = finalQuery;
             lastSearchFilterQueryString = currentSearchFilterQueryString;
 
-            ArrayList<Object> finalResultArray = resultArray;
-            final ArrayList<FiltersView.DateData> dateData = new ArrayList<>();
-            FiltersView.fillTipDates(lastMessagesSearchString, dateData);
-            ConnectionsManager.getInstance(currentAccount).sendRequestTyped(request, (response, error) -> {
+            owner.requestToken = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(request, (response, error) -> {
+                if (!owner.active || !owner.isCurrentAccount()) {
+                    return;
+                }
                 ArrayList<MessageObject> messageObjects = new ArrayList<>();
                 if (error == null) {
                     TLRPC.messages_Messages res = response;
@@ -732,11 +971,13 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                 }
 
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (requestId != requestIndex) {
+                    if (requestId != requestIndex || !isCurrentSearchOwner(owner)) {
                         return;
                     }
+                    owner.requestPending = false;
+                    owner.requestToken = 0;
                     isLoading = false;
-                    if (error != null) {
+                    if (error != null || response == null) {
                         emptyView.title.setText(LocaleController.getString(R.string.SearchEmptyViewTitle2));
                         emptyView.subtitle.setVisibility(View.VISIBLE);
                         emptyView.subtitle.setText(LocaleController.getString(R.string.SearchEmptyViewFilteredSubtitle2));
@@ -747,12 +988,14 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                     emptyView.showProgress(false);
 
                     TLRPC.messages_Messages res = response;
-                    nextSearchRate = res.next_rate;
                     MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, true, true);
                     MessagesController.getInstance(currentAccount).putUsers(res.users, false);
                     MessagesController.getInstance(currentAccount).putChats(res.chats, false);
+                    if (!isCurrentSearchOwner(owner) || requestId != requestIndex) return;
+                    nextSearchRate = res.next_rate;
                     if (!filterAndQueryIsSame) {
                         messages.clear();
+                        acceptedMusicPlaylistParams = null;
                         messagesById.clear();
                         sections.clear();
                         sectionArrays.clear();
@@ -781,6 +1024,18 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                     }
                     endReached = messages.size() >= totalCount;
 
+                    MediaController.PlaylistGlobalSearchParams musicParams = new MediaController.PlaylistGlobalSearchParams(finalQuery, owner.dialogId, owner.minDate, owner.maxDate, owner.filter);
+                    musicParams.setSourceIdentity(owner.musicPlaylistSource);
+                    musicParams.communityId = owner.communityId;
+                    if (request instanceof TLRPC.TL_messages_searchGlobal) {
+                        musicParams.communityPeer = ((TLRPC.TL_messages_searchGlobal) request).community;
+                    }
+                    musicParams.folderId = owner.includeFolder ? 1 : 0;
+                    musicParams.nextSearchRate = res.next_rate;
+                    musicParams.totalCount = totalCount;
+                    musicParams.endReached = res instanceof TLRPC.TL_messages_messages || res.messages.isEmpty();
+                    musicParams.captureCursor(owner.account, messages);
+                    acceptedMusicPlaylistParams = musicParams;
                     if (messages.isEmpty()) {
                         if (currentSearchFilter != null) {
                             if (TextUtils.isEmpty(currentDataQuery) && dialogId == 0 && minDate == 0) {
@@ -839,36 +1094,6 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                         recyclerListView.setAdapter(adapter);
                     }
 
-                    if (!filterAndQueryIsSame) {
-                        localTipChats.clear();
-                        if (finalResultArray != null) {
-                            localTipChats.addAll(finalResultArray);
-                        }
-                        if (finalQuery != null && finalQuery.length() >= 3 && (LocaleController.getString(R.string.SavedMessages).toLowerCase().startsWith(finalQuery) ||
-                                "saved messages".startsWith(finalQuery))) {
-                            boolean found = false;
-                            for (int i = 0; i < localTipChats.size(); i++) {
-                                if (localTipChats.get(i) instanceof TLRPC.User)
-                                    if (UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser().id == ((TLRPC.User) localTipChats.get(i)).id) {
-                                        found = true;
-                                        break;
-                                    }
-                            }
-                            if (!found) {
-                                localTipChats.add(0, UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser());
-                            }
-                        }
-                        localTipDates.clear();
-                        localTipDates.addAll(dateData);
-                        localTipArchive = false;
-                        if (finalQuery != null && finalQuery.length() >= 3 && (LocaleController.getString(R.string.ArchiveSearchFilter).toLowerCase().startsWith(finalQuery) ||
-                                "archive".startsWith(finalQuery))) {
-                            localTipArchive = true;
-                        }
-                        if (delegate != null) {
-                            delegate.updateFiltersView(TextUtils.isEmpty(currentDataQuery), localTipChats, localTipDates, localTipArchive);
-                        }
-                    }
                     firstLoading = false;
                     View progressView = null;
                     int progressViewPosition = -1;
@@ -939,6 +1164,7 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                     adapter.notifyDataSetChanged();
                 });
             });
+            startLocalTips(owner);
         }, (filterAndQueryIsSame && !messages.isEmpty()) ? 0 : 350);
 
         if (currentSearchFilter == null) {
@@ -1489,11 +1715,11 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
                                 MediaController.getInstance().setVoiceMessagesPlaylist(result ? messages : null, false);
                                 return result;
                             } else if (messageObject.isMusic()) {
-                                MediaController.PlaylistGlobalSearchParams params = new MediaController.PlaylistGlobalSearchParams(currentDataQuery, currentSearchDialogId, currentSearchMinDate, currentSearchMinDate, currentSearchFilter);
-                                params.endReached = endReached;
-                                params.nextSearchRate = nextSearchRate;
-                                params.totalCount = totalCount;
-                                params.folderId = currentIncludeFolder ? 1 : 0;
+                                MediaController.PlaylistGlobalSearchParams params = acceptedMusicPlaylistParams;
+                                if (params == null || !params.isCurrentAccount(parentFragment.getCurrentAccount())
+                                        || !messages.contains(messageObject)) {
+                                    return false;
+                                }
                                 return MediaController.getInstance().setPlaylist(messages, messageObject, 0, params);
                             }
                             return false;
@@ -1612,13 +1838,38 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        searchDetached = false;
         NotificationCenter.getInstance(lastAccount = UserConfig.selectedAccount).addWeakObserver(this, NotificationCenter.emojiLoaded);
+        resumeSearch();
     }
 
     @Override
     protected void onDetachedFromWindow() {
+        searchDetached = true;
+        suspendSearch();
         super.onDetachedFromWindow();
         NotificationCenter.getInstance(lastAccount).removeObserver(this, NotificationCenter.emojiLoaded);
+    }
+
+    @Override
+    protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (canRunSearch()) {
+            resumeSearch();
+        } else {
+            suspendSearch();
+        }
+    }
+
+    @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        searchWindowHidden = visibility != View.VISIBLE;
+        if (canRunSearch()) {
+            resumeSearch();
+        } else {
+            suspendSearch();
+        }
     }
 
     @Override
@@ -1784,8 +2035,9 @@ public class FilteredSearchView extends FrameLayout implements Theme.Colorable, 
     public void setDelegate(Delegate delegate, boolean update) {
         this.delegate = delegate;
         if (update && delegate != null) {
-            if (!localTipChats.isEmpty()) {
-                delegate.updateFiltersView(false, localTipChats, localTipDates, localTipArchive);
+            if (searchOwner != null && isCurrentSearchOwner(searchOwner) && searchOwner.localTipsReady
+                    && (!localTipChats.isEmpty() || !localTipDates.isEmpty() || localTipArchive)) {
+                delegate.updateFiltersView(TextUtils.isEmpty(searchOwner.query), localTipChats, localTipDates, localTipArchive);
             }
         }
     }

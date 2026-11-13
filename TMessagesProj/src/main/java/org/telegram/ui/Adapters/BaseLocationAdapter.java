@@ -50,8 +50,14 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
     private int searchId;
     protected boolean searchInProgress;
 
+    protected boolean destroyed;
     public void destroy() {
+        destroyed = true;
         cancelSearch();
+        searchInProgress = false;
+        lastFoundQuery = null;
+        locations.clear();
+        delegate = null;
     }
 
     public void setDelegate(BaseLocationAdapterDelegate delegate) {
@@ -68,16 +74,21 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
 
     public void searchDelayed(final String query) {
         cancelSearch();
+        if (destroyed) return;
+        final int id = searchId;
         if (TextUtils.isEmpty(query)) {
-            locations.clear();
-            searchInProgress = false;
-            update(true);
+            publishSearchResult(id, null, new ArrayList<>());
         } else {
             searchInProgress = true;
-            Utilities.searchQueue.postRunnable(searchRunnable = () -> AndroidUtilities.runOnUIThread(() -> {
+            searchRunnable = () -> AndroidUtilities.runOnUIThread(() -> {
+                if (destroyed || id != searchId) return;
                 searchRunnable = null;
-                searchLocations(query);
-            }), 400);
+                searchLocations(query, id);
+            });
+            if (!Utilities.searchQueue.postRunnable(searchRunnable, 400)) {
+                searchRunnable = null;
+                publishSearchResult(id, query, new ArrayList<>());
+            }
         }
     }
 
@@ -89,11 +100,10 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
         return lastFoundQuery;
     }
 
-    private void searchLocations(final String query) {
-        final int id = ++searchId;
+    private void searchLocations(final String query, final int id) {
             final Locale locale = LocaleController.getInstance().getCurrentLocale();
             final Locale englishLocale = stories ?  locale.getLanguage().contains("en") ? locale : Locale.US : null;
-            Utilities.globalQueue.postRunnable(() -> {
+        boolean posted = Utilities.globalQueue.postRunnable(() -> {
                 final ArrayList<TLRPC.TL_messageMediaVenue> locations = new ArrayList<>();
                 try {
                     final int maxCount = biz ? 10 : 5;
@@ -359,20 +369,19 @@ public abstract class BaseLocationAdapter extends AdapterWithDiffUtils {
                         }
                     }
                 } catch (Exception ignore) {}
-                AndroidUtilities.runOnUIThread(() -> {
-                if (id != searchId) {
-                    return;
-                }
+            AndroidUtilities.runOnUIThread(() -> publishSearchResult(id, query, locations));
+        });
+        if (!posted) publishSearchResult(id, query, new ArrayList<>());
+    }
+
+    private void publishSearchResult(int id, String query, ArrayList<TLRPC.TL_messageMediaVenue> result) {
+        if (destroyed || id != searchId) return;
                         searchInProgress = false;
                         lastFoundQuery = query;
-                    BaseLocationAdapter.this.locations.clear();
-                    BaseLocationAdapter.this.locations.addAll(locations);
-                if (delegate != null) {
-                    delegate.didLoadSearchResult(BaseLocationAdapter.this.locations);
-                }
-                    update(true);
-                });
-            });
+        locations.clear();
+        locations.addAll(result);
+        if (delegate != null) delegate.didLoadSearchResult(locations);
+        if (!destroyed && id == searchId) update(true);
     }
 
     protected void update(boolean animated) {

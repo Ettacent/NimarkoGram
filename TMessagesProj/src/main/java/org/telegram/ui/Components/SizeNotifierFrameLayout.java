@@ -118,6 +118,7 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     private final int TOP_CLIP_OFFSET = (int) (10 + DOWN_SCALE * 2);
     private static DispatchQueue blurQueue;
     ValueAnimator blurCrossfade;
+    private long blurLifecycleGeneration;
     public boolean invalidateBlur;
     int count;
     int times;
@@ -696,6 +697,7 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
         }
         blurBackgroundTask.radius = (int) ((int) (Math.max(6, Math.max(lastH, lastW) / 180) * 2.5f) * BlurSettingsBottomSheet.blurRadius);
         blurBackgroundTask.finalBitmap = finalBitmap;
+        blurBackgroundTask.generation = blurLifecycleGeneration;
         blurQueue.postRunnable(blurBackgroundTask);
     }
 
@@ -704,8 +706,12 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
         int radius;
         BlurBitmap finalBitmap;
 
+        long generation;
         @Override
         public void run() {
+            final int radius = this.radius;
+            final BlurBitmap finalBitmap = this.finalBitmap;
+            final long generation = this.generation;
             long time = System.currentTimeMillis();
 
             Utilities.stackBlurBitmap(finalBitmap.topBitmap, radius);
@@ -721,12 +727,20 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
             }
 
             AndroidUtilities.runOnUIThread(() -> {
-                if (!blurIsRunning) {
+                if (!blurIsRunning || generation != blurLifecycleGeneration) {
                     if (finalBitmap != null) {
                         finalBitmap.recycle();
                     }
                     blurGeneratingTuskIsRunning = false;
+                    if (blurIsRunning) {
+                        invalidateBlur = true;
+                        startBlur();
+                    }
                     return;
+                }
+                if (blurCrossfade != null) {
+                    blurCrossfade.cancel();
+                    blurCrossfade = null;
                 }
                 prevBitmap = currentBitmap;
                 BlurBitmap oldBitmap = currentBitmap;
@@ -741,20 +755,21 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
                     blurPaintBottom.setShader(bitmapShader);
                 }
 
-                if (blurCrossfade != null) {
-                    blurCrossfade.cancel();
-                }
                 blurCrossfadeProgress = 0;
                 blurCrossfade = ValueAnimator.ofFloat(0, 1f);
                 blurCrossfade.addUpdateListener(valueAnimator -> {
+                    if (blurCrossfade != valueAnimator) return;
                     blurCrossfadeProgress = (float) valueAnimator.getAnimatedValue();
                     invalidateBlurredViews();
                 });
                 blurCrossfade.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        if (blurCrossfade != animation) return;
+                        blurCrossfade = null;
                         blurCrossfadeProgress = 1f;
-                        unusedBitmaps.add(oldBitmap);
+                        if (oldBitmap != null) unusedBitmaps.add(oldBitmap);
+                        prevBitmap = null;
                         blurPaintTop2.setShader(null);
                         blurPaintBottom2.setShader(null);
                         invalidateBlurredViews();
@@ -848,6 +863,8 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         attached = false;
+        blurIsRunning = false;
+        blurLifecycleGeneration++;
         blurPaintTop.setShader(null);
         blurPaintTop2.setShader(null);
         blurPaintBottom.setShader(null);
@@ -865,7 +882,6 @@ public class SizeNotifierFrameLayout extends FrameLayout implements Theme.Colora
             }
         }
         unusedBitmaps.clear();
-        blurIsRunning = false;
 
         if (backgroundDrawable instanceof ChatBackgroundDrawable) {
             ((ChatBackgroundDrawable) backgroundDrawable).onDetachedFromWindow(backgroundView);

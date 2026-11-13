@@ -23,13 +23,17 @@ import org.telegram.ui.Storage.CacheModel;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipException;
@@ -41,6 +45,7 @@ public class FileLoadOperation {
     public boolean preFinished;
 
     FileLoadOperationStream stream;
+    private FileLoader.StreamRegistration streamRegistration;
     boolean streamPriority;
     long streamOffset;
 
@@ -57,29 +62,34 @@ public class FileLoadOperation {
             startDownloadRequest(-1);
         }
     };
-    private Runnable fileWriteRunnable;
+    private LocalFileTask fileWriteRunnable;
     public boolean isStory;
 
     private boolean isVideoDocument;
     public volatile boolean caughtPremiumFloodWait;
     public void setStream(FileLoadOperationStream stream, boolean streamPriority, long streamOffset) {
+        setStream(stream, streamPriority, streamOffset, null);
+    }
+
+    void setStream(FileLoadOperationStream stream, boolean streamPriority, long streamOffset, FileLoader.StreamRegistration registration) {
+        synchronized (this) {
+            if (registration != null && !registration.isAttachedTo(this)) return;
         this.stream = stream;
+            this.streamRegistration = registration;
         this.streamOffset = streamOffset;
         this.streamPriority = streamPriority;
-        Utilities.stageQueue.postRunnable(() -> {
-            if (streamListeners == null) {
-                streamListeners = new ArrayList<>();
-            }
-            if (stream != null && !streamListeners.contains(stream)) {
-                streamListeners.add(stream);
-            }
-            if (!streamListeners.isEmpty()) {
+        }
+        if (!postLocalFileTask(new LocalFileTask(() -> {
+            if (registration != null && !registration.isAttachedTo(this)) return;
+            addStreamListener(stream, registration);
+            if (registration != null && !registration.isAttachedTo(this)) return;
+            if (streamListeners != null && !streamListeners.isEmpty()) {
                 Utilities.stageQueue.cancelRunnable(cancelAfterNoStreamListeners);
             }
             if (stream != null && state != stateDownloading && state != stateIdle) {
                 stream.newDataAvailable();
             }
-        });
+        }), true, 0)) onFail(false, 0);
     }
 
     public int getPositionInQueue() {
@@ -155,6 +165,7 @@ public class FileLoadOperation {
 
     private ArrayList<FileLoadOperationStream> streamListeners;
 
+    private final IdentityHashMap<FileLoadOperationStream, FileLoader.StreamRegistration> streamListenerRegistrations = new IdentityHashMap<>();
     private final static int stateIdle = 0;
     private final static int stateDownloading = 1;
     private final static int stateFailed = 2;
@@ -254,12 +265,47 @@ public class FileLoadOperation {
     private byte[] cdnKey;
     private byte[] cdnToken;
     private int cdnDatacenterId;
-    private boolean reuploadingCdn;
+    private volatile boolean reuploadingCdn;
     protected boolean requestingReference;
     private boolean requestedReference;
     private RandomAccessFile fileReadStream;
     private byte[] cdnCheckBytes;
-    private boolean requestingCdnOffsets;
+    private volatile boolean requestingCdnOffsets;
+
+    private interface CdnAuxCallback {
+        void run(CdnAuxRequest request, TLObject response, TLRPC.TL_error error);
+    }
+
+    private static final class CdnAuxRequest {
+        final boolean hashes;
+        final int account;
+        final int datacenterId;
+        final long generation;
+        final long epoch;
+        final TLObject payload;
+        final CdnAuxCallback callback;
+        int token;
+        boolean completed;
+        boolean retired;
+
+        CdnAuxRequest(boolean hashes, int account, int datacenterId, long generation, long epoch,
+                      TLObject payload, CdnAuxCallback callback) {
+            this.hashes = hashes;
+            this.account = account;
+            this.datacenterId = datacenterId;
+            this.generation = generation;
+            this.epoch = epoch;
+            this.payload = payload;
+            this.callback = callback;
+        }
+    }
+
+    private final Object cdnAuxLock = new Object();
+    private long cdnAuxGeneration;
+    private long cdnAuxEpoch;
+    private boolean cdnAuxTerminal;
+    private CdnAuxRequest cdnHashRequest;
+    private CdnAuxRequest cdnReuploadRequest;
 
     public final ArrayList<Integer> uiRequestTokens = new ArrayList<>();
     public ArrayList<RequestInfo> requestInfos;
@@ -271,7 +317,9 @@ public class FileLoadOperation {
     private File cacheFileFinal;
     private File cacheIvTemp;
     private File cacheFileParts;
-    private boolean cacheFileFinalReady;
+    private volatile boolean cacheFileFinalReady;
+    private volatile boolean localFilePublished;
+    private boolean localSourceWasCompressed;
 
     private String ext;
     private RandomAccessFile fileOutputStream;
@@ -283,7 +331,376 @@ public class FileLoadOperation {
     private int priority;
     private FilePathDatabase.FileMeta fileMetadata;
 
-    private volatile boolean writingToFilePartsStream, closeFilePartsStreamOnWriteEnd;
+    private final HashSet<String> localFileLeases = new HashSet<>();
+    private final Object localFileIoLock = new Object();
+    private long localFileGeneration;
+    private int localFileTasks;
+    private boolean localFilesTerminal;
+    private volatile boolean localFileRetryPending;
+    private final ArrayList<Runnable> localFileDrainedCallbacks = new ArrayList<>();
+    private boolean localFileDrainPosted;
+
+    private synchronized void beginLocalFileUse() {
+        localFileGeneration++;
+        localFilesTerminal = false;
+        localFileRetryPending = false;
+        localFilePublished = false;
+        localSourceWasCompressed = ungzip;
+        resetCdnAuxRequests(localFileGeneration, true);
+    }
+
+    synchronized long getLocalFileGeneration() {
+        return localFileGeneration;
+    }
+
+    protected boolean isRequestOwnerCurrent() {
+        return true;
+    }
+
+    protected final void retireCdnAuxRequests() {
+        resetCdnAuxRequests(-1, false);
+    }
+
+    private void retireCdnAuxRequests(long generation) {
+        resetCdnAuxRequests(generation, false);
+    }
+
+    private void resetCdnAuxRequests(long generation, boolean starting) {
+        final CdnAuxRequest hashes, reupload;
+        final int hashToken, reuploadToken;
+        synchronized (cdnAuxLock) {
+            if (!starting && generation >= 0 && generation != cdnAuxGeneration) return;
+            if (starting) cdnAuxGeneration = generation;
+            cdnAuxEpoch++;
+            cdnAuxTerminal = !starting;
+            hashes = cdnHashRequest;
+            reupload = cdnReuploadRequest;
+            hashToken = retireCdnAuxRequestLocked(hashes);
+            reuploadToken = retireCdnAuxRequestLocked(reupload);
+            cdnHashRequest = cdnReuploadRequest = null;
+            requestingCdnOffsets = reuploadingCdn = false;
+        }
+        if (hashes != null) cancelCdnAuxToken(hashes.account, hashToken);
+        if (reupload != null) cancelCdnAuxToken(reupload.account, reuploadToken);
+    }
+
+    private int retireCdnAuxRequestLocked(CdnAuxRequest request) {
+        if (request == null) return 0;
+        request.retired = true;
+        int token = request.token;
+        request.token = 0;
+        return token;
+    }
+
+    private boolean isCdnAuxSlotCurrentLocked(CdnAuxRequest request) {
+        return !request.retired && !cdnAuxTerminal && request.generation == cdnAuxGeneration
+                && request.epoch == cdnAuxEpoch
+                && (request.hashes ? cdnHashRequest == request : cdnReuploadRequest == request);
+    }
+
+    private boolean isCdnAuxScopeCurrent(CdnAuxRequest request) {
+        if (currentAccount != request.account || !isLocalFileUseCurrent(request.generation)
+                || !isRequestOwnerCurrent() || (state != stateDownloading && state != stateCancelling)) return false;
+        synchronized (cdnAuxLock) {
+            return !request.retired && !cdnAuxTerminal && request.generation == cdnAuxGeneration
+                    && request.epoch == cdnAuxEpoch;
+        }
+    }
+
+    private boolean finishCdnAuxRequest(CdnAuxRequest request) {
+        synchronized (cdnAuxLock) {
+            if (!isCdnAuxSlotCurrentLocked(request)) return false;
+            clearCdnAuxSlotLocked(request);
+            return true;
+        }
+    }
+
+    private void clearCdnAuxSlotLocked(CdnAuxRequest request) {
+        if (request.hashes && cdnHashRequest == request) {
+            cdnHashRequest = null;
+            requestingCdnOffsets = false;
+        } else if (!request.hashes && cdnReuploadRequest == request) {
+            cdnReuploadRequest = null;
+            reuploadingCdn = false;
+        }
+    }
+
+    private void discardCdnAuxRequest(CdnAuxRequest request) {
+        final int token;
+        synchronized (cdnAuxLock) {
+            token = retireCdnAuxRequestLocked(request);
+            clearCdnAuxSlotLocked(request);
+        }
+        cancelCdnAuxToken(request.account, token);
+    }
+
+    private void cancelCdnAuxToken(int account, int token) {
+        if (token == 0) return;
+        Runnable cancel = () -> ConnectionsManager.native_cancelRequest(account, token, true);
+        try {
+            if (Utilities.stageQueue.postRunnable(cancel)) return;
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+        cancel.run();
+    }
+
+    private void failCdnAuxRequest(CdnAuxRequest request) {
+        final int token;
+        synchronized (cdnAuxLock) {
+            if (request.completed || !isCdnAuxSlotCurrentLocked(request)) return;
+            token = retireCdnAuxRequestLocked(request);
+            clearCdnAuxSlotLocked(request);
+        }
+        cancelCdnAuxToken(request.account, token);
+        synchronized (localFileIoLock) {
+            if (isLocalFileUseCurrent(request.generation)
+                    && (state == stateDownloading || state == stateCancelling)) onFail(false, 0);
+        }
+    }
+
+    private void sendCdnAuxRequest(boolean hashes, TLObject payload, CdnAuxCallback callback) {
+        final long generation = getLocalFileGeneration();
+        if (!isRequestOwnerCurrent() || !isLocalFileUseCurrent(generation)
+                || (state != stateDownloading && state != stateCancelling)) return;
+        final CdnAuxRequest request;
+        synchronized (cdnAuxLock) {
+            if (cdnAuxTerminal || generation != cdnAuxGeneration
+                    || (hashes ? requestingCdnOffsets : reuploadingCdn)) return;
+            request = new CdnAuxRequest(hashes, currentAccount, datacenterId, generation, cdnAuxEpoch, payload, callback);
+            if (hashes) {
+                cdnHashRequest = request;
+                requestingCdnOffsets = true;
+            } else {
+                cdnReuploadRequest = request;
+                reuploadingCdn = true;
+            }
+        }
+        LocalFileTask admission = new LocalFileTask(() -> admitCdnAuxRequest(request));
+        if (Thread.currentThread() == Utilities.stageQueue) admission.run();
+        else if (!postLocalFileTask(admission, true, 0)) failCdnAuxRequest(request);
+    }
+
+    private void admitCdnAuxRequest(CdnAuxRequest request) {
+        if (!isCdnAuxScopeCurrent(request)) {
+            discardCdnAuxRequest(request);
+            return;
+        }
+        try {
+            int token = ConnectionsManager.getInstance(request.account).sendRequestSync(request.payload, (response, error) -> {
+                new LocalFileTask(() -> receiveCdnAuxResponse(request, response, error)).run();
+            }, null, null, 0, request.datacenterId, ConnectionsManager.ConnectionTypeGeneric, true);
+            boolean current = isCdnAuxScopeCurrent(request);
+            boolean cancel = false, failed = false;
+            synchronized (cdnAuxLock) {
+                if (!request.completed) {
+                    if (token > 0 && current && isCdnAuxSlotCurrentLocked(request)) {
+                        request.token = token;
+                    } else {
+                        failed = token <= 0 && isCdnAuxSlotCurrentLocked(request);
+                        if (!failed) {
+                            retireCdnAuxRequestLocked(request);
+                            clearCdnAuxSlotLocked(request);
+                        }
+                        cancel = token > 0;
+                    }
+                }
+            }
+            if (cancel) cancelCdnAuxToken(request.account, token);
+            if (failed) failCdnAuxRequest(request);
+        } catch (Exception e) {
+            FileLog.e(e);
+            failCdnAuxRequest(request);
+        }
+    }
+
+    private void receiveCdnAuxResponse(CdnAuxRequest request, TLObject response, TLRPC.TL_error error) {
+        boolean current = isCdnAuxScopeCurrent(request);
+        synchronized (cdnAuxLock) {
+            if (request.completed) return;
+            request.completed = true;
+            request.token = 0;
+            if (!current || !isCdnAuxSlotCurrentLocked(request)) {
+                retireCdnAuxRequestLocked(request);
+                clearCdnAuxSlotLocked(request);
+                return;
+            }
+        }
+        synchronized (localFileIoLock) {
+            if (isCdnAuxScopeCurrent(request)) request.callback.run(request, response, error);
+            else discardCdnAuxRequest(request);
+        }
+    }
+
+    synchronized void beginLocalFileAdmission() {
+        localFileTasks++;
+    }
+
+    synchronized void endLocalFileAdmission() {
+        localFileTasks--;
+        releaseLocalFilesIfIdle();
+    }
+
+    private synchronized boolean isLocalFileUseCurrent(long generation) {
+        return localFileGeneration == generation && !localFilesTerminal;
+    }
+
+    private synchronized void leaseLocalFile(File file) {
+        if (file != null) {
+            String path = file.getAbsolutePath();
+            if (localFileLeases.add(path)) AutoDeleteMediaTask.lockFile(path, this);
+        }
+    }
+
+    private synchronized void finishLocalFileUse(long generation) {
+        if (generation != localFileGeneration) return;
+        localFilesTerminal = true;
+        releaseLocalFilesIfIdle();
+    }
+
+    private synchronized void releaseLocalFilesIfIdle() {
+        if (!localFilesTerminal || localFileTasks != 0) return;
+        for (String path : localFileLeases) AutoDeleteMediaTask.unlockFile(path, this);
+        localFileLeases.clear();
+        scheduleLocalFileDrained();
+    }
+
+    void whenLocalFileWorkDrained(Runnable callback) {
+        if (callback == null) return;
+        synchronized (this) {
+            localFileDrainedCallbacks.add(callback);
+            releaseLocalFilesIfIdle();
+        }
+    }
+
+    private boolean localFileWorkDrained() {
+        return localFilesTerminal && localFileTasks == 0 && localFileLeases.isEmpty()
+                && fileOutputStream == null && preloadStream == null && fileReadStream == null
+                && fiv == null && filePartsStream == null;
+    }
+
+    private void scheduleLocalFileDrained() {
+        if (localFileDrainPosted || localFileDrainedCallbacks.isEmpty() || !localFileWorkDrained()) return;
+        localFileDrainPosted = true;
+        final long generation = localFileGeneration;
+        Runnable notify = () -> {
+            final ArrayList<Runnable> callbacks;
+            synchronized (FileLoadOperation.this) {
+                localFileDrainPosted = false;
+                if (generation != localFileGeneration || !localFileWorkDrained()) {
+                    releaseLocalFilesIfIdle();
+                    return;
+                }
+                callbacks = new ArrayList<>(localFileDrainedCallbacks);
+                localFileDrainedCallbacks.clear();
+            }
+            for (Runnable callback : callbacks) {
+                try {
+                    callback.run();
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                }
+            }
+        };
+        try {
+            if (Utilities.stageQueue.postRunnable(notify)) return;
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+        try {
+            if (Utilities.globalQueue.postRunnable(notify)) return;
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+        new Thread(notify, "fileLoadDrain").start();
+    }
+
+    private final class LocalFileTask implements Runnable {
+        private final Runnable action;
+        private boolean started;
+        private boolean finished;
+
+        LocalFileTask(Runnable action) {
+            this.action = action;
+            synchronized (FileLoadOperation.this) {
+                localFileTasks++;
+            }
+        }
+
+        @Override
+        public void run() {
+            synchronized (FileLoadOperation.this) {
+                if (started || finished) return;
+                started = true;
+            }
+            try {
+                action.run();
+            } finally {
+                synchronized (FileLoadOperation.this) {
+                    finished = true;
+                    localFileTasks--;
+                    releaseLocalFilesIfIdle();
+                }
+            }
+        }
+
+        void cancelPending() {
+            synchronized (FileLoadOperation.this) {
+                if (started || finished) return;
+                finished = true;
+                localFileTasks--;
+                releaseLocalFilesIfIdle();
+            }
+        }
+    }
+
+    private boolean postLocalFileTask(LocalFileTask task, boolean stage, long delay) {
+        try {
+            if (stage ? Utilities.stageQueue.postRunnable(task, delay) : filesQueue.postRunnable(task, delay)) {
+                return true;
+            }
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+        task.cancelPending();
+        return false;
+    }
+
+    private boolean addStreamListener(FileLoadOperationStream listener, FileLoader.StreamRegistration registration) {
+        synchronized (this) {
+            if (registration != null && !registration.isAttachedTo(this)) return false;
+            FileLoader.StreamRegistration current = streamListenerRegistrations.get(listener);
+            if (registration == null && current != null && current.isAttachedTo(this)) return false;
+            if (streamListeners == null) streamListeners = new ArrayList<>();
+            boolean added = listener != null && !streamListeners.contains(listener);
+            if (listener != null) {
+                if (added) streamListeners.add(listener);
+                streamListenerRegistrations.put(listener, registration);
+            }
+            if (!streamListeners.isEmpty()) {
+                leaseLocalFile(cacheFileTemp);
+                leaseLocalFile(cacheFileFinal);
+            }
+            return added;
+        }
+    }
+
+    private void closePartsStream(RandomAccessFile partsStream) {
+        synchronized (this) {
+            try {
+                partsStream.close();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+    }
+
+    private void failLocalFileFinalization(long generation) {
+        Runnable failed = () -> {
+            if (isLocalFileUseCurrent(generation) && state == stateFinished) onFail(false, 0);
+        };
+        if (!postLocalFileTask(new LocalFileTask(failed), true, 0)) failed.run();
+    }
 
     private boolean ungzip;
 
@@ -636,14 +1053,16 @@ public class FileLoadOperation {
                 ArrayList<FileLoadOperation.Range> rangesFinal = new ArrayList<>(ranges);
                 if (fileWriteRunnable != null) {
                     filesQueue.cancelRunnable(fileWriteRunnable);
+                    fileWriteRunnable.cancelPending();
                 }
+                final RandomAccessFile partsStream;
                 synchronized (FileLoadOperation.this) {
-                    writingToFilePartsStream = true;
+                    partsStream = filePartsStream;
                 }
-                filesQueue.postRunnable(fileWriteRunnable = () -> {
+                fileWriteRunnable = new LocalFileTask(() -> {
                     long time = System.currentTimeMillis();
                     try {
-                        if (filePartsStream == null) {
+                        if (partsStream == null) {
                             return;
                         }
                         int countFinal = rangesFinal.size();
@@ -660,21 +1079,11 @@ public class FileLoadOperation {
                             filesQueueByteBuffer.writeLong(rangeFinal.end);
                         }
                         synchronized (FileLoadOperation.this) {
-                            if (filePartsStream == null) {
+                            if (!partsStream.getChannel().isOpen()) {
                                 return;
                             }
-                            filePartsStream.seek(0);
-                            filePartsStream.write(filesQueueByteBuffer.buf, 0, bufferSize);
-                            writingToFilePartsStream = false;
-                            if (closeFilePartsStreamOnWriteEnd) {
-                                try {
-                                    filePartsStream.getChannel().close();
-                                } catch (Exception e) {
-                                    FileLog.e(e);
-                                }
-                                filePartsStream.close();
-                                filePartsStream = null;
-                            }
+                            partsStream.seek(0);
+                            partsStream.write(filesQueueByteBuffer.buf, 0, bufferSize);
                         }
                     } catch (Exception e) {
                         FileLog.e(e, false);
@@ -686,6 +1095,10 @@ public class FileLoadOperation {
                     }
                     totalTime += System.currentTimeMillis() - time;
                 });
+                if (!postLocalFileTask(fileWriteRunnable, false, 0)) {
+                    onFail(false, 0);
+                    return;
+                }
                 notifyStreamListeners();
             } else {
                 if (BuildVars.LOGS_ENABLED) {
@@ -696,11 +1109,12 @@ public class FileLoadOperation {
     }
 
     private void notifyStreamListeners() {
-        if (streamListeners != null) {
-            int count = streamListeners.size();
-            for (int a = 0; a < count; a++) {
-                streamListeners.get(a).newDataAvailable();
-            }
+        final ArrayList<FileLoadOperationStream> listeners;
+        synchronized (this) {
+            listeners = streamListeners == null ? null : new ArrayList<>(streamListeners);
+        }
+        if (listeners != null) {
+            for (FileLoadOperationStream listener : listeners) listener.newDataAvailable();
         }
     }
 
@@ -711,14 +1125,14 @@ public class FileLoadOperation {
     protected File getCurrentFile() {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final File[] result = new File[1];
-        Utilities.stageQueue.postRunnable(() -> {
-            if (state == stateFinished && !preloadFinished) {
+        if (!postLocalFileTask(new LocalFileTask(() -> {
+            if (state == stateFinished && !preloadFinished && cacheFileFinalReady) {
                 result[0] = cacheFileFinal;
             } else {
                 result[0] = cacheFileTemp;
             }
             countDownLatch.countDown();
-        });
+        }), true, 0)) return null;
         try {
             countDownLatch.await();
         } catch (Exception e) {
@@ -781,21 +1195,21 @@ public class FileLoadOperation {
     protected long[] getDownloadedLengthFromOffset(final long offset, final long length) {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final long[] result = new long[3];
-        Utilities.stageQueue.postRunnable(() -> {
+        if (!postLocalFileTask(new LocalFileTask(() -> {
             try {
                 result[0] = getDownloadedLengthFromOffsetInternal(notLoadedBytesRanges, offset, length);
             } catch (Throwable e) {
                 FileLog.e(e);
                 result[0] = 0;
             }
-            if (state == stateFinished) {
+            if (state == stateFinished && !preloadFinished && localFilePublished) {
                 result[1] = 1;
             }
             if (state == stateFailed || state == stateCanceled) {
                 result[2] = 1;
             }
             countDownLatch.countDown();
-        });
+        }), true, 0)) return new long[] {0, 0, 1};
         try {
             countDownLatch.await();
         } catch (InterruptedException e) {
@@ -815,13 +1229,24 @@ public class FileLoadOperation {
     }
 
     protected void removeStreamListener(final FileLoadOperationStream operation) {
-        Utilities.stageQueue.postRunnable(() -> {
-            if (streamListeners == null) {
-                return;
-            }
+        removeStreamListener(operation, null);
+    }
+
+    void removeStreamListener(final FileLoadOperationStream operation, FileLoader.StreamRegistration registration) {
+        Runnable remove = () -> {
             FileLog.e("FileLoadOperation " + getFileName() + " removing stream listener " + operation);
-            streamListeners.remove(operation);
-        });
+            synchronized (this) {
+                if (stream == operation && streamRegistration == registration) {
+                    stream = null;
+                    streamRegistration = null;
+                }
+                if (streamListenerRegistrations.get(operation) != registration) return;
+                if (streamListeners != null) streamListeners.remove(operation);
+                streamListenerRegistrations.remove(operation);
+                releaseLocalFilesIfIdle();
+            }
+        };
+        if (!postLocalFileTask(new LocalFileTask(remove), true, 0)) remove.run();
     }
 
     private final Runnable cancelAfterNoStreamListeners = () -> {
@@ -857,7 +1282,17 @@ public class FileLoadOperation {
     }
 
     public boolean start() {
-        return start(stream, streamOffset, streamPriority);
+        final FileLoadOperationStream reader;
+        final FileLoader.StreamRegistration registration;
+        final long offset;
+        final boolean priority;
+        synchronized (this) {
+            reader = stream;
+            registration = streamRegistration;
+            offset = streamOffset;
+            priority = streamPriority;
+        }
+        return startWithRegistration(reader, offset, priority, registration);
     }
 
     private void updateDownloadByteBudget() {
@@ -877,6 +1312,37 @@ public class FileLoadOperation {
         return currentDownloadChunkSize != 0 && !forceSmallChunk && !isStory && !isStream;
     }
     public boolean start(final FileLoadOperationStream stream, final long streamOffset, final boolean streamPriority) {
+        final FileLoader.StreamRegistration registration;
+        synchronized (this) {
+            registration = this.stream == stream ? streamRegistration : null;
+        }
+        return startWithRegistration(stream, streamOffset, streamPriority, registration);
+    }
+
+    protected boolean startWithRegistration(final FileLoadOperationStream stream, final long streamOffset, final boolean streamPriority, FileLoader.StreamRegistration registration) {
+        synchronized (this) {
+            localFileTasks++;
+        }
+        try {
+            return startLocalFiles(stream, streamOffset, streamPriority, registration);
+        } catch (RuntimeException e) {
+            if (state != stateFailed && state != stateCanceled) onFail(false, 0);
+            throw e;
+        } finally {
+            synchronized (this) {
+                localFileTasks--;
+                releaseLocalFilesIfIdle();
+            }
+        }
+    }
+
+    private boolean startLocalFiles(final FileLoadOperationStream stream, final long streamOffset, final boolean streamPriority, FileLoader.StreamRegistration registration) {
+        synchronized (localFileIoLock) {
+            return startLocalFilesLocked(stream, streamOffset, streamPriority, registration);
+        }
+    }
+
+    private boolean startLocalFilesLocked(final FileLoadOperationStream stream, final long streamOffset, final boolean streamPriority, FileLoader.StreamRegistration registration) {
         startTime = System.currentTimeMillis();
         updateParams();
         if (currentDownloadChunkSize == 0) {
@@ -903,12 +1369,10 @@ public class FileLoadOperation {
         final boolean wasPaused = paused;
         paused = false;
         if (stream != null) {
-            Utilities.stageQueue.postRunnable(() -> {
+            if (!postLocalFileTask(new LocalFileTask(() -> {
+                if (registration != null && !registration.isAttachedTo(this)) return;
                 if (alreadyStarted && state == stateCancelling) {
                     state = stateDownloading;
-                }
-                if (streamListeners == null) {
-                    streamListeners = new ArrayList<>();
                 }
                 if (streamPriority) {
                     long offset = (streamOffset / (long) currentDownloadChunkSize) * (long) currentDownloadChunkSize;
@@ -933,11 +1397,11 @@ public class FileLoadOperation {
                 } else {
                     streamStartOffset = streamOffset / currentDownloadChunkSize * currentDownloadChunkSize;
                 }
-                if (!streamListeners.contains(stream)) {
-                    streamListeners.add(stream);
+                if (addStreamListener(stream, registration)) {
                     FileLog.e("FileLoadOperation " + getFileName() + " start, adding stream " + stream);
                 }
-                if (!streamListeners.isEmpty()) {
+                if (registration != null && !registration.isAttachedTo(this)) return;
+                if (streamListeners != null && !streamListeners.isEmpty()) {
                     Utilities.stageQueue.cancelRunnable(cancelAfterNoStreamListeners);
                 }
                 if (alreadyStarted) {
@@ -952,18 +1416,25 @@ public class FileLoadOperation {
                 if (notLoadedBytesRanges != null) {
                     notifyStreamListeners();
                 }
-            });
+            }), true, 0)) {
+                onFail(false, 0);
+                return false;
+            }
         } else if (alreadyStarted) {
-            Utilities.stageQueue.postRunnable(() -> {
+            if (!postLocalFileTask(new LocalFileTask(() -> {
                 if (state == stateCancelling) {
                     state = stateDownloading;
                 }
                 startDownloadRequest(-1);
-            });
+            }), true, 0)) {
+                onFail(false, 0);
+                return false;
+            }
         }
         if (alreadyStarted) {
             return wasPaused;
         }
+        beginLocalFileUse();
         if (location == null && webLocation == null) {
             if (BuildVars.DEBUG_VERSION) {
                 FileLog.d("loadOperation: no location, failing");
@@ -1063,6 +1534,7 @@ public class FileLoadOperation {
                 cacheFileFinal = new File(storePath, fileNameFinal);
             }
         }
+        leaseLocalFile(cacheFileFinal);
         boolean finalFileExist = cacheFileFinalReady = cacheFileFinal.exists();
         if (finalFileExist && (parentObject instanceof TLRPC.TL_theme || (totalBytesCount != 0 && !ungzip && totalBytesCount != cacheFileFinal.length())) && !delegate.isLocallyCreatedFile(cacheFileFinal.toString())) {
             if (BuildVars.LOGS_ENABLED) {
@@ -1074,17 +1546,20 @@ public class FileLoadOperation {
             finalFileExist = false;
         }
 
+        cacheFileFinalReady = finalFileExist;
         if (!finalFileExist) {
             cacheFileTemp = new File(tempPath, fileNameTemp);
+            leaseLocalFile(cacheFileTemp);
             if (ungzip) {
                 cacheFileGzipTemp = new File(tempPath, fileNameTemp + ".gz");
+                leaseLocalFile(cacheFileGzipTemp);
             }
             boolean newKeyGenerated = false;
 
             if (encryptFile) {
                 File keyFile = new File(FileLoader.getInternalCacheDir(), fileNameFinal + ".key");
-                try {
-                    RandomAccessFile file = new RandomAccessFile(keyFile, "rws");
+                leaseLocalFile(keyFile);
+                try (RandomAccessFile file = new RandomAccessFile(keyFile, "rws")) {
                     long len = keyFile.length();
                     encryptKey = new byte[32];
                     encryptIv = new byte[16];
@@ -1098,12 +1573,6 @@ public class FileLoadOperation {
                         file.write(encryptIv);
                         newKeyGenerated = true;
                     }
-                    try {
-                        file.getChannel().close();
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                    file.close();
                 } catch (Exception e) {
                     if (AndroidUtilities.isENOSPC(e)) {
                         LaunchActivity.checkFreeDiscSpaceStatic(1);
@@ -1120,6 +1589,7 @@ public class FileLoadOperation {
             boolean[] preloaded = new boolean[]{false};
             if (supportsPreloading && fileNamePreload != null) {
                 cacheFilePreload = new File(tempPath, fileNamePreload);
+                leaseLocalFile(cacheFilePreload);
                 boolean closeStream = false;
                 try {
                     preloadStream = new RandomAccessFile(cacheFilePreload, "rws");
@@ -1195,6 +1665,7 @@ public class FileLoadOperation {
 
             if (fileNameParts != null) {
                 cacheFileParts = new File(tempPath, fileNameParts);
+                leaseLocalFile(cacheFileParts);
                 if (!cacheFileTemp.exists()) {
                     cacheFileParts.delete();
                 }
@@ -1263,6 +1734,7 @@ public class FileLoadOperation {
 
             if (fileNameIv != null) {
                 cacheIvTemp = new File(tempPath, fileNameIv);
+                leaseLocalFile(cacheIvTemp);
                 try {
                     fiv = new RandomAccessFile(cacheIvTemp, "rws");
                     if (downloadedBytes != 0 && !newKeyGenerated) {
@@ -1313,7 +1785,8 @@ public class FileLoadOperation {
                 return false;
             }
             started = true;
-            Utilities.stageQueue.postRunnable(() -> {
+            LocalFileTask startTask = new LocalFileTask(() -> {
+                if (state != stateDownloading) return;
                 boolean videoPreloaded = isPreloadVideoOperation && preloaded[0];
                 boolean preloadedByPrefixSize = preloadPrefixSize > 0 && downloadedBytes >= preloadPrefixSize && canFinishPreload();
                 if (totalBytesCount != 0 && (videoPreloaded || downloadedBytes == totalBytesCount || preloadedByPrefixSize)) {
@@ -1326,6 +1799,10 @@ public class FileLoadOperation {
                     startDownloadRequest(-1);
                 }
             });
+            if (!postLocalFileTask(startTask, true, 0)) {
+                onFail(false, 0);
+                return false;
+            }
         } else {
             started = true;
             try {
@@ -1361,6 +1838,12 @@ public class FileLoadOperation {
     }
 
     public void setIsPreloadVideoOperation(boolean value) {
+        synchronized (localFileIoLock) {
+            setPreloadMode(value);
+        }
+    }
+
+    private void setPreloadMode(boolean value) {
         if (isPreloadVideoOperation == value || value && totalBytesCount <= preloadMaxBytes) {
             return;
         }
@@ -1405,13 +1888,17 @@ public class FileLoadOperation {
     }
 
     private void cancel(boolean deleteFiles) {
-        Utilities.stageQueue.postRunnable(() -> {
-            cancelOnStage(deleteFiles);
-        });
+        retireCdnAuxRequests(getLocalFileGeneration());
+        LocalFileTask cancel = new LocalFileTask(() -> cancelOnStage(deleteFiles));
+        if (!postLocalFileTask(cancel, true, 0)) {
+            new LocalFileTask(() -> cancelOnStage(deleteFiles)).run();
+        }
     }
 
     private void cancelOnStage(boolean deleteFiles) {
-        if (state != stateFinished && state != stateFailed && state != stateCanceled && state != stateCancelling) {
+        retireCdnAuxRequests(getLocalFileGeneration());
+        if ((state != stateFinished && state != stateFailed && state != stateCanceled && state != stateCancelling)
+                || (state == stateFinished && localFileRetryPending)) {
             state = stateCancelling;
             Utilities.stageQueue.cancelRunnable(pacedDownloadRequest);
             cancelRequests(null);
@@ -1514,6 +2001,12 @@ public class FileLoadOperation {
     }
 
     private void cleanup() {
+        synchronized (localFileIoLock) {
+            cleanupLocalFiles();
+        }
+    }
+
+    private void cleanupLocalFiles() {
         try {
             if (fileOutputStream != null) {
                 try {
@@ -1553,24 +2046,20 @@ public class FileLoadOperation {
         } catch (Exception e) {
             FileLog.e(e);
         }
-        try {
-            if (filePartsStream != null) {
-                synchronized (FileLoadOperation.this) {
-                    if (!writingToFilePartsStream) {
-                        try {
-                            filePartsStream.getChannel().close();
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                        filePartsStream.close();
+        final RandomAccessFile partsStream;
+        synchronized (this) {
+            partsStream = filePartsStream;
                         filePartsStream = null;
-                    } else {
-                        closeFilePartsStreamOnWriteEnd = true;
-                    }
+        }
+        if (partsStream != null) {
+            LocalFileTask close = new LocalFileTask(() -> closePartsStream(partsStream));
+            if (!postLocalFileTask(close, false, 0)) {
+                if (fileWriteRunnable != null) {
+                    filesQueue.cancelRunnable(fileWriteRunnable);
+                    fileWriteRunnable.cancelPending();
                 }
+                closePartsStream(partsStream);
             }
-        } catch (Exception e) {
-            FileLog.e(e);
         }
 
         try {
@@ -1603,6 +2092,20 @@ public class FileLoadOperation {
         if (state != stateDownloading && state != stateCancelling) {
             return;
         }
+        final long generation = getLocalFileGeneration();
+        new LocalFileTask(() -> finishLoadingLocalFile(increment, finishCode, preload, generation)).run();
+    }
+
+    private void finishLoadingLocalFile(final boolean increment, int finishCode, boolean preload, long generation) {
+        synchronized (localFileIoLock) {
+            finishLoadingLocalFileLocked(increment, finishCode, preload, generation);
+        }
+    }
+
+    private void finishLoadingLocalFileLocked(final boolean increment, int finishCode, boolean preload, long generation) {
+        if (!isLocalFileUseCurrent(generation)) return;
+        retireCdnAuxRequests(generation);
+        localFileRetryPending = false;
         state = stateFinished;
         notifyStreamListeners();
         cleanup();
@@ -1623,51 +2126,95 @@ public class FileLoadOperation {
                     FileLoader.getInstance(currentAccount).getFileDatabase().removeFiles(Collections.singletonList(new CacheModel.FileInfo(cacheFileParts)));
                 }
             }
+            try {
             delegate.didPreFinishLoading(FileLoadOperation.this, cacheFileFinal);
             delegate.didFinishLoadingFile(FileLoadOperation.this, cacheFileFinal);
+            } finally {
+                finishLocalFileUse(generation);
+            }
         } else {
             final File cacheIvTempFinal = cacheIvTemp;
             final File cacheFilePartsFinal = cacheFileParts;
             final File cacheFilePreloadFinal = cacheFilePreload;
             final File cacheFileTempFinal = cacheFileTemp;
-            filesQueue.postRunnable(() -> {
-                if (cacheIvTempFinal != null) {
-                    cacheIvTempFinal.delete();
+            LocalFileTask finalizeFile = new LocalFileTask(() -> {
+                try {
+                    finalizeLocalFile(increment, generation, cacheIvTempFinal, cacheFilePartsFinal,
+                            cacheFilePreloadFinal, cacheFileTempFinal);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    failLocalFileFinalization(generation);
                 }
-                if (cacheFilePartsFinal != null) {
-                    cacheFilePartsFinal.delete();
-                }
-                if (cacheFilePreloadFinal != null) {
-                    cacheFilePreloadFinal.delete();
-                }
-                File cacheFileTempLocal = cacheFileTempFinal;
-                if (cacheFileTempLocal != null) {
+            });
+            if (!postLocalFileTask(finalizeFile, false, 0)) {
+                onFail(false, 0);
+                return;
+            }
+            cacheIvTemp = null;
+            cacheFileParts = null;
+            cacheFilePreload = null;
+            delegate.didPreFinishLoading(FileLoadOperation.this, cacheFileFinal);
+        }
+
+    }
+
+    private void finalizeLocalFile(boolean increment, long generation, File ivFile, File partsFile,
+                                  File preloadFile, File tempFile) {
+        synchronized (localFileIoLock) {
+            finalizeLocalFileLocked(increment, generation, ivFile, partsFile, preloadFile, tempFile);
+        }
+    }
+
+    private void finalizeLocalFileLocked(boolean increment, long generation, File ivFile, File partsFile,
+                                        File preloadFile, File tempFile) {
+        if (!isLocalFileUseCurrent(generation) || state != stateFinished) return;
+        if (ivFile != null) ivFile.delete();
+        if (partsFile != null) partsFile.delete();
+        if (preloadFile != null) preloadFile.delete();
+        File source = tempFile;
+        if (source != null) {
                     if (ungzip) {
                         try {
-                            GZIPInputStream gzipInputStream = new GZIPInputStream(new FileInputStream(cacheFileTempLocal));
-                            FileLoader.copyFile(gzipInputStream, cacheFileGzipTemp, 1024 * 1024 * 2);
-                            gzipInputStream.close();
-                            cacheFileTempLocal.delete();
-                            cacheFileTempLocal = cacheFileGzipTemp;
+                    try (FileInputStream rawInput = new FileInputStream(source);
+                         GZIPInputStream input = new GZIPInputStream(rawInput);
+                         FileOutputStream output = new FileOutputStream(cacheFileGzipTemp)) {
+                        byte[] buffer = new byte[4096];
+                        int length, total = 0;
+                        while ((length = input.read(buffer)) > 0) {
+                            Thread.yield();
+                            output.write(buffer, 0, length);
+                            total += length;
+                            if (total >= 1024 * 1024 * 2) break;
+                        }
+                        output.getFD().sync();
+                    }
+                    source.delete();
+                    cacheFileTemp = source = cacheFileGzipTemp;
                             ungzip = false;
                         } catch (ZipException zipException) {
                             ungzip = false;
-                        } catch (Throwable e) {
+                } catch (Exception e) {
                             FileLog.e(e, !AndroidUtilities.isFilNotFoundException(e));
-                            if (BuildVars.LOGS_ENABLED) {
-                                FileLog.e("unable to ungzip temp = " + cacheFileTempFinal + " to final = " + cacheFileFinal);
-                            }
-                        }
-                    }
-                    if (!ungzip) {
-                        boolean renameResult;
+                    failLocalFileFinalization(generation);
+                    return;
+                }
+            }
+            if (!source.isFile()) {
+                if (canUseSharedCanonicalFile()) {
+                    cacheFileFinalReady = true;
+                    localFilePublished = true;
+                    final File sharedFile = cacheFileFinal;
+                    LocalFileTask finished = new LocalFileTask(() -> finishLocalFileOnStage(increment, generation, sharedFile));
+                    if (!postLocalFileTask(finished, true, 0)) failLocalFileFinalization(generation);
+                    return;
+                }
+                failLocalFileFinalization(generation);
+                return;
+            }
+            final long finalLength = source.length();
+            boolean renamed;
                         if (parentObject instanceof TLRPC.TL_theme) {
-                            try {
-                                renameResult = AndroidUtilities.copyFile(cacheFileTempLocal, cacheFileFinal);
-                            } catch (Exception e) {
-                                renameResult = false;
-                                FileLog.e(e);
-                            }
+                renamed = copyLocalFileToFinal(source, finalLength);
                         } else {
                             try {
                                 if (pathSaveData != null) {
@@ -1687,56 +2234,130 @@ public class FileLoadOperation {
                                         }
                                     }
                                 }
-                                renameResult = cacheFileTempLocal.renameTo(cacheFileFinal);
-                            } catch (Exception e) {
-                                renameResult = false;
+                    leaseLocalFile(cacheFileFinal);
+                    renamed = source.renameTo(cacheFileFinal);
+                } catch (Exception e) {
+                    renamed = false;
                                 FileLog.e(e);
                             }
                         }
-                        if (!renameResult && renameRetryCount == 3) {
-                            try {
-                                renameResult = AndroidUtilities.copyFile(cacheFileTempLocal, cacheFileFinal);
-                                if (renameResult) {
-                                    cacheFileFinal.delete();
-                                }
-                            } catch (Throwable e) {
+            renamed = renamed && cacheFileFinal.isFile() && cacheFileFinal.length() == finalLength;
+            if (!renamed && renameRetryCount >= 2 && source.isFile()) {
+                try {
+                    renamed = copyLocalFileToFinal(source, finalLength)
+                            && cacheFileFinal.isFile() && cacheFileFinal.length() == finalLength;
+                    if (renamed && !source.equals(cacheFileFinal)) source.delete();
+                } catch (Exception e) {
                                 FileLog.e(e);
                             }
                         }
-                        if (!renameResult) {
+            if (!renamed) {
                             if (BuildVars.LOGS_ENABLED) {
-                                FileLog.e("unable to rename temp = " + cacheFileTempLocal + " to final = " + cacheFileFinal + " retry = " + renameRetryCount);
+                    FileLog.e("unable to rename temp = " + source + " to final = " + cacheFileFinal + " retry = " + renameRetryCount);
                             }
                             renameRetryCount++;
                             if (renameRetryCount < 3) {
+                    localFileRetryPending = true;
+                    LocalFileTask retry = new LocalFileTask(() -> {
+                        if (!isLocalFileUseCurrent(generation) || state != stateFinished) return;
+                        try {
+                            localFileRetryPending = false;
                                 state = stateDownloading;
-                                Utilities.stageQueue.postRunnable(() -> {
-                                    try {
                                         onFinishLoadingFile(increment, FINISH_CODE_DEFAULT, false);
                                     } catch (Exception e) {
                                         onFail(false, 0);
                                     }
-                                }, 200);
-                                return;
-                            }
-                            cacheFileFinal = cacheFileTempLocal;
+                    });
+                    if (!postLocalFileTask(retry, true, 200)) failLocalFileFinalization(generation);
+                    return;
+                }
+                if (!source.isFile() || source.length() != finalLength) {
+                    failLocalFileFinalization(generation);
+                    return;
+                }
+                cacheFileFinal = source;
                             cacheFileFinalReady = false;
                         } else {
                             cacheFileFinalReady = true;
-                            if (pathSaveData != null && cacheFileFinal.exists()) {
-                                delegate.saveFilePath(pathSaveData, cacheFileFinal);
-                            }
-                        }
-                    } else {
-                        Utilities.stageQueue.postRunnable(() -> {
-                            onFail(false, 0);
-                        });
-                        return;
-                    }
+                if (pathSaveData != null) delegate.saveFilePath(pathSaveData, cacheFileFinal);
+            }
+        }
+        final File finalFile = cacheFileFinal;
+        if (finalFile == null || !finalFile.isFile()) {
+            failLocalFileFinalization(generation);
+            return;
+        }
+        localFilePublished = true;
+        LocalFileTask finished = new LocalFileTask(() -> finishLocalFileOnStage(increment, generation, finalFile));
+        if (!postLocalFileTask(finished, true, 0)) failLocalFileFinalization(generation);
+    }
+
+    private boolean canUseSharedCanonicalFile() {
+        if (!(location instanceof TLRPC.TL_inputDocumentFileLocation) || webLocation != null
+                || key != null || encryptFile || ungzip || localSourceWasCompressed || pathSaveData != null
+                || parentObject instanceof TLRPC.TL_theme || isPreloadVideoOperation || preloadFinished
+                || preloadPrefixSize != 0 || totalBytesCount <= 0 || downloadedBytes != totalBytesCount
+                || initialDatacenterId <= 0 || cacheFileFinal == null || storePath == null) return false;
+        TLRPC.TL_inputDocumentFileLocation document = (TLRPC.TL_inputDocumentFileLocation) location;
+        if (document.id == 0 || document.thumb_size != null && !document.thumb_size.isEmpty()) return false;
+        String expectedName = initialDatacenterId + "_" + document.id + ext;
+        if (!expectedName.equals(fileName) || !expectedName.equals(storeFileName)
+                || !new File(storePath, expectedName).equals(cacheFileFinal)) return false;
+        boolean defaultDirectory = false;
+        for (int type : new int[] { FileLoader.MEDIA_DIR_CACHE, FileLoader.MEDIA_DIR_IMAGE,
+                FileLoader.MEDIA_DIR_AUDIO, FileLoader.MEDIA_DIR_VIDEO, FileLoader.MEDIA_DIR_DOCUMENT }) {
+            File directory = FileLoader.getDirectory(type);
+            if (directory != null && directory.equals(storePath)) {
+                defaultDirectory = true;
+                break;
+            }
+        }
+        return defaultDirectory && cacheFileFinal.isFile() && cacheFileFinal.length() == totalBytesCount;
+    }
+
+    private boolean copyLocalFileToFinal(File source, long length) {
+        File staging = null;
+        boolean created = false;
+        try {
+            File directory = cacheFileFinal.getParentFile();
+            for (int attempt = 0; attempt < 8 && !created; attempt++) {
+                staging = new File(directory, ".ng-download-" + UUID.randomUUID() + ".part");
+                leaseLocalFile(staging);
+                created = staging.createNewFile();
+            }
+            if (!created || !AndroidUtilities.copyFile(source, staging)
+                    || !staging.isFile() || staging.length() != length) return false;
+            return staging.renameTo(cacheFileFinal)
+                    && cacheFileFinal.isFile() && cacheFileFinal.length() == length;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        } finally {
+            if (created && staging != null) {
+                try {
+                    staging.delete();
+                } catch (Exception e) {
+                    FileLog.e(e);
                 }
-                Utilities.stageQueue.postRunnable(() -> {
+            }
+        }
+    }
+
+    private void finishLocalFileOnStage(boolean increment, long generation, File finalFile) {
+        synchronized (localFileIoLock) {
+            finishLocalFileOnStageLocked(increment, generation, finalFile);
+        }
+    }
+
+    private void finishLocalFileOnStageLocked(boolean increment, long generation, File finalFile) {
+        if (!isLocalFileUseCurrent(generation) || state != stateFinished) return;
+        try {
+            if (finalFile == null || !finalFile.isFile()) {
+                            onFail(false, 0);
+                return;
+            }
                     if (BuildVars.LOGS_ENABLED) {
-                        FileLog.d("finished downloading file to " + cacheFileFinal + " time = " + (System.currentTimeMillis() - startTime) + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
+                FileLog.d("finished downloading file to " + finalFile + " time = " + (System.currentTimeMillis() - startTime) + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
                     }
                     if (increment) {
                         if (currentType == ConnectionsManager.FileTypeAudio) {
@@ -1753,13 +2374,9 @@ public class FileLoadOperation {
                             }
                         }
                     }
-                    delegate.didFinishLoadingFile(FileLoadOperation.this, cacheFileFinal);
-                });
-            });
-            cacheIvTemp = null;
-            cacheFileParts = null;
-            cacheFilePreload = null;
-            delegate.didPreFinishLoading(FileLoadOperation.this, cacheFileFinal);
+            delegate.didFinishLoadingFile(FileLoadOperation.this, finalFile);
+        } finally {
+            finishLocalFileUse(generation);
         }
 
     }
@@ -1826,18 +2443,17 @@ public class FileLoadOperation {
         if (requestingCdnOffsets) {
             return;
         }
-        requestingCdnOffsets = true;
         TLRPC.TL_upload_getCdnFileHashes req = new TLRPC.TL_upload_getCdnFileHashes();
         req.file_token = cdnToken;
         req.offset = offset;
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+        sendCdnAuxRequest(true, req, (auxRequest, response, error) -> {
             if (state != stateDownloading && state != stateCancelling) {
                 return;
             }
             if (error != null) {
                 onFail(false, 0);
             } else if (response instanceof Vector) {
-                requestingCdnOffsets = false;
+                if (!finishCdnAuxRequest(auxRequest) || !isCdnAuxScopeCurrent(auxRequest)) return;
                 final Vector<TLRPC.TL_fileHash> vector = (Vector) response;
                 if (!vector.objects.isEmpty()) {
                     if (cdnHashes == null) {
@@ -1868,7 +2484,7 @@ public class FileLoadOperation {
                     }
                 }
             }
-        }, null, null, 0, datacenterId, ConnectionsManager.ConnectionTypeGeneric, true);
+        });
     }
 
     protected boolean processRequestResult(RequestInfo requestInfo, TLRPC.TL_error error) {
@@ -2011,6 +2627,7 @@ public class FileLoadOperation {
                     FileChannel channel = fileOutputStream.getChannel();
                     channel.write(bytes.buffer);
                     addPart(notLoadedBytesRanges, requestInfo.offset, requestInfo.offset + currentBytesSize, true);
+                    if (state != stateDownloading && state != stateCancelling) return false;
                     recordSuccessfulTransportChunk(requestInfo);
                     if (BuildVars.LOGS_ENABLED && FULL_LOGS) {
                         FileLog.d(fileName + " add part " + requestInfo.offset + " " + (requestInfo.offset + currentBytesSize));
@@ -2081,13 +2698,33 @@ public class FileLoadOperation {
                 if (requestInfo.whenCancelled != null) {
                     requestInfo.whenCancelled.run();
                 }
+                boolean sequential = !isPreloadVideoOperation && notRequestedBytesRanges == null;
+                if (sequential) {
+                    requestInfos.add(requestInfo);
+                    clearOperation(requestInfo, false, false);
+                } else {
+                    requestedBytesCount -= requestInfo.chunkSize;
+                    if (isPreloadVideoOperation) {
+                        if (!hasPreloadRangeOwner(requestInfo.offset) && requestedPreloadedBytesRanges != null) {
+                            requestedPreloadedBytesRanges.remove(requestInfo.offset);
+                        }
+                        preloadNotRequestedBytesCount += requestInfo.chunkSize;
+                    } else {
                 removePart(notRequestedBytesRanges, requestInfo.offset, requestInfo.offset + requestInfo.chunkSize);
+                    }
+                }
                 if (!forceSmallChunk) {
                     forceSmallChunk = true;
                     currentDownloadChunkSize =  1024 * 32;
                     currentMaxDownloadRequests = 4;
                 }
+                if (state == stateDownloading && !paused) {
+                    if (sequential) {
+                        Utilities.stageQueue.postRunnable(() -> startDownloadRequest(-1));
+                    } else {
                 startDownloadRequest(requestInfo.connectionType);
+                    }
+                }
             } else if (error.text.contains("FILE_MIGRATE_")) {
                 String errorMsg = error.text.replace("FILE_MIGRATE_", "");
                 Scanner scanner = new Scanner(errorMsg);
@@ -2219,6 +2856,7 @@ public class FileLoadOperation {
         }
         if (fileReadStream == null) {
             cdnCheckBytes = new byte[cdnChunkCheckSize];
+            leaseLocalFile(cacheFileTemp);
             fileReadStream = new RandomAccessFile(cacheFileTemp, "r");
         }
         fileReadStream.seek(fileOffset);
@@ -2250,8 +2888,11 @@ public class FileLoadOperation {
                     FileLog.e("invalid cdn hash  " + webLocation + " id = " + fileName);
                 }
             }
+            final File failedTemp = cacheFileTemp;
+            new LocalFileTask(() -> {
             onFail(false, 0);
-            cacheFileTemp.delete();
+                failedTemp.delete();
+            }).run();
             return false;
         }
         cdnHashes.remove(fileOffset);
@@ -2264,10 +2905,17 @@ public class FileLoadOperation {
     }
 
     protected void onFail(boolean thread, final int reason) {
+        final long generation = getLocalFileGeneration();
+        LocalFileTask failedScope = new LocalFileTask(() -> {
+            synchronized (localFileIoLock) {
+                if (generation != getLocalFileGeneration()) return;
+                retireCdnAuxRequests(generation);
+                localFileRetryPending = false;
+                localFilePublished = false;
+                state = reason == 1 ? stateCanceled : stateFailed;
         cleanup();
-        state = reason == 1 ? stateCanceled : stateFailed;
-        if (delegate != null) {
-            if (BuildVars.LOGS_ENABLED) {
+            }
+            if (delegate != null && BuildVars.LOGS_ENABLED) {
                 long time = startTime == 0 ? 0 : (System.currentTimeMillis() - startTime);
                 if (reason == 1) {
                     FileLog.d("cancel downloading file to " + cacheFileFinal + " time = " + time + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
@@ -2275,19 +2923,19 @@ public class FileLoadOperation {
                     FileLog.d("failed downloading file to " + cacheFileFinal + " reason = " + reason + " time = " + time + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
                 }
             }
-        }
-        if (thread) {
-            Utilities.stageQueue.postRunnable(() -> {
-                if (delegate != null) {
-                    delegate.didFailedLoadingFile(FileLoadOperation.this, reason);
-                }
+            Runnable failed = () -> {
+                if (generation != getLocalFileGeneration()) return;
+                if (delegate != null) delegate.didFailedLoadingFile(FileLoadOperation.this, reason);
                 notifyStreamListeners();
-            });
-        } else {
-            if (delegate != null) {
-                delegate.didFailedLoadingFile(FileLoadOperation.this, reason);
+            };
+            if (!thread || !postLocalFileTask(new LocalFileTask(failed), true, 0)) {
+                failed.run();
             }
-            notifyStreamListeners();
+            });
+        try {
+            failedScope.run();
+        } finally {
+            finishLocalFileUse(generation);
         }
     }
 
@@ -2385,6 +3033,41 @@ public class FileLoadOperation {
         FileRefController.getInstance(currentAccount).requestReference(parentObject, location, this, requestInfo);
     }
 
+    private boolean hasPreloadRangeOwner(long offset) {
+        if (preloadedBytesRanges != null && preloadedBytesRanges.containsKey(offset)) return true;
+        for (RequestInfo pending : requestInfos) {
+            if (pending.offset == offset) return true;
+        }
+        for (RequestInfo pending : delayedRequestInfos) {
+            if (pending.offset == offset) return true;
+        }
+        return false;
+    }
+
+    private void onNotRunningRequestCancelled(RequestInfo requestInfo, int connectionType) {
+        final int token = requestInfo.requestToken;
+        AndroidUtilities.runOnUIThread(() -> uiRequestTokens.remove((Integer) token));
+        if (!isPreloadVideoOperation && notRequestedBytesRanges == null) {
+            clearOperation(requestInfo, false, false);
+            if (state == stateDownloading && !paused) {
+                Utilities.stageQueue.postRunnable(() -> startDownloadRequest(-1));
+            }
+            return;
+        }
+        requestInfos.remove(requestInfo);
+        requestedBytesCount -= requestInfo.chunkSize;
+        if (isPreloadVideoOperation) {
+            if (!hasPreloadRangeOwner(requestInfo.offset) && requestedPreloadedBytesRanges != null) {
+                requestedPreloadedBytesRanges.remove(requestInfo.offset);
+            }
+            preloadNotRequestedBytesCount += requestInfo.chunkSize;
+        } else {
+            removePart(notRequestedBytesRanges, requestInfo.offset, requestInfo.offset + requestInfo.chunkSize);
+        }
+        if (state == stateDownloading && !paused) {
+            startDownloadRequest(connectionType);
+        }
+    }
     protected void startDownloadRequest(int useConnectionType) {
         Utilities.stageQueue.cancelRunnable(pacedDownloadRequest);
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
@@ -2463,6 +3146,9 @@ public class FileLoadOperation {
                     }
                 } else {
                     downloadOffset = nextPreloadDownloadOffset;
+                    if (hasPreloadRangeOwner(downloadOffset)) {
+                        return;
+                    }
                 }
                 if (requestedPreloadedBytesRanges == null) {
                     requestedPreloadedBytesRanges = new HashMap<>();
@@ -2675,9 +3361,7 @@ public class FileLoadOperation {
                 }
                 if (error != null) {
                     if (error.code == -2000) {
-                        requestInfos.remove(requestInfo);
-                        requestedBytesCount -= requestInfo.chunkSize;
-                        removePart(notRequestedBytesRanges, requestInfo.offset, requestInfo.offset + requestInfo.chunkSize);
+                            onNotRunningRequestCancelled(requestInfo, connectionType);
                         return;
                     } else if (FileRefController.isFileRefError(error.text)) {
                         requestReference(requestInfo);
@@ -2728,13 +3412,12 @@ public class FileLoadOperation {
                 } else if (response instanceof TLRPC.TL_upload_cdnFileReuploadNeeded) {
                     if (!reuploadingCdn) {
                         clearOperation(requestInfo, false, false);
-                        reuploadingCdn = true;
                         TLRPC.TL_upload_cdnFileReuploadNeeded res = (TLRPC.TL_upload_cdnFileReuploadNeeded) response;
                         TLRPC.TL_upload_reuploadCdnFile req = new TLRPC.TL_upload_reuploadCdnFile();
                         req.file_token = cdnToken;
                         req.request_token = res.request_token;
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response1, error1) -> {
-                            reuploadingCdn = false;
+                            sendCdnAuxRequest(false, req, (auxRequest, response1, error1) -> {
+                                if (!finishCdnAuxRequest(auxRequest) || !isCdnAuxScopeCurrent(auxRequest)) return;
                                 if (state != stateDownloading) {
                                     return;
                                 }
@@ -2759,7 +3442,7 @@ public class FileLoadOperation {
                                     onFail(false, 0);
                                 }
                             }
-                        }, null, null, 0, this.datacenterId, ConnectionsManager.ConnectionTypeGeneric, true);
+                            });
                     }
                 } else {
                     if (response instanceof TLRPC.TL_upload_file) {

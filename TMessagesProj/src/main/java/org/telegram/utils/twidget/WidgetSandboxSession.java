@@ -42,6 +42,9 @@ public final class WidgetSandboxSession {
         default void onStorageCommit(String area, JSONObject values) {}
 
         void onFailure(String message);
+        default void onEngineDied() {
+            onFailure("Widget engine stopped");
+        }
     }
 
     public static final int REQUEST_ANSWERED = 0, REQUEST_TIMEOUT = 1, REQUEST_RATE_LIMITED = 2, REQUEST_FAILED = 3,
@@ -49,6 +52,8 @@ public final class WidgetSandboxSession {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final WidgetSandboxBackend backend = new WidgetSandboxBackend(this);
+    private final WidgetEngine engine = WidgetEngine.current();
+    private volatile WidgetGate gate = new WidgetGate(null);
     private final Context context;
     private final String html;
     private final int cpuMultiplier;
@@ -105,7 +110,7 @@ public final class WidgetSandboxSession {
         byte[] list = lastList, composition = lastComposition;
         if (list == null) return null;
         return "{\"list\":"
-                + new String(list, StandardCharsets.UTF_8)
+                + WidgetDisplayList.toJson(list)
                 + ",\"composition\":"
                 + (composition == null ? "null" : new String(composition, StandardCharsets.UTF_8))
                 + "}";
@@ -126,7 +131,7 @@ public final class WidgetSandboxSession {
                 boolean animate = visible && (animationDue.getAndSet(false) | animating.get());
                 boolean frame = visible && frameWanted.getAndSet(false);
                 if (frame) frameSentAt = nanos;
-                WidgetSandboxNative.tick(
+                engine.tick(
                         id, (nanos - clockOrigin) / 1e6f, frame, animate, dirty.getAndSet(false));
             };
     private long frameSentAt;
@@ -142,7 +147,7 @@ public final class WidgetSandboxSession {
                 }
                 frameWanted.set(false);
                 frameSentAt = now;
-                WidgetSandboxNative.tick(id, (now - clockOrigin) / 1e6f, true, false, false);
+                engine.tick(id, (now - clockOrigin) / 1e6f, true, false, false);
             };
 
     public WidgetSandboxSession(Context context, String html, boolean dark, int cpuMultiplier) {
@@ -163,25 +168,65 @@ public final class WidgetSandboxSession {
     }
 
     public void setSdk(String json) {
-        if (isOwned() && json != null) sdk = json;
+        if (!isOwned() || json == null) return;
+        sdk = json;
+        try {
+            gate = new WidgetGate(new JSONObject(json).optJSONObject("context"));
+        } catch (Exception e) {
+            gate = new WidgetGate(null);
+        }
     }
 
     void setSafeArea(String area) {
         if (closed || !isOwned() || area == null || area.equals(safeArea)) return;
         safeArea = area;
         long id = session;
-        if (id != 0) WidgetSandboxNative.safeArea(id, area.getBytes(StandardCharsets.UTF_8));
+        if (id != 0) engine.safeArea(id, area.getBytes(StandardCharsets.UTF_8));
     }
 
     void setData(String data) {
         long id = session;
-        if (!closed && isOwned() && id != 0) WidgetSandboxNative.data(id, data.getBytes(StandardCharsets.UTF_8));
+        if (!closed && isOwned() && id != 0) engine.data(id, data.getBytes(StandardCharsets.UTF_8));
     }
 
     void answerRequest(long request, int failure, String result) {
+        gate.answered(failure == REQUEST_ANSWERED);
         long id = session;
-        if (!closed && isOwned() && id != 0) WidgetSandboxNative.answerRequest(id, request, failure, result == null ? null : result.getBytes(StandardCharsets.UTF_8));
+        if (!closed && isOwned() && id != 0) engine.answerRequest(id, request, failure, result == null ? null : result.getBytes(StandardCharsets.UTF_8));
     }
+
+    public static void setInProcessEngine(boolean inProcess) {
+        WidgetEngine.isolated = !(inProcess && org.telegram.messenger.BuildVars.DEBUG_PRIVATE_VERSION);
+    }
+
+    public static void prewarmEngine(Context context) {
+        if (!WidgetEngine.isolated || disabledByConfig()) return;
+        android.app.ActivityManager activityManager = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (activityManager == null || activityManager.isLowRamDevice()) return;
+        try {
+            WidgetRemoteEngine.INSTANCE.prewarm(context);
+        } catch (Exception e) {
+            org.telegram.messenger.FileLog.e(e);
+        }
+        if (!foregroundWatched) {
+            org.telegram.ui.Components.ForegroundDetector detector = org.telegram.ui.Components.ForegroundDetector.getInstance();
+            if (detector != null) {
+                foregroundWatched = true;
+                detector.addListener(new org.telegram.ui.Components.ForegroundDetector.Listener() {
+                    @Override
+                    public void onBecameForeground() {
+                        org.telegram.messenger.Utilities.globalQueue.postRunnable(() -> prewarmEngine(context));
+                    }
+
+                    @Override
+                    public void onBecameBackground() {
+                    }
+                });
+            }
+        }
+    }
+
+    private static boolean foregroundWatched;
 
     public static boolean disabledByConfig() {
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -201,23 +246,22 @@ public final class WidgetSandboxSession {
         Trace.beginSection("WidgetSandbox:Create");
         long id = 0;
         try {
-            String directory = WidgetSandboxResources.prepare(context).getAbsolutePath();
             if (closed || !isOwned()) return;
             final String createdSafeArea = safeArea;
             String sdk = this.sdk;
             if (createdSafeArea != null) sdk = new JSONObject(sdk).put("contentSafeArea", new JSONObject(createdSafeArea)).toString();
             id =
-                    WidgetSandboxNative.create(
-                            directory.getBytes(StandardCharsets.UTF_8),
-                            html.getBytes(StandardCharsets.UTF_8),
-                            theme.getBytes(StandardCharsets.UTF_8),
+                    engine.create(
+                            context,
+                            html,
+                            theme,
                             widthPx / density,
                             density,
                             cpuMultiplier,
-                            locale.getBytes(StandardCharsets.UTF_8),
-                            storage.getBytes(StandardCharsets.UTF_8),
-                            sdk.getBytes(StandardCharsets.UTF_8),
-                            LocaleController.getString(R.string.WidgetStopped).getBytes(StandardCharsets.UTF_8),
+                            locale,
+                            storage,
+                            sdk,
+                            LocaleController.getString(R.string.WidgetStopped),
                             visible,
                             backend);
             final String createdTheme = theme;
@@ -230,13 +274,13 @@ public final class WidgetSandboxSession {
                         }
                         session = created;
                         if (this.widthPx != widthPx && this.widthPx > 0)
-                            WidgetSandboxNative.width(created, this.widthPx / density);
+                            engine.width(created, this.widthPx / density);
                         if (!this.theme.equals(createdTheme))
-                            WidgetSandboxNative.theme(created, this.theme.getBytes(StandardCharsets.UTF_8));
+                            engine.theme(created, this.theme.getBytes(StandardCharsets.UTF_8));
                         if (safeArea != null && !safeArea.equals(createdSafeArea))
-                            WidgetSandboxNative.safeArea(created, safeArea.getBytes(StandardCharsets.UTF_8));
+                            engine.safeArea(created, safeArea.getBytes(StandardCharsets.UTF_8));
                         scriptsReleased = true;
-                        WidgetSandboxNative.visible(created, visible);
+                        engine.visible(created, visible);
                         scheduleFrame();
                     });
         } catch (Exception error) {
@@ -306,7 +350,7 @@ public final class WidgetSandboxSession {
         if (width <= 0 || width == widthPx || closed || !isOwned()) return;
         widthPx = width;
         long id = session;
-        if (id != 0) WidgetSandboxNative.width(id, width / density);
+        if (id != 0) engine.width(id, width / density);
     }
 
     public int widthPx() {
@@ -323,14 +367,14 @@ public final class WidgetSandboxSession {
         this.theme = theme;
         dark = theme.contains("\"dark\"");
         long id = session;
-        if (id != 0) WidgetSandboxNative.theme(id, theme.getBytes(StandardCharsets.UTF_8));
+        if (id != 0) engine.theme(id, theme.getBytes(StandardCharsets.UTF_8));
     }
 
     public void setVisible(boolean visible) {
         if (closed || !isOwned() || this.visible == visible) return;
         this.visible = visible;
         long id = session;
-        if (id != 0) WidgetSandboxNative.visible(id, visible);
+        if (id != 0) engine.visible(id, visible);
         if (visible) scheduleFrame();
     }
 
@@ -347,7 +391,7 @@ public final class WidgetSandboxSession {
         Frame frame = current;
         if (frame != null && frameMatchesWidth(frame) && frame.recorded()) return;
         repaintPending = true;
-        WidgetSandboxNative.repaint(session);
+        engine.repaint(session);
     }
 
     void touch(int action, float x, float y, int pointer, boolean primary) {
@@ -355,13 +399,14 @@ public final class WidgetSandboxSession {
     }
 
     void touch(int action, float x, float y, int pointer, boolean primary, boolean mouse, int modifiers, int button) {
+        if (action == 0 && visible) gate.press();
         long id = session;
-        if (!closed && isOwned() && id != 0) WidgetSandboxNative.touch(id, action, x, y, pointer, primary, mouse, modifiers, button);
+        if (!closed && isOwned() && id != 0) engine.touch(id, action, x, y, pointer, primary, mouse, modifiers, button);
     }
 
     void hover(int action, float x, float y, int modifiers) {
         long id = session;
-        if (!closed && isOwned() && id != 0) WidgetSandboxNative.hover(id, action, x, y, modifiers);
+        if (!closed && isOwned() && id != 0) engine.hover(id, action, x, y, modifiers);
     }
 
     private boolean frameMatchesWidth(Frame frame) {
@@ -383,6 +428,7 @@ public final class WidgetSandboxSession {
 
     void onWorkerSignal(int kind, String message) {
         if (kind == 8) {
+            if (!WidgetGate.storageCommit(message)) return;
             main.post(
                     () -> {
                         if (!isOwned() || storageListener == null) return;
@@ -401,20 +447,46 @@ public final class WidgetSandboxSession {
             return;
         }
         if (closed || !isOwned()) return;
-        if (kind == 12 || kind == 13 || kind == 14 || kind == 19) {
+        if (kind == 12 || kind == 19) {
+            long id;
+            String data = null;
+            JSONObject call = null;
+            boolean wallet = false;
+            try {
+                JSONObject request = new JSONObject(message);
+                id = request.getLong("id");
+                if (kind == 19) call = request.getJSONObject("call");
+                else {
+                    data = request.getString("data");
+                    wallet = request.optBoolean("wallet");
+                }
+            } catch (Exception ignored) {
+                return;
+            }
+            boolean allowed = kind == 19 ? gate.walletCall(call.toString(), visible) : gate.request(data, wallet, visible);
+            if (!allowed) {
+                long engineId = session;
+                if (engineId != 0) engine.answerRequest(engineId, id, REQUEST_FAILED, null);
+                return;
+            }
+            final String requestData = data;
+            final JSONObject walletCall = call;
+            final boolean withWallet = wallet;
+            main.post(
+                    () -> {
+                        if (closed || !isOwned() || listener == null) return;
+                        if (kind == 19) listener.onWallet(id, walletCall);
+                        else listener.onRequest(id, requestData, withWallet);
+                    });
+            return;
+        }
+        if (kind == 13 || kind == 14) {
+            if (kind == 13 && !(WidgetGate.copyText(message) && gate.privileged(visible))) return;
             main.post(
                     () -> {
                         if (closed || !isOwned() || listener == null) return;
                         if (kind == 13) listener.onCopyText(message);
-                        else if (kind == 14) listener.onWatchPublicData("1".equals(message));
-                        else {
-                            try {
-                                JSONObject request = new JSONObject(message);
-                                if (kind == 19) listener.onWallet(request.getLong("id"), request.getJSONObject("call"));
-                                else listener.onRequest(request.getLong("id"), request.getString("data"), request.optBoolean("wallet"));
-                            } catch (Exception ignored) {
-                            }
-                        }
+                        else listener.onWatchPublicData("1".equals(message));
                     });
             return;
         }
@@ -491,13 +563,25 @@ public final class WidgetSandboxSession {
             } catch (Exception ignored) {
             }
         } else if (kind == 5) {
+            JSONObject action;
+            try {
+                action = new JSONObject(message);
+                        } catch (Exception ignored) {
+                return;
+            }
+            String actionKind = action.optString("kind");
+            boolean allowed;
+            if ("openLink".equals(actionKind) || "openTelegramLink".equals(actionKind)) {
+                allowed = WidgetGate.link(action.optString("url"), "openTelegramLink".equals(actionKind)) && gate.privileged(visible);
+            } else if ("haptic".equals(actionKind)) {
+                allowed = gate.haptic(visible);
+            } else {
+                allowed = "ready".equals(actionKind);
+            }
+            if (!allowed) return;
             main.post(
                     () -> {
-                        if (closed || !isOwned() || listener == null) return;
-                        try {
-                            listener.onAction(new JSONObject(message));
-                        } catch (Exception ignored) {
-                        }
+                        if (!closed && isOwned() && listener != null) listener.onAction(action);
                     });
         } else if (kind == 7) {
             float delay;
@@ -616,12 +700,23 @@ public final class WidgetSandboxSession {
         return closed;
     }
 
-    private static void destroyInBackground(long id) {
+    void onEngineDied() {
+        main.post(
+                () -> {
+                    if (closed || !isOwned() || session == 0) return;
+                    session = 0;
+                    tickInFlight.set(false);
+                    failure = "Widget engine stopped";
+                    if (listener != null) listener.onEngineDied();
+                });
+    }
+
+    private void destroyInBackground(long id) {
         WidgetSandboxResources.IO.execute(
                 () -> {
                     Trace.beginSection("WidgetSandbox:Destroy");
                     try {
-                        WidgetSandboxNative.destroy(id);
+                        engine.destroy(id);
                     } finally {
                         Trace.endSection();
                     }

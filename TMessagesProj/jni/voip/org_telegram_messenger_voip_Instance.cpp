@@ -14,6 +14,7 @@
 #include <tgcalls/tgcalls/group/GroupInstanceCustomImpl.h>
 
 #include <memory>
+#include <cstdio>
 #include <utility>
 #include <map>
 #include <mutex>
@@ -405,9 +406,27 @@ DataSaving parseDataSaving(JNIEnv *env, jint dataSaving) {
             throwNewJavaIllegalArgumentException(env, "DATA_SAVING_ROAMING is not supported");
             return DataSaving::Never;
         default:
-            throwNewJavaIllegalArgumentException(env, "Unknown data saving constant: " + dataSaving);
+            char message[80];
+            std::snprintf(message, sizeof(message), "Unknown data saving constant: %d", static_cast<int>(dataSaving));
+            throwNewJavaIllegalArgumentException(env, message);
             return DataSaving::Never;
     }
+}
+
+bool tryParseDataSaving(JNIEnv *env, jobject config, DataSaving &dataSaving) {
+    if (config == nullptr) {
+        throwNewJavaIllegalArgumentException(env, "Config is null");
+        return false;
+    }
+    jclass configClass = env->GetObjectClass(config);
+    if (configClass == nullptr) return false;
+    jfieldID field = env->GetFieldID(configClass, "dataSaving", "I");
+    env->DeleteLocalRef(configClass);
+    if (field == nullptr || env->ExceptionCheck()) return false;
+    jint value = env->GetIntField(config, field);
+    if (env->ExceptionCheck()) return false;
+    dataSaving = parseDataSaving(env, value);
+    return !env->ExceptionCheck();
 }
 
 EndpointType parseEndpointType(JNIEnv *env, jint endpointType) {
@@ -851,6 +870,8 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeNati
     jlong videoCapturer,
     jfloat aspectRatio
 ) {
+    DataSaving dataSaving;
+    if (!tryParseDataSaving(env, config, dataSaving)) return 0;
     initWebRTC(env);
 
     JavaObject configObject(env, config);
@@ -885,7 +906,7 @@ JNIEXPORT jlong JNICALL Java_org_telegram_messenger_voip_NativeInstance_makeNati
             .config = Config{
                     .initializationTimeout = configObject.getDoubleField("initializationTimeout"),
                     .receiveTimeout = configObject.getDoubleField("receiveTimeout"),
-                    .dataSaving = parseDataSaving(env, configObject.getIntField("dataSaving")),
+                    .dataSaving = dataSaving,
                     .enableP2P = configObject.getBooleanField("enableP2p") == JNI_TRUE,
                     .enableStunMarking = configObject.getBooleanField("enableSm") == JNI_TRUE,
                     .enableAEC = configObject.getBooleanField("enableAec") == JNI_TRUE,
@@ -1387,7 +1408,7 @@ Java_org_telegram_messenger_voip_NativeInstance_setConferenceCallId(JNIEnv *env,
         DEBUG_D("setConferenceCallId failed, instance doesn't contain groupNativeInstance");
         return;
     }
-    DEBUG_D("setConferenceCallId %d", call_id);
+    DEBUG_D("setConferenceCallId %lld", static_cast<long long>(call_id));
     *instance->conferenceCallId = (long) call_id;
 }
 

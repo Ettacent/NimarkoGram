@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -58,8 +60,10 @@ public class MusicPlayerReceiver extends BroadcastReceiver {
                     MediaController.getInstance().playMessage(MediaController.getInstance().getPlayingMessageObject());
                     break;
                 case MusicPlayerService.NOTIFY_PAUSE:
-                case android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY:
                     MediaController.getInstance().pauseMessage(MediaController.getInstance().getPlayingMessageObject());
+                    break;
+                case android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY:
+                    MediaController.getInstance().onAudioBecomingNoisy();
                     break;
                 case MusicPlayerService.NOTIFY_NEXT:
                     MediaController.getInstance().playNextMessage();

@@ -6446,14 +6446,19 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
 
     @Override
     public void setPluginSetting(String str, String str2, Object obj) {
+        setPluginSettingChecked(str, str2, obj);
+    }
+
+    @Override
+    public boolean setPluginSettingChecked(String str, String str2, Object obj) {
         if (RECOVERY_BLOCKED_PLUGIN_IDS.contains(str)) {
             invalidatePluginSettingCache(str, str2);
-            return;
+            return false;
         }
         synchronized (settingsReloadLock) {
             if (getPython() == null) {
                 invalidatePluginSettingCache(str, str2);
-                return;
+                return false;
             }
             try {
                 PyObject saved = getPython().getModule("plugin_settings")
@@ -6462,7 +6467,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     invalidatePluginSettingCache(str, str2);
                     FileLog.e("Plugin setting write was rejected: "
                             + str + "/" + str2);
-                    return;
+                    return false;
                 }
                 ConcurrentHashMap<String, Object> pluginCache =
                         this.settingsCache.computeIfAbsent(
@@ -6472,9 +6477,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                 } else {
                     pluginCache.put(str2, obj);
                 }
+                return true;
             } catch (RuntimeException e) {
                 invalidatePluginSettingCache(str, str2);
                 FileLog.e("Failed to set plugin setting " + str + "/" + str2, e);
+                return false;
             }
         }
     }

@@ -357,10 +357,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     private int currentDoneType;
     private AnimatorSet[] showDoneAnimation = new AnimatorSet[2];
     private AnimatorSet doneItemAnimation;
+    private AnimatorSet pagesAnimation;
+    private boolean loginUiDestroyed;
     private TransformableLoginButtonView floatingButtonIcon;
     private FragmentFloatingButton floatingButton;
     private VerticalPositionAutoAnimator floatingAutoAnimator;
     private int progressRequestId;
+    private ConnectionsManager progressRequestConnections;
     private boolean[] doneButtonVisible = new boolean[] {true, false};
 
     private AlertDialog cancelDeleteProgressDialog;
@@ -533,6 +536,11 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public void onFragmentDestroy() {
+        loginUiDestroyed = true;
+        if (views[VIEW_PASSWORD] instanceof LoginActivityPasswordView) {
+            ((LoginActivityPasswordView) views[VIEW_PASSWORD]).cancelPasswordRecovery();
+        }
+        finishPagesAnimation();
         detachPendingLogin();
         super.onFragmentDestroy();
         for (int a = 0; a < views.length; a++) {
@@ -1515,6 +1523,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         }
 
         progressRequestId = requestId;
+        progressRequestConnections = getConnectionsManager();
         showEditDoneProgress(true, animated);
     }
 
@@ -1523,11 +1532,12 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     }
 
     private void needHideProgress(boolean cancel, boolean animated) {
-        if (progressRequestId != 0) {
-            if (cancel) {
-                ConnectionsManager.getInstance(currentAccount).cancelRequest(progressRequestId, true);
-            }
+        final int requestId = progressRequestId;
+        final ConnectionsManager connections = progressRequestConnections;
             progressRequestId = 0;
+        progressRequestConnections = null;
+        if (cancel && requestId != 0 && connections != null) {
+            connections.cancelRequest(requestId, true);
         }
 
         if (isInCancelAccountDeletionMode() && cancelDeleteProgressDialog != null) {
@@ -1538,7 +1548,19 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         showEditDoneProgress(false, animated);
     }
 
+    private void finishPagesAnimation() {
+        if (pagesAnimation != null) {
+            pagesAnimation.end();
+        }
+    }
     public void setPage(@ViewNumber int page, boolean animated, Bundle params, boolean back) {
+        if (loginUiDestroyed) {
+            return;
+        }
+        finishPagesAnimation();
+        if (currentViewNum == VIEW_PASSWORD && views[VIEW_PASSWORD] instanceof LoginActivityPasswordView) {
+            ((LoginActivityPasswordView) views[VIEW_PASSWORD]).cancelPasswordRecovery();
+        }
         if (currentViewNum == VIEW_PHONE_INPUT && page != VIEW_PHONE_INPUT && views[VIEW_PHONE_INPUT] instanceof PhoneView) {
             ((PhoneView) views[VIEW_PHONE_INPUT]).cancelAutoLogin();
         }
@@ -1582,11 +1604,16 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             newView.setX(back ? -AndroidUtilities.displaySize.x : AndroidUtilities.displaySize.x);
             newView.setVisibility(View.VISIBLE);
 
-            AnimatorSet pagesAnimation = new AnimatorSet();
-            pagesAnimation.addListener(new AnimatorListenerAdapter() {
+            final AnimatorSet animation = new AnimatorSet();
+            pagesAnimation = animation;
+            animation.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (currentDoneType == DONE_TYPE_FLOATING && needFloatingButton) {
+                    if (pagesAnimation != animation) {
+                        return;
+                    }
+                    pagesAnimation = null;
+                    if (!loginUiDestroyed && currentDoneType == DONE_TYPE_FLOATING && needFloatingButton) {
                         showDoneButton(true, true);
                     }
                     outView.setVisibility(View.GONE);
@@ -1594,12 +1621,12 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     outView.setX(0);
                 }
             });
-            pagesAnimation.playTogether(
+            animation.playTogether(
                     ObjectAnimator.ofFloat(outView, View.TRANSLATION_X, back ? AndroidUtilities.displaySize.x : -AndroidUtilities.displaySize.x),
                     ObjectAnimator.ofFloat(newView, View.TRANSLATION_X, 0));
-            pagesAnimation.setDuration(300);
-            pagesAnimation.setInterpolator(new AccelerateDecelerateInterpolator());
-            pagesAnimation.start();
+            animation.setDuration(300);
+            animation.setInterpolator(new AccelerateDecelerateInterpolator());
+            animation.start();
 
             setCustomKeyboardVisible(newView.hasCustomKeyboard(), true);
         } else {
@@ -3460,7 +3487,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 if (!isRequestingFirebaseSms) {
                     needHideProgress(false);
                 }
-            }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagTryDifferentDc | ConnectionsManager.RequestFlagEnableUnauthorized);
+            }), ConnectionsManager.RequestFlagDoNotWaitFloodWait | ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagTryDifferentDc | ConnectionsManager.RequestFlagEnableUnauthorized);
             needShowProgress(reqId);
         }
 
@@ -3734,12 +3761,6 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
             if (sim.phoneNumber != null) {
                 tableView.addRow(getString(R.string.FpnvConsentPhoneNumber), sim.phoneNumber.startsWith("+") ? PhoneFormat.getInstance().format(sim.phoneNumber) : sim.phoneNumber);
-            }
-            if (sim.countryName != null) {
-                tableView.addRow(getString(R.string.FpnvConsentCountry), sim.countryName);
-            }
-            if (sim.mccMnc != null) {
-                tableView.addRow(getString(R.string.FpnvConsentMccMnc), sim.mccMnc);
             }
             final FrameLayout tableContainer = new FrameLayout(context);
             tableContainer.addView(tableView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL, 24, 4, 24, 4));
@@ -5887,6 +5908,85 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         private OutlineTextContainerView outlineCodeField;
 
+        private PasswordRecoveryAttempt passwordRecoveryAttempt;
+
+        private class PasswordRecoveryAttempt {
+            final int account = currentAccount;
+            final ConnectionsManager connections = getConnectionsManager();
+            final Bundle sourceParams = currentParams;
+            final Bundle params = new Bundle();
+            int requestId;
+            boolean completed;
+            Dialog dialog;
+
+            PasswordRecoveryAttempt() {
+                params.putString("password", passwordString);
+                params.putString("requestPhone", requestPhone);
+                params.putString("phoneHash", phoneHash);
+                params.putString("phoneCode", phoneCode);
+            }
+
+            boolean isCurrent() {
+                return passwordRecoveryAttempt == this && !loginUiDestroyed && !isFinished
+                        && currentViewNum == VIEW_PASSWORD && views[VIEW_PASSWORD] == LoginActivityPasswordView.this
+                        && currentAccount == account && currentParams == sourceParams;
+            }
+        }
+
+        private void cancelPasswordRecovery() {
+            final PasswordRecoveryAttempt attempt = passwordRecoveryAttempt;
+            passwordRecoveryAttempt = null;
+            if (attempt == null) {
+                return;
+            }
+            final int requestId = attempt.requestId;
+            attempt.requestId = 0;
+            final Dialog dialog = attempt.dialog;
+            attempt.dialog = null;
+            if (requestId != 0) {
+                if (progressRequestConnections == attempt.connections && progressRequestId == requestId) {
+                    needHideProgress(false);
+                }
+                attempt.connections.cancelRequest(requestId, true);
+            }
+            if (dialog != null) {
+                dialog.dismiss();
+            }
+        }
+
+        private Dialog showPasswordRecoveryDialog(PasswordRecoveryAttempt attempt, Dialog dialog) {
+            if (!attempt.isCurrent()) {
+                return null;
+            }
+            final Dialog shown = showDialog(dialog, closed -> {
+                attempt.dialog = null;
+                if (passwordRecoveryAttempt == attempt) {
+                    passwordRecoveryAttempt = null;
+                }
+            });
+            if (!attempt.isCurrent()) {
+                if (shown != null) {
+                    shown.dismiss();
+                }
+                return null;
+            }
+            attempt.dialog = shown;
+            if (shown == null) {
+                passwordRecoveryAttempt = null;
+            }
+            return shown;
+        }
+
+        private void showPasswordRecoveryAlert(PasswordRecoveryAttempt attempt, String title, String text) {
+            if (!attempt.isCurrent() || text == null || getParentActivity() == null) {
+                return;
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+            builder.setTitle(title);
+            builder.setMessage(text);
+            builder.setPositiveButton(getString("OK", R.string.OK), null);
+            showPasswordRecoveryDialog(attempt, builder.create());
+        }
         public LoginActivityPasswordView(Context context) {
             super(context);
 
@@ -5955,17 +6055,33 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             VerticalPositionAutoAnimator.attach(cancelButton);
 
             cancelButton.setOnClickListener(view -> {
-                if (radialProgressView.getTag() != null) {
+                if (loginUiDestroyed || isFinished || currentViewNum != VIEW_PASSWORD
+                        || views[VIEW_PASSWORD] != LoginActivityPasswordView.this || radialProgressView.getTag() != null) {
                     return;
                 }
                 if (currentPassword.has_recovery) {
-                    needShowProgress(0);
+                    cancelPasswordRecovery();
+                    final PasswordRecoveryAttempt attempt = new PasswordRecoveryAttempt();
+                    passwordRecoveryAttempt = attempt;
                     TLRPC.TL_auth_requestPasswordRecovery req = new TLRPC.TL_auth_requestPasswordRecovery();
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                    attempt.requestId = attempt.connections.sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                        if (!attempt.isCurrent() || attempt.completed) {
+                            if (!attempt.completed && passwordRecoveryAttempt == attempt) {
+                                cancelPasswordRecovery();
+                            }
+                            return;
+                        }
+                        if (progressRequestConnections != attempt.connections || progressRequestId != attempt.requestId) {
+                            cancelPasswordRecovery();
+                            return;
+                        }
+                        attempt.completed = true;
+                        attempt.requestId = 0;
                         needHideProgress(false);
                         if (error == null) {
                             final TLRPC.TL_auth_passwordRecovery res = (TLRPC.TL_auth_passwordRecovery) response;
                             if (getParentActivity() == null) {
+                                cancelPasswordRecovery();
                                 return;
                             }
                             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
@@ -5983,15 +6099,14 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             builder.setMessage(AndroidUtilities.formatSpannable(getString(R.string.RestoreEmailSent), emailPattern));
                             builder.setTitle(getString("RestoreEmailSentTitle", R.string.RestoreEmailSentTitle));
                             builder.setPositiveButton(getString(R.string.Continue), (dialogInterface, i) -> {
-                                Bundle bundle = new Bundle();
+                                if (!attempt.isCurrent()) {
+                                    return;
+                                }
+                                Bundle bundle = new Bundle(attempt.params);
                                 bundle.putString("email_unconfirmed_pattern", res.email_pattern);
-                                bundle.putString("password", passwordString);
-                                bundle.putString("requestPhone", requestPhone);
-                                bundle.putString("phoneHash", phoneHash);
-                                bundle.putString("phoneCode", phoneCode);
                                 setPage(VIEW_RECOVER, true, bundle, false);
                             });
-                            Dialog dialog = showDialog(builder.create());
+                            Dialog dialog = showPasswordRecoveryDialog(attempt, builder.create());
                             if (dialog != null) {
                                 dialog.setCanceledOnTouchOutside(false);
                                 dialog.setCancelable(false);
@@ -6005,12 +6120,22 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                                 } else {
                                     timeString = LocaleController.formatPluralString("Minutes", time / 60);
                                 }
-                                needShowAlert(getString(R.string.WrongCodeTitle), LocaleController.formatString("FloodWaitTime", R.string.FloodWaitTime, timeString));
+                                showPasswordRecoveryAlert(attempt, getString(R.string.WrongCodeTitle), LocaleController.formatString("FloodWaitTime", R.string.FloodWaitTime, timeString));
                             } else {
-                                needShowAlert(getString(R.string.RestorePasswordNoEmailTitle), error.text);
+                                showPasswordRecoveryAlert(attempt, getString(R.string.RestorePasswordNoEmailTitle), error.text);
                             }
                         }
                     }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin);
+                    if (attempt.isCurrent()) {
+                        needShowProgress(attempt.requestId);
+                    } else {
+                        final int requestId = attempt.requestId;
+                        attempt.requestId = 0;
+                        if (passwordRecoveryAttempt == attempt) {
+                            passwordRecoveryAttempt = null;
+                        }
+                        attempt.connections.cancelRequest(requestId, true);
+                    }
                 } else {
                     AndroidUtilities.hideKeyboard(codeField);
                     new AlertDialog.Builder(context)
@@ -6041,11 +6166,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         @Override
         public void onCancelPressed() {
+            cancelPasswordRecovery();
             nextPressed = false;
         }
 
         @Override
         public void setParams(Bundle params, boolean restore) {
+            cancelPasswordRecovery();
             if (params == null) {
                 return;
             }
@@ -6097,6 +6224,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 onPasscodeError(false);
                 return;
             }
+            cancelPasswordRecovery();
             nextPressed = true;
             needShowProgress(0);
 
@@ -6174,10 +6302,23 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         @Override
         public boolean onBackPressed(boolean force) {
+            cancelPasswordRecovery();
             nextPressed = false;
             needHideProgress(true);
             currentParams = null;
             return true;
+        }
+
+        @Override
+        public void onHide() {
+            cancelPasswordRecovery();
+            super.onHide();
+        }
+
+        @Override
+        public void onDestroyActivity() {
+            cancelPasswordRecovery();
+            super.onDestroyActivity();
         }
 
         @Override

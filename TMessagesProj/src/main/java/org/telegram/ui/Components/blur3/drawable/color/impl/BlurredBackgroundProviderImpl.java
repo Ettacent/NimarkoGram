@@ -34,6 +34,7 @@ public class BlurredBackgroundProviderImpl {
     }
     public static BlurredBackgroundProvider mainTabs(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setReadableTextColors(Theme.key_glass_defaultText, Theme.key_glass_tabUnselected)
             .setBackgroundColor((r, isDark) -> {
                 final float alpha = glassSurfaceOpacity(isDark);
                 final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
@@ -50,6 +51,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider topPanel(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setReadableTextColors(Theme.key_glass_defaultText, Theme.key_actionBarDefaultSubtitle)
             .setBackgroundColor((r, isDark) -> {
                 final float alpha = glassSurfaceOpacity(isDark);
                 final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
@@ -75,6 +77,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider emojiViewButton(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setReadableTextColors(Theme.key_windowBackgroundWhiteBlackText, Theme.key_chat_emojiPanelIcon)
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = glassSurfaceOpacity(isDark);
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
@@ -171,6 +174,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider attachMenuSearch(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setReadableTextColors(Theme.key_windowBackgroundWhiteBlackText, Theme.key_windowBackgroundWhiteHintText)
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = glassSurfaceOpacity(isDark);
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
@@ -196,6 +200,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider bottomPanelChatActivity(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setReadableTextColors(Theme.key_chat_messagePanelText, Theme.key_chat_messagePanelHint)
                 .setBackgroundColor((r, isDark) -> {
                     if (!checkBlurEnabled(resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_chat_messagePanelBackground, r), 255);
@@ -260,6 +265,7 @@ public class BlurredBackgroundProviderImpl {
                     return dpf2(0.6f);
                 }
             }
+                .setReadableTextColors(Theme.key_chat_topPanelMessage, Theme.key_chat_topPanelTitle)
                 .setBackgroundColor((r, isDark) -> {
                     if (!checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
@@ -285,6 +291,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider simpleActionBar(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setReadableTextColors(Theme.key_actionBarDefaultTitle, Theme.key_actionBarDefaultSubtitle)
             .setBackgroundColor((r, isDark) -> {
                 final float alpha = LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS) ? 0.85f : 0.80f;
                 final int colorBg = Theme.getColor(Theme.key_windowBackgroundGray, r);
@@ -312,6 +319,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider topPanelChatActivityTags(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setReadableTextColors(Theme.key_chat_topPanelMessage, Theme.key_chat_topPanelTitle)
             .setBackgroundColor((r, isDark) -> {
                 if (!checkBlurEnabled(resourcesProvider)) {
                     return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
@@ -332,6 +340,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider topPanelChatActivitySearchListBg(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setReadableTextColors(Theme.key_windowBackgroundWhiteBlackText, Theme.key_windowBackgroundWhiteGrayText2)
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = 0.7f;
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);
@@ -347,6 +356,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider bulletin(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+            .setReadableTextColors(Theme.key_undo_infoColor, Theme.key_undo_cancelColor)
             .setBackgroundColor((r, isDark) -> {
                 final float alpha = glassSurfaceOpacity(isDark);
                 final int colorBg = Theme.getColor(Theme.key_undo_background, r);
@@ -382,6 +392,7 @@ public class BlurredBackgroundProviderImpl {
 
     public static BlurredBackgroundProvider inputFieldShareAlert(Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
+                .setReadableTextColors(Theme.key_chat_messagePanelText, Theme.key_chat_messagePanelHint)
                 .setBackgroundColor((r, isDark) -> {
                     final float alpha = glassSurfaceOpacity(isDark);
                     final int colorBg = Theme.getColor(Theme.key_windowBackgroundWhite, r);

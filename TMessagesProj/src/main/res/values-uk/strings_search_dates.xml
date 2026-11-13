@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Фільтр за датою</string>
+    <string name="NM_SearchDatesDay">День</string>
+    <string name="NM_SearchDatesPeriod">Період</string>
+    <string name="NM_SearchDatesFrom">З</string>
+    <string name="NM_SearchDatesUntil">До</string>
+    <string name="NM_SearchDatesAddEnd">Додати кінець періоду</string>
+    <string name="NM_SearchDatesToday">Сьогодні</string>
+    <string name="NM_SearchDatesYesterday">Учора</string>
+    <string name="NM_SearchDatesLast7">Останні 7 днів</string>
+    <string name="NM_SearchDatesLast30">Останні 30 днів</string>
+    <string name="NM_SearchDatesApply">Застосувати фільтр</string>
+    <string name="NM_SearchDatesReset">Усі дати</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Фільтр за датою: %1$s</string>
+    <string name="NM_SearchDatesChange">Змінити дати</string>
+    <string name="NM_SearchDatesClear">Прибрати фільтр за датою</string>
+    <string name="NM_SearchDatesJump">Перейти до дати</string>
+    <string name="NM_SearchDatesInvalid">Кінець періоду не може бути раніше початку.</string>
+    <string name="NM_SearchDatesDayValue">День: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Місяць: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Рік: %1$s</string>
+</resources>

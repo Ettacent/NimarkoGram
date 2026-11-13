@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -18,6 +20,7 @@ import androidx.media3.datasource.DataSource;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.datasource.TransferListener;
 
+import org.telegram.messenger.FileLoader;
 @OptIn(markerClass = UnstableApi.class)
 public final class ExtendedDefaultDataSourceFactory implements DataSource.Factory {
 
@@ -29,6 +32,7 @@ public final class ExtendedDefaultDataSourceFactory implements DataSource.Factor
      * @param context A context.
      * @param userAgent The User-Agent string that should be used.
      */
+    private final FileLoader.PlayerStreamScope playerStreamScope;
     public ExtendedDefaultDataSourceFactory(Context context, String userAgent) {
         this(context, userAgent, null);
     }
@@ -40,10 +44,15 @@ public final class ExtendedDefaultDataSourceFactory implements DataSource.Factor
      */
     public ExtendedDefaultDataSourceFactory(Context context, String userAgent,
                                     TransferListener listener) {
+        this(context, userAgent, listener, null);
+    }
+
+    public ExtendedDefaultDataSourceFactory(Context context, String userAgent,
+                                    TransferListener listener, FileLoader.PlayerStreamScope playerStreamScope) {
         this(context, listener, new DefaultHttpDataSource.Factory()
                 .setUserAgent(userAgent)
                 .setTransferListener(listener)
-                .setAllowCrossProtocolRedirects(true));
+                .setAllowCrossProtocolRedirects(true), playerStreamScope);
     }
 
     /**
@@ -55,16 +64,22 @@ public final class ExtendedDefaultDataSourceFactory implements DataSource.Factor
      */
     public ExtendedDefaultDataSourceFactory(Context context, TransferListener listener,
                                     DataSource.Factory baseDataSourceFactory) {
+        this(context, listener, baseDataSourceFactory, null);
+    }
+
+    public ExtendedDefaultDataSourceFactory(Context context, TransferListener listener,
+                                    DataSource.Factory baseDataSourceFactory, FileLoader.PlayerStreamScope playerStreamScope) {
         this.context = context.getApplicationContext();
         this.listener = listener;
         this.baseDataSourceFactory = baseDataSourceFactory;
+        this.playerStreamScope = playerStreamScope;
     }
 
     private final LongSparseArray<Uri> mtprotoUris = new LongSparseArray<>();
 
     @Override
     public ExtendedDefaultDataSource createDataSource() {
-        return new ExtendedDefaultDataSource(context, listener, baseDataSourceFactory.createDataSource(), mtprotoUris);
+        return new ExtendedDefaultDataSource(context, listener, baseDataSourceFactory.createDataSource(), mtprotoUris, playerStreamScope);
     }
 
     public void putDocumentUri(long docId, Uri uri) {

@@ -500,6 +500,7 @@ public class ChatMessageTransitionParams {
                 if (cell.currentMessageObject.richLayout != null && lastDrawingRichLayout != null) {
                     cell.currentMessageObject.richLayout.layout(lastDrawingRichLayout);
                 }
+            } else if (cell.currentMessageObject.richLayout != null && cell.currentMessageObject.richLayout.isSameWidget(lastDrawingRichLayout)) {
             } else {
                 animateRichLayout = true;
                 animateOutRichLayout = lastDrawingRichLayout;

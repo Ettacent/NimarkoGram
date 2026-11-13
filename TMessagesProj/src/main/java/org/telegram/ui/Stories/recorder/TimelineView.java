@@ -695,6 +695,14 @@ public class TimelineView extends View {
         if (getMeasuredWidth() <= 0 || this.waveform != null && !resetWaveform) {
             return;
         }
+        if (waveform != null) {
+            waveform.destroy();
+            waveform = null;
+        }
+        resetWaveform = false;
+        if (TextUtils.isEmpty(audioPath)) {
+            return;
+        }
         this.waveform = new AudioWaveformLoader(audioPath, getMeasuredWidth() - getPaddingLeft() - getPaddingRight());
         waveformIsLoaded = false;
         waveformMax.set(1, true);
@@ -2993,6 +3001,15 @@ public class TimelineView extends View {
         private final Object lock = new Object();
         private boolean stop = false;
 
+        private boolean decodeStarted;
+        private boolean extractorReleased;
+        private final Runnable decodeRunnable = () -> {
+            synchronized (lock) {
+                if (stop) return;
+                decodeStarted = true;
+            }
+            run();
+        };
         private FfmpegAudioWaveformLoader waveformLoader;
 
         public AudioWaveformLoader(String path, int uiWidth) {
@@ -3028,27 +3045,45 @@ public class TimelineView extends View {
 
             if (duration > 0 && inputFormat != null) {
                 if ("audio/mpeg".equals(mime) || "audio/mp3".equals(mime) || "audio/mp4a".equals(mime) || "audio/mp4a-latm".equals(mime)) {
+                    releaseUnusedExtractor();
                     waveformLoader = new FfmpegAudioWaveformLoader(path, count, this::receiveData);
                 } else {
-                    Utilities.phoneBookQueue.postRunnable(this::run);
+                    if (!Utilities.phoneBookQueue.postRunnable(decodeRunnable)) {
+                        releaseUnusedExtractor();
+                    }
                 }
+            } else {
+                releaseUnusedExtractor();
+            }
+        }
+
+        private void releaseUnusedExtractor() {
+            if (extractorReleased) return;
+            extractorReleased = true;
+            try {
+                extractor.release();
+            } catch (Exception e) {
+                FileLog.e(e);
             }
         }
 
         private void run() {
+            MediaCodec decoder = null;
+            boolean decoderStarted = false;
             try {
                 final int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
                 final int skip = 4;
                 final int barWidth = (int) Math.round(duration * sampleRate / (float) count / (1 + skip));
                 final long chunkTime = 2500;
                 String mime = inputFormat.getString(MediaFormat.KEY_MIME);
-                final MediaCodec decoder = MediaCodec.createDecoderByType(mime);
+                decoder = MediaCodec.createDecoderByType(mime);
                 if (decoder == null) {
                     return;
                 }
                 decoder.configure(inputFormat, null, null, 0);
                 decoder.start();
 
+                decoderStarted = true;
                 ByteBuffer[] inputBuffers = decoder.getInputBuffers();
                 ByteBuffer[] outputBuffers = decoder.getOutputBuffers();
                 int outputBufferIndex = -1;
@@ -3058,10 +3093,15 @@ public class TimelineView extends View {
 
                 int index = 0, count = 0;
                 short peak = 0;
-                boolean end = false;
+                boolean inputDone = false;
+                boolean outputDone = false;
 
-                do {
+                while (!outputDone && index < this.count) {
+                    synchronized (lock) {
+                        if (stop) return;
+                    }
                     MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                    if (!inputDone) {
                     int inputBufferIndex = decoder.dequeueInputBuffer(chunkTime);
                     if (inputBufferIndex >= 0) {
                         ByteBuffer inputBuffer;
@@ -3073,10 +3113,11 @@ public class TimelineView extends View {
                         int size = extractor.readSampleData(inputBuffer, 0);
                         if (size < 0) {
                             decoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                            end = true;
+                                inputDone = true;
                         } else {
                             decoder.queueInputBuffer(inputBufferIndex, 0, size, extractor.getSampleTime(), 0);
                             extractor.advance();
+                            }
                         }
                     }
 
@@ -3092,7 +3133,10 @@ public class TimelineView extends View {
                     }
 
                     outputBufferIndex = decoder.dequeueOutputBuffer(info, chunkTime);
-                    while (outputBufferIndex != MediaCodec.INFO_TRY_AGAIN_LATER && !end) {
+                    while (outputBufferIndex != MediaCodec.INFO_TRY_AGAIN_LATER && !outputDone && index < this.count) {
+                        synchronized (lock) {
+                            if (stop) return;
+                        }
                         if (outputBufferIndex >= 0) {
                             ByteBuffer outputBuffer;
                             if (Build.VERSION.SDK_INT < 21) {
@@ -3101,7 +3145,9 @@ public class TimelineView extends View {
                                 outputBuffer = decoder.getOutputBuffer(outputBufferIndex);
                             }
                             if (outputBuffer != null && info.size > 0) {
-                                while (outputBuffer.remaining() > 0) {
+                                outputBuffer.limit(info.offset + info.size);
+                                outputBuffer.position(info.offset);
+                                while (outputBuffer.remaining() >= 2) {
                                     byte a = outputBuffer.get();
                                     byte b = outputBuffer.get();
 
@@ -3115,6 +3161,9 @@ public class TimelineView extends View {
                                             int length = index - chunkindex;
                                             chunk = new short[chunk.length];
                                             chunkindex = index;
+                                            synchronized (lock) {
+                                                if (stop) return;
+                                            }
                                             AndroidUtilities.runOnUIThread(() -> receiveData(dataToSend, length));
                                         }
                                         peak = 0;
@@ -3137,13 +3186,14 @@ public class TimelineView extends View {
                             decoder.releaseOutputBuffer(outputBufferIndex, false);
 
                             if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                                end = true;
+                                outputDone = true;
                                 break;
                             }
 
                         } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
                             outputBuffers = decoder.getOutputBuffers();
                         }
+                        if (index >= this.count) break;
                         outputBufferIndex = decoder.dequeueOutputBuffer(info, chunkTime);
                     }
                     synchronized (lock) {
@@ -3151,17 +3201,47 @@ public class TimelineView extends View {
                             break;
                         }
                     }
-                } while (!end && index < this.count);
+                }
 
-                decoder.stop();
-                decoder.release();
-                extractor.release();
+                if (outputDone) {
+                    if (count > 0 && index < this.count) {
+                        chunk[index - chunkindex] = peak;
+                        index++;
+                    }
+                    if (index > chunkindex) {
+                        final short[] dataToSend = chunk;
+                        final int length = index - chunkindex;
+                        synchronized (lock) {
+                            if (stop) return;
+                        }
+                        AndroidUtilities.runOnUIThread(() -> receiveData(dataToSend, length));
+                    }
+                }
             } catch (Exception e) {
                 FileLog.e(e);
+            } finally {
+                try {
+                    if (decoder != null) {
+                        try {
+                            if (decoderStarted) decoder.stop();
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        } finally {
+                            try {
+                                decoder.release();
+                            } catch (Exception e) {
+                                FileLog.e(e);
+                            }
+                        }
+                    }
+                } finally {
+                    releaseUnusedExtractor();
+                }
             }
         }
 
         private void receiveData(short[] data, int len) {
+            if (stop) return;
             for (int i = 0; i < len; ++i) {
                 if (loaded + i >= this.data.length) {
                     break;
@@ -3176,12 +3256,19 @@ public class TimelineView extends View {
         }
 
         public void destroy() {
+            final boolean releaseExtractor;
+            synchronized (lock) {
+                if (stop) return;
+                stop = true;
+                releaseExtractor = !decodeStarted;
+            }
+            Utilities.phoneBookQueue.cancelRunnable(decodeRunnable);
+            if (releaseExtractor) {
+                releaseUnusedExtractor();
+            }
             if (waveformLoader != null) {
                 waveformLoader.destroy();
-            }
-            Utilities.phoneBookQueue.cancelRunnable(this::run);
-            synchronized (lock) {
-                stop = true;
+                waveformLoader = null;
             }
         }
 

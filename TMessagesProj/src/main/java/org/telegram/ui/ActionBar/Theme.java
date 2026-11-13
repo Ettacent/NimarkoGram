@@ -3538,6 +3538,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static final int key_wallet_comment = colorsCount++;
     public static final int key_wallet_out_commentBorder = colorsCount++;
     public static final int key_wallet_inputCurrency = colorsCount++;
+    public static final int key_chat_compact_inText = colorsCount++;
+    public static final int key_chat_compact_outText = colorsCount++;
+    public static final int key_chat_compact_inLink = colorsCount++;
+    public static final int key_chat_compact_outLink = colorsCount++;
     public static final String key_drawable_botInline = "drawableBotInline";
     public static final String key_drawable_botLink = "drawableBotLink";
     public static final String key_drawable_botWebView = "drawableBotWebView";
@@ -3663,6 +3667,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         fallbackKeys.put(key_graySectionText, key_windowBackgroundWhiteGrayText2);
         fallbackKeys.put(key_chat_inMediaIcon, key_chat_inBubble);
         fallbackKeys.put(key_chat_compact_background, key_windowBackgroundWhite);
+        fallbackKeys.put(key_chat_compact_inText, key_chat_messageTextIn);
+        fallbackKeys.put(key_chat_compact_outText, key_chat_messageTextOut);
+        fallbackKeys.put(key_chat_compact_inLink, key_chat_messageLinkIn);
+        fallbackKeys.put(key_chat_compact_outLink, key_chat_messageLinkOut);
         fallbackKeys.put(key_chat_outMediaIcon, key_chat_outBubble);
         fallbackKeys.put(key_chat_inMediaIconSelected, key_chat_inBubbleSelected);
         fallbackKeys.put(key_chat_outMediaIconSelected, key_chat_outBubbleSelected);
@@ -7359,33 +7367,114 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         }
     }
 
-    public static void loadRemoteThemes(final int currentAccount, boolean force) {
-        if (loadingRemoteThemes[currentAccount] || !force && Math.abs(System.currentTimeMillis() / 1000 - lastLoadingThemesTime[currentAccount]) < 60 * 60 || !UserConfig.getInstance(currentAccount).isClientActivated()) {
+    private static final MediaDataController[] remoteThemePreferenceOwners = new MediaDataController[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final long[] remoteThemePreferenceGenerations = new long[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final long[] remoteThemePreferenceSerials = new long[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final RemoteThemePreferenceRequest[] remoteThemePreferenceRequests = new RemoteThemePreferenceRequest[UserConfig.MAX_ACCOUNT_COUNT];
+
+    private static final class RemoteThemePreferenceRequest {
+        final int account;
+        final MediaDataController media;
+        final long generation;
+        long serial;
+        long version;
+        MediaDataController.EmojiThemesLoad load;
+        RemoteThemePreferenceRequest(int account, MediaDataController media) {
+            this.account = account;
+            this.media = media;
+            generation = media.getMediaPreferencesGeneration();
+        }
+    }
+
+    private static boolean currentRemoteThemePreference(RemoteThemePreferenceRequest request) {
+        return remoteThemePreferenceOwners[request.account] == request.media
+                && request.generation == request.media.getMediaPreferencesGeneration();
+    }
+
+    private static boolean currentRemoteThemeApply(RemoteThemePreferenceRequest request, long version) {
+        return currentRemoteThemePreference(request)
+                && remoteThemePreferenceSerials[request.account] == request.serial
+                && request.media.getEmojiThemesPreferencesVersion() == version;
+    }
+
+    private static void finishRemoteThemePreference(RemoteThemePreferenceRequest request) {
+        if (remoteThemePreferenceRequests[request.account] == request) {
+            remoteThemePreferenceRequests[request.account] = null;
+            loadingRemoteThemes[request.account] = false;
+        }
+        if (request.load != null) request.load.finish();
+    }
+
+    private static void syncRemoteThemePreferenceOwner(int account, MediaDataController media) {
+        long generation = media.getMediaPreferencesGeneration();
+        if (remoteThemePreferenceOwners[account] != media || remoteThemePreferenceGenerations[account] != generation) {
+            boolean retired = remoteThemePreferenceOwners[account] != null || generation != 0;
+            RemoteThemePreferenceRequest old = remoteThemePreferenceRequests[account];
+            if (old != null) finishRemoteThemePreference(old);
+            remoteThemePreferenceOwners[account] = media;
+            remoteThemePreferenceGenerations[account] = generation;
+            if (retired) {
+                ++remoteThemePreferenceSerials[account];
+                loadingRemoteThemes[account] = false;
+                remoteThemesHash[account] = 0;
+                lastLoadingThemesTime[account] = 0;
+            }
+        }
+    }
+
+    private static void requestRemoteThemePreferences(RemoteThemePreferenceRequest request, MediaDataController.EmojiThemesLoad load) {
+        request.load = load;
+        if (!load.isCurrent() || !currentRemoteThemePreference(request)
+                || remoteThemePreferenceRequests[request.account] != request) {
+            finishRemoteThemePreference(request);
             return;
         }
-        loadingRemoteThemes[currentAccount] = true;
-        TL_account.getThemes req = new TL_account.getThemes();
-        req.format = "android";
-        if (!MediaDataController.getInstance(currentAccount).defaultEmojiThemes.isEmpty()) {
-            req.hash = remoteThemesHash[currentAccount];
+        request.version = request.media.getEmojiThemesPreferencesVersion();
+        request.serial = ++remoteThemePreferenceSerials[request.account];
+        TL_account.getThemes query = new TL_account.getThemes();
+        query.format = "android";
+        if (!request.media.defaultEmojiThemes.isEmpty() && request.media.hasEmojiThemesPreferenceHash()
+                && request.media.getEmojiThemesPreferenceHash() == remoteThemesHash[request.account]) {
+            query.hash = remoteThemesHash[request.account];
         }
-        if (BuildVars.LOGS_ENABLED) {
-            Log.i("theme", "loading remote themes, hash " + req.hash);
-        }
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            loadingRemoteThemes[currentAccount] = false;
+        try {
+            ConnectionsManager.getInstance(request.account).sendRequest(query, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!currentRemoteThemePreference(request) || remoteThemePreferenceRequests[request.account] != request
+                        || remoteThemePreferenceSerials[request.account] != request.serial) return;
+                finishRemoteThemePreference(request);
+                if (!currentRemoteThemeApply(request, request.version)) return;
             if (response instanceof TL_account.TL_themes) {
-                TL_account.TL_themes res = (TL_account.TL_themes) response;
+                    long version = request.media.beginEmojiThemesUpdate(request.generation, request.version);
+                    if (version < 0) return;
+                    boolean generated = false;
+                    try {
+                        generated = applyRemoteThemePreferences(request, (TL_account.TL_themes) response, version);
+                    } finally {
+                        if (!generated) request.media.abortEmojiThemesUpdate(request.generation, version);
+                    }
+                }
+            }));
+        } catch (RuntimeException failure) {
+            finishRemoteThemePreference(request);
+            throw failure;
+        }
+    }
+
+    private static boolean applyRemoteThemePreferences(RemoteThemePreferenceRequest request, TL_account.TL_themes res, long version) {
+        if (!currentRemoteThemeApply(request, version)) return false;
+        final int currentAccount = request.account;
                 remoteThemesHash[currentAccount] = res.hash;
                 lastLoadingThemesTime[currentAccount] = (int) (System.currentTimeMillis() / 1000);
                 ArrayList<TLRPC.TL_theme> emojiPreviewThemes = new ArrayList<>();
                 ArrayList<Object> oldServerThemes = new ArrayList<>();
                 for (int a = 0, N = themes.size(); a < N; a++) {
+            if (!currentRemoteThemeApply(request, version)) return false;
                     ThemeInfo info = themes.get(a);
                     if (info.info != null && info.account == currentAccount) {
                         oldServerThemes.add(info);
                     } else if (info.themeAccents != null) {
                         for (int b = 0; b < info.themeAccents.size(); b++) {
+                    if (!currentRemoteThemeApply(request, version)) return false;
                             ThemeAccent accent = info.themeAccents.get(b);
                             if (accent.info != null && accent.account == currentAccount) {
                                 oldServerThemes.add(accent);
@@ -7396,6 +7485,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 boolean loadPatterns = false;
                 boolean added = false;
                 for (int a = 0, N = res.themes.size(); a < N; a++) {
+            if (!currentRemoteThemeApply(request, version)) return false;
                     TLRPC.TL_theme t = res.themes.get(a);
                     if (!(t instanceof TLRPC.TL_theme)) {
                         continue;
@@ -7406,6 +7496,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     }
                     if (theme.settings != null && theme.settings.size() > 0) {
                         for (int i = 0; i < theme.settings.size(); i++) {
+                    if (!currentRemoteThemeApply(request, version)) return false;
                             TLRPC.ThemeSettings settings = theme.settings.get(i);
                             if (settings != null) {
                                 String key = getBaseThemeKey(settings);
@@ -7424,17 +7515,20 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                                             file.delete();
                                         }
                                         ThemeInfo.fillAccentValues(accent, settings);
+                                if (!currentRemoteThemeApply(request, version)) return false;
                                         loadPatterns = true;
                                         added = true;
                                         if (currentTheme == info && currentTheme.currentAccentId == accent.id) {
                                             refreshThemeColors();
                                             switchThemeWithReveal(currentTheme, currentNightTheme == currentTheme, -1, null);
+                                    if (!currentRemoteThemeApply(request, version)) return false;
                                         }
                                     }
                                     accent.patternMotion = settings.wallpaper != null && settings.wallpaper.settings != null && settings.wallpaper.settings.motion;
                                     oldServerThemes.remove(accent);
                                 } else {
                                     accent = info.createNewAccent(theme, currentAccount, false, i);
+                            if (!currentRemoteThemeApply(request, version)) return false;
                                     if (!TextUtils.isEmpty(accent.patternSlug)) {
                                         loadPatterns = true;
                                     }
@@ -7461,10 +7555,12 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     }
                 }
                 for (int a = 0, N = oldServerThemes.size(); a < N; a++) {
+            if (!currentRemoteThemeApply(request, version)) return false;
                     Object object = oldServerThemes.get(a);
                     if (object instanceof ThemeInfo) {
                         ThemeInfo info = (ThemeInfo) object;
                         info.removeObservers();
+                if (!currentRemoteThemeApply(request, version)) return false;
                         otherThemes.remove(info);
                         themesDict.remove(info.name);
                         if (info.overrideWallpaper != null) {
@@ -7482,26 +7578,65 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                         }
                         if (currentTheme == info) {
                             applyTheme(isNightTheme ? currentNightTheme : currentDayTheme, true, false, isNightTheme);
+                    if (!currentRemoteThemeApply(request, version)) return false;
                         }
                     } else if (object instanceof ThemeAccent) {
                         ThemeAccent accent = (ThemeAccent) object;
                         if (deleteThemeAccent(accent.parentTheme, accent, false) && currentTheme == accent.parentTheme) {
+                    if (!currentRemoteThemeApply(request, version)) return false;
                             Theme.refreshThemeColors();
+                    if (!currentRemoteThemeApply(request, version)) return false;
                             switchThemeWithReveal(currentTheme, currentNightTheme == currentTheme, -1, null);
-                        }
-                    }
+                    if (!currentRemoteThemeApply(request, version)) return false;
                 }
+            }
+        }
+        if (!currentRemoteThemeApply(request, version)) return false;
                 saveOtherThemes(true);
+        if (!currentRemoteThemeApply(request, version)) return false;
                 sortThemes();
+        if (!currentRemoteThemeApply(request, version)) return false;
                 if (added) {
+            if (!currentRemoteThemeApply(request, version)) return false;
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.themeListUpdated);
+            if (!currentRemoteThemeApply(request, version)) return false;
                 }
                 if (loadPatterns) {
+            if (!currentRemoteThemeApply(request, version)) return false;
                     PatternsLoader.createLoader(true);
-                }
-                MediaDataController.getInstance(currentAccount).generateEmojiPreviewThemes(emojiPreviewThemes, currentAccount);
+            if (!currentRemoteThemeApply(request, version)) return false;
+        }
+        if (!currentRemoteThemeApply(request, version)) return false;
+        request.media.generateEmojiPreviewThemes(emojiPreviewThemes, currentAccount, res.hash, request.generation, version);
+        return true;
+    }
+
+    public static void loadRemoteThemes(final int currentAccount, boolean force) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> loadRemoteThemes(currentAccount, force));
+            return;
+        }
+        if (!UserConfig.getInstance(currentAccount).isClientActivated()) return;
+        MediaDataController existing = MediaDataController.getInstanceIfCreated(currentAccount);
+        if (existing != null) syncRemoteThemePreferenceOwner(currentAccount, existing);
+        if (loadingRemoteThemes[currentAccount] || !force && Math.abs(System.currentTimeMillis() / 1000 - lastLoadingThemesTime[currentAccount]) < 60 * 60) return;
+        MediaDataController media = existing != null ? existing : MediaDataController.getInstance(currentAccount);
+        syncRemoteThemePreferenceOwner(currentAccount, media);
+        RemoteThemePreferenceRequest request = new RemoteThemePreferenceRequest(currentAccount, media);
+        remoteThemePreferenceRequests[currentAccount] = request;
+        loadingRemoteThemes[currentAccount] = true;
+        media.whenEmojiThemesReady(new MediaDataController.EmojiThemesReadyCallback() {
+            @Override public void onReady(MediaDataController.EmojiThemesLoad load) {
+                requestRemoteThemePreferences(request, load);
             }
-        }));
+            @Override public void onCancelled(MediaDataController.EmojiThemesLoad load) {
+                if (remoteThemePreferenceRequests[currentAccount] == request) {
+                    remoteThemesHash[currentAccount] = 0;
+                    lastLoadingThemesTime[currentAccount] = 0;
+                }
+                finishRemoteThemePreference(request);
+            }
+        });
     }
 
     public static String getBaseThemeKey(TLRPC.ThemeSettings settings) {
@@ -9752,6 +9887,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     private static int[] getCompactColorMap() {
         if (compactColorMap == null) {
             compactColorMap = new int[colorsCount];
+            mapCompact(COMPACT_DIRECT, key_chat_compact_inText, key_chat_messageTextIn);
+            mapCompact(COMPACT_DIRECT, key_chat_compact_outText, key_chat_messageTextOut);
+            mapCompact(COMPACT_DIRECT, key_chat_compact_inLink, key_chat_messageLinkIn);
+            mapCompact(COMPACT_DIRECT, key_chat_compact_outLink, key_chat_messageLinkOut);
             mapCompact(COMPACT_OVER_OUT_BUBBLE, key_chat_compact_outTimeText, key_chat_outTimeText, key_chat_outTimeSelectedText, key_chat_outViews, key_chat_outViewsSelected);
             mapCompact(COMPACT_OVER_BACKGROUND, key_chat_compact_inTimeText, key_chat_inTimeText, key_chat_inTimeSelectedText, key_chat_inViews, key_chat_inViewsSelected);
             mapCompact(COMPACT_DIRECT, key_chat_compact_outCheck, key_chat_outSentCheck, key_chat_outSentCheckSelected, key_chat_outSentCheckRead, key_chat_outSentCheckReadSelected, key_chat_outSentClock, key_chat_outSentClockSelected);

@@ -217,7 +217,14 @@ final class AudioRecorderV2Controller {
     }
 
     boolean detachPreviewOutput() {
-        AudioRecordingSession.Result result = session.detachPreviewOutput();
+        return releaseDetachedPreview(session.detachPreviewOutput());
+    }
+
+    boolean detachPreviewOutputForDraft() {
+        return releaseDetachedPreview(session.detachPreviewOutputForDraft());
+    }
+
+    private boolean releaseDetachedPreview(AudioRecordingSession.Result result) {
         if (result == null) return false;
         session.release();
         released = true;

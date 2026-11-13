@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.blur3.drawable.color;
 
 import static org.telegram.messenger.AndroidUtilities.dpf2;
@@ -24,6 +26,9 @@ public class BlurredBackgroundProviderBuilder implements BlurredBackgroundProvid
     private ColorProvider strokeColorTop;
     private ColorProvider strokeColorBottom;
     private ColorProvider backgroundColor;
+    private int readableTextKey = -1, readableSecondaryKey = -1;
+    private final app.nimarkogram.messenger.utils.ui.MonetHelper.GlassContrast glassContrast =
+            new app.nimarkogram.messenger.utils.ui.MonetHelper.GlassContrast();
     private float strokeWidthTop, strokeWidthBottom, shadowRadius, shadowDx, shadowDy;
 
     public BlurredBackgroundProviderBuilder setShadowColor(@ColorInt int light, @ColorInt int dark) {
@@ -43,6 +48,12 @@ public class BlurredBackgroundProviderBuilder implements BlurredBackgroundProvid
 
     public BlurredBackgroundProviderBuilder setBackgroundColor(ColorProvider colorProvider) {
         backgroundColor = colorProvider;
+        return this;
+    }
+
+    public BlurredBackgroundProviderBuilder setReadableTextColors(int primary, int secondary) {
+        readableTextKey = primary;
+        readableSecondaryKey = secondary;
         return this;
     }
 
@@ -83,7 +94,9 @@ public class BlurredBackgroundProviderBuilder implements BlurredBackgroundProvid
 
     @Override
     public int getBackgroundColor() {
-        return get(backgroundColor, 0);
+        final int color = get(backgroundColor, 0);
+        return readableTextKey < 0 ? color : glassContrast.color(color,
+                Theme.getColor(readableTextKey, resourcesProvider), Theme.getColor(readableSecondaryKey, resourcesProvider));
     }
 
     @Override

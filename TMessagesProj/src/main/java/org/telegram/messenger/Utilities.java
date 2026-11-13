@@ -34,18 +34,18 @@ import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Utilities {
+public class Utilities extends LegacyUtilitiesQueues {
     public static Pattern pattern = Pattern.compile("[\\-0-9]+");
     public static SecureRandom random = new SecureRandom();
     public static Random fastRandom = new Xoroshiro128PlusRandom(random.nextLong());
 
-    public static volatile DispatchQueue2 stageQueue = new DispatchQueue2("stageQueue");
-    public static volatile DispatchQueue2 globalQueue = new DispatchQueue2("globalQueue");
-    public static volatile DispatchQueue2 cacheClearQueue = new DispatchQueue2("cacheClearQueue");
-    public static volatile DispatchQueue2 searchQueue = new DispatchQueue2("searchQueue");
-    public static volatile DispatchQueue2 phoneBookQueue = new DispatchQueue2("phoneBookQueue");
-    public static volatile DispatchQueue2 themeQueue = new DispatchQueue2("themeQueue");
-    public static volatile DispatchQueue2 externalNetworkQueue = new DispatchQueue2("externalNetworkQueue");
+    public static volatile DispatchQueue2 stageQueue = LegacyUtilitiesQueues.stageQueue2;
+    public static volatile DispatchQueue2 globalQueue = LegacyUtilitiesQueues.globalQueue2;
+    public static volatile DispatchQueue2 cacheClearQueue = LegacyUtilitiesQueues.cacheClearQueue2;
+    public static volatile DispatchQueue2 searchQueue = LegacyUtilitiesQueues.searchQueue2;
+    public static volatile DispatchQueue2 phoneBookQueue = LegacyUtilitiesQueues.phoneBookQueue2;
+    public static volatile DispatchQueue2 themeQueue = LegacyUtilitiesQueues.themeQueue2;
+    public static volatile DispatchQueue2 externalNetworkQueue = LegacyUtilitiesQueues.externalNetworkQueue2;
     public static volatile DispatchQueue videoPlayerQueue;
     // NG / extera plugins engine queue
     public static volatile DispatchQueue pluginsQueue = new DispatchQueue("pluginsQueue");

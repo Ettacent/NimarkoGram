@@ -13,7 +13,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "twidget/twidget-bridge.h"
 
 int registerNativeTgNetFunctions(JavaVM *vm, JNIEnv *env);
 int videoOnJNILoad(JavaVM *vm, JNIEnv *env);
@@ -41,10 +40,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     }
 
     tgvoipOnJNILoad(vm, env);
-
-    if (!registerTwidgetNatives(env) && (*env)->ExceptionCheck(env)) {
-        (*env)->ExceptionClear(env);
-    }
 
 	return JNI_VERSION_1_6;
 }

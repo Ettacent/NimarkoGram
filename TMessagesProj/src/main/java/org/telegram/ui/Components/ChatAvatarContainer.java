@@ -2327,8 +2327,12 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             view.finishCrossfade();
             view.resetPresentation();
         }
+        final int targetColorKey = lastSubtitle != null ? Theme.key_actionBarDefaultSubtitle : lastSubtitleColorKey;
+        final boolean colorMatches = overrideSubtitleColor == null && targetColorKey < 0
+                || subtitleTextView.getTextPaint().getColor() == (overrideSubtitleColor != null
+                        ? overrideSubtitleColor : getThemedColor(targetColorKey));
         if (TextUtils.equals(subtitleTextView.getText(), target)
-                && appliedTypingType == targetTypingType) {
+                && appliedTypingType == targetTypingType && colorMatches) {
             if (retain && !visible && view.crossfade != null) {
                 view.deferCrossfade();
             }

@@ -1989,6 +1989,10 @@ public class WalletActivity extends UniversalFragment implements NotificationCen
             return;
         }
 
+        openWalletQRAlert(context, currentAccount, address, true, null, resourcesProvider);
+    }
+
+    public static void openWalletQRAlert(Context context, int currentAccount, String address, boolean own, Runnable onSendMoney, Theme.ResourcesProvider resourcesProvider) {
         final BottomSheet.Builder builder = new BottomSheet.Builder(context, false, resourcesProvider, WALLET_BLUE_LIGHT);
 
         final FrameLayout content = new FrameLayout(context);
@@ -2005,6 +2009,9 @@ public class WalletActivity extends UniversalFragment implements NotificationCen
         ));
 
         final WalletQrView qrView = new WalletQrView(context, address);
+        if (!own) {
+            qrView.showQrButton.setText(LocaleController.getString(R.string.QrCode));
+        }
         layout.addView(qrView, LayoutHelper.createLinear(288, 302, Gravity.CENTER_HORIZONTAL));
 
         final TextView description = new TextView(context);
@@ -2024,12 +2031,24 @@ public class WalletActivity extends UniversalFragment implements NotificationCen
         button.setColor(0xFFFFFFFF);
         button.setTextColor(WALLET_BLUE);
         final SpannableStringBuilder buttonText = new SpannableStringBuilder();
+        if (own) {
         buttonText.append("$");
         buttonText.setSpan(new ColoredImageSpan(R.drawable.wallet_buy), 0, buttonText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         buttonText.append(" ").append(LocaleController.getString(R.string.WalletBuyWithCashOrCrypto));
+        } else {
+            final ColoredImageSpan gram = new ColoredImageSpan(R.drawable.mini_gram_24);
+            gram.setSize(dp(20));
+            buttonText.append("G");
+            buttonText.setSpan(gram, 0, buttonText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            buttonText.append("  ").append(LocaleController.getString(R.string.WalletSendMoney));
+        }
         button.setText(buttonText);
         layout.addView(button, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.CENTER_HORIZONTAL, 0, 0, 0, 0));
 
+        if (!own) {
+            description.setVisibility(View.GONE);
+            button.setVisibility(onSendMoney != null ? View.VISIBLE : View.GONE);
+        }
         final ImageView closeButton = new ImageView(context);
         closeButton.setImageResource(R.drawable.ic_close_white);
         closeButton.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -2058,6 +2077,11 @@ public class WalletActivity extends UniversalFragment implements NotificationCen
         }
 
         button.setOnClickListener(v -> {
+            if (!own) {
+                sheet.dismiss();
+                onSendMoney.run();
+                return;
+            }
             if (button.isLoading()) return;
             button.setLoading(true);
             openOnramp(currentAccount, 0, error -> {

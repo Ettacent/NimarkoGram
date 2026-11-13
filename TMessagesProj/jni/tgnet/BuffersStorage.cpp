@@ -11,6 +11,31 @@
 #include "BuffersStorage.h"
 #include "FileLog.h"
 #include "NativeByteBuffer.h"
+#include <memory>
+#include <new>
+
+namespace {
+class BufferPoolLock {
+public:
+    explicit BufferPoolLock(pthread_mutex_t *mutex) : mutex(mutex) {
+        if (mutex != nullptr) {
+            pthread_mutex_lock(mutex);
+        }
+    }
+
+    ~BufferPoolLock() {
+        if (mutex != nullptr) {
+            pthread_mutex_unlock(mutex);
+        }
+    }
+
+    BufferPoolLock(const BufferPoolLock &) = delete;
+    BufferPoolLock &operator=(const BufferPoolLock &) = delete;
+
+private:
+    pthread_mutex_t *mutex;
+};
+}
 
 BuffersStorage &BuffersStorage::getInstance() {
     static BuffersStorage instance(true);
@@ -64,18 +89,15 @@ NativeByteBuffer *BuffersStorage::getFreeBuffer(uint32_t size) {
     }
 
     if (arrayToGetFrom != nullptr) {
-        if (isThreadSafe) {
-            pthread_mutex_lock(&mutex);
-        }
-        if (arrayToGetFrom->size() > 0) {
-            buffer = (*arrayToGetFrom)[0];
-            arrayToGetFrom->erase(arrayToGetFrom->begin());
-            if (buffer != nullptr) {
-                buffer->markInUse();
+        {
+            BufferPoolLock lock(isThreadSafe ? &mutex : nullptr);
+            if (arrayToGetFrom->size() > 0) {
+                buffer = (*arrayToGetFrom)[0];
+                arrayToGetFrom->erase(arrayToGetFrom->begin());
+                if (buffer != nullptr) {
+                    buffer->markInUse();
+                }
             }
-        }
-        if (isThreadSafe) {
-            pthread_mutex_unlock(&mutex);
         }
         if (buffer == nullptr) {
             buffer = new NativeByteBuffer(byteCount);
@@ -117,20 +139,17 @@ void BuffersStorage::reuseFreeBuffer(NativeByteBuffer *buffer) {
     } else if (capacity == 160000) {
         arrayToReuse = &freeBuffersBig;
     }
+    std::unique_ptr<NativeByteBuffer> unretained(buffer);
     if (arrayToReuse != nullptr) {
-        if (isThreadSafe) {
-            pthread_mutex_lock(&mutex);
-        }
+        BufferPoolLock lock(isThreadSafe ? &mutex : nullptr);
         if (arrayToReuse->size() < maxCount) {
-            arrayToReuse->push_back(buffer);
+            try {
+                arrayToReuse->push_back(buffer);
+                unretained.release();
+            } catch (const std::bad_alloc &) {
+            }
         } else {
             if (LOGS_ENABLED) DEBUG_D("too much %d buffers", capacity);
-            delete buffer;
         }
-        if (isThreadSafe) {
-            pthread_mutex_unlock(&mutex);
-        }
-    } else {
-        delete buffer;
     }
 }

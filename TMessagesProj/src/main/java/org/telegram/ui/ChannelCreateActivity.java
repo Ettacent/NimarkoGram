@@ -54,9 +54,9 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
-import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
@@ -96,7 +96,7 @@ import org.telegram.ui.Components.TypefaceSpan;
 import java.util.ArrayList;
 
 import java.util.HashSet;
-public class ChannelCreateActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, ImageUpdater.ImageUpdaterDelegate {
+public class ChannelCreateActivity extends BaseFragment implements ImageUpdater.ImageUpdaterDelegate {
 
     private View doneButton;
     private CrossfadeDrawable doneButtonDrawable;
@@ -158,13 +158,26 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
 
     private boolean createAfterUpload;
     private boolean donePressed;
-    private Integer doneRequestId;
+    private int ownedRequestToken;
+    private ConnectionsManager requestConnections;
+    private Object creationIntent;
+    private Object creationResultOwner;
+    private boolean destroyed;
+    private int ownerAccount;
+    private long ownerUserId;
+    private long ownerSession;
+    private long avatarGeneration;
     private Utilities.Callback2<BaseFragment, Long> onFinishListener;
 
     private final static int done_button = 1;
 
     public ChannelCreateActivity(Bundle args) {
+        this(args, UserConfig.selectedAccount);
+    }
+
+    private ChannelCreateActivity(Bundle args, int account) {
         super(args);
+        currentAccount = account;
         currentStep = args.getInt("step", 0);
         if (args.containsKey("forcePublic")) {
             forcePublic = args.getBoolean("forcePublic", false);
@@ -195,8 +208,11 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
 
     @Override
     public boolean onFragmentCreate() {
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatDidCreated);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatDidFailCreate);
+        destroyed = false;
+        ownerAccount = currentAccount;
+        ownerUserId = UserConfig.getInstance(ownerAccount).getClientUserId();
+        ownerSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(ownerAccount);
+        avatarGeneration++;
         if (currentStep == 1) {
             generateLink();
         }
@@ -209,13 +225,25 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
 
     @Override
     public void onFragmentDestroy() {
-        super.onFragmentDestroy();
-        if (doneRequestId != null) {
-            ConnectionsManager.getInstance(currentAccount).cancelRequest(doneRequestId, true);
-            doneRequestId = null;
+        destroyed = true;
+        avatarGeneration++;
+        createAfterUpload = false;
+        donePressed = false;
+        creationIntent = null;
+        creationResultOwner = null;
+        final int requestToken = ownedRequestToken;
+        final ConnectionsManager connections = requestConnections;
+        ownedRequestToken = 0;
+        requestConnections = null;
+        AndroidUtilities.cancelRunOnUIThread(enableDoneLoading);
+        dismissDoneCancelDialog();
+        if (imageUpdater != null) {
+            imageUpdater.setDelegate(null);
         }
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.chatDidCreated);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.chatDidFailCreate);
+        super.onFragmentDestroy();
+        if (requestToken != 0 && connections != null) {
+            connections.cancelRequest(requestToken, true);
+        }
         if (imageUpdater != null) {
             imageUpdater.clear();
         }
@@ -274,10 +302,100 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
             if (invoked) nameTextView.hidePopup(true);
             return false;
         }
+        if (donePressed) {
+            if (invoked) showDoneCancelDialog();
+            return false;
+        }
         return true;
     }
 
+    private boolean isCreationOwnerCurrent() {
+        return !destroyed && !isFinished && !isFinishing() && !isRemovingFromStack() && currentAccount == ownerAccount
+                && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(ownerAccount, ownerUserId, ownerSession);
+    }
+
+    private boolean isCreationIntentCurrent(Object intent) {
+        return currentStep == 0 && intent != null && creationIntent == intent && donePressed && isCreationOwnerCurrent();
+    }
+
+    private boolean isCreationResultCurrent(Object intent) {
+        return intent != null && creationResultOwner == intent && creationIntent == null && !donePressed && isCreationOwnerCurrent();
+    }
+
+    private boolean validateChannelName() {
+        if (nameTextView.length() != 0) return true;
+        Vibrator v = (Vibrator) getParentActivity().getSystemService(Context.VIBRATOR_SERVICE);
+        if (v != null) {
+            v.vibrate(200);
+        }
+        AndroidUtilities.shakeView(nameTextView);
+        return false;
+    }
+
+    private void resetChatCreation(Object intent) {
+        if (intent == null || creationIntent != intent) return;
+        creationIntent = null;
+        creationResultOwner = null;
+        ownedRequestToken = 0;
+        requestConnections = null;
+        createAfterUpload = false;
+        donePressed = false;
+        final AlertDialog dialog = cancelDialog;
+        cancelDialog = null;
+        AndroidUtilities.cancelRunOnUIThread(enableDoneLoading);
+        if (isCreationOwnerCurrent()) updateDoneProgress(false);
+        dismissDoneCancelDialog(dialog);
+    }
+
+    private void startChatCreation() {
+        final Object intent = creationIntent;
+        if (!isCreationIntentCurrent(intent)) return;
+        if (getParentActivity() == null) {
+            resetChatCreation(intent);
+            return;
+        }
+        if (!validateChannelName()) {
+            resetChatCreation(intent);
+            return;
+        }
+        if (!isCreationIntentCurrent(intent)) return;
+        createAfterUpload = false;
+        final ConnectionsManager connections = ConnectionsManager.getInstance(currentAccount);
+        requestConnections = connections;
+        final int requestToken = MessagesController.getInstance(currentAccount).createChat(nameTextView.getText().toString(), new ArrayList<>(), descriptionTextView.getText().toString(), ChatObject.CHAT_TYPE_CHANNEL, false, null, null, -1, this, new MessagesController.CreateChatCallback() {
+            @Override
+            public boolean isCurrent() {
+                return isCreationIntentCurrent(intent);
+            }
+
+            @Override
+            public void onComplete(long chatId) {
+                finishChatCreation(intent, chatId);
+            }
+        });
+        if (isCreationIntentCurrent(intent)) {
+            ownedRequestToken = requestToken;
+            if (requestToken == 0) finishChatCreation(intent, 0);
+        } else if (requestToken != 0) {
+            connections.cancelRequest(requestToken, true);
+        }
+    }
     private AlertDialog cancelDialog;
+    private void dismissDoneCancelDialog() {
+        final AlertDialog dialog = cancelDialog;
+        cancelDialog = null;
+        dismissDoneCancelDialog(dialog);
+    }
+
+    private void dismissDoneCancelDialog(AlertDialog dialog) {
+        if (dialog != null) {
+            try {
+                dialog.dismiss();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+    }
     private void showDoneCancelDialog() {
         if (cancelDialog != null) {
             return;
@@ -286,20 +404,30 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
         builder.setTitle(LocaleController.getString(R.string.StopLoadingTitle));
         builder.setMessage(LocaleController.getString(R.string.StopLoading));
         builder.setPositiveButton(LocaleController.getString(R.string.WaitMore), null);
+        final Object intent = creationIntent;
         builder.setNegativeButton(LocaleController.getString(R.string.Stop), (dialogInterface, i) -> {
-            donePressed = false;
-            createAfterUpload = false;
-            if (doneRequestId != null) {
-                ConnectionsManager.getInstance(currentAccount).cancelRequest(doneRequestId, true);
-                doneRequestId = null;
+            if (intent == null || creationIntent != intent) {
+            dialogInterface.dismiss();
+                return;
             }
-            updateDoneProgress(false);
+            final int requestToken = ownedRequestToken;
+            final ConnectionsManager connections = requestConnections;
+            resetChatCreation(intent);
+            if (requestToken != 0 && connections != null) {
+                connections.cancelRequest(requestToken, true);
+            }
             dialogInterface.dismiss();
         });
-        cancelDialog = builder.show();
+        cancelDialog = builder.create();
+        cancelDialog.setOnDismissListener(dialog -> {
+            if (cancelDialog == dialog) cancelDialog = null;
+        });
+        cancelDialog.show();
     }
 
-    private Runnable enableDoneLoading = () -> updateDoneProgress(true);
+    private Runnable enableDoneLoading = () -> {
+        if (isCreationOwnerCurrent()) updateDoneProgress(true);
+    };
     private ValueAnimator doneButtonDrawableAnimator;
     private void updateDoneProgress(boolean loading) {
         if (!loading) {
@@ -332,6 +460,9 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(int id) {
+                if (!isCreationOwnerCurrent()) {
+                    return;
+                }
                 if (id == -1) {
                     if (donePressed) {
                         showDoneCancelDialog();
@@ -347,21 +478,16 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
                             showDoneCancelDialog();
                             return;
                         }
-                        if (nameTextView.length() == 0) {
-                            Vibrator v = (Vibrator) getParentActivity().getSystemService(Context.VIBRATOR_SERVICE);
-                            if (v != null) {
-                                v.vibrate(200);
-                            }
-                            AndroidUtilities.shakeView(nameTextView);
-                            return;
-                        }
+                        if (!validateChannelName()) return;
+                        creationResultOwner = null;
+                        creationIntent = new Object();
                         donePressed = true;
                         AndroidUtilities.runOnUIThread(enableDoneLoading, 200);
                         if (imageUpdater.isUploadingImage()) {
                             createAfterUpload = true;
                             return;
                         }
-                        doneRequestId = MessagesController.getInstance(currentAccount).createChat(nameTextView.getText().toString(), new ArrayList<>(), descriptionTextView.getText().toString(), ChatObject.CHAT_TYPE_CHANNEL, false, null, null, -1, ChannelCreateActivity.this);
+                        startChatCreation();
                     } else if (currentStep == 1) {
                         if (!isPrivate) {
                             if (descriptionTextView.length() == 0) {
@@ -382,11 +508,13 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
                                 } else {
                                     AndroidUtilities.runOnUIThread(enableDoneLoading, 200);
                                     MessagesController.getInstance(currentAccount).updateChannelUserName(ChannelCreateActivity.this, chatId, lastCheckName, () -> {
+                                        if (!isCreationOwnerCurrent()) return;
                                         updateDoneProgress(false);
                                         if (onFinishListener != null) {
                                             onFinishListener.run(ChannelCreateActivity.this, chatId);
                                         }
                                     }, () -> {
+                                        if (!isCreationOwnerCurrent()) return;
                                         updateDoneProgress(false);
                                         if (onFinishListener != null) {
                                             onFinishListener.run(ChannelCreateActivity.this, chatId);
@@ -589,7 +717,21 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
             avatarOverlay.setContentDescription(LocaleController.getString(R.string.ChatSetPhotoOrVideo));
             frameLayout.addView(avatarOverlay, LayoutHelper.createFrame(64, 64, Gravity.TOP | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), LocaleController.isRTL ? 0 : 16, 12, LocaleController.isRTL ? 16 : 0, 12));
             avatarOverlay.setOnClickListener(view -> {
+                if (!isCreationOwnerCurrent()) return;
                 imageUpdater.openMenu(avatar != null, () -> {
+                    if (!isCreationOwnerCurrent()) return;
+                    avatarGeneration++;
+                    if (createAfterUpload) {
+                        createAfterUpload = false;
+                        donePressed = false;
+                        creationIntent = null;
+                        creationResultOwner = null;
+                        updateDoneProgress(false);
+                        dismissDoneCancelDialog();
+                    }
+                    if (imageUpdater.isUploadingImage()) {
+                        imageUpdater.cancel();
+                    }
                     avatar = null;
                     avatarBig = null;
                     inputPhoto = null;
@@ -1007,7 +1149,7 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
 
     @Override
     public void onUploadProgressChanged(float progress) {
-        if (avatarProgressView == null) {
+        if (!isCreationOwnerCurrent() || avatarProgressView == null) {
             return;
         }
         avatarProgressView.setProgress(progress);
@@ -1015,41 +1157,85 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
 
     @Override
     public void didStartUpload(boolean fromAvatarConstructor, boolean isVideo) {
-        if (avatarProgressView == null) {
+        if (!isCreationOwnerCurrent()) {
             return;
         }
+        avatarGeneration++;
+        inputPhoto = null;
+        inputVideo = null;
+        inputEmojiMarkup = null;
+        inputVideoPath = null;
+        videoTimestamp = 0;
+        if (avatarProgressView != null) {
         avatarProgressView.setProgress(0.0f);
     }
 
+    }
     @Override
     public void didUploadPhoto(final TLRPC.InputFile photo, final TLRPC.InputFile video, double videoStartTimestamp, String videoPath, final TLRPC.PhotoSize bigSize, final TLRPC.PhotoSize smallSize, boolean isVideo, TLRPC.VideoSize emojiMarkup) {
+        final long generation = avatarGeneration;
         AndroidUtilities.runOnUIThread(() -> {
-            if (photo != null || video != null) {
+            if (!isCreationOwnerCurrent() || generation != avatarGeneration) {
+                return;
+            }
+            if (photo != null || video != null || emojiMarkup != null) {
                 inputPhoto = photo;
                 inputVideo = video;
                 inputEmojiMarkup = emojiMarkup;
                 inputVideoPath = videoPath;
                 videoTimestamp = videoStartTimestamp;
-                if (createAfterUpload) {
-                    if (cancelDialog != null) {
-                        try {
-                            cancelDialog.dismiss();
-                            cancelDialog = null;
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                    }
-                    updateDoneProgress(false);
-                    donePressed = false;
-                    doneButton.performClick();
-                }
+                final Object intent = creationIntent;
+                final boolean resumeCreation = createAfterUpload && isCreationIntentCurrent(intent);
+                createAfterUpload = false;
                 showAvatarProgress(false, true);
                 avatarEditor.setImageDrawable(null);
+                if (resumeCreation) {
+                    dismissDoneCancelDialog();
+                    if (isCreationIntentCurrent(intent) && generation == avatarGeneration) {
+                        startChatCreation();
+                    }
+                }
             } else {
                 avatar = smallSize.location;
                 avatarBig = bigSize.location;
                 avatarImage.setImage(ImageLocation.getForLocal(avatar), "50_50", avatarDrawable, null);
                 showAvatarProgress(true, false);
+            }
+        });
+    }
+
+    @Override
+    public void didUploadFailed() {
+        final long generation = avatarGeneration;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!isCreationOwnerCurrent() || generation != avatarGeneration) {
+                return;
+            }
+            final boolean waiting = createAfterUpload;
+            createAfterUpload = false;
+            if (waiting) {
+                donePressed = false;
+                creationIntent = null;
+                creationResultOwner = null;
+            }
+            avatar = null;
+            avatarBig = null;
+            inputPhoto = null;
+            inputVideo = null;
+            inputEmojiMarkup = null;
+            inputVideoPath = null;
+            videoTimestamp = 0;
+            showAvatarProgress(false, true);
+            if (avatarImage != null) {
+                avatarImage.setImage(null, null, avatarDrawable, null);
+            }
+            if (avatarEditor != null) {
+                avatarEditor.setAnimation(cameraDrawable);
+                cameraDrawable.setCurrentFrame(0);
+            }
+            if (waiting) {
+                updateDoneProgress(false);
+                dismissDoneCancelDialog();
             }
         });
     }
@@ -1167,43 +1353,38 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
         }
     }
 
-    @Override
-    public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.chatDidFailCreate) {
-            if (cancelDialog != null) {
-                try {
-                    cancelDialog.dismiss();
+    private void finishChatCreation(Object intent, long chatId) {
+        if (!isCreationIntentCurrent(intent)) return;
+        if (chatId == 0) {
+            resetChatCreation(intent);
+            return;
+        }
+        ownedRequestToken = 0;
+        requestConnections = null;
+        creationIntent = null;
+        creationResultOwner = intent;
+        createAfterUpload = false;
+        donePressed = false;
+        final AlertDialog dialog = cancelDialog;
                     cancelDialog = null;
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+        AndroidUtilities.cancelRunOnUIThread(enableDoneLoading);
+        if (inputPhoto != null || inputVideo != null || inputEmojiMarkup != null) {
+            MessagesController.getInstance(currentAccount).changeChatAvatar(chatId, null, inputPhoto, inputVideo, inputEmojiMarkup, videoTimestamp, inputVideoPath, avatar, avatarBig, null);
+        }
+        dismissDoneCancelDialog(dialog);
+        if (!isCreationResultCurrent(intent)) return;
             updateDoneProgress(false);
-            donePressed = false;
-        } else if (id == NotificationCenter.chatDidCreated) {
-            if (cancelDialog != null) {
-                try {
-                    cancelDialog.dismiss();
-                    cancelDialog = null;
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
-            long chat_id = (Long) args[0];
+        if (!isCreationResultCurrent(intent)) return;
             Bundle bundle = new Bundle();
             bundle.putInt("step", 1);
-            bundle.putLong("chat_id", chat_id);
+        bundle.putLong("chat_id", chatId);
             bundle.putBoolean("canCreatePublic", canCreatePublic);
             if (forcePublic != null) {
                 bundle.putBoolean("forcePublic", forcePublic);
             }
-            if (inputPhoto != null || inputVideo != null || inputEmojiMarkup != null) {
-                MessagesController.getInstance(currentAccount).changeChatAvatar(chat_id, null, inputPhoto, inputVideo, inputEmojiMarkup, videoTimestamp, inputVideoPath, avatar, avatarBig, null);
-            }
-            ChannelCreateActivity activity = new ChannelCreateActivity(bundle);
+        ChannelCreateActivity activity = new ChannelCreateActivity(bundle, currentAccount);
             activity.setOnFinishListener(onFinishListener);
-            presentFragment(activity, true);
-        }
+        if (isCreationResultCurrent(intent)) presentFragment(activity, true);
     }
 
     private void loadAdminedChannels() {

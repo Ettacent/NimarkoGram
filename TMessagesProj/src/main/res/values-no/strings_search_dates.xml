@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Filtrer etter dato</string>
+    <string name="NM_SearchDatesDay">Dag</string>
+    <string name="NM_SearchDatesPeriod">Periode</string>
+    <string name="NM_SearchDatesFrom">Fra</string>
+    <string name="NM_SearchDatesUntil">Til og med</string>
+    <string name="NM_SearchDatesAddEnd">Legg til sluttdato</string>
+    <string name="NM_SearchDatesToday">I dag</string>
+    <string name="NM_SearchDatesYesterday">I går</string>
+    <string name="NM_SearchDatesLast7">Siste 7 dager</string>
+    <string name="NM_SearchDatesLast30">Siste 30 dager</string>
+    <string name="NM_SearchDatesApply">Bruk filter</string>
+    <string name="NM_SearchDatesReset">Alle datoer</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Datofilter: %1$s</string>
+    <string name="NM_SearchDatesChange">Endre datoer</string>
+    <string name="NM_SearchDatesClear">Fjern datofilter</string>
+    <string name="NM_SearchDatesJump">Gå til dato</string>
+    <string name="NM_SearchDatesInvalid">Sluttdatoen kan ikke være før startdatoen.</string>
+    <string name="NM_SearchDatesDayValue">Dag: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Måned: %1$s</string>
+    <string name="NM_SearchDatesYearValue">År: %1$s</string>
+</resources>

@@ -34,6 +34,8 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_iv;
+import org.telegram.utils.twidget.WidgetMedia;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -55,6 +57,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 public class BotShareSheet extends BottomSheetWithRecyclerListView {
 
     private final int currentAccount;
@@ -75,29 +78,57 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
 
     public static void share(Context context, int currentAccount, long botId, String id, Theme.ResourcesProvider resourcesProvider, Runnable whenOpened, Utilities.Callback2<String, ArrayList<Long>> whenDone) {
         final AlertDialog progressDialog = new AlertDialog(context, AlertDialog.ALERT_TYPE_SPINNER);
+        final AtomicBoolean completed = new AtomicBoolean();
+        final int[] requestId = {-1};
+        final Runnable[] cancelLoading = new Runnable[1];
+        final Utilities.Callback2<String, ArrayList<Long>> finish = (error, dialogs) -> {
+            if (!completed.compareAndSet(false, true)) return;
+            progressDialog.dismiss();
+            if (whenDone != null) whenDone.run(error, dialogs);
+        };
+        progressDialog.setOnCancelListener(dialog -> {
+            if (!completed.compareAndSet(false, true)) return;
+            progressDialog.dismiss();
+            if (requestId[0] >= 0) {
+                ConnectionsManager.getInstance(currentAccount).cancelRequest(requestId[0], true);
+                requestId[0] = -1;
+            }
+            if (cancelLoading[0] != null) cancelLoading[0].run();
+            if (whenDone != null) whenDone.run("USER_DECLINED", null);
+        });
         progressDialog.showDelayed(500);
 
         final TLRPC.TL_messages_getPreparedInlineMessage req = new TLRPC.TL_messages_getPreparedInlineMessage();
         req.bot = MessagesController.getInstance(currentAccount).getInputUser(botId);
         req.id = id;
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+        requestId[0] = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+            requestId[0] = -1;
+            if (completed.get() || progressDialog.isDismissed()) {
+                return;
+            }
             if (res instanceof TLRPC.TL_messages_preparedInlineMessage) {
                 final TLRPC.TL_messages_preparedInlineMessage result = (TLRPC.TL_messages_preparedInlineMessage) res;
                 if (result.result.send_message instanceof TLRPC.TL_botInlineMessageMediaWebPage) {
                     final TLRPC.TL_botInlineMessageMediaWebPage m = (TLRPC.TL_botInlineMessageMediaWebPage) result.result.send_message;
                     if (!TextUtils.isEmpty(m.url)) {
                         final Runnable callback = loadWebPagePreview(currentAccount, m.url, webpage -> {
+                            if (completed.get() || progressDialog.isDismissed()) {
+                                return;
+                            }
                             progressDialog.dismiss();
-                            new BotShareSheet(context, currentAccount, botId, result, null, webpage, resourcesProvider, whenOpened, whenDone).show();
+                            new BotShareSheet(context, currentAccount, botId, result, null, webpage, resourcesProvider, whenOpened, finish).show();
                         });
-                        progressDialog.setOnCancelListener(di -> callback.run());
+                        cancelLoading[0] = callback;
                         return;
                     }
                 }
                 final File[] finalFile = new File[1];
                 final Runnable open = () -> {
+                    if (completed.get() || progressDialog.isDismissed()) {
+                        return;
+                    }
                     progressDialog.dismiss();
-                    new BotShareSheet(context, currentAccount, botId, result, finalFile[0], null, resourcesProvider, whenOpened, whenDone).show();
+                    new BotShareSheet(context, currentAccount, botId, result, finalFile[0], null, resourcesProvider, whenOpened, finish).show();
                 };
                 if (result != null && result.result.content != null && !TextUtils.isEmpty(result.result.content.url) && (
                     result.result.send_message instanceof TLRPC.TL_botInlineMessageMediaAuto ||
@@ -119,9 +150,9 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
                         fileLoader.setDestFile(file);
                         fileLoader.setMaxSize(8 * 1024 * 1024);
                         fileLoader.execute(url);
-                        progressDialog.setOnCancelListener(v -> {
+                        cancelLoading[0] = () -> {
                             fileLoader.cancel(true);
-                        });
+                        };
                     } else {
                         open.run();
                     }
@@ -129,21 +160,27 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
                     open.run();
                 }
             } else {
-                if (whenDone != null) {
-                    whenDone.run("MESSAGE_EXPIRED", null);
-                }
+                finish.run("MESSAGE_EXPIRED", null);
             }
         }));
     }
 
     public static Runnable loadWebPagePreview(int currentAccount, String url, Utilities.Callback<TLRPC.WebPage> whenLoaded) {
         final int[] reqId = new int[1];
+        final boolean[] cancelled = new boolean[1];
         final NotificationCenter.NotificationCenterDelegate[] delegateToRemove = new NotificationCenter.NotificationCenterDelegate[1];
 
         final TL_account.getWebPagePreview req = new TL_account.getWebPagePreview();
         req.message = url;
         reqId[0] = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
             reqId[0] = -1;
+            if (cancelled[0]) {
+                return;
+            }
+            if (err != null || res == null || res.media == null) {
+                whenLoaded.run(null);
+                return;
+            }
             if (res.media instanceof TLRPC.TL_messageMediaEmpty || res.media.webpage instanceof TLRPC.TL_webPageEmpty) {
                 whenLoaded.run(null);
                 return;
@@ -155,7 +192,7 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
                     final NotificationCenter.NotificationCenterDelegate delegate = new NotificationCenter.NotificationCenterDelegate() {
                         @Override
                         public void didReceivedNotification(int id, int account, Object... args) {
-                            if (id == NotificationCenter.didReceivedWebpagesInUpdates) {
+                            if (!cancelled[0] && id == NotificationCenter.didReceivedWebpagesInUpdates) {
                                 final LongSparseArray<TLRPC.WebPage> webPages = (LongSparseArray<TLRPC.WebPage>) args[0];
                                 if (webPages != null && webPages.containsKey(pendingId)) {
                                     final TLRPC.WebPage webpage = webPages.get(pendingId);
@@ -178,6 +215,7 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
             }
         });
         return () -> { // cancel
+            cancelled[0] = true;
             if (reqId[0] >= 0) {
                 ConnectionsManager.getInstance(currentAccount).cancelRequest(reqId[0], true);
                 reqId[0] = -1;
@@ -665,8 +703,24 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
                 final TLRPC.TL_botInlineMessageRichMessage m = (TLRPC.TL_botInlineMessageRichMessage) message;
                 msg.flags2 |= TLObject.FLAG_13;
                 msg.rich_message = m.rich_message;
+            } else if (message instanceof TLRPC.TL_botInlineMessageWidget) {
+                final TLRPC.TL_botInlineMessageWidget m = (TLRPC.TL_botInlineMessageWidget) message;
+                final TLRPC.TL_messageMediaWidget media = new TLRPC.TL_messageMediaWidget();
+                media.width = m.width;
+                media.height = m.height;
+                media.payload = m.payload;
+                media.public_data = m.public_data;
+                media.public_data_hash = m.public_data_hash;
+                media.chat_data = m.chat_data;
+                media.widget_id = m.widget_id;
+                msg.message = m.message;
+                msg.entities = m.entities;
+                msg.invert_media = m.invert_media;
+                msg.flags |= 512;
+                msg.media = media;
             }
         }
+        final boolean widgetPreview = result.send_message instanceof TLRPC.TL_botInlineMessageWidget;
 
         if (photo != null) {
             TLRPC.TL_messageMediaPhoto media = new TLRPC.TL_messageMediaPhoto();
@@ -689,6 +743,18 @@ public class BotShareSheet extends BottomSheetWithRecyclerListView {
         }
 
         final MessageObject messageObject = new MessageObject(currentAccount, msg, true, true) {
+            private TL_iv.RichMessage widgetPreviewMessage;
+
+            @Override
+            public TL_iv.RichMessage getDisplayRichMessage() {
+                if (widgetPreview) {
+                    if (widgetPreviewMessage == null) {
+                        widgetPreviewMessage = WidgetMedia.previewRichMessage(currentAccount, result);
+                    }
+                    return widgetPreviewMessage;
+                }
+                return super.getDisplayRichMessage();
+            }
             @Override
             public boolean isOut() {
                 return false;

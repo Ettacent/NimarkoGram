@@ -1838,10 +1838,25 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             return;
         }
         clearPendingChatRestore();
+        final Bundle restoredArgs = restoreState.getBundle("args");
+        final long topicId = restoreState.getLong("topic_id");
+        final long restoredChatId = restoredArgs == null ? 0 : restoredArgs.getLong("chat_id");
+        if (topicId != 0 && restoredChatId != 0) {
+            final TLRPC.Chat restoredChat = MessagesController.getInstance(chat.getCurrentAccount()).getChat(restoredChatId);
+            if (ChatObject.isForum(restoredChat) && !ChatObject.areTabsEnabled(restoredChat) && !ChatObject.isSidebarEnabled(restoredChat)) {
+                Bundle topicsArgs = new Bundle();
+                topicsArgs.putLong("chat_id", restoredChatId);
+                BaseFragment topicsOrChat = TopicsFragment.getTopicsOrChat(this, topicsArgs);
+                topicsOrChat.setCurrentAccount(chat.getCurrentAccount());
+                if (topicsOrChat instanceof TopicsFragment) actionBarLayout.addFragmentToStack(topicsOrChat);
+            }
+            ForumUtilities.applyTopic(chat, MessagesStorage.TopicKey.of(-restoredChatId, topicId));
+        }
+        chat.restoreSelfArgs(restoreState);
         boolean added = actionBarLayout.addFragmentToStack(chat);
         INavigationLayout ownerLayout = chat.getParentLayout();
         if (added || ownerLayout != null && ownerLayout.getFragmentStack().contains(chat)) {
-            chat.restoreSelfArgs(restoreState);
+            chat.capturePinnedMessagesRestoreOwner();
             if (showLastFragment && ownerLayout != null && ownerLayout.getLastFragment() == chat) {
                 ownerLayout.showLastFragment();
             }
@@ -1864,6 +1879,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 && pendingChatRestoreCurrent.getAsBoolean()) {
             outState.putString("fragment", "chat");
             outState.putBundle("args", new Bundle(pendingChatRestore.getBundle("args")));
+            if (pendingChatRestore.containsKey("topic_id")) {
+                outState.putLong("topic_id", pendingChatRestore.getLong("topic_id"));
+            }
             if (pendingChatRestore.containsKey("path")) {
                 outState.putString("path", pendingChatRestore.getString("path"));
             } else {
@@ -1914,10 +1932,21 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT
                 && (account == UserConfig.selectedAccount || UserConfig.isValidAccount(account));
     }
+    private static boolean isCurrentGroupCallAction(Intent action) {
+        return VoIPPreNotificationService.isCurrentServiceAction(VoIPService.getSharedInstance(), action);
+    }
     @SuppressLint("Range")
     private boolean handleIntent(Intent incomingIntent, boolean isNew, boolean restore, boolean fromPassword, Browser.Progress progress, boolean rebuildFragments, boolean openedTelegram) {
-        final boolean rejectedAccount = !isIntentAccountAvailable(incomingIntent);
+        if (incomingIntent != null && !incomingIntent.hasExtra("group_call_invite_msg_id")
+                && ("voip".equals(incomingIntent.getAction()) || "voip_answer".equals(incomingIntent.getAction()))
+                && ("voip_answer".equals(incomingIntent.getAction()) || VoIPPreNotificationService.hasCallOwner(incomingIntent))
+                && !VoIPPreNotificationService.isCurrentCallAction(incomingIntent)) return false;
+        final boolean rejectedGroupCall = incomingIntent != null && "voip_chat".equals(incomingIntent.getAction())
+                && !isCurrentGroupCallAction(incomingIntent);
+        if (rejectedGroupCall && isNew) return false;
+        final boolean rejectedAccount = rejectedGroupCall || !isIntentAccountAvailable(incomingIntent);
         final Intent intent = rejectedAccount || incomingIntent == null ? new Intent(Intent.ACTION_MAIN) : incomingIntent;
+        boolean intentRootPrepared = false;
         if (intent != null && intent.hasExtra("nm_banner_owner")
                 && !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(
                     intent.getIntExtra("currentAccount", -1), intent.getLongExtra("nm_banner_owner", 0),
@@ -3343,6 +3372,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                 } else if (contactToken != null && !TextUtils.isEmpty(noPaidMessagesToken)) {
                                     openNoPaidMessagesContactLink(intentAccount[0], contactToken, noPaidMessagesToken, progress);
                                 } else {
+                                    if (inputInvoiceSlug != null && !isNew) {
+                                        prepareIntentRoot(searchQuery, rebuildFragments);
+                                        intentRootPrepared = true;
+                                    }
                                 runLinkRequest(intentAccount[0], username, group, sticker, emoji, botUser, botChat, botChannel, botChatAdminParams, message, contactToken, folderSlug, text, hasUrl, messageId, channelId, threadId, commentId, game, auth, lang, unsupportedUrl, code, login, wallPaper, inputInvoiceSlug, uniqueGiftSlug, theme, voicechat, videochat, livestream, 0, videoTimestamp, setAsAttachBot, attachMenuBotToOpen, attachMenuBotChoose, botAppMaybe, startApp, progress, forceNotInternalForApps, storyId, liveStory, storyAlbumId, giftCollectionId, auctionSlug, stargiftPreviewSlug, isBoost, chatLinkSlug, botCompact, botFullscreen, openedTelegram, openProfile, forceRequest, referrer, taskId, openDirect, optionId);
                                 }
                             } else {
@@ -3747,11 +3780,17 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     fragment = new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_PHONE);
                 } else if (open_settings == 15) {
 
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(new TL_account.getPassword(), (response, error) -> {
+                    final int emailAccount = currentAccount;
+                    final java.util.function.BooleanSupplier emailRequestCurrent = captureLoginEmailRequest(emailAccount);
+                    final WeakReference<LaunchActivity> emailActivity = new WeakReference<>(this);
+                    ConnectionsManager.getInstance(emailAccount).sendRequest(new TL_account.getPassword(), (response, error) -> {
                         if (response != null) {
                             TL_account.Password password = (TL_account.Password) response;
                             AndroidUtilities.runOnUIThread(() -> {
-                                openEmailSettings(password);
+                                LaunchActivity activity = emailActivity.get();
+                                if (activity != null && emailRequestCurrent.getAsBoolean()) {
+                                    activity.openEmailSettings(emailAccount, password, emailRequestCurrent);
+                                }
                             });
                         }
                     }, ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin);
@@ -3765,10 +3804,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 boolean closePreviousFinal = closePrevious;
                 if (open_settings == 6) {
                     getActionBarLayout().presentFragment(new INavigationLayout.NavigationParams(fragment).setNoAnimation(true));
-                } else {
+                } else if (open_settings != 15) {
                     AndroidUtilities.runOnUIThread(() -> presentFragment(fragment, closePreviousFinal, false));
                 }
-                if (AndroidUtilities.isTablet()) {
+                if (AndroidUtilities.isTablet() && open_settings != 15) {
                     actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                     rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
                 }
@@ -3845,9 +3884,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
                 pushOpened = true;
             } else if (showGroupVoip) {
-                GroupCallActivity.create(this, AccountInstance.getInstance(currentAccount), null, null, false, null);
+                if (currentAccount == intentAccount[0] && isCurrentGroupCallAction(intent)) {
+                    GroupCallActivity.create(this, AccountInstance.getInstance(intentAccount[0]), null, null, false, null);
                 if (GroupCallActivity.groupCallInstance != null) {
                     GroupCallActivity.groupCallUiVisible = true;
+                    }
                 }
             } else if (newContactAlert) {
                 final BaseFragment lastFragment = actionBarLayout.getLastFragment();
@@ -3885,52 +3926,18 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         }
         if (!pushOpened && !isNew) {
-            if (AndroidUtilities.isTablet()) {
-                if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
-                    if (layersActionBarLayout.getFragmentStack().isEmpty()) {
-                        layersActionBarLayout.addFragmentToStack(getClientNotActivatedFragment(), INavigationLayout.FORCE_NOT_ATTACH_VIEW);
-                    }
-                } else {
-                    if (actionBarLayout.getFragmentStack().isEmpty()) {
-                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
-                        if (searchQuery != null) {
-                            dialogsActivity.setInitialSearchString(searchQuery);
-                        }
-                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
-                    }
-                }
-            } else {
-                if (actionBarLayout.getFragmentStack().isEmpty()) {
-                    if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
-                        actionBarLayout.addFragmentToStack(getClientNotActivatedFragment(), INavigationLayout.FORCE_NOT_ATTACH_VIEW);
-                    } else {
-                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
-                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
-                        if (searchQuery != null) {
-                            dialogsActivity.setInitialSearchString(searchQuery);
-                        }
-                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
-                    }
-                }
-            }
-            if (rebuildFragments) {
-                actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
-                if (AndroidUtilities.isTablet()) {
-                    layersActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
-                    rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
-                }
-            }
+            prepareIntentRoot(searchQuery, rebuildFragments && !intentRootPrepared);
         }
         if (isVoipAnswerIntent) {
             if (intent != null && VOIP_ANSWER_TOKEN.equals(intent.getStringExtra(EXTRA_VOIP_ANSWER_TOKEN))) {
                 if (intent.hasExtra("group_call_invite_msg_id")) {
-                VoIPGroupNotification.answer(this, intentAccount[0], intent.getIntExtra("group_call_invite_msg_id", 0));
-            } else {
-                VoIPPreNotificationService.answer(this);
+                    VoIPGroupNotification.answer(this, intentAccount[0], intent.getIntExtra("group_call_invite_msg_id", 0));
+                } else {
+                    VoIPPreNotificationService.answer(this, intent);
                 }
             }
-        } else if (isVoipIntent) {
+        } else if (isVoipIntent && (!VoIPPreNotificationService.hasCallOwner(intent)
+                || VoIPPreNotificationService.isCurrentCallAction(intent))) {
             VoIPFragment.show(this, intentAccount[0]);
         }
         if (!showGroupVoip && (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction())) && GroupCallActivity.groupCallInstance != null) {
@@ -3943,15 +3950,92 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         return !rejectedAccount && pushOpened;
     }
 
+    private void prepareIntentRoot(String searchQuery, boolean rebuildFragments) {
+            if (AndroidUtilities.isTablet()) {
+                if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
+                    if (layersActionBarLayout.getFragmentStack().isEmpty()) {
+                        layersActionBarLayout.addFragmentToStack(getClientNotActivatedFragment(), INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                    }
+            } else if (actionBarLayout.getFragmentStack().isEmpty()) {
+                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
+                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
+                if (searchQuery != null) dialogsActivity.setInitialSearchString(searchQuery);
+                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                    }
+        } else if (actionBarLayout.getFragmentStack().isEmpty()) {
+                    if (!UserConfig.getInstance(currentAccount).isClientActivated()) {
+                        actionBarLayout.addFragmentToStack(getClientNotActivatedFragment(), INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                    } else {
+                        MainTabsActivity mainTabsActivity = new MainTabsActivity();
+                        DialogsActivity dialogsActivity = mainTabsActivity.prepareDialogsActivity(null);
+                if (searchQuery != null) dialogsActivity.setInitialSearchString(searchQuery);
+                        actionBarLayout.addFragmentToStack(mainTabsActivity, INavigationLayout.FORCE_NOT_ATTACH_VIEW);
+                }
+            }
+            if (rebuildFragments) {
+                actionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
+                if (AndroidUtilities.isTablet()) {
+                    layersActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
+                    rightActionBarLayout.rebuildFragments(INavigationLayout.REBUILD_FLAG_REBUILD_LAST);
+                }
+            }
+        }
+    private static BaseFragment getLastFragmentIncludeMainTabs(INavigationLayout layout) {
+        BaseFragment fragment = layout == null ? null : layout.getLastFragment();
+        return fragment instanceof MainTabsActivity
+                ? ((MainTabsActivity) fragment).getCurrentVisibleFragment() : fragment;
+    }
+
+    java.util.function.BooleanSupplier captureLoginEmailRequest(int account) {
+        if (instance != this || finished || isFinishing() || isDestroyed()
+                || account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT
+                || currentAccount != account || UserConfig.selectedAccount != account) return () -> false;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final long generation = navigationRequestGeneration.get();
+        final INavigationLayout layout = getActionBarLayout();
+        if (layout == null) return () -> false;
+        final BaseFragment source = getLastFragmentIncludeMainTabs(layout);
+        final java.util.function.BooleanSupplier navigationCurrent = source == null
+                ? captureFragmentPresentationRequest() : source.captureNavigationRequest();
+        final WeakReference<LaunchActivity> activityRef = new WeakReference<>(this);
+        return () -> {
+            LaunchActivity activity = activityRef.get();
+            return activity != null && instance == activity && activity.isActive && !activity.finished
+                    && !activity.isFinishing() && !activity.isDestroyed()
+                    && activity.currentAccount == account && UserConfig.selectedAccount == account
+                    && generation == activity.navigationRequestGeneration.get()
+                    && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, owner, session)
+                    && activity.getActionBarLayout() == layout
+                    && (source == null || source.getParentActivity() == activity
+                        && source.getCurrentAccount() == account && getLastFragmentIncludeMainTabs(layout) == source)
+                    && navigationCurrent.getAsBoolean();
+        };
+    }
+
     public void openEmailSettings(TL_account.Password currentPassword) {
+        final int account = currentAccount;
+        openEmailSettings(account, currentPassword, captureLoginEmailRequest(account));
+    }
+
+    void openEmailSettings(int account, TL_account.Password currentPassword, java.util.function.BooleanSupplier requestCurrent) {
+        if (requestCurrent == null || !requestCurrent.getAsBoolean()) return;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final WeakReference<LaunchActivity> activityRef = new WeakReference<>(this);
         final LoginActivity loginActivity = new LoginActivity().changeEmail(() -> {
-            Bulletin.LottieLayout layout = new Bulletin.LottieLayout(this, null);
+            LaunchActivity activity = activityRef.get();
+            if (activity == null || instance != activity || activity.finished || !activity.isActive
+                    || activity.isFinishing() || activity.isDestroyed()
+                    || activity.currentAccount != account || UserConfig.selectedAccount != account
+                    || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, owner, session)) return;
+            Bulletin.LottieLayout layout = new Bulletin.LottieLayout(activity, null);
             layout.setAnimation(R.raw.email_check_inbox);
             layout.textView.setText(LocaleController.getString(R.string.YourLoginEmailChangedSuccess));
             int duration = Bulletin.DURATION_SHORT;
 
-            BaseFragment fragment = getLastFragment();
-            if (fragment != null) {
+            BaseFragment fragment = activity.getActionBarLayout().getLastFragment();
+            if (fragment != null && fragment.getParentActivity() == activity && fragment.getCurrentAccount() == account) {
                 Bulletin.make(fragment, layout, duration).show();
                 try {
                     fragment.fragmentView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
@@ -3959,6 +4043,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             }
         });
 
+        loginActivity.setCurrentAccount(account);
+        final Runnable confirm = () -> {
+            LaunchActivity activity = activityRef.get();
+            if (activity != null && requestCurrent.getAsBoolean()) activity.presentFragment(loginActivity);
+        };
         if (currentPassword != null && currentPassword.login_email_pattern != null) {
             SpannableStringBuilder spannable = SpannableStringBuilder.valueOf(currentPassword.login_email_pattern);
             int startIndex = currentPassword.login_email_pattern.indexOf('*');
@@ -3974,11 +4063,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             new AlertDialog.Builder(this)
                     .setTitle(spannable)
                     .setMessage(LocaleController.getString(R.string.EmailLoginChangeMessage))
-                    .setPositiveButton(LocaleController.getString(R.string.ChangeEmail), (dialog, which) -> presentFragment(loginActivity))
+                    .setPositiveButton(LocaleController.getString(R.string.ChangeEmail), (dialog, which) -> confirm.run())
                     .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                     .show();
         } else {
-            presentFragment(loginActivity);
+            confirm.run();
         }
     }
 
@@ -4942,23 +5031,47 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 }
             }));
         } else if (inputInvoiceSlug != null) {
+            final long invoiceOwner = UserConfig.getInstance(intentAccount).getClientUserId();
+            final long invoiceSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(intentAccount);
+            final long invoiceGeneration = navigationRequestGeneration.incrementAndGet();
+            final BaseFragment invoiceSource = getLastFragmentIncludeMainTabs(getActionBarLayout());
+            final java.util.function.BooleanSupplier invoiceNavigationCurrent = invoiceSource == null
+                    ? captureFragmentPresentationRequest() : invoiceSource.captureNavigationRequest();
+            final boolean[] invoiceCanceled = {false};
+            cancelRunnable = () -> invoiceCanceled[0] = true;
+            final java.util.function.BooleanSupplier invoiceCurrent = () -> !invoiceCanceled[0]
+                    && isNavigationRequestCurrent(intentAccount, invoiceGeneration)
+                    && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(intentAccount, invoiceOwner, invoiceSession)
+                    && (invoiceSource == null || invoiceSource.getCurrentAccount() == intentAccount
+                        && invoiceSource.getParentActivity() == this
+                        && getLastFragmentIncludeMainTabs(getActionBarLayout()) == invoiceSource)
+                    && invoiceNavigationCurrent.getAsBoolean();
             TLRPC.TL_payments_getPaymentForm req = new TLRPC.TL_payments_getPaymentForm();
             TLRPC.TL_inputInvoiceSlug invoiceSlug = new TLRPC.TL_inputInvoiceSlug();
             invoiceSlug.slug = inputInvoiceSlug;
             req.invoice = invoiceSlug;
             requestId[0] = ConnectionsManager.getInstance(intentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!invoiceCurrent.getAsBoolean()) {
+                    dismissLoading.run();
+                    return;
+                }
                 if (error != null) {
+                    final BaseFragment errorFragment = getLastFragmentIncludeMainTabs(getActionBarLayout());
+                    if (errorFragment == null) {
+                        dismissLoading.run();
+                        return;
+                    }
                     if ("SUBSCRIPTION_ALREADY_ACTIVE".equalsIgnoreCase(error.text)) {
-                        BulletinFactory.of(mainFragmentsStack.get(mainFragmentsStack.size() - 1)).createErrorBulletin(LocaleController.getString(R.string.PaymentInvoiceSubscriptionLinkAlreadyPaid)).show();
+                        BulletinFactory.of(errorFragment).createErrorBulletin(LocaleController.getString(R.string.PaymentInvoiceSubscriptionLinkAlreadyPaid)).show();
                     } else {
-                        BulletinFactory.of(mainFragmentsStack.get(mainFragmentsStack.size() - 1)).createErrorBulletin(LocaleController.getString(R.string.PaymentInvoiceLinkInvalid)).show();
+                        BulletinFactory.of(errorFragment).createErrorBulletin(LocaleController.getString(R.string.PaymentInvoiceLinkInvalid)).show();
                     }
                 } else if (!LaunchActivity.this.isFinishing()) {
                     PaymentFormActivity paymentFormActivity = null;
                     if (response instanceof TLRPC.TL_payments_paymentFormStars) {
                         Runnable callback = navigateToPremiumGiftCallback;
                         navigateToPremiumGiftCallback = null;
-                        StarsController.getInstance(currentAccount).openPaymentForm(null, invoiceSlug, (TLRPC.TL_payments_paymentFormStars) response, () -> {
+                        StarsController.getInstance(intentAccount).openPaymentForm(null, invoiceSlug, (TLRPC.TL_payments_paymentFormStars) response, () -> {
                             try {
                                 dismissLoading.run();
                             } catch (Exception e) {
@@ -4968,14 +5081,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             if (callback != null && "paid".equals(status)) {
                                 callback.run();
                             }
-                        });
+                        }, invoiceCurrent);
                         return;
                     } else if (response instanceof TLRPC.PaymentForm) {
                         TLRPC.PaymentForm form = (TLRPC.PaymentForm) response;
                         MessagesController.getInstance(intentAccount).putUsers(form.users, false);
-                        paymentFormActivity = new PaymentFormActivity(form, inputInvoiceSlug, getActionBarLayout().getLastFragment());
+                        paymentFormActivity = new PaymentFormActivity(intentAccount, form, null, inputInvoiceSlug, invoiceSource);
                     } else if (response instanceof TLRPC.PaymentReceipt) {
-                        paymentFormActivity = new PaymentFormActivity((TLRPC.PaymentReceipt) response);
+                        paymentFormActivity = new PaymentFormActivity(intentAccount, (TLRPC.PaymentReceipt) response);
                     }
 
                     if (paymentFormActivity != null) {
@@ -9662,6 +9775,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 if (lastFragment instanceof ChatActivity && args != null) {
                     outState.putBundle("args", args);
                     outState.putString("fragment", "chat");
+                    ChatActivity chatActivity = (ChatActivity) lastFragment;
+                    if (chatActivity.isTopic && chatActivity.getChatMode() == 0) {
+                        outState.putLong("topic_id", chatActivity.getTopicId());
+                    }
                 } else if (lastFragment instanceof GroupCreateFinalActivity && args != null) {
                     outState.putBundle("args", args);
                     outState.putString("fragment", "group");

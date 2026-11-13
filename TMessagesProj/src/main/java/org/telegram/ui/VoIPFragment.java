@@ -92,6 +92,7 @@ import org.telegram.ui.Components.voip.VoIPPipContent;
 import org.telegram.messenger.voip.EncryptionKeyEmojifier;
 import org.telegram.messenger.voip.Instance;
 import org.telegram.messenger.voip.VideoCapturerDevice;
+import org.telegram.messenger.voip.VoIPPreNotificationService;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.messenger.voip.VoIPServiceState;
 import org.telegram.messenger.voip.VoipAudioManager;
@@ -1207,24 +1208,31 @@ public class VoIPFragment implements
         });
 
         backIcon.setOnClickListener(view -> {
-            if (lockOnScreen) return;
+            if (lockOnScreen || !backIcon.isClickable()) return;
             onBackPressed();
         });
         addIcon.setOnClickListener(v -> {
-            if (lockOnScreen) return;
+            if (lockOnScreen || !addIcon.isClickable() || isFinished || uiDestroyed || instance != this || activity == null
+                    || activity.isFinishing() || activity.isDestroyed()) return;
+            final VoIPService service = VoIPService.getSharedInstance();
+            if (service == null || service.getAccount() != currentAccount || service.getPrivateCall() == null
+                    || service.groupCall != null || service.isConference() || callingUser == null
+                    || service.getUser() == null || service.getUser().id != callingUser.id) return;
+            final Intent owner = VoIPPreNotificationService.bindOwner(new Intent(), service);
+            if (!VoIPPreNotificationService.isCurrentServiceAction(service, owner)) return;
             if (addPeopleSheet != null) {
                 addPeopleSheet.dismiss();
                 addPeopleSheet = null;
             }
-            addPeopleSheet = new UserSelectorBottomSheet(context, currentAccount, 0, null, UserSelectorBottomSheet.TYPE_CALL, true, new DarkBlueThemeResourcesProvider())
-                .exceptUsers(currentUser != null ? currentUser.id : 0, callingUser != null ? callingUser.id : 0)
+            final UserSelectorBottomSheet candidate = new UserSelectorBottomSheet(context, currentAccount, 0, null, UserSelectorBottomSheet.TYPE_CALL, true, new DarkBlueThemeResourcesProvider());
+            candidate.exceptUsers(currentUser != null ? currentUser.id : 0, callingUser.id)
                 .setOnUsersSelector((video, users) -> {
-                    VoIPService voip = VoIPService.getSharedInstance();
-                    if (voip != null) {
-                        voip.convertToConferenceCall(video, users);
-                    }
+                        if (isFinished || uiDestroyed || instance != this || addPeopleSheet != candidate
+                                || !VoIPPreNotificationService.isCurrentServiceAction(service, owner)) return;
+                        service.convertToConferenceCall(video, users);
                 });
-            addPeopleSheet.show();
+            addPeopleSheet = candidate;
+            candidate.show();
         });
         if (windowView.isLockOnScreen()) {
             backIcon.setVisibility(View.GONE);
@@ -2058,31 +2066,11 @@ public class VoIPFragment implements
 
         final boolean showBack = currentState != VoIPService.STATE_ENDED && !lockOnScreen && uiVisible;
         final boolean showAdd = !showAcceptDeclineView && currentState != VoIPService.STATE_RINGING && currentState != VoIPService.STATE_ENDED && currentState != VoIPService.STATE_EXCHANGING_KEYS && currentState != VoIPService.STATE_REQUESTING && currentState != VoIPService.STATE_CREATING && !lockOnScreen && uiVisible && service != null && service.privateCall != null && service.privateCall.conference_supported;
+        updateHeaderAction(backIcon, showBack, animated);
+        updateHeaderAction(addIcon, showAdd, animated);
         if (animated) {
-            if (showBack) {
-                backIcon.animate().alpha(1f).start();
-            } else {
-                if (backIcon.getVisibility() != View.VISIBLE) {
-                    backIcon.setVisibility(View.VISIBLE);
-                    backIcon.setAlpha(0f);
-                }
-                backIcon.animate().alpha(0f).start();
-            }
-            if (showAdd) {
-                addIcon.animate().alpha(1f).start();
-            } else {
-                if (addIcon.getVisibility() != View.VISIBLE) {
-                    addIcon.setVisibility(View.VISIBLE);
-                    addIcon.setAlpha(0f);
-                }
-                addIcon.animate().alpha(0f).start();
-            }
             notificationsLayout.animate().translationY(-AndroidUtilities.dp(16) - (uiVisible ? AndroidUtilities.dp(80) : 0)).setDuration(150).setInterpolator(CubicBezierInterpolator.DEFAULT).start();
         } else {
-            backIcon.setVisibility(showBack ? View.VISIBLE : View.GONE);
-            backIcon.setAlpha(showBack ? 1f : 0);
-            addIcon.setVisibility(showAdd ? View.VISIBLE : View.GONE);
-            addIcon.setAlpha(showAdd ? 1f : 0);
             notificationsLayout.setTranslationY(-AndroidUtilities.dp(16) - (uiVisible ? AndroidUtilities.dp(80) : 0));
         }
 
@@ -2271,6 +2259,22 @@ public class VoIPFragment implements
         AndroidUtilities.cancelRunOnUIThread(stopAnimatingBgRunnable);
         if (currentState == VoIPService.STATE_ESTABLISHED) {
             AndroidUtilities.runOnUIThread(stopAnimatingBgRunnable, 10000);
+        }
+    }
+
+    private static void updateHeaderAction(View button, boolean show, boolean animated) {
+        button.setClickable(show);
+        button.setImportantForAccessibility(show ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO : View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        if (!animated) {
+            button.animate().cancel();
+            button.setVisibility(show ? View.VISIBLE : View.GONE);
+            button.setAlpha(show ? 1f : 0f);
+        } else {
+            if (show && button.getVisibility() != View.VISIBLE) {
+                button.setAlpha(0f);
+                button.setVisibility(View.VISIBLE);
+            }
+            if (button.getVisibility() == View.VISIBLE) button.animate().alpha(show ? 1f : 0f).start();
         }
     }
 

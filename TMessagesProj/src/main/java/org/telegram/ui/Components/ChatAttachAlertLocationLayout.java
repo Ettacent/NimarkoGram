@@ -381,9 +381,11 @@ public class ChatAttachAlertLocationLayout extends ChatAttachAlert.AttachAlertLa
             if (myLocation != null && map != null) {
                 ThemeBind.colorFilter(locationButton, Theme.key_location_actionActiveIcon, resourcesProvider, PorterDuff.Mode.MULTIPLY);
                 locationButton.setTag(Theme.key_location_actionActiveIcon);
-                adapter.setCustomLocation(null);
+                final Location location = new Location(myLocation);
+                userLocation = location;
                 userLocationMoved = false;
-                map.animateCamera(ApplicationLoader.getMapsProvider().newCameraUpdateLatLng(new IMapsProvider.LatLng(myLocation.getLatitude(), myLocation.getLongitude())));
+                adapter.setCustomLocation(null);
+                map.animateCamera(ApplicationLoader.getMapsProvider().newCameraUpdateLatLng(new IMapsProvider.LatLng(location.getLatitude(), location.getLongitude())));
             }
         });
 

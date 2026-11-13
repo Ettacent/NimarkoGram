@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  *  Copyright 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -18,6 +20,7 @@ import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import androidx.annotation.Nullable;
 import android.view.Surface;
 
@@ -190,8 +193,17 @@ public class ScreenCapturerAndroid implements VideoCapturer, VideoSink {
     // with frame processing, which happens on the same thread (we serialize events by running
     // them on the same thread).
     ThreadUtils.invokeAtFrontUninterruptibly(surfaceTextureHelper.getHandler(), () -> {
+      if (virtualDisplay == null) {
+        return;
+      }
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
       virtualDisplay.release();
       createVirtualDisplay();
+      } else {
+        surfaceTextureHelper.setTextureSize(width, height);
+        virtualDisplay.resize(width, height, VIRTUAL_DISPLAY_DPI);
+        virtualDisplay.setSurface(new Surface(surfaceTextureHelper.getSurfaceTexture()));
+      }
     });
   }
 

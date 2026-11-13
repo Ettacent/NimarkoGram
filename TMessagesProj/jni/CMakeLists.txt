@@ -253,7 +253,11 @@ add_library(${NATIVE_LIB} SHARED
 )
 
 include(twidget/twidget.cmake)
-twidget_target_sources(${NATIVE_LIB})
+add_library(twidget SHARED twidget/twidget-onload.cpp twidget/twidget-seccomp.cpp)
+twidget_target_sources(twidget)
+twidget_client_sources(${NATIVE_LIB})
+target_link_options(twidget PRIVATE "-Wl,-z,max-page-size=16384")
+target_link_options(twidget PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/twidget/exports.map")
 
 set(PRISMA_BRIDGE_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/prisma/bridge/PrismaEngine.cpp"

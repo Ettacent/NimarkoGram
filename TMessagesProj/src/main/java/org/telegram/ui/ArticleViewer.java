@@ -14,6 +14,7 @@ import app.nimarkogram.messenger.utils.AppMotionBlur;
 
 import app.nimarkogram.messenger.banners.BannerRenderer;
 
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.formatString;
@@ -176,6 +177,7 @@ import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.BottomSheetTabDialog;
 import org.telegram.ui.ActionBar.BottomSheetTabs;
 import org.telegram.ui.ActionBar.BottomSheetTabsOverlay;
+import org.telegram.ui.ActionBar.SimpleActionBarMenuOverlay;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.Cells.HeaderCell;
@@ -338,6 +340,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private boolean isVisible;
     private boolean collapsed;
     private boolean attachedToWindow;
+    private boolean destroyed;
     private boolean bannerOverlayRegistered;
 
     private void setBannerOverlayVisible(boolean visible) {
@@ -363,6 +366,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private int currentAccount;
+    private long accountUserId;
+    private long accountSession = -1;
     private int notificationsAccount = -1;
     private boolean notificationsRegistered;
     public int getCurrentAccount() {
@@ -454,6 +459,83 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     private int previewsReqGeneration;
     private int lastReqId;
 
+    private long navigationGeneration;
+    private int navigationInvalidationDepth;
+    private OpenUrlOwner openUrlOwner;
+
+    private final class OpenUrlOwner {
+        final int account = currentAccount;
+        final long userId = accountUserId;
+        final long session = accountSession;
+        final long navigation = navigationGeneration;
+        final int requestGeneration = lastReqId;
+        final Activity activity = parentActivity;
+        final BaseFragment fragment = parentFragment;
+        final PageLayout layout = pages[0];
+        final Object page = layout.isArticle() ? layout.adapter.currentPage : layout.web;
+        final BotWebViewContainer.MyWebView webView = layout.isWeb() ? layout.getWebView() : null;
+        final String webUrl = webView != null ? webView.getUrl() : null;
+        Runnable pendingResponse;
+
+        boolean isCurrent() {
+            return openUrlOwner == this && navigationInvalidationDepth == 0
+                    && navigation == navigationGeneration && requestGeneration == lastReqId
+                    && account == currentAccount && userId == accountUserId && session == accountSession
+                    && InAppNotifications.isCurrent(account, userId, session)
+                    && activity == parentActivity && fragment == parentFragment
+                    && isNavigationVisible() && pages[0] == layout && !pagesStack.isEmpty()
+                    && pagesStack.get(pagesStack.size() - 1) == page
+                    && (layout.isArticle() ? layout.adapter.currentPage == page
+                            && layout.adapter.pageAccount == account && layout.adapter.pageUserId == userId
+                            && layout.adapter.pageSession == session
+                            : layout.web == page && page instanceof CachedWeb
+                            && layout.getWebView() == webView && webView != null && TextUtils.equals(webUrl, webView.getUrl())
+                            && ((CachedWeb) page).account == account && ((CachedWeb) page).userId == userId
+                            && ((CachedWeb) page).session == session);
+        }
+    }
+
+    private boolean isNavigationVisible() {
+        return navigationInvalidationDepth == 0 && !destroyed && isVisible && attachedToWindow
+                && InAppNotifications.isCurrent(currentAccount, accountUserId, accountSession)
+                && parentActivity != null && !parentActivity.isFinishing()
+                && pages != null && pages[0] != null
+                && (sheet == null || !sheet.dismissing && !sheet.released);
+    }
+
+    private void invalidateNavigation(boolean notifyServer) {
+        navigationInvalidationDepth++;
+        navigationGeneration++;
+        final Browser.Progress progress = loadingProgress;
+        loadingProgress = null;
+        final boolean hadRequest = openUrlReqId != 0 || previewsReqId != 0;
+        try {
+            cancelOpenUrlRequest(notifyServer);
+            cancelPreviewsRequest(notifyServer);
+            if (hadRequest && actionBar != null) showProgressView(true, false);
+            if (progress != null) progress.cancel();
+        } finally {
+            navigationInvalidationDepth--;
+        }
+    }
+
+    private void runPendingOpenUrlResponse() {
+        final OpenUrlOwner owner = openUrlOwner;
+        if (owner == null || owner.pendingResponse == null || !owner.isCurrent()
+                || pageSwitchAnimation != null || closeAnimationInProgress
+                || windowView.maybeStartTracking || windowView.startedTracking || windowView.openingPage) return;
+        final Runnable response = owner.pendingResponse;
+        owner.pendingResponse = null;
+        if (!windowView.post(() -> {
+            if (!owner.isCurrent()) return;
+            if (pageSwitchAnimation != null || closeAnimationInProgress
+                    || windowView.maybeStartTracking || windowView.startedTracking || windowView.openingPage) {
+                owner.pendingResponse = response;
+                return;
+            }
+            response.run();
+        }) && owner.isCurrent()) invalidateNavigation(false);
+    }
     private int currentHeaderHeight;
 
     private boolean checkingForLongPress = false;
@@ -1127,6 +1209,13 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             }
             containerView.measure(View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(heightSize, View.MeasureSpec.EXACTLY));
             fullscreenVideoContainer.measure(View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(heightSize, View.MeasureSpec.EXACTLY));
+            for (int i = 0; i < getChildCount(); i++) {
+                final View child = getChildAt(i);
+                if (child instanceof SimpleActionBarMenuOverlay && child.getVisibility() != GONE) {
+                    child.measure(MeasureSpec.makeMeasureSpec(getMeasuredWidth(), MeasureSpec.EXACTLY),
+                            MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
+                }
+            }
         }
 
         @Override
@@ -1195,6 +1284,12 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             }
             containerView.layout(x, y, x + containerView.getMeasuredWidth(), y + containerView.getMeasuredHeight());
             fullscreenVideoContainer.layout(x, y, x + fullscreenVideoContainer.getMeasuredWidth(), y + fullscreenVideoContainer.getMeasuredHeight());
+            for (int i = 0; i < getChildCount(); i++) {
+                final View child = getChildAt(i);
+                if (child instanceof SimpleActionBarMenuOverlay && child.getVisibility() != GONE) {
+                    child.layout(0, 0, getMeasuredWidth(), getMeasuredHeight());
+                }
+            }
             if (runAfterKeyboardClose != null) {
                 runAfterKeyboardClose.start();
                 runAfterKeyboardClose = null;
@@ -1204,13 +1299,15 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
-            attachedToWindow = true;
+            if (this == windowView) attachedToWindow = true;
         }
 
         @Override
         protected void onDetachedFromWindow() {
             super.onDetachedFromWindow();
+            if (this != windowView) return;
             attachedToWindow = false;
+            invalidateNavigation(false);
             if (videoPlayer != null) {
                 videoPlayer.release(null);
                 videoPlayer = null;
@@ -1348,6 +1445,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         float distToMove;
                         AnimatorSet animatorSet = new AnimatorSet();
                         if (!backAnimation) {
+                            invalidateNavigation(true);
                             distToMove = movingView.getMeasuredWidth() - x;
                             if (movingPage) {
                                 animatorSet.playTogether(
@@ -1435,6 +1533,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                                 movingPage = false;
                                 startedTracking = false;
                                 closeAnimationInProgress = false;
+                                runPendingOpenUrlResponse();
                             }
                         });
                         animatorSet.start();
@@ -1460,6 +1559,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         textSelectionHelper.clear();
                     }
                 }
+                runPendingOpenUrlResponse();
                 return startedTracking && lastWebviewAllowedScroll;
             }
             return false;
@@ -2020,6 +2120,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         )) {
             return;
         }
+        if (!previous) invalidateNavigation(false);
         if (!previous && order != 0) {
             PageLayout pageToUpdate = pages[1];
             pages[1] = pages[0];
@@ -2076,6 +2177,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     pages[index].setLayerType(View.LAYER_TYPE_NONE, null);
                     pageSwitchAnimation = null;
                     windowView.openingPage = false;
+                    runPendingOpenUrlResponse();
                 }
             });
             windowView.openingPage = true;
@@ -2092,7 +2194,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
         final WebpageAdapter adapter = pages[index].adapter;
 
-        Object page = previous ? pagesStack.get(pagesStack.size() - 2) : obj;
+        Object page = obj;
         pages[index].cleanup();
         if (page instanceof TLRPC.WebPage) {
             TLRPC.WebPage webPage = (TLRPC.WebPage) page;
@@ -2102,6 +2204,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             adapter.isRtl = webPage.cached_page.rtl;
             adapter.currentPage = webPage;
 
+            adapter.pageAccount = currentAccount;
+            adapter.pageUserId = accountUserId;
+            adapter.pageSession = accountSession;
             int numBlocks = 0;
             int count = webPage.cached_page.blocks.size();
             for (int a = 0; a < count; a++) {
@@ -2167,6 +2272,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private boolean addPageToStack(TLRPC.WebPage webPage, String anchor, int order) {
+        invalidateNavigation(false);
         saveCurrentPagePosition();
         pagesStack.add(webPage);
         actionBar.showSearch(false, true);
@@ -2175,6 +2281,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private boolean addPageToStack(String url, int order) {
+        invalidateNavigation(false);
         saveCurrentPagePosition();
         CachedWeb web = new CachedWeb(url);
         pagesStack.add(web);
@@ -2184,6 +2291,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private void goBack() {
+        if (navigationInvalidationDepth != 0) return;
+        invalidateNavigation(true);
         if (pagesStack.size() <= 1) {
             windowView.movingPage = false;
             windowView.startedTracking = false;
@@ -2340,6 +2449,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private void goBack(int intoIndex) {
+        if (navigationInvalidationDepth != 0) return;
+        invalidateNavigation(true);
         if (pagesStack.size() <= 1) {
             windowView.movingPage = false;
             windowView.startedTracking = false;
@@ -2668,6 +2779,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         if (pagesStack.size() < 2) {
             return false;
         }
+        invalidateNavigation(true);
         Object removed = pagesStack.remove(pagesStack.size() - 1);
         if (removed instanceof CachedWeb) {
             ((CachedWeb) removed).destroy();
@@ -3997,7 +4109,23 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     @Override
     public void openWebpageUrl(String url, String anchor, Browser.Progress progress) {
-        if (parentActivity == null || parentActivity.isFinishing()) return;
+        if (!isNavigationVisible() || closeAnimationInProgress || animationInProgress == 2) return;
+        invalidateNavigation(false);
+        if (!isNavigationVisible()) return;
+        final OpenUrlOwner owner = new OpenUrlOwner();
+        openUrlOwner = owner;
+        loadingProgress = progress;
+        if (!owner.isCurrent()) {
+            invalidateNavigation(false);
+            return;
+        }
+        if (progress != null) {
+            progress.onCancel(() -> {
+                if (!owner.isCurrent()) return;
+                if (loadingProgress == progress) loadingProgress = null;
+                invalidateNavigation(false);
+            });
+        }
         if (pages[0] != null && pages[0].isLocal()) {
             String format = LocaleController.getString(R.string.OpenUrlAlert2);
             int index = format.indexOf("%");
@@ -4009,86 +4137,82 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 .setTitle(getString(R.string.OpenUrlTitle))
                 .setMessage(stringBuilder)
                 .setMessageTextViewClickable(false)
-                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), (di, w) -> {
+                    if (owner.isCurrent()) invalidateNavigation(false);
+                })
                 .setPositiveButton(LocaleController.getString(R.string.Open), (di, w) -> {
-                    openWebpageUrlInternal(url, anchor, progress);
+                    if (owner.isCurrent()) openWebpageUrlInternal(url, anchor, progress, owner);
                 })
                 .show();
             return;
         }
-        openWebpageUrlInternal(url, anchor, progress);
+        openWebpageUrlInternal(url, anchor, progress, owner);
     }
-    private void openWebpageUrlInternal(String url, String anchor, Browser.Progress progress) {
-        if (loadingProgress != null) {
-            loadingProgress.cancel();
-        }
-        loadingProgress = progress;
-        cancelOpenUrlRequest(false);
+    private void openWebpageUrlInternal(String url, String anchor, Browser.Progress progress, OpenUrlOwner owner) {
+        if (!owner.isCurrent()) return;
 
         final boolean[] forceBrowser = new boolean[1];
-        if (Browser.openInExternalApp(parentActivity, url, false)) {
-            if (pagesStack.isEmpty()) {
-                if (sheet != null) {
-                    sheet.dismiss(false);
-                }
-            }
+        if (Browser.openInExternalApp(owner.activity, url, false)) {
+            if (loadingProgress == progress) loadingProgress = null;
+            if (progress != null) progress.end();
+            if (owner.isCurrent()) openUrlOwner = null;
             return;
         }
+        if (!owner.isCurrent()) return;
         Utilities.Callback0Return<Boolean> checkInternal = () -> {
+            if (!owner.isCurrent()) return true;
             if (!Browser.isInternalUri(Uri.parse(url), forceBrowser)) {
                 return false;
             }
             if (progress != null) {
+                loadingProgress = progress;
                 progress.onEnd(() -> {
+                    if (!owner.isCurrent()) return;
+                    if (loadingProgress == progress) loadingProgress = null;
+                    openUrlOwner = null;
                     if (sheet != null) {
                         sheet.dismiss(true);
                     }
-                    if (loadingProgress == progress) {
-                        loadingProgress = null;
-                    }
                 });
-            } else {
-                if (sheet != null) {
-                    sheet.dismiss(true);
-                }
             }
-            Browser.openUrl(parentActivity, Uri.parse(url), true, true, false, progress, null, true, true, false);
+            Browser.openUrl(owner.activity, Uri.parse(url), true, true, false, progress, null, true, true, false);
+            if (progress == null && owner.isCurrent() && sheet != null) sheet.dismiss(true);
             return true;
         };
 
-        final int reqId = ++lastReqId;
-        final int requestAccount = currentAccount;
+        final int requestAccount = owner.account;
         showProgressView(true, true);
         final TLRPC.TL_messages_getWebPage req = new TLRPC.TL_messages_getWebPage();
         req.url = url;
         req.hash = 0;
         openUrlReqAccount = requestAccount;
-        openUrlReqId = ConnectionsManager.getInstance(requestAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (openUrlReqId == 0 || reqId != lastReqId
-                    || openUrlReqAccount != requestAccount || currentAccount != requestAccount) {
-                return;
-            }
-            if (progress != null) {
-                progress.end();
-            }
-            openUrlReqId = 0;
-            openUrlReqAccount = -1;
-            if (loadingProgress == progress) {
-                loadingProgress = null;
-            }
-            showProgressView(true, false);
-            if (isVisible) {
+        openUrlReqId = -1;
+        try {
+            final int requestId = ConnectionsManager.getInstance(requestAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!InAppNotifications.isCurrent(requestAccount, owner.userId, owner.session)) return;
                 if (response instanceof TLRPC.TL_messages_webPage) {
                     TLRPC.TL_messages_webPage res = (TLRPC.TL_messages_webPage) response;
                     MessagesController.getInstance(requestAccount).putUsers(res.users, false);
                     MessagesController.getInstance(requestAccount).putChats(res.chats, false);
+                }
+                if (!owner.isCurrent() || openUrlReqId == 0 || openUrlReqAccount != requestAccount) return;
+                owner.pendingResponse = () -> {
+                    if (!owner.isCurrent() || openUrlReqId == 0 || openUrlReqAccount != requestAccount) return;
+                    openUrlReqId = 0;
+                    openUrlReqAccount = -1;
+                    if (loadingProgress == progress) loadingProgress = null;
+                    showProgressView(true, false);
+                    if (progress != null) progress.end();
+                    if (!owner.isCurrent()) return;
+                    if (response instanceof TLRPC.TL_messages_webPage) {
+                        TLRPC.TL_messages_webPage res = (TLRPC.TL_messages_webPage) response;
                     if (res.webpage != null && res.webpage.cached_page instanceof TL_iv.TL_page) {
                         addPageToStack(res.webpage, anchor, 1);
                     } else if (!checkInternal.run()) {
                         if (MessagesController.getInstance(requestAccount).isWebBrowserOpenInApp(req.url)) {
                             addPageToStack(req.url, 1);
-                        } else {
-                            Browser.openUrl(parentActivity, req.url);
+                            } else if (owner.isCurrent()) {
+                                Browser.openUrl(owner.activity, req.url);
                         }
                     }
                 } else if (response instanceof TLRPC.TL_webPage && ((TLRPC.TL_webPage) response).cached_page instanceof TL_iv.TL_page) {
@@ -4096,23 +4220,25 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 } else if (!checkInternal.run()) {
                     if (MessagesController.getInstance(requestAccount).isWebBrowserOpenInApp(req.url)) {
                         addPageToStack(req.url, 1);
-                    } else {
-                        Browser.openUrl(parentActivity, req.url);
+                        } else if (owner.isCurrent()) {
+                            Browser.openUrl(owner.activity, req.url);
+                        }
                     }
-                }
-            }
+                    if (openUrlOwner == owner && loadingProgress == null) openUrlOwner = null;
+                };
+                runPendingOpenUrlResponse();
         }));
-        if (progress != null) {
-            progress.onCancel(() -> {
-                if (lastReqId == reqId && openUrlReqAccount == requestAccount) {
-                    cancelOpenUrlRequest(false);
-                }
-                if (loadingProgress == progress) {
-                    loadingProgress = null;
-                }
-            });
-            progress.init();
+            if (owner.isCurrent() && openUrlReqId == -1 && openUrlReqAccount == requestAccount) {
+                openUrlReqId = requestId;
+            } else {
+                ConnectionsManager.getInstance(requestAccount).cancelRequest(requestId, false);
+            }
+        } catch (RuntimeException failure) {
+            if (owner.isCurrent()) invalidateNavigation(false);
+            FileLog.e(failure);
+            return;
         }
+        if (progress != null && owner.isCurrent()) progress.init();
 
     }
 
@@ -4121,8 +4247,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         final int requestAccount = openUrlReqAccount;
         openUrlReqId = 0;
         openUrlReqAccount = -1;
+        if (openUrlOwner != null) openUrlOwner.pendingResponse = null;
+        openUrlOwner = null;
         lastReqId++;
-        if (requestId != 0 && requestAccount >= 0) {
+        if (requestId > 0 && requestAccount >= 0) {
             ConnectionsManager.getInstance(requestAccount).cancelRequest(requestId, notifyServer);
         }
     }
@@ -4315,6 +4443,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     public void setParentActivity(Activity activity, BaseFragment fragment) {
         // Do not receive player/emoji callbacks while the two PageLayout
         // instances below are being rebuilt.
+        final boolean parentChanged = parentActivity != activity || parentFragment != fragment;
         unregisterNotificationObservers();
         if (activityVisibilityController != null) {
             activityVisibilityController.destroy();
@@ -4324,20 +4453,16 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         parentFragment = fragment;
         final int newAccount = fragment != null && !(fragment instanceof EmptyBaseFragment) ? fragment.getCurrentAccount() : UserConfig.selectedAccount;
-        if (currentAccount != newAccount) {
-            final boolean hadVisibleRequest = openUrlReqId != 0 || previewsReqId != 0;
-            if (loadingProgress != null) {
-                Browser.Progress progress = loadingProgress;
-                loadingProgress = null;
-                progress.cancel();
-            }
-            cancelOpenUrlRequest(false);
-            cancelPreviewsRequest(false);
-            if (hadVisibleRequest) {
-                showProgressView(true, false);
-            }
+        final long newUserId = UserConfig.isValidAccount(newAccount) ? UserConfig.getInstance(newAccount).getClientUserId() : 0;
+        final long newSession = InAppNotifications.session(newAccount);
+        if (currentAccount != newAccount || accountUserId != newUserId || accountSession != newSession
+                || parentChanged) {
+            invalidateNavigation(false);
         }
         currentAccount = newAccount;
+        accountUserId = newUserId;
+        accountSession = newSession;
+        destroyed = false;
         if (parentActivity == activity || parentActivity != null && isSheet && sheet != null && sheet.dialog != null) {
             registerNotificationObservers();
             updatePaintColors(this);
@@ -4444,6 +4569,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 return false;
             });
             page.listView.setOnItemClickListener((view, position, x, y) -> {
+                if (!isNavigationVisible() || page != pages[0] || closeAnimationInProgress || pageSwitchAnimation != null
+                        || page.adapter.pageAccount != currentAccount || page.adapter.pageUserId != accountUserId
+                        || page.adapter.pageSession != accountSession) return;
                 if (sheet != null) {
                     position--;
                     if (position < 0) return;
@@ -4467,6 +4595,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     } else {
                         final int requestAccount = currentAccount;
                         final int requestGeneration = ++previewsReqGeneration;
+                        final long requestUserId = accountUserId;
+                        final long requestSession = accountSession;
                         final long pageId = adapter.currentPage.id;
                         showProgressView(true, true);
                         TLRPC.TL_contacts_resolveUsername req = new TLRPC.TL_contacts_resolveUsername();
@@ -4474,7 +4604,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                         previewsReqAccount = requestAccount;
                         previewsReqId = ConnectionsManager.getInstance(requestAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                             if (previewsReqId == 0 || previewsReqGeneration != requestGeneration
-                                    || previewsReqAccount != requestAccount || currentAccount != requestAccount) {
+                                    || previewsReqAccount != requestAccount || currentAccount != requestAccount
+                                    || !InAppNotifications.isCurrent(requestAccount, requestUserId, requestSession)) {
                                 return;
                             }
                             previewsReqId = 0;
@@ -5746,10 +5877,13 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     private boolean open(final MessageObject messageObject, TLRPC.WebPage webpage, String url, String webUrl, Browser.Progress progress) {
-        if (parentActivity == null || sheet == null && isVisible && !collapsed) {
+        if (destroyed || navigationInvalidationDepth != 0 || parentActivity == null
+                || sheet != null && (sheet.dismissing || sheet.released)
+                || sheet == null && isVisible && !collapsed) {
             return false;
         }
 
+        invalidateNavigation(false);
         if (parentFragment != null && parentFragment.getParentLayout() instanceof ActionBarLayout) {
             AndroidUtilities.hideKeyboard((ActionBarLayout) parentFragment.getParentLayout());
         }
@@ -5837,8 +5971,43 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                     req.hash = webpage.hash;
                 }
                 final TLRPC.WebPage webPageFinal = webpage;
-                final int currentAccount = messageObject != null ? messageObject.currentAccount : UserConfig.selectedAccount;
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (_response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                final int currentAccount = messageObject != null ? messageObject.currentAccount : this.currentAccount;
+                final long requestUserId = accountUserId;
+                final long requestSession = accountSession;
+                final long requestNavigation = navigationGeneration;
+                final int requestViews = webPageFinal.cached_page != null ? webPageFinal.cached_page.views : 0;
+                final boolean requestViewsKnown = webPageFinal.cached_page != null && (webPageFinal.cached_page.flags & 8) != 0;
+                final long requestPageId = webPageFinal.id;
+                final int requestPageHash = webPageFinal.hash;
+                final String requestPageUrl = webPageFinal.url;
+                final TLRPC.Message sourceMessage = messageObject == null ? null : messageObject.messageOwner;
+                final TLRPC.MessageMedia sourceMedia = sourceMessage == null ? null : sourceMessage.media;
+                final boolean hasMessageOrigin = messageObject != null;
+                final MessagesStorage storage = MessagesStorage.getInstance(currentAccount);
+                final MessagesStorage.ArticleMessageRef metadataRef = hasMessageOrigin && !messageObject.scheduled
+                        ? storage.captureArticleMessageRef(requestUserId, requestSession, messageObject.getDialogId(), messageObject.getId(), webPageFinal)
+                        : null;
+                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (_response, error) -> {
+                    if (!InAppNotifications.isCurrent(currentAccount, requestUserId, requestSession)) return;
+                    final TLRPC.WebPage responsePage = _response instanceof TLRPC.TL_messages_webPage
+                            ? ((TLRPC.TL_messages_webPage) _response).webpage
+                            : _response instanceof TLRPC.WebPage ? (TLRPC.WebPage) _response : null;
+                    MessagesStorage.ArticleMetadataPatch metadata = null;
+                    if (metadataRef != null || !hasMessageOrigin) {
+                        if (responsePage instanceof TLRPC.TL_webPage && responsePage.cached_page != null) {
+                            metadata = MessagesStorage.ArticleMetadataPatch.full(responsePage);
+                        } else if (metadataRef != null && responsePage instanceof TLRPC.TL_webPageNotModified
+                                && (responsePage.flags & 1) != 0) {
+                            metadata = MessagesStorage.ArticleMetadataPatch.views(((TLRPC.TL_webPageNotModified) responsePage).cached_page_views);
+                        }
+                    }
+                    final TLRPC.WebPage standalonePage = !hasMessageOrigin && metadata != null ? metadata.copyFullPage() : null;
+                    if (metadataRef != null && metadata != null) storage.updateArticleMessageMetadata(metadataRef, metadata);
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (!InAppNotifications.isCurrent(currentAccount, requestUserId, requestSession)) return;
+                        final Utilities.Callback0Return<Boolean> canUpdateReader = () -> !destroyed && isVisible
+                                && currentAccount == this.currentAccount && navigationGeneration == requestNavigation
+                                && InAppNotifications.isCurrent(currentAccount, requestUserId, requestSession);
                     Object response = _response;
                     if (response instanceof TLRPC.TL_messages_webPage) {
                         TLRPC.TL_messages_webPage res = (TLRPC.TL_messages_webPage) response;
@@ -5852,12 +6021,14 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                             return;
                         }
 
-                        if (!pagesStack.isEmpty() && pagesStack.get(0) == webPageFinal) {
-                            if (messageObject != null) {
-                                messageObject.messageOwner.media.webpage = webPage;
-                                TLRPC.TL_messages_messages messagesRes = new TLRPC.TL_messages_messages();
-                                messagesRes.messages.add(messageObject.messageOwner);
-                                MessagesStorage.getInstance(currentAccount).putMessages(messagesRes, messageObject.getDialogId(), -2, 0, false, messageObject.scheduled ? 1 : 0, 0);
+                            if (canUpdateReader.run() && !pagesStack.isEmpty() && pagesStack.get(0) == webPageFinal) {
+                                if (messageObject != null && sourceMessage != null && messageObject.messageOwner == sourceMessage
+                                        && sourceMessage.media == sourceMedia && sourceMedia instanceof TLRPC.TL_messageMediaWebPage
+                                        && sourceMedia.webpage == webPageFinal && webPageFinal.id == requestPageId
+                                        && webPageFinal.hash == requestPageHash && TextUtils.equals(webPageFinal.url, requestPageUrl)
+                                        && webPageFinal.cached_page != null && webPageFinal.cached_page.views == requestViews
+                                        && requestViewsKnown == ((webPageFinal.cached_page.flags & 8) != 0)) {
+                                    sourceMedia.webpage = webPage;
                             }
                             if (openingAbove) {
                                 pagesStack.add(webPage);
@@ -5873,16 +6044,21 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                             }
                         }
 
+                            if (standalonePage != null) {
                         LongSparseArray<TLRPC.WebPage> webpages = new LongSparseArray<>(1);
-                        webpages.put(webPage.id, webPage);
-                        MessagesStorage.getInstance(currentAccount).putWebPages(webpages);
+                                webpages.put(standalonePage.id, standalonePage);
+                                storage.putWebPages(webpages);
+                            }
                     } else if (response instanceof TLRPC.TL_webPageNotModified) {
                         final TLRPC.TL_webPageNotModified webPage = (TLRPC.TL_webPageNotModified) response;
-                        if (webPageFinal != null && webPageFinal.cached_page != null) {
-                            if (webPageFinal.cached_page.views != webPage.cached_page_views) {
+                            if ((webPage.flags & 1) != 0 && canUpdateReader.run()
+                                    && webPageFinal != null && webPageFinal.cached_page != null
+                                    && webPageFinal.cached_page.views == requestViews
+                                    && requestViewsKnown == ((webPageFinal.cached_page.flags & 8) != 0)) {
+                                if (webPageFinal.cached_page.views != webPage.cached_page_views || !requestViewsKnown) {
                                 webPageFinal.cached_page.views = webPage.cached_page_views;
                                 webPageFinal.cached_page.flags |= 8;
-                                for (int a = 0; a < pages.length; a++) {
+                                    for (int a = 0; canUpdateReader.run() && pages != null && a < pages.length; a++) {
                                     if (pages[a].adapter.currentPage == webPageFinal) {
                                         int p = pages[a].adapter.getItemCount() - 1;
                                         RecyclerView.ViewHolder holder = pages[a].listView.findViewHolderForAdapterPosition(p);
@@ -5891,15 +6067,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                                         }
                                     }
                                 }
-                                if (messageObject != null) {
-                                    TLRPC.TL_messages_messages messagesRes = new TLRPC.TL_messages_messages();
-                                    messagesRes.messages.add(messageObject.messageOwner);
-                                    MessagesStorage.getInstance(currentAccount).putMessages(messagesRes, messageObject.getDialogId(), -2, 0, false, messageObject.scheduled ? 1 : 0, 0);
                                 }
                             }
                         }
-                    }
-                }));
+                    });
+                });
             }
         } else {
             scrolledToAnchor = addPageToStack(webUrl, openingAbove ? 1 : 0);
@@ -6186,7 +6358,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public void close(boolean byBackPress, boolean force) {
-        if (parentActivity == null || closeAnimationInProgress || !isVisible || checkAnimation()) {
+        if (navigationInvalidationDepth != 0 || parentActivity == null || closeAnimationInProgress || !isVisible || checkAnimation()) {
             return;
         }
         if (actionBar != null) {
@@ -6222,23 +6394,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             actionBar.showAddress(false, true);
             return;
         }
-        final boolean hadOpenUrlRequest = openUrlReqId != 0;
-        if (loadingProgress != null) {
-            Browser.Progress progress = loadingProgress;
-            loadingProgress = null;
-            progress.cancel();
-        }
-        if (hadOpenUrlRequest && openUrlReqId == 0) {
-            showProgressView(true, false);
-        }
-        if (openUrlReqId != 0) {
-            cancelOpenUrlRequest(true);
-            showProgressView(true, false);
-        }
-        if (previewsReqId != 0) {
-            cancelPreviewsRequest(true);
-            showProgressView(true, false);
-        }
+        invalidateNavigation(true);
         saveCurrentPagePosition();
         if (byBackPress && !force) {
             if (removeLastPageFromStack()) {
@@ -6305,6 +6461,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private void onClosed() {
         isVisible = false;
+        invalidateNavigation(false);
         setBannerOverlayVisible(false);
         for (int i = 0; i < pages.length; i++) {
             pages[i].cleanup();
@@ -6332,45 +6489,90 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public static void loadChannel(IArticleViewer parent, final BlockChannelCell cell, WebpageAdapter adapter, TLRPC.Chat channel) {
-        if (parent.loadingChannel || !ChatObject.isPublic(channel)) {
+        if (cell == null || cell.parent != parent || cell.adapter != adapter || channel == null) return;
+        final BlockChannelCell.ChannelBinding binding = cell.channelBinding;
+        if (!cell.isBindingCurrent(binding) || channel.id != binding.channelId
+                || !cell.channelAttached || !cell.isAttachedToWindow()
+                || cell.resolveRequest != null || cell.joinRequest != null) return;
+        if (!ChatObject.isPublic(channel)) {
+            cell.setState(4, false);
             return;
         }
-        parent.loadingChannel = true;
-        final int currentAccount = parent.getCurrentAccount();
+        final BlockChannelCell.ChannelRequest operation = new BlockChannelCell.ChannelRequest(binding);
+        cell.resolveRequest = operation;
+        final int currentAccount = binding.account;
         final TLRPC.TL_contacts_resolveUsername req = new TLRPC.TL_contacts_resolveUsername();
         req.username = channel.username;
-        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            parent.loadingChannel = false;
-            if (adapter.blocks.isEmpty()) return;
-            if (error == null) {
+        try {
+            operation.requestId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!binding.isSessionCurrent()) return;
+                TLRPC.Chat resolved = null;
+                if (error == null && response instanceof TLRPC.TL_contacts_resolvedPeer) {
                 TLRPC.TL_contacts_resolvedPeer res = (TLRPC.TL_contacts_resolvedPeer) response;
-                if (!res.chats.isEmpty()) {
                     MessagesController.getInstance(currentAccount).putUsers(res.users, false);
                     MessagesController.getInstance(currentAccount).putChats(res.chats, false);
                     MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, false, true);
-                    parent.loadedChannel = res.chats.get(0);
-                    if (parent.loadedChannel.left && !parent.loadedChannel.kicked) {
-                        cell.setState(0, false);
-                    } else {
+                    if (res.peer != null && res.peer.channel_id == binding.channelId) {
+                        for (TLRPC.Chat chat : res.chats) {
+                            if (chat.id == binding.channelId && ChatObject.isChannel(chat) && !chat.min) {
+                                resolved = chat;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (cell.resolveRequest != operation || !cell.isBindingCurrent(binding)) return;
+                cell.resolveRequest = null;
+                if (cell.joinRequest != null) return;
+                cell.resolvedChannel = resolved;
+                cell.setState(resolved != null && resolved.left && !resolved.kicked ? 0 : 4, false);
+            }));
+            if (cell.resolveRequest != operation || !cell.isBindingCurrent(binding)) {
+                ConnectionsManager.getInstance(currentAccount).cancelRequest(operation.requestId, false);
+            }
+        } catch (RuntimeException failure) {
+            if (cell.resolveRequest == operation && cell.isBindingCurrent(binding)) {
+                cell.resolveRequest = null;
                         cell.setState(4, false);
                     }
-                } else {
-                    cell.setState(4, false);
-                }
-            } else {
-                cell.setState(4, false);
-            }
-        }));
+            FileLog.e(failure);
+        }
     }
 
     public static void joinChannel(int currentAccount, final BlockChannelCell cell, final TLRPC.Chat channel) {
+        if (cell == null || channel == null) return;
+        final BlockChannelCell.ChannelBinding binding = cell.channelBinding;
+        if (!cell.isBindingVisible(binding) || currentAccount != binding.account
+                || channel.id != binding.channelId || cell.resolvedChannel == null
+                || cell.resolvedChannel.id != binding.channelId || cell.joinRequest != null) return;
+        cell.cancelResolveRequest();
+        if (!cell.isBindingVisible(binding) || cell.resolvedChannel == null
+                || cell.resolvedChannel.id != binding.channelId || cell.joinRequest != null) return;
+        final BlockChannelCell.ChannelRequest operation = new BlockChannelCell.ChannelRequest(binding);
+        cell.joinRequest = operation;
+        cell.setState(1, true);
+        final long channelId = binding.channelId;
         final TLRPC.TL_channels_joinChannel req = new TLRPC.TL_channels_joinChannel();
-        req.channel = MessagesController.getInputChannel(channel);
-        ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, (response, error) -> {
+        req.channel = MessagesController.getInputChannel(cell.resolvedChannel);
+        try {
+            operation.requestId = ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req, (response, error) -> {
+                if (!binding.isSessionCurrent()) return;
             if (error != null) {
                 AndroidUtilities.runOnUIThread(() -> {
+                        if (cell.joinRequest != operation || !cell.isBindingCurrent(binding)) return;
+                        cell.joinRequest = null;
                     cell.setState(0, false);
-                    AlertsCreator.processError(currentAccount, error, null, req, true);
+                        if (cell.isBindingVisible(binding)) AlertsCreator.processError(currentAccount, error, null, req, true);
+                    });
+                    return;
+                }
+
+                if (!(response instanceof TLRPC.TL_chatInviteJoinResultOk)
+                        && !(response instanceof TLRPC.TL_chatInviteJoinResultWebView)) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (cell.joinRequest != operation || !cell.isBindingCurrent(binding)) return;
+                        cell.joinRequest = null;
+                        cell.setState(0, false);
                 });
                 return;
             }
@@ -6391,20 +6593,39 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             } else if (response instanceof TLRPC.TL_chatInviteJoinResultWebView) {
                 TLRPC.TL_chatInviteJoinResultWebView resultWebView = (TLRPC.TL_chatInviteJoinResultWebView) response;
                 AndroidUtilities.runOnUIThread(() -> {
+                        if (!binding.isSessionCurrent()) return;
                     MessagesController.getInstance(currentAccount).putUsers(resultWebView.users, false);
-                    BotGuardHelper.getInstance(currentAccount).openGuardBotWebApp(-channel.id,
+                        if (cell.joinRequest == operation && cell.isBindingVisible(binding)) {
+                            BotGuardHelper.getInstance(currentAccount).openGuardBotWebApp(-channelId,
                         resultWebView.bot_id, resultWebView.query_id);
+                        }
                 });
                 hasJoinMessage = true; // do not generate join message
             }
 
+                if (!binding.isSessionCurrent()) return;
             if (!hasJoinMessage) {
-                MessagesController.getInstance(currentAccount).generateJoinMessage(channel.id, true);
-            }
-            AndroidUtilities.runOnUIThread(() -> cell.setState(2, false));
-            AndroidUtilities.runOnUIThread(() -> MessagesController.getInstance(currentAccount).loadFullChat(channel.id, 0, true), 1000);
-            MessagesStorage.getInstance(currentAccount).updateDialogsWithDeletedMessages(-channel.id, channel.id, new ArrayList<>(), null);
+                    MessagesController.getInstance(currentAccount).generateJoinMessage(channelId, true);
+                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (cell.joinRequest != operation || !cell.isBindingCurrent(binding)) return;
+                    cell.joinRequest = null;
+                    cell.setState(2, false);
         });
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (binding.isSessionCurrent()) MessagesController.getInstance(currentAccount).loadFullChat(channelId, 0, true);
+                }, 1000);
+                if (binding.isSessionCurrent()) {
+                    MessagesStorage.getInstance(currentAccount).updateDialogsWithDeletedMessages(-channelId, channelId, new ArrayList<>(), null);
+                }
+            });
+        } catch (RuntimeException failure) {
+            if (cell.joinRequest == operation && cell.isBindingCurrent(binding)) {
+                cell.joinRequest = null;
+                cell.setState(0, false);
+            }
+            FileLog.e(failure);
+        }
     }
 
     private boolean checkAnimation() {
@@ -6421,15 +6642,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public void destroyArticleViewer() {
+        destroyed = true;
+        isVisible = false;
         setBannerOverlayVisible(false);
         unregisterNotificationObservers();
-        if (loadingProgress != null) {
-            Browser.Progress progress = loadingProgress;
-            loadingProgress = null;
-            progress.cancel();
-        }
-        cancelOpenUrlRequest(false);
-        cancelPreviewsRequest(false);
+        invalidateNavigation(false);
         if (parentActivity == null || windowView == null) {
             return;
         }
@@ -6704,6 +6921,10 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         private HashMap<String, Integer> searchTextOffset = new HashMap<>();
 
         private TLRPC.WebPage currentPage;
+        private int pageAccount = -1;
+        private long pageUserId;
+        private long pageSession = -1;
+        private long pageGeneration;
         private TL_iv.pageBlockChannel channelBlock;
         private boolean isRtl;
         private int diffScrollX;
@@ -7842,7 +8063,11 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         };
 
         private void cleanup() {
+            pageGeneration++;
             currentPage = null;
+            pageAccount = -1;
+            pageUserId = 0;
+            pageSession = -1;
             blocks.clear();
             photoBlocks.clear();
             audioBlocks.clear();
@@ -13584,6 +13809,73 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         private TL_iv.pageBlockChannel currentBlock;
 
+        private ChannelBinding channelBinding;
+        private ChannelRequest resolveRequest;
+        private ChannelRequest joinRequest;
+        private TLRPC.Chat resolvedChannel;
+        private boolean channelAttached;
+
+        private static final class ChannelBinding {
+            final int account;
+            final long userId;
+            final long session;
+            final TLRPC.WebPage page;
+            final long pageGeneration;
+            final TL_iv.pageBlockChannel block;
+            final long channelId;
+
+            ChannelBinding(WebpageAdapter adapter, TL_iv.pageBlockChannel block) {
+                account = adapter != null ? adapter.pageAccount : -1;
+                userId = adapter != null ? adapter.pageUserId : 0;
+                session = adapter != null ? adapter.pageSession : -1;
+                page = adapter != null ? adapter.currentPage : null;
+                pageGeneration = adapter != null ? adapter.pageGeneration : -1;
+                this.block = block;
+                channelId = block != null && block.channel != null ? block.channel.id : 0;
+            }
+
+            boolean isSessionCurrent() {
+                return InAppNotifications.isCurrent(account, userId, session);
+            }
+        }
+
+        private static final class ChannelRequest {
+            final ChannelBinding binding;
+            int requestId;
+
+            ChannelRequest(ChannelBinding binding) {
+                this.binding = binding;
+            }
+        }
+
+        private boolean isBindingCurrent(ChannelBinding binding) {
+            return binding != null && channelBinding == binding && currentBlock == binding.block
+                    && currentBlock.channel != null && currentBlock.channel.id == binding.channelId
+                    && binding.channelId != 0 && binding.page != null && binding.isSessionCurrent()
+                    && (!(parent instanceof ArticleViewer) || !((ArticleViewer) parent).destroyed)
+                    && parent.getCurrentAccount() == binding.account && adapter != null
+                    && adapter.currentPage == binding.page && adapter.pageGeneration == binding.pageGeneration
+                    && adapter.pageAccount == binding.account && adapter.pageUserId == binding.userId
+                    && adapter.pageSession == binding.session;
+        }
+
+        private boolean isBindingVisible(ChannelBinding binding) {
+            if (!isBindingCurrent(binding) || !channelAttached || !isAttachedToWindow() || !isShown()) return false;
+            if (parent instanceof ArticleViewer) {
+                ArticleViewer viewer = (ArticleViewer) parent;
+                return viewer.isNavigationVisible() && viewer.pages[0].adapter == adapter
+                        && !viewer.closeAnimationInProgress && viewer.allowTouches();
+            }
+            return parent.allowTouches();
+        }
+
+        private void cancelResolveRequest() {
+            final ChannelRequest operation = resolveRequest;
+            resolveRequest = null;
+            if (operation != null && operation.requestId > 0) {
+                ConnectionsManager.getInstance(operation.binding.account).cancelRequest(operation.requestId, false);
+            }
+        }
         public BlockChannelCell(Context context, IArticleViewer parent, WebpageAdapter adapter, int type) {
             super(context);
             this.parent = parent;
@@ -13602,8 +13894,8 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 if (currentState != 0) {
                     return;
                 }
-                setState(1, true);
-                joinChannel(parent.getCurrentAccount(), BlockChannelCell.this, parent.loadedChannel);
+                final ChannelBinding binding = channelBinding;
+                if (isBindingVisible(binding)) joinChannel(binding.account, BlockChannelCell.this, resolvedChannel);
             });
 
             imageView = new ImageView(context);
@@ -13616,6 +13908,20 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void setBlock(TL_iv.pageBlockChannel block) {
+            final ChannelBinding previous = channelBinding;
+            if (!isBindingCurrent(previous) || previous.block != block) {
+                final ChannelRequest oldResolve = resolveRequest;
+                final ChannelBinding next = new ChannelBinding(adapter, block);
+                channelBinding = next;
+                resolveRequest = null;
+                joinRequest = null;
+                resolvedChannel = null;
+                currentBlock = block;
+                if (oldResolve != null && oldResolve.requestId > 0) {
+                    ConnectionsManager.getInstance(oldResolve.binding.account).cancelRequest(oldResolve.requestId, false);
+                }
+                if (channelBinding != next) return;
+            }
             currentBlock = block;
 
             if (currentType == 0) {
@@ -13632,12 +13938,23 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 backgroundPaint.setColor(0x7f000000);
                 imageView.setColorFilter(new PorterDuffColorFilter(0xffffffff, PorterDuff.Mode.MULTIPLY));
             }
-            final TLRPC.Chat channel = MessagesController.getInstance(parent.getCurrentAccount()).getChat(block.channel.id);
-            if (channel == null || channel.min) {
-                loadChannel(parent, this, adapter, block.channel);
+            final ChannelBinding binding = channelBinding;
+            if (!isBindingCurrent(binding)) {
+                setState(4, false);
+                requestLayout();
+                return;
+            }
+            if (joinRequest != null) {
                 setState(1, false);
+                requestLayout();
+                return;
+            }
+            final TLRPC.Chat channel = MessagesController.getInstance(binding.account).getChat(binding.channelId);
+            if (channel == null || channel.id != binding.channelId || channel.min || !ChatObject.isChannel(channel)) {
+                setState(1, false);
+                loadChannel(parent, this, adapter, block.channel);
             } else {
-                parent.loadedChannel = channel;
+                resolvedChannel = channel;
                 if (channel.left && !channel.kicked) {
                     setState(0, false);
                 } else {
@@ -13762,13 +14079,18 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
+            channelAttached = true;
             if (textLayout != null) textLayout.attach(this);
+            if (isBindingCurrent(channelBinding)) setBlock(currentBlock);
         }
 
         @Override
         protected void onDetachedFromWindow() {
+            channelAttached = false;
+            final DrawingText layout = textLayout;
+            cancelResolveRequest();
             super.onDetachedFromWindow();
-            if (textLayout != null) textLayout.detach(this);
+            if (layout != null) layout.detach(this);
         }
     }
 
@@ -15352,11 +15674,15 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 @Override
                 public void onWebViewCreated(MyWebView webView) {
                     super.onWebViewCreated(webView);
+                    if (PageLayout.this == pages[0] && openUrlOwner != null && openUrlOwner.layout == PageLayout.this
+                            && openUrlOwner.webView != webView) invalidateNavigation(false);
                     swipeContainer.setWebView(webView);
                 }
 
                 @Override
                 protected void onURLChanged(String url, boolean first, boolean last) {
+                    if (PageLayout.this == pages[0] && openUrlOwner != null && openUrlOwner.layout == PageLayout.this
+                            && !TextUtils.equals(openUrlOwner.webUrl, url)) invalidateNavigation(false);
                     backButton = !first;
                     forwardButton = !last;
                     updateTitle(true);
@@ -15855,6 +16181,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void cleanup() {
+            if (pages != null && this == pages[0] && (adapter.currentPage != null || web != null)) {
+                invalidateNavigation(false);
+            }
             backButton = false;
             forwardButton = false;
             setWeb(null);
@@ -15980,6 +16309,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     public class CachedWeb extends BottomSheetTabs.WebTabData {
 
+        private final int account = currentAccount;
+        private final long userId = accountUserId;
+        private final long session = accountSession;
         public CachedWeb(String url) {
             lastUrl = url;
             currentUrl = url;
@@ -16261,8 +16593,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
         @Override
         public void dismiss(boolean tabs) {
-            if (dismissing) return;
+            if (dismissing || navigationInvalidationDepth != 0) return;
             dismissing = true;
+            invalidateNavigation(true);
             dismissingIntoTabs = tabs;
             for (PageLayout page : pages) {
                 if (page != null) page.webViewContainer.holdBrowserContentReveal(true);
@@ -16284,6 +16617,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
             presentationGeneration++;
             releaseAnimationFrameRate();
             released = true;
+            invalidateNavigation(false);
             setBannerOverlayVisible(false);
             if (pages[0] != null && pages[0].swipeBack) {
                 pages[0].swipeContainer.setSwipeOffsetY(-pages[0].swipeContainer.offsetY + pages[0].swipeContainer.topActionBarOffsetY);
@@ -16312,8 +16646,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void dismissInstant() {
-            if (dismissing) return;
+            if (dismissing || navigationInvalidationDepth != 0) return;
             dismissing = true;
+            invalidateNavigation(true);
             release();
             destroy();
         }
@@ -16410,6 +16745,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void reset() {
+            invalidateNavigation(false);
             presentationGeneration++;
             windowView.setDrawingFromOverlay(false);
             dismissing = false;
@@ -17117,6 +17453,9 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     }
 
     public void destroy() {
+        destroyed = true;
+        isVisible = false;
+        invalidateNavigation(false);
         for (int i = 0; i < pagesStack.size(); ++i) {
             Object obj = pagesStack.get(i);
             if (obj instanceof CachedWeb) {

@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -708,6 +709,13 @@ public class ChatThemeController extends BaseController {
     }
 
     public int setWallpaperToPeer(long dialogId, String wallpaperLocalPath, Theme.OverrideWallpaperInfo wallpaperInfo, MessageObject serverWallpaper, Runnable callback) {
+        return setWallpaperToPeer(dialogId, wallpaperLocalPath, wallpaperInfo, serverWallpaper, callback, null);
+    }
+
+    int setWallpaperToPeer(long dialogId, String wallpaperLocalPath, Theme.OverrideWallpaperInfo wallpaperInfo, MessageObject serverWallpaper, Runnable callback, BooleanSupplier requestCurrent) {
+        if (requestCurrent != null && !requestCurrent.getAsBoolean()) return 0;
+        final long owner = getUserConfig().getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
         TLRPC.TL_messages_setChatWallPaper req = new TLRPC.TL_messages_setChatWallPaper();
         if (dialogId >= 0) {
             TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
@@ -796,8 +804,10 @@ public class ChatThemeController extends BaseController {
         req.flags |= 4;
         req.settings = MessagesController.getWallpaperSetting(wallpaperInfo);
 
+        if (requestCurrent != null && !requestCurrent.getAsBoolean()) return 0;
         boolean finalApplyOnRequest = applyOnRequest;
         return ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, owner, session)) return;
             if (response instanceof TLRPC.Updates) {
                 TLRPC.Updates res = (TLRPC.Updates) response;
                 TLRPC.UserFull userFull = null;
@@ -817,7 +827,7 @@ public class ChatThemeController extends BaseController {
                     if (res.updates.get(i) instanceof TL_update.TL_updateNewMessage) {
                         TLRPC.Message message = ((TL_update.TL_updateNewMessage) res.updates.get(i)).message;
                         if (message.action instanceof TLRPC.TL_messageActionSetChatWallPaper) {
-                            if (finalApplyOnRequest) {
+                            if (finalApplyOnRequest && (requestCurrent == null || requestCurrent.getAsBoolean())) {
                                 TLRPC.TL_messageActionSetChatWallPaper actionSetChatWallPaper = (TLRPC.TL_messageActionSetChatWallPaper) message.action;
                                 actionSetChatWallPaper.wallpaper.uploadingImage = wallpaperLocalPath;
                                 if (pastWallpaper != null && pastWallpaper.uploadingImage != null && pastWallpaper.uploadingImage.equals(actionSetChatWallPaper.wallpaper.uploadingImage)) {
@@ -841,10 +851,13 @@ public class ChatThemeController extends BaseController {
                         }
                     }
                 }
+                if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, owner, session)) return;
                 MessagesController.getInstance(currentAccount).processUpdateArray(res.updates, res.users, res.chats, false, res.date);
+                if (requestCurrent != null && !requestCurrent.getAsBoolean()) return;
                 if (callback != null) {
                     callback.run();
                 }
+                if (requestCurrent != null && !requestCurrent.getAsBoolean()) return;
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.wallpaperSettedToUser);
             }
         }));

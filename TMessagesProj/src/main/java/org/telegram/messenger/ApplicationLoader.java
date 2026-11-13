@@ -92,7 +92,8 @@ public class ApplicationLoader extends Application {
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
-        documentRendererProcess = app.nimarkogram.messenger.documents.DocumentProcess.isIsolated(base);
+        documentRendererProcess = org.telegram.utils.twidget.WidgetEngineService.isEngineProcess()
+                || app.nimarkogram.messenger.documents.DocumentProcess.isIsolated(base);
         if (documentRendererProcess) return;
         try {
             ru.noties.jlatexmath.JLatexMathAndroid.init(base);
@@ -347,6 +348,8 @@ public class ApplicationLoader extends Application {
             DownloadController.getInstance(a);
         }
         BillingController.getInstance().startConnection();
+        AndroidUtilities.runOnUIThread(() -> Utilities.globalQueue.postRunnable(
+                () -> org.telegram.utils.twidget.WidgetSandboxSession.prewarmEngine(applicationContext)), 3000);
     }
 
     public ApplicationLoader() {
@@ -354,7 +357,6 @@ public class ApplicationLoader extends Application {
     }
 
     private volatile app.nimarkogram.messenger.icons.IconResources nmAppResources;
-    private volatile android.content.res.AssetManager nmAppAssets;
     private static final ThreadLocal<Boolean> nmWrappingResources = new ThreadLocal<>();
     private final Object nmAppResourcesLock = new Object();
     private volatile boolean nmAppResourcesReady;
@@ -371,20 +373,30 @@ public class ApplicationLoader extends Application {
                 return base;
             }
 
-            if (nmAppAssets != base.getAssets()) {
+            app.nimarkogram.messenger.icons.IconResources resources = nmAppResources;
+            if (resources == null || resources.getAssets() != base.getAssets()) {
+                final app.nimarkogram.messenger.icons.IconResources candidate;
+                nmWrappingResources.set(Boolean.TRUE);
+                try {
+                    candidate = new app.nimarkogram.messenger.icons.IconResources(base, false);
+                } finally {
+                    nmWrappingResources.remove();
+                }
+                boolean installed = false;
                 synchronized (nmAppResourcesLock) {
-                    if (nmAppAssets != base.getAssets()) {
-                        nmWrappingResources.set(Boolean.TRUE);
-                        try {
-                            nmAppResources = new app.nimarkogram.messenger.icons.IconResources(base);
-                        } finally {
-                            nmWrappingResources.set(Boolean.FALSE);
-                        }
-                        nmAppAssets = base.getAssets();
+                    resources = nmAppResources;
+                    if (resources == null || resources.getAssets() != base.getAssets()) {
+                        resources = candidate;
+                        resources.publishAsInstalled();
+                        nmAppResources = resources;
+                        installed = true;
                     }
                 }
+                if (installed) {
+                    resources.prepareAsync();
+                }
             }
-            return nmAppResources != null ? nmAppResources : base;
+            return resources != null ? resources : base;
         } catch (Throwable t) {
             return base;
         }

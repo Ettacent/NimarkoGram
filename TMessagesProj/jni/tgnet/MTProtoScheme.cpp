@@ -101,6 +101,10 @@ TLObject *TL_api_request::deserializeResponse(NativeByteBuffer *stream, uint32_t
 }
 
 void TL_api_request::serializeToStream(NativeByteBuffer *stream) {
+    if (request == nullptr || request->limit() < 4 || (request->limit() & 3) != 0) {
+        stream->setWriteError();
+        return;
+    }
     request->rewind();
     stream->writeBytes(request);
 }
@@ -909,6 +913,13 @@ void TL_gzip_packed::readParams(NativeByteBuffer *stream, int32_t instanceNum, b
 }
 
 void TL_gzip_packed::serializeToStream(NativeByteBuffer *stream) {
+    if (originalRequest != nullptr) {
+        uint32_t originalSize;
+        if (!originalRequest->getObjectSizeChecked(originalSize) || originalSize < 4 || (originalSize & 3) != 0) {
+            stream->setWriteError();
+            return;
+        }
+    }
     stream->writeInt32(constructor);
     stream->writeByteArray(packed_data_to_send);
 }

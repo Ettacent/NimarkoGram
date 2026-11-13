@@ -57,6 +57,7 @@ public:
     int32_t getTimeDifference();
     int32_t sendRequest(TLObject *object, onCompleteFunc onComplete, onQuickAckFunc onQuickAck, onRequestClearFunc onClear, uint32_t flags, uint32_t datacenterId, ConnectionType connectionType, bool immediate);
     int32_t sendRequest(TLObject *object, onCompleteFunc onComplete, onQuickAckFunc onQuickAck, onRequestClearFunc onClear, uint32_t flags, uint32_t datacenterId, ConnectionType connectionType, bool immediate, int32_t requestToken);
+    int32_t sendRequest(TLObject *object, onCompleteFunc onComplete, onQuickAckFunc onQuickAck, onRequestClearFunc onClear, uint32_t flags, uint32_t datacenterId, ConnectionType connectionType, bool immediate, int32_t requestToken, std::shared_ptr<std::atomic<bool>> admissionGuard);
     void cancelRequest(int32_t token, bool notifyServer, onRequestCancelDoneFunc onCancelled);
     void cleanUp(bool resetKeys, int32_t datacenterId);
     void cancelRequestsForGuid(int32_t guid);
@@ -103,8 +104,15 @@ private:
     void wakeup();
     void processServerResponse(TLObject *message, int64_t messageId, int32_t messageSeqNo, int64_t messageSalt, Connection *connection, int64_t innerMsgId, int64_t containerMessageId);
     void sendPing(Datacenter *datacenter, bool usePushConnection);
-    void sendMessagesToConnection(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
-    void sendMessagesToConnectionWithConfirmation(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
+    size_t sendMessagesToConnection(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
+    size_t sendMessagesToConnectionWithConfirmation(std::vector<std::unique_ptr<NetworkMessage>> &messages, Connection *connection, bool reportAck);
+    bool matchesOutgoingRequest(const Request *request, const NetworkMessage &message, Connection *connection);
+    void recoverOutgoingRequest(const NetworkMessage &message, Connection *connection);
+    void discardPreparedMessages();
+    void failInvalidRequest(int32_t token, int64_t messageId);
+    PacketBuildStatus prepareRequest(Request *request, bool initialize);
+    void notePacketFailure(PacketBuildStatus status);
+    void retryPendingResends();
     void requestSaltsForDatacenter(Datacenter *datacenter, bool media, bool useTempConnection);
     void clearRequestsForDatacenter(Datacenter *datacenter, HandshakeType type);
     void registerForInternalPushUpdates();
@@ -188,7 +196,18 @@ private:
     int32_t lastDestroySessionRequestTime;
     std::map<int32_t, std::vector<int32_t>> requestsByGuids;
     std::map<int32_t, int32_t> guidsByRequests;
-    std::map<int64_t, int64_t> resendRequests;
+    struct ResendRequest {
+        int64_t answerMessageId;
+        int64_t originMessageId;
+        int64_t sessionId;
+        uint32_t datacenterId;
+        uint32_t connectionType;
+        int32_t seqno;
+        bool pending = true;
+        int32_t sentAt = 0;
+    };
+    std::map<int64_t, ResendRequest> resendRequests;
+    int64_t packetRetryNotBefore = 0;
     Datacenter *deserializingDatacenter;
     uint32_t deserializeDepth = 0;
 

@@ -74,7 +74,7 @@ public class GroupCreateUserCell extends FrameLayout implements Theme.Colorable 
 
     private int checkBoxType;
 
-    private int currentAccount = UserConfig.selectedAccount;
+    private final int currentAccount;
 
     private String lastName;
     private int lastStatus;
@@ -136,7 +136,16 @@ public class GroupCreateUserCell extends FrameLayout implements Theme.Colorable 
     }
 
     public GroupCreateUserCell(Context context, int checkBoxType, int pad, boolean selfAsSaved, boolean forCall, Theme.ResourcesProvider resourcesProvider) {
+        this(context, checkBoxType, pad, selfAsSaved, forCall, resourcesProvider, UserConfig.selectedAccount);
+    }
+
+    public GroupCreateUserCell(Context context, int checkBoxType, int pad, boolean selfAsSaved, int account) {
+        this(context, checkBoxType, pad, selfAsSaved, false, null, account);
+    }
+
+    private GroupCreateUserCell(Context context, int checkBoxType, int pad, boolean selfAsSaved, boolean forCall, Theme.ResourcesProvider resourcesProvider, int account) {
         super(context);
+        currentAccount = account;
         this.resourcesProvider = resourcesProvider;
         this.checkBoxType = checkBoxType;
         forceDarkTheme = forCall;
@@ -147,6 +156,7 @@ public class GroupCreateUserCell extends FrameLayout implements Theme.Colorable 
         avatarDrawable = new AvatarDrawable();
 
         avatarImageView = new BackupImageView(context);
+        avatarImageView.getImageReceiver().setCurrentAccount(currentAccount);
         avatarImageView.setRoundRadius(app.nimarkogram.messenger.AppConfig.getAvatarCorners(48));
         addView(avatarImageView, LayoutHelper.createFrame(46, 46, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 0 : (13 + padding), 6, LocaleController.isRTL ? (13 + padding) : 0, 0));
 

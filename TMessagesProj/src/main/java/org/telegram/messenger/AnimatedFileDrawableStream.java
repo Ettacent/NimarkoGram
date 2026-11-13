@@ -13,6 +13,8 @@ import java.util.concurrent.TimeUnit;
 public class AnimatedFileDrawableStream implements FileLoadOperationStream {
 
     private FileLoadOperation loadOperation;
+    private FileLoader.StreamRegistration streamOwner;
+    private FileLoader.StreamRegistration streamRegistration;
     private CountDownLatch countDownLatch;
     private TLRPC.Document document;
     private ImageLocation location;
@@ -41,7 +43,9 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
         preview = prev;
         this.loadingPriority = loadingPriority;
         this.cacheType = cacheType;
-        loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, 0, preview, loadingPriority, cacheType);
+        streamOwner = FileLoader.getInstance(currentAccount).createStreamRegistration(this, null);
+        streamRegistration = streamOwner;
+        loadOperation = FileLoader.getInstance(currentAccount).loadStreamFileWithRegistration(this, document, location, parentObject, 0, preview, loadingPriority, cacheType, null, streamRegistration);
     }
 
     public boolean isFinishedLoadingFile() {
@@ -55,6 +59,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     public int read(int offset, int readLength) {
         final long generation;
         synchronized (sync) {
+            if (streamOwner.isReaderCancelled()) return 0;
             if (canceled) {
                 debugCanceledCount++;
                 if (!debugReportSend && debugCanceledCount > 200) {
@@ -84,9 +89,10 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                         if (canceled || generation != cancellationGeneration) return 0;
                         operation = loadOperation;
                     }
+                    if (operation == null) return 0;
                     long[] result = operation.getDownloadedLengthFromOffset(offset, readLength);
                     synchronized (sync) {
-                        if (canceled || generation != cancellationGeneration) return 0;
+                        if (canceled || generation != cancellationGeneration || streamOwner.isReaderCancelled()) return 0;
                         availableLength = result[0];
                         if (result[2] != 0) {
                             return 0;
@@ -127,7 +133,7 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                     }
                 }
                 synchronized (sync) {
-                    if (canceled || generation != cancellationGeneration) return 0;
+                    if (canceled || generation != cancellationGeneration || streamOwner.isReaderCancelled()) return 0;
                     lastOffset = offset + availableLength;
                 }
             } catch (Exception e) {
@@ -146,31 +152,31 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     }
 
     private boolean reacquireLoadOperation(int offset, long generation) {
+        final FileLoader.StreamRegistration registration;
         synchronized (sync) {
-            if (canceled || generation != cancellationGeneration) return false;
+            if (canceled || generation != cancellationGeneration || streamOwner.isReaderCancelled()) return false;
+            if (streamRegistration == null || streamRegistration.isClosed()) streamRegistration = streamOwner.fork();
+            registration = streamRegistration;
         }
-        FileLoadOperation replacement = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, location, parentObject, offset, preview, loadingPriority, cacheType, () -> {
+        FileLoadOperation replacement = FileLoader.getInstance(currentAccount).loadStreamFileWithRegistration(this, document, location, parentObject, offset, preview, loadingPriority, cacheType, () -> {
             synchronized (sync) {
-                return !canceled && generation == cancellationGeneration;
+                return !canceled && generation == cancellationGeneration && streamRegistration == registration;
             }
-        });
+        }, registration);
+        final boolean stale;
         synchronized (sync) {
-            if (canceled || generation != cancellationGeneration) {
-                if (replacement != null && replacement != loadOperation) {
-                    replacement.removeStreamListener(this);
-                }
-                return false;
-            }
-            if (replacement == null) return false;
+            stale = canceled || generation != cancellationGeneration || streamRegistration != registration;
+            if (!stale && replacement != null) {
             if (replacement != loadOperation) {
-                loadOperation.removeStreamListener(this);
                 loadOperation = replacement;
                 finishedLoadingFile = false;
                 finishedFilePath = null;
             }
             restartLoading = false;
-            return true;
+            }
         }
+        if (stale) registration.close();
+        return !stale && replacement != null;
     }
 
     public void cancel() {
@@ -178,16 +184,19 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
     }
 
     public void cancel(boolean removeLoading) {
+        final FileLoader.StreamRegistration registration;
+        final Runnable cancel;
         synchronized (sync) {
             if (canceled) return;
             cancellationGeneration++;
             waitingForLoad = false;
+            restartLoading = true;
+            registration = streamRegistration;
+            streamRegistration = null;
             if (countDownLatch != null) {
                 countDownLatch.countDown();
                 countDownLatch = null;
-                if (removeLoading && !canceled && !preview) {
-                    FileLoader.getInstance(currentAccount).removeLoadingVideo(document, false, true);
-                }
+                if (removeLoading && !preview) FileLoader.getInstance(currentAccount).removeLoadingVideo(document, false, true);
             }
             if (parentObject instanceof MessageObject) {
                 MessageObject messageObject = (MessageObject) parentObject;
@@ -195,23 +204,20 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                     removeLoading = false;
                 }
             }
-            if (removeLoading) {
-                cancelLoadingInternal();
-            }
+            cancel = removeLoading && registration != null ? registration.prepareCancel() : null;
             canceled = true;
         }
-    }
-
-    private void cancelLoadingInternal() {
-        restartLoading = true;
-        FileLoader.getInstance(currentAccount).cancelLoadFile(document);
-        if (location != null) {
-            FileLoader.getInstance(currentAccount).cancelLoadFile(location.location, "mp4");
-        }
+        if (registration != null) registration.close();
+        if (cancel != null) cancel.run();
     }
 
     public void reset() {
         synchronized (sync) {
+            if (canceled) {
+                streamOwner = streamOwner.restart();
+                streamRegistration = null;
+        restartLoading = true;
+            }
             canceled = false;
         }
     }

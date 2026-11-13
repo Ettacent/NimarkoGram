@@ -1221,8 +1221,8 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.contactsDidLoad) {
             if (listViewAdapter != null) {
-                if (!sortByName) {
-                    listViewAdapter.setSortType(2, true);
+                if (listViewAdapter.getSortType() == ContactsAdapter.SORT_TYPE_BY_TIME) {
+                    listViewAdapter.setSortType(ContactsAdapter.SORT_TYPE_BY_TIME, true);
                 }
                 listViewAdapter.notifyDataSetChanged();
             }
@@ -1234,7 +1234,8 @@ public class ContactsActivity extends BaseFragment implements FactorAnimator.Tar
             if ((mask & MessagesController.UPDATE_MASK_AVATAR) != 0 || (mask & MessagesController.UPDATE_MASK_NAME) != 0 || (mask & MessagesController.UPDATE_MASK_STATUS) != 0) {
                 updateVisibleRows(mask);
             }
-            if ((mask & MessagesController.UPDATE_MASK_STATUS) != 0 && !sortByName && listViewAdapter != null) {
+            if ((mask & MessagesController.UPDATE_MASK_STATUS) != 0 && listViewAdapter != null
+                    && listViewAdapter.getSortType() == ContactsAdapter.SORT_TYPE_BY_TIME) {
                 scheduleSort();
             }
         } else if (id == NotificationCenter.encryptedChatCreated) {

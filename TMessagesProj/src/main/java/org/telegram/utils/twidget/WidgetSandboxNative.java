@@ -16,7 +16,10 @@ final class WidgetSandboxNative {
             byte[] sdk,
             byte[] stoppedLabel,
             boolean visible,
-            WidgetSandboxBackend backend);
+            Object backend);
+
+    static native void registerResources(
+            byte[] key, byte[] sandbox, byte[] validator, byte[] renderer, byte[] sandboxBytecode, byte[] validatorBytecode);
 
     static native void destroy(long session);
 
@@ -43,7 +46,6 @@ final class WidgetSandboxNative {
 
     static native void hover(long session, int action, float x, float y, int modifiers);
 
-    static native void filterPixels(android.graphics.Bitmap bitmap, byte[] filters, float scale);
 
     static native void conformance(boolean enabled);
 
@@ -51,22 +53,20 @@ final class WidgetSandboxNative {
 
     static native void attackScan(boolean enabled);
 
-    static native long arbiterCreate();
+    private static final boolean LOADED = load();
 
-    static native void arbiterDestroy(long arbiter);
+    private static boolean load() {
+        try {
+            System.loadLibrary("twidget");
+            return true;
+        } catch (Throwable error) {
+            return false;
+        }
+    }
 
-    static native int arbiterDown(
-            long arbiter, double t, double x, double y, boolean claimX, boolean claimY, boolean hold, boolean mouse, int button);
-
-    static native int arbiterMove(long arbiter, double t, double x, double y);
-
-    static native int arbiterTick(long arbiter, double t);
-
-    static native int arbiterUp(long arbiter, double t, double x, double y);
-
-    static native void arbiterCancel(long arbiter);
-
-    static native double arbiterHoldDeadline(long arbiter);
+    static boolean available() {
+        return LOADED;
+    }
 
     private WidgetSandboxNative() {}
 }

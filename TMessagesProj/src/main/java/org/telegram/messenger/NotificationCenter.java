@@ -414,6 +414,8 @@ public class NotificationCenter {
     public static final int nimarkoChatProtectionChanged = totalEvents++;
 
     public static final int peerColorsUpdated = totalEvents++;
+    public static final int messageWaveformDidLoad = totalEvents++;
+    public static final int reactionPreferencesUpdated = totalEvents++;
     public static boolean alreadyLogged;
 
     private final SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();

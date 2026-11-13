@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">日付で絞り込み</string>
+    <string name="NM_SearchDatesDay">日付</string>
+    <string name="NM_SearchDatesPeriod">期間</string>
+    <string name="NM_SearchDatesFrom">開始</string>
+    <string name="NM_SearchDatesUntil">終了</string>
+    <string name="NM_SearchDatesAddEnd">終了日を追加</string>
+    <string name="NM_SearchDatesToday">今日</string>
+    <string name="NM_SearchDatesYesterday">昨日</string>
+    <string name="NM_SearchDatesLast7">過去7日間</string>
+    <string name="NM_SearchDatesLast30">過去30日間</string>
+    <string name="NM_SearchDatesApply">絞り込む</string>
+    <string name="NM_SearchDatesReset">すべての日付</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">日付の絞り込み：%1$s</string>
+    <string name="NM_SearchDatesChange">日付を変更</string>
+    <string name="NM_SearchDatesClear">日付の絞り込みを解除</string>
+    <string name="NM_SearchDatesJump">日付に移動</string>
+    <string name="NM_SearchDatesInvalid">終了日は開始日以降にしてください。</string>
+    <string name="NM_SearchDatesDayValue">日：%1$s</string>
+    <string name="NM_SearchDatesMonthValue">月：%1$s</string>
+    <string name="NM_SearchDatesYearValue">年：%1$s</string>
+</resources>

@@ -31,6 +31,7 @@ import android.view.View;
 import androidx.core.content.FileProvider;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.AutoDeleteMediaTask;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLoader;
@@ -83,7 +84,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     private ImageUpdaterDelegate delegate;
     private ChatAttachAlert chatAttachAlert;
 
-    private int currentAccount = UserConfig.selectedAccount;
+    private final int currentAccount;
     private ImageReceiver imageReceiver;
     public String currentPicturePath;
     private TLRPC.PhotoSize bigPhoto;
@@ -126,7 +127,9 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     private int type;
     public final int setForType;
 
+    private UriSelection uriSelection;
     public void processEntry(MediaController.PhotoEntry photoEntry) {
+        final UriSelection selection = uriSelection != null && uriSelection.entry == photoEntry ? uriSelection : null;
         String path = null;
         if (photoEntry.imagePath != null) {
             path = photoEntry.imagePath;
@@ -142,7 +145,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             message.media = new TLRPC.TL_messageMediaEmpty();
             message.action = new TLRPC.TL_messageActionEmpty();
             message.dialog_id = 0;
-            avatarObject = new MessageObject(UserConfig.selectedAccount, message, false, false);
+            avatarObject = new MessageObject(currentAccount, message, false, false);
             avatarObject.messageOwner.attachPath = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), SharedConfig.getLastLocalId() + "_avatar.mp4").getAbsolutePath();
             avatarObject.videoEditedInfo = photoEntry.editedInfo;
             avatarObject.emojiMarkup = photoEntry.emojiMarkup;
@@ -150,19 +153,50 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         } else {
             bitmap = ImageLoader.loadBitmap(path, null, 800, 800, true);
         }
-        processBitmap(false, bitmap, avatarObject);
+        processBitmap(false, bitmap, avatarObject, selection);
     }
 
     public void cancel() {
+        retireUriSelection();
+        if (canceled && !isUploadingImage()) return;
         canceled = true;
+        abortTransfer();
+    }
+
+    private void abortTransfer() {
+        if (convertingVideo != null) {
+            MediaController.getInstance().cancelVideoConvert(convertingVideo);
+        }
         if (uploadingImage != null) {
             FileLoader.getInstance(currentAccount).cancelFileUpload(uploadingImage, false);
         }
         if (uploadingVideo != null) {
             FileLoader.getInstance(currentAccount).cancelFileUpload(uploadingVideo, false);
         }
-        if (delegate != null) {
-            delegate.didUploadFailed();
+        failTransfer();
+    }
+
+    private void removeTransferObservers() {
+        NotificationCenter center = NotificationCenter.getInstance(currentAccount);
+        center.removeObserver(this, NotificationCenter.appDidLogout);
+        center.removeObserver(this, NotificationCenter.filePreparingStarted);
+        center.removeObserver(this, NotificationCenter.filePreparingFailed);
+        center.removeObserver(this, NotificationCenter.fileNewChunkAvailable);
+        center.removeObserver(this, NotificationCenter.fileUploaded);
+        center.removeObserver(this, NotificationCenter.fileUploadProgressChanged);
+        center.removeObserver(this, NotificationCenter.fileUploadFailed);
+        center.removeObserver(this, NotificationCenter.fileLoaded);
+        center.removeObserver(this, NotificationCenter.fileLoadFailed);
+        center.removeObserver(this, NotificationCenter.httpFileDidLoad);
+        center.removeObserver(this, NotificationCenter.httpFileDidFailedLoad);
+    }
+
+    private void failTransfer() {
+        final ImageUpdaterDelegate currentDelegate = delegate;
+        removeTransferObservers();
+        cleanup();
+        if (currentDelegate != null) {
+            currentDelegate.didUploadFailed();
         }
     }
 
@@ -171,6 +205,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     public void showAvatarConstructor(TLRPC.VideoSize emojiMarkup) {
+        retireUriSelection();
         createChatAttachView();
         chatAttachAlert.getPhotoLayout().showAvatarConstructorFragment(null, emojiMarkup);
     }
@@ -222,6 +257,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     public void clear() {
+        retireUriSelection();
         canceled = false;
         if (uploadingImage != null || uploadingVideo != null || convertingVideo != null) {
             clearAfterUpdate = true;
@@ -240,6 +276,11 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     public ImageUpdater(boolean allowVideo, int setForType, boolean supportEmojiMarkup) {
+        this(UserConfig.selectedAccount, allowVideo, setForType, supportEmojiMarkup);
+    }
+
+    protected ImageUpdater(int currentAccount, boolean allowVideo, int setForType, boolean supportEmojiMarkup) {
+        this.currentAccount = currentAccount;
         imageReceiver = new ImageReceiver(null);
         canSelectVideo = allowVideo;
         this.supportEmojiMarkup = supportEmojiMarkup;
@@ -258,6 +299,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         if (parentFragment == null || parentFragment.getParentActivity() == null) {
             return;
         }
+        retireUriSelection();
         canceled = false;
         this.type = type;
         if (useAttachMenu) {
@@ -361,12 +403,14 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         if (chatAttachAlert != null) {
             chatAttachAlert.onResume();
         }
+        if (uriSelection != null) openUriSelectionIfReady(uriSelection);
     }
 
     public void onPause() {
         if (chatAttachAlert != null) {
             chatAttachAlert.onPause();
         }
+        if (uriSelection != null && !uriSelection.viewerOpened) retireUriSelection();
     }
 
     public void updateColors() {
@@ -602,6 +646,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     private void didSelectPhotos(boolean fromAvatarConstructor, ArrayList<SendMessagesHelper.SendingMediaInfo> photos) {
+        retireUriSelection();
         if (!photos.isEmpty()) {
             SendMessagesHelper.SendingMediaInfo info = photos.get(0);
             Bitmap bitmap = null;
@@ -613,7 +658,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 message.media = new TLRPC.TL_messageMediaEmpty();
                 message.action = new TLRPC.TL_messageActionEmpty();
                 message.dialog_id = 0;
-                avatarObject = new MessageObject(UserConfig.selectedAccount, message, false, false);
+                avatarObject = new MessageObject(currentAccount, message, false, false);
                 avatarObject.messageOwner.attachPath = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), SharedConfig.getLastLocalId() + "_avatar.mp4").getAbsolutePath();
                 avatarObject.videoEditedInfo = info.videoEditedInfo;
                 avatarObject.emojiMarkup = info.emojiMarkup;
@@ -635,6 +680,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                         if (path != null) {
                             bitmap = ImageLoader.loadBitmap(path.getAbsolutePath(), null, 800, 800, true);
                         } else {
+                            NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.appDidLogout);
                             NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.fileLoaded);
                             NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.fileLoadFailed);
                             uploadingImage = FileLoader.getAttachFileName(photoSize.location);
@@ -649,6 +695,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                         bitmap = ImageLoader.loadBitmap(cacheFile.getAbsolutePath(), null, 800, 800, true);
                     } else {
                         uploadingImage = info.searchImage.imageUrl;
+                        NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.appDidLogout);
                         NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.httpFileDidLoad);
                         NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.httpFileDidFailedLoad);
                         imageReceiver.setImage(info.searchImage.imageUrl, null, null, "jpg", 1);
@@ -680,7 +727,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 }
                 currentPicturePath = image.getAbsolutePath();
             }
-            parentFragment.startActivityForResult(takePictureIntent, 13);
+            launchExternalPicker(takePictureIntent, 13);
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -711,7 +758,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 takeVideoIntent.putExtra(MediaStore.EXTRA_DURATION_LIMIT, 10);
                 currentPicturePath = video.getAbsolutePath();
             }
-            parentFragment.startActivityForResult(takeVideoIntent, 15);
+            launchExternalPicker(takeVideoIntent, 15);
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -757,7 +804,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 try {
                     Intent photoPickerIntent = new Intent(Intent.ACTION_GET_CONTENT);
                     photoPickerIntent.setType("image/*");
-                    parentFragment.startActivityForResult(photoPickerIntent, 14);
+                    launchExternalPicker(photoPickerIntent, 14);
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
@@ -766,8 +813,222 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
         parentFragment.presentFragment(fragment);
     }
 
-    private void startCrop(String path, Uri uri) {
+    protected void launchExternalPicker(Intent intent, int requestCode) {
+        if (parentFragment != null) {
+            parentFragment.startActivityForResult(intent, requestCode);
+        }
+    }
+
+    private void retireUriSelection() {
+        if (uriSelection != null) uriSelection.retire();
+    }
+
+    private boolean isCurrentUriSelection(UriSelection selection) {
+        return uriSelection == selection && !selection.cancelled && !canceled
+                && parentFragment == selection.fragment && delegate == selection.selectedDelegate
+                && !selection.fragment.isFinished && selection.fragment.getCurrentAccount() == currentAccount
+                && selection.fragment.getClassGuid() == selection.guid
+                && selection.fragment.getFragmentView() == selection.root && selection.root != null
+                && selection.fragment.getParentActivity() == selection.activity && selection.activity != null
+                && !selection.activity.isFinishing() && !selection.activity.isDestroyed()
+                && UserConfig.selectedAccount == currentAccount && selection.accountCurrent()
+                && (!selection.video || canSelectVideo);
+    }
+
+    private void selectUri(Uri uri, String hintedType) {
+        final UriSelection selection = uriSelection = new UriSelection(uri);
+        if (!isCurrentUriSelection(selection)) {
+            selection.retire();
+            return;
+        }
+        if (!Utilities.globalQueue.postRunnable(() -> {
+            if (selection.cancelled || UserConfig.selectedAccount != currentAccount || !selection.accountCurrent()) {
+                AndroidUtilities.runOnUIThread(selection::retire);
+                return;
+            }
+            String mime = hintedType;
+            try {
+                String resolved = ApplicationLoader.applicationContext.getContentResolver().getType(uri);
+                if (resolved != null) mime = resolved;
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            final boolean video = mime != null && mime.regionMatches(true, 0, "video/", 0, 6);
+            final String copied = video && selection.allowVideo ? MediaController.copyFileToCache(uri, "mp4",
+                    FileLoader.DEFAULT_MAX_FILE_SIZE, () -> selection.cancelled
+                            || UserConfig.selectedAccount != currentAccount || !selection.accountCurrent(), selection) : null;
+            final File input = copied == null ? null : new File(copied);
         AndroidUtilities.runOnUIThread(() -> {
+                selection.file = input;
+                selection.video = video;
+                if (!isCurrentUriSelection(selection) || video && selection.file == null) {
+                    selection.retire();
+                    return;
+                }
+                selection.ready = true;
+                openUriSelectionIfReady(selection);
+            });
+        })) selection.retire();
+    }
+
+    private void openUriSelectionIfReady(UriSelection selection) {
+        if (!isCurrentUriSelection(selection)) {
+            selection.retire();
+            return;
+        }
+        if (!selection.ready || selection.opened || selection.openPosted || selection.fragment.isPaused()) return;
+        selection.openPosted = true;
+        if (!selection.root.post(() -> {
+            selection.openPosted = false;
+            if (!isCurrentUriSelection(selection)) {
+                selection.retire();
+                return;
+            }
+            if (selection.fragment.isPaused() || !selection.root.isAttachedToWindow()) return;
+            selection.opened = true;
+            if (!selection.video) {
+                startCrop(null, selection.uri, selection);
+                return;
+            }
+            openUriVideo(selection);
+        })) {
+            selection.openPosted = false;
+            selection.retire();
+        }
+    }
+
+    private void openUriVideo(UriSelection selection) {
+        try {
+            final PhotoViewer viewer = PhotoViewer.getInstance();
+            if (viewer.isVisible()) {
+                selection.retire();
+                return;
+            }
+            selection.entry = new MediaController.PhotoEntry(0, 0, 0, selection.file.getAbsolutePath(), 0, true, 0, 0, 0);
+            final ArrayList<Object> entries = new ArrayList<>();
+            entries.add(selection.entry);
+            viewer.setParentActivity(selection.fragment);
+            selection.viewerOpened = true;
+            if (!viewer.openPhotoForSelect(entries, 0, PhotoViewer.SELECT_TYPE_AVATAR, false, new PhotoViewer.EmptyPhotoViewerProvider() {
+                @Override
+                public void sendButtonPressed(int index, VideoEditedInfo info, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean forceDocument) {
+                    if (!isCurrentUriSelection(selection) || selection.fragment.isPaused() || !selection.root.isAttachedToWindow() || selection.submitted
+                            || selection.entry.editedInfo == null) return;
+                    selection.submitted = true;
+                    processEntry(selection.entry);
+                }
+
+                @Override
+                public PhotoViewer.PlaceProviderObject getPlaceForPhoto(MessageObject message, TLRPC.FileLocation location, int index, boolean needPreview, boolean closing) {
+                    return isCurrentUriSelection(selection) && selection.selectedDelegate != null
+                            ? selection.selectedDelegate.getCloseIntoObject() : null;
+                }
+
+                @Override
+                public void willHidePhotoViewer() {
+                    selection.viewerClosed = true;
+                    selection.retire();
+                }
+
+                @Override
+                public boolean allowCaption() {
+                    return false;
+                }
+
+                @Override
+                public boolean canScrollAway() {
+                    return false;
+                }
+            }, null)) {
+                selection.viewerClosed = true;
+                selection.retire();
+            } else {
+                viewer.closePhotoAfterSelectWithAnimation = true;
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (selection.file == null || !PhotoViewer.isShowingImage(selection.file.getAbsolutePath())) {
+                selection.viewerClosed = true;
+            }
+            selection.retire();
+        }
+    }
+
+    private final class UriSelection implements NotificationCenter.NotificationCenterDelegate {
+        final Uri uri;
+        final BaseFragment fragment = parentFragment;
+        final ImageUpdaterDelegate selectedDelegate = delegate;
+        final Activity activity = fragment.getParentActivity();
+        final View root = fragment.getFragmentView();
+        final int guid = fragment.getClassGuid();
+        final long userId = UserConfig.getInstance(currentAccount).getClientUserId();
+        final long accountSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+        final boolean allowVideo = canSelectVideo;
+        volatile boolean cancelled;
+        boolean ready, video, opened, openPosted, submitted, conversionStarted, viewerOpened, viewerClosed;
+        File file;
+        MediaController.PhotoEntry entry;
+        MessageObject conversion;
+
+        UriSelection(Uri uri) {
+            this.uri = uri;
+        }
+
+        boolean accountCurrent() {
+            return app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, accountSession);
+        }
+
+        void observeConversion(MessageObject message) {
+            conversion = message;
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.filePreparingFailed);
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileNewChunkAvailable);
+        }
+
+        void retire() {
+            cancelled = true;
+            if (uriSelection == this) uriSelection = null;
+            if (!conversionStarted) releaseInput();
+            if (viewerOpened && !viewerClosed && file != null && PhotoViewer.isShowingImage(file.getAbsolutePath())) {
+                PhotoViewer.getInstance().closePhoto(false, false);
+            }
+        }
+
+        void releaseInput() {
+            conversionStarted = false;
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.filePreparingFailed);
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileNewChunkAvailable);
+            if (!viewerOpened || viewerClosed) {
+                final File input = file;
+                file = null;
+                if (input != null) {
+                    try {
+                        input.delete();
+                    } finally {
+                        AutoDeleteMediaTask.unlockFile(input.getAbsolutePath(), this);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void didReceivedNotification(int id, int account, Object... args) {
+            if (account == currentAccount && args.length > 0 && args[0] == conversion
+                    && (id == NotificationCenter.filePreparingFailed
+                    || id == NotificationCenter.fileNewChunkAvailable && args.length > 3 && (Long) args[3] != 0)) {
+                releaseInput();
+            }
+        }
+    }
+
+    private void startCrop(String path, Uri uri, UriSelection selection) {
+        AndroidUtilities.runOnUIThread(() -> {
+            if (selection != null) {
+                if (!isCurrentUriSelection(selection) || selection.fragment.isPaused()) {
+                    selection.retire();
+                    return;
+                }
+                selection.retire();
+            }
             try {
                 LaunchActivity activity = (LaunchActivity) parentFragment.getParentActivity();
                 if (activity == null) {
@@ -795,6 +1056,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     public void openPhotoForEdit(String path, String thumb, Pair<Integer, Integer> orientation, boolean isVideo) {
+        retireUriSelection();
         final ArrayList<Object> arrayList = new ArrayList<>();
         MediaController.PhotoEntry photoEntry = new MediaController.PhotoEntry(0, 0, 0, path, orientation.first, false, 0, 0, 0).setOrientation(orientation);
         photoEntry.isVideo = isVideo;
@@ -827,6 +1089,13 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == 14) {
+            retireUriSelection();
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null && parentFragment != null) {
+                selectUri(data.getData(), data.getType());
+            }
+            return;
+        }
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == 0 || requestCode == 2) {
                 createChatAttachView();
@@ -841,11 +1110,6 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 openPhotoForEdit(currentPicturePath, null, orientation, false);
                 AndroidUtilities.addMediaToGallery(currentPicturePath);
                 currentPicturePath = null;
-            } else if (requestCode == 14) {
-                if (data == null || data.getData() == null) {
-                    return;
-                }
-                startCrop(null, data.getData());
             } else if (requestCode == 15) {
                 openPhotoForEdit(currentPicturePath, null, 0, true);
                 AndroidUtilities.addMediaToGallery(currentPicturePath);
@@ -855,6 +1119,10 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     private void processBitmap(boolean fromAvatarConstructor, Bitmap bitmap, MessageObject avatarObject) {
+        processBitmap(fromAvatarConstructor, bitmap, avatarObject, null);
+    }
+
+    private void processBitmap(boolean fromAvatarConstructor, Bitmap bitmap, MessageObject avatarObject, UriSelection selection) {
         if (bitmap == null) {
             return;
         }
@@ -879,8 +1147,9 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             UserConfig.getInstance(currentAccount).saveConfig(false);
             uploadingImage = FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE) + "/" + bigPhoto.location.volume_id + "_" + bigPhoto.location.local_id + ".jpg";
             if (uploadAfterSelect) {
+                NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.appDidLogout);
                 if (avatarObject != null && avatarObject.videoEditedInfo != null) {
-                    if (supportEmojiMarkup && !MessagesController.getInstance(currentAccount).uploadMarkupVideo) {
+                    if (vectorMarkup != null && supportEmojiMarkup && !MessagesController.getInstance(currentAccount).uploadMarkupVideo) {
                         if (delegate != null) {
                             delegate.didStartUpload(fromAvatarConstructor, true);
                         }
@@ -899,7 +1168,21 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                     NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.filePreparingStarted);
                     NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.filePreparingFailed);
                     NotificationCenter.getInstance(currentAccount).addObserver(ImageUpdater.this, NotificationCenter.fileNewChunkAvailable);
-                    MediaController.getInstance().scheduleVideoConvert(avatarObject, true, true, false);
+                    if (selection != null) {
+                        selection.observeConversion(avatarObject);
+                        selection.conversionStarted = true;
+                    }
+                    boolean scheduled = false;
+                    try {
+                        scheduled = MediaController.getInstance().scheduleVideoConvert(avatarObject, avatarObject.videoEditedInfo, true, true, false,
+                                selection == null ? null : selection::releaseInput);
+                    } finally {
+                        if (!scheduled && selection != null) selection.releaseInput();
+                    }
+                    if (!scheduled) {
+                        failTransfer();
+                        return;
+                    }
                     uploadingImage = null;
                     if (delegate != null) {
                         delegate.didStartUpload(fromAvatarConstructor, true);
@@ -921,6 +1204,8 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             if (delegate != null) {
                 delegate.didUploadPhoto(null, null, 0, null, bigPhoto, smallPhoto, isVideo, null);
             }
+        } else {
+            failTransfer();
         }
     }
 
@@ -934,6 +1219,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
     }
 
     private void cleanup() {
+        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.appDidLogout);
         uploadingImage = null;
         uploadingVideo = null;
         videoPath = null;
@@ -949,18 +1235,26 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.fileUploaded || id == NotificationCenter.fileUploadFailed) {
+        if (id == NotificationCenter.appDidLogout) {
+            if (account == currentAccount) {
+                cancel();
+                imageReceiver.setImageBitmap((Drawable) null);
+            }
+            return;
+        } else if (id == NotificationCenter.fileUploaded || id == NotificationCenter.fileUploadFailed) {
             String location = (String) args[0];
+            if (id == NotificationCenter.fileUploadFailed) {
+                if (location.equals(uploadingImage) || location.equals(uploadingVideo)) {
+                    abortTransfer();
+                }
+                return;
+            }
             if (location.equals(uploadingImage)) {
                 uploadingImage = null;
-                if (id == NotificationCenter.fileUploaded) {
                     uploadedPhoto = (TLRPC.InputFile) args[1];
-                }
             } else if (location.equals(uploadingVideo)) {
                 uploadingVideo = null;
-                if (id == NotificationCenter.fileUploaded) {
                     uploadedVideo = (TLRPC.InputFile) args[1];
-                }
             } else {
                 return;
             }
@@ -969,10 +1263,8 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileUploaded);
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileUploadProgressChanged);
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileUploadFailed);
-                if (id == NotificationCenter.fileUploaded) {
                     if (delegate != null) {
                         delegate.didUploadPhoto(uploadedPhoto, uploadedVideo, videoTimestamp, videoPath, bigPhoto, smallPhoto, isVideo, vectorMarkup);
-                    }
                 }
                 cleanup();
             }
@@ -989,6 +1281,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             String path = (String) args[0];
             currentImageProgress = 1f;
             if (path.equals(uploadingImage)) {
+                NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.appDidLogout);
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileLoaded);
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileLoadFailed);
                 NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.httpFileDidLoad);
@@ -997,12 +1290,15 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 uploadingImage = null;
                 if (id == NotificationCenter.fileLoaded || id == NotificationCenter.httpFileDidLoad) {
                     Bitmap bitmap = ImageLoader.loadBitmap(finalPath, null, 800, 800, true);
+                    if (bitmap != null) {
                     processBitmap(false, bitmap, null);
                 } else {
                     imageReceiver.setImageBitmap((Drawable) null);
-                    if (delegate != null) {
-                        delegate.didUploadFailed();
+                        failTransfer();
                     }
+                } else {
+                    imageReceiver.setImageBitmap((Drawable) null);
+                    failTransfer();
                 }
             }
         } else if (id == NotificationCenter.filePreparingFailed) {
@@ -1010,10 +1306,10 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             if (messageObject != convertingVideo || parentFragment == null) {
                 return;
             }
-            NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.filePreparingStarted);
-            NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.filePreparingFailed);
-            NotificationCenter.getInstance(currentAccount).removeObserver(ImageUpdater.this, NotificationCenter.fileNewChunkAvailable);
-            cleanup();
+            if (uploadingVideo != null) {
+                FileLoader.getInstance(currentAccount).cancelFileUpload(uploadingVideo, false);
+            }
+            failTransfer();
         } else if (id == NotificationCenter.fileNewChunkAvailable) {
             MessageObject messageObject = (MessageObject) args[0];
             if (messageObject != convertingVideo || parentFragment == null) {
@@ -1022,7 +1318,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
             String finalPath = (String) args[1];
             long availableSize = (Long) args[2];
             long finalSize = (Long) args[3];
-            parentFragment.getFileLoader().checkUploadNewDataAvailable(finalPath, false, availableSize, finalSize);
+            FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(finalPath, false, availableSize, finalSize);
             if (finalSize != 0) {
                 double lastFrameTimestamp = ((Long) args[5]) / 1000000.0;
                 if (videoTimestamp > lastFrameTimestamp) {
@@ -1070,7 +1366,7 @@ public class ImageUpdater implements NotificationCenter.NotificationCenterDelega
                 return;
             }
             uploadingVideo = (String) args[1];
-            parentFragment.getFileLoader().uploadFile(uploadingVideo, false, false, (int) convertingVideo.videoEditedInfo.estimatedSize, ConnectionsManager.FileTypeVideo, false);
+            FileLoader.getInstance(currentAccount).uploadFile(uploadingVideo, false, false, (int) convertingVideo.videoEditedInfo.estimatedSize, ConnectionsManager.FileTypeVideo, false);
         }
     }
 

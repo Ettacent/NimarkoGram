@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.WeakHashMap;
 
 import java.util.LinkedHashMap;
+import java.util.UUID;
 public final class VoiceSendPreparation {
     public interface Listener {
         void onVoiceSendPrepared(Work work, boolean sent);
@@ -50,14 +51,16 @@ public final class VoiceSendPreparation {
         public final boolean needsConfirmation, notify;
         public final int scheduleDate, scheduleRepeatPeriod;
         private final int account, frames;
-        private final long userId, dialogId, topicId, audioId, draftId, samples, duration;
+        private final long userId, session, dialogId, topicId, audioId, draftId, samples, duration;
         private final String path;
         private final boolean hasDraft;
         private final WeakReference<TLRPC.Document> audio;
 
+        private final WeakReference<MediaDataController.DraftVoice> draft;
         private Outcome(Work work) {
             account = work.account;
             userId = work.userId;
+            session = work.session;
             dialogId = work.dialogId;
             topicId = work.topicId;
             audioId = work.audioId;
@@ -68,6 +71,7 @@ public final class VoiceSendPreparation {
             path = work.path;
             hasDraft = work.draft != null;
             audio = new WeakReference<>(work.audio);
+            draft = new WeakReference<>(work.draft);
             needsConfirmation = work.needsConfirmation;
             notify = work.params.notify;
             scheduleDate = work.params.scheduleDate;
@@ -77,10 +81,10 @@ public final class VoiceSendPreparation {
         public boolean matches(int account, long dialogId, long topicId, TLRPC.Document audio, String path) {
             if (this.account != account || this.dialogId != dialogId || this.topicId != topicId
                     || !this.path.equals(path) || audio == null || audio.id != audioId
-                    || !UserConfig.getInstance(account).isClientActivated()
-                    || UserConfig.getInstance(account).getClientUserId() != userId) return false;
+                    || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, session)) return false;
             MediaDataController.DraftVoice draft = MediaDataController.getInstance(account).getDraftVoice(dialogId, topicId);
-            return hasDraft ? draft != null && this.path.equals(draft.path) && draft.id == draftId
+            return hasDraft ? draft != null && draft == this.draft.get() && !draft.isDiscarded()
+                    && this.path.equals(draft.path) && draft.id == draftId
                     && draft.samplesCount == samples && draft.writedFrame == frames && draft.recordTimeCount == duration
                     : draft == null && this.audio.get() == audio && MediaController.getInstance().recordingAudio == audio;
         }
@@ -117,7 +121,7 @@ public final class VoiceSendPreparation {
 
     public static final class Work {
         public final int account;
-        public final long userId, dialogId, topicId, generation;
+        public final long userId, session, dialogId, topicId, generation;
         public final TLRPC.Document audio;
         public final String path;
         public final SendMessagesHelper.SendMessageParams params;
@@ -132,6 +136,7 @@ public final class VoiceSendPreparation {
         private final Submission submission = new Submission();
         private volatile boolean cancelled;
         private File result;
+        private String resultLeasePath;
         private StructStat source;
         private Throwable error;
 
@@ -159,6 +164,7 @@ public final class VoiceSendPreparation {
                      long startMs, long endMs, long previewSendTime, Listener listener) {
             this.account = account;
             this.userId = UserConfig.getInstance(account).getClientUserId();
+            this.session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
             this.dialogId = params.peer;
             this.topicId = topicId;
             this.generation = generation;
@@ -218,6 +224,7 @@ public final class VoiceSendPreparation {
         if (observed.add(account)) NotificationCenter.getInstance(account).addObserver(logout, NotificationCenter.appDidLogout);
         Work work = new Work(account, topicId, generation, params, startMs, endMs, previewSendTime, listener);
         pending.put(work.key, work);
+        AutoDeleteMediaTask.lockFile(work.path, work);
         try {
             freeze(params, account);
             if (work.draft != null && work.draftId != 0 && work.draftId != work.audioId) throw new IOException("Voice draft changed");
@@ -228,8 +235,10 @@ public final class VoiceSendPreparation {
             AndroidUtilities.runOnUIThread(() -> complete(work));
             return work;
         }
-        if (!QueueHolder.queue.postRunnable(() -> prepare(work))) {
-            work.error = new IOException("Voice preparation queue unavailable");
+        try {
+            if (!QueueHolder.queue.postRunnable(() -> prepare(work))) throw new IOException("Voice preparation queue unavailable");
+        } catch (Exception | OutOfMemoryError error) {
+            work.error = error;
             AndroidUtilities.runOnUIThread(() -> complete(work));
         }
         return work;
@@ -294,10 +303,10 @@ public final class VoiceSendPreparation {
     }
 
     private static boolean isCurrent(Work work) {
-        if (work.cancelled || !UserConfig.getInstance(work.account).isClientActivated()
-                || UserConfig.getInstance(work.account).getClientUserId() != work.userId) return false;
+        if (work.cancelled || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(
+                work.account, work.userId, work.session)) return false;
         MediaDataController.DraftVoice current = MediaDataController.getInstance(work.account).getDraftVoice(work.dialogId, work.topicId);
-        if (work.audio.id != work.audioId || (current == null) != (work.draft == null)) return false;
+        if (work.audio.id != work.audioId || current != work.draft || current != null && current.isDiscarded()) return false;
         if (current != null && (!work.path.equals(current.path) || current.id != work.draftId || current.samplesCount != work.samples
                 || current.writedFrame != work.frames || current.recordTimeCount != work.duration)) return false;
         MediaController media = MediaController.getInstance();
@@ -318,7 +327,7 @@ public final class VoiceSendPreparation {
             if (!work.cancelled) {
                 if (!ownsSource(work)) throw new IOException("Voice source changed");
                 File source = new File(work.path).getAbsoluteFile();
-                work.result = File.createTempFile("voice-send-", ".ogg", source.getParentFile());
+                work.result = createOwnedResult(work, source.getParentFile());
                 if (work.startMs < 0 || work.endMs <= work.startMs
                         || !MediaController.cropOpusFile(work.path, work.result.getAbsolutePath(), work.startMs, work.endMs)
                         || work.result.length() == 0) throw new IOException("Unable to prepare voice recording");
@@ -339,8 +348,73 @@ public final class VoiceSendPreparation {
         AndroidUtilities.runOnUIThread(() -> complete(work));
     }
 
+    private static File createOwnedResult(Work work, File directory) throws IOException {
+        for (int attempt = 0; attempt < 8; attempt++) {
+            File result = new File(directory, "voice-send-" + UUID.randomUUID() + ".ogg");
+            final String path = result.getAbsolutePath();
+            AutoDeleteMediaTask.lockFile(path, work);
+            boolean created = false;
+            try {
+                created = result.createNewFile();
+                if (created) {
+                    work.resultLeasePath = path;
+                    return result;
+                }
+            } finally {
+                if (!created) AutoDeleteMediaTask.unlockFile(path, work);
+            }
+        }
+        throw new IOException("Unable to allocate voice result");
+    }
+
+    private static void releaseWorkFiles(Work work, boolean handoff) {
+        AutoDeleteMediaTask.unlockFile(work.path, work);
+        final File result = work.result;
+        final String output = work.resultLeasePath;
+        work.result = null;
+        work.resultLeasePath = null;
+        final Runnable release = () -> AutoDeleteMediaTask.unlockFile(output, work);
+        if (result != null) {
+            final Runnable discard = () -> {
+                try {
+                    result.delete();
+                } catch (Exception error) {
+                    FileLog.e(error);
+                } finally {
+                    release.run();
+                }
+            };
+            boolean posted = false;
+            try {
+                posted = QueueHolder.queue.postRunnable(discard);
+            } catch (RuntimeException error) {
+                FileLog.e(error);
+            }
+            if (!posted) {
+                try {
+                    posted = Utilities.cacheClearQueue.postRunnable(discard);
+                } catch (RuntimeException error) {
+                    FileLog.e(error);
+                }
+                if (!posted) release.run();
+            }
+        } else if (handoff && output != null) {
+            boolean posted = false;
+            try {
+                posted = FileLoader.getInstance(work.account).getFileLoaderQueue().postRunnable(release);
+            } catch (RuntimeException error) {
+                FileLog.e(error);
+            }
+            if (!posted) release.run();
+        } else {
+            release.run();
+        }
+    }
     private static void complete(Work work) {
-        if (pending.get(work.key) != work) return;
+        if (pending.get(work.key) != work) {
+            releaseWorkFiles(work, false);
+            return;
+        }
         boolean sent = false;
         try {
             if (isCurrent(work) && work.error == null && work.result != null) {
@@ -389,12 +463,8 @@ public final class VoiceSendPreparation {
             work.error = error;
             if (!sent) submitted.remove(work.key);
         } finally {
-            pending.remove(work.key);
-            if (work.result != null) {
-                File result = work.result;
-                work.result = null;
-                if (!QueueHolder.queue.postRunnable(result::delete)) result.delete();
-            }
+            pending.remove(work.key, work);
+            releaseWorkFiles(work, sent);
         }
         if (work.error != null) FileLog.e(work.error);
         if (work.failed() && isCurrent(work)) {

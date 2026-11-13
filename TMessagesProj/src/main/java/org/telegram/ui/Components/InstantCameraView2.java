@@ -46,6 +46,8 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
 import org.telegram.messenger.utils.Choreographer60FpsContent;
+import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
@@ -92,13 +94,18 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     private final int buttonIconSize;
 
     private RoundVideoSession session;
+    private Object sessionToken;
+    private Object audioFocusToken;
+    private long audioFocusGeneration = -1;
     private RoundVideoSession.OutputResolution activeOutputResolution;
     private RoundVideoSession.StateInfo stateInfo;
     private RoundVideoSession.CameraCapabilities capabilities;
     private TelegramRoundVideoUpload upload;
     private VideoEditedInfo videoEditedInfo;
     private SendOptions pendingSend;
+    private ScheduledSend scheduledSend;
     private boolean finishRequested;
+    private boolean sendDetached;
     private AnimatorSet visibilityAnimator;
     private ValueAnimator zoomResetAnimator;
     private ValueAnimator cameraFlipAnimator;
@@ -328,19 +335,29 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
     @Override
     public void destroy(boolean async) {
+        if (scheduledSend != null) {
+            discardScheduledSend(scheduledSend, false, 6);
+            return;
+        }
+        final Object token = sessionToken;
+        final boolean finishingSend = isSendFinishing();
+        if (!finishingSend) sessionToken = null;
         setRecordingUiFrameClockActive(false);
         cancelCameraFlipAnimation();
         if (zoomResetAnimator != null) zoomResetAnimator.cancel();
-        if (session != null) {
+        if (session != null && finishingSend) {
+            sendDetached = true;
+            session.release();
+        } else if (session != null) {
             session.release();
             session = null;
         }
-        if (upload != null) {
+        if (upload != null && !sendDetached) {
             upload.release(!sent);
             upload = null;
         }
         setScreenFlashEnabled(false);
-        MediaController.getInstance().requestRecordAudioFocus(false);
+        releaseAudioFocus(token);
         startHeavyOperations();
     }
 
@@ -369,6 +386,8 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     @Override
     public void showCamera(boolean fromPaused) {
         if (session != null) return;
+        final Object token = sessionToken = new Object();
+        stateInfo = null;
         setVisibilityFromPause = fromPaused;
         setVisibility(VISIBLE);
         progressView.getPaint().setAlpha(255);
@@ -391,13 +410,23 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                 .setCameraResolution(SharedSettings.roundVideoCameraResolution.get())
                 .setFrameRate(SharedSettings.roundVideoFrameRate.get())
                 .setCompositionEnabled(SharedSettings.roundVideoComposition.get())
-                .setListener(sessionListener)
+                .setListener(new SessionListener(token))
                 .setOutputListener(upload)
-                .setScreenFlashController(this::setScreenFlashEnabled)
+                .setScreenFlashController(enabled -> {
+                    if (sessionToken == token) setScreenFlashEnabled(enabled);
+                })
                 .build();
-        MediaController.getInstance().requestRecordAudioFocus(true);
-        session.start();
-        startAnimation(true, fromPaused);
+        final RoundVideoSession recordingSession = session;
+        final MediaController mediaController = MediaController.getInstance();
+        final long focusGeneration = mediaController.acquireRecordAudioFocus();
+        if (sessionToken != token || session != recordingSession) {
+            mediaController.releaseRecordingAudioFocus(focusGeneration);
+            return;
+        }
+        audioFocusToken = token;
+        audioFocusGeneration = focusGeneration;
+        recordingSession.start();
+        if (sessionToken == token && session == recordingSession) startAnimation(true, fromPaused);
     }
 
     @Override
@@ -502,6 +531,8 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
             return;
         }
         if (state != 1 && state != 4 || pendingSend != null) return;
+        final RoundVideoSession sendingSession = session;
+        final Object token = sessionToken;
         long duration = getCurrentDurationMs();
         if (duration < MINIMUM_DURATION_MS) {
             NotificationCenter.getInstance(currentAccount).postNotificationName(
@@ -513,11 +544,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
             cancel(false);
             return;
         }
-        if (stateInfo.getState() == RoundVideoSession.State.RECORDING) {
-            postRecordStopped(5);
-        }
-        resumeNotificationPending = false;
-        pendingSend = new SendOptions(
+        final SendOptions options = new SendOptions(
                 notify,
                 scheduleDate,
                 scheduleRepeatPeriod,
@@ -525,7 +552,30 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                 effectId,
                 stars
         );
+        final ScheduledSend scheduled = scheduleDate == 0 && delegate.isInScheduleMode()
+                ? new ScheduledSend(token, sendingSession, upload, options, delegate.getParentActivity(),
+                        delegate.getFragmentView(), delegate.getDialogId(),
+                        UserConfig.getInstance(currentAccount).getClientUserId(),
+                        app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount)) : null;
+        pendingSend = options;
+        scheduledSend = scheduled;
+        if (stateInfo.getState() == RoundVideoSession.State.RECORDING) {
+            postRecordStopped(5);
+        }
+        if (session != sendingSession || sessionToken != token || pendingSend != options) return;
+        resumeNotificationPending = false;
+        if (scheduled != null && !isCurrentScheduledSend(scheduled)) {
+            discardScheduledSend(scheduled, true, 6);
+            return;
+        }
         finishPendingSend();
+    }
+
+    private boolean isSendFinishing() {
+        return pendingSend != null
+                && finishRequested
+                && session != null
+                && session.getStateInfo().getState() == RoundVideoSession.State.FINISHING;
     }
 
     private void finishPendingSend() {
@@ -541,12 +591,18 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
     @Override
     public void cancel(boolean byGesture) {
+        if (scheduledSend != null) {
+            discardScheduledSend(scheduledSend, true, byGesture ? 0 : 6);
+            return;
+        }
+        if (isSendFinishing()) return;
+        final Object token = sessionToken;
         if (session == null || !session.cancel()) return;
         pendingSend = null;
         postRecordStopped(byGesture ? 0 : 6);
         if (upload != null) upload.release(true);
         upload = null;
-        MediaController.getInstance().requestRecordAudioFocus(false);
+        releaseAudioFocus(token);
         startAnimation(false, false);
     }
 
@@ -568,6 +624,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     @Override
     public void hideCamera(boolean async) {
         destroy(async);
+        if (sessionToken != null) return;
         cameraContainer.setTranslationX(0f);
         animationTranslationY = 0f;
         updateTranslationY();
@@ -617,8 +674,10 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
     @Override
     protected void onDetachedFromWindow() {
+        final Object token = sessionToken;
         super.onDetachedFromWindow();
-        setScreenFlashEnabled(false);
+        if (scheduledSend != null) discardScheduledSend(scheduledSend, false, 6);
+        if (sessionToken == null || sessionToken == token) setScreenFlashEnabled(false);
     }
 
     @Override
@@ -628,6 +687,10 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     }
 
     private void pauseForHiddenWindow() {
+        if (scheduledSend != null) {
+            discardScheduledSend(scheduledSend, false, 6);
+            return;
+        }
         if (session == null || stateInfo == null) return;
         if (stateInfo.getState() == RoundVideoSession.State.RECORDING) {
             pauseForPreview();
@@ -696,9 +759,21 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         dispatchRecordingUiFrame(duration);
     }
 
-    private final RoundVideoSession.Listener sessionListener = new RoundVideoSession.Listener() {
+    private final class SessionListener implements RoundVideoSession.Listener {
+        private final Object token;
+        private final long userId = UserConfig.getInstance(currentAccount).getClientUserId();
+        private final long accountSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+
+        SessionListener(Object token) {
+            this.token = token;
+        }
         @Override
         public void onStateChanged(@NonNull RoundVideoSession.StateInfo info) {
+            if (sessionToken != token) return;
+            if (sendDetached) {
+                stateInfo = info;
+                return;
+            }
             RoundVideoSession.State previous = stateInfo == null ? null : stateInfo.getState();
             stateInfo = info;
             if (previous == RoundVideoSession.State.RECORDING
@@ -720,9 +795,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                     );
                 } else if (resumeNotificationPending) {
                     resumeNotificationPending = false;
-                    NotificationCenter.getInstance(currentAccount).postNotificationName(
-                            NotificationCenter.recordResumed
-                    );
+                    NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordResumed, recordingGuid);
                 }
             } else {
                 setRecordingUiFrameClockActive(false);
@@ -734,7 +807,9 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                     || info.getState() == RoundVideoSession.State.ERROR
                     || info.getState() == RoundVideoSession.State.RELEASED) {
                 cancelCameraFlipAnimation();
+                if (info.getState() != RoundVideoSession.State.COMPLETED || scheduledSend == null) {
                 startHeavyOperations();
+                }
             }
             if (previous == RoundVideoSession.State.RECORDING
                     && info.getState() == RoundVideoSession.State.PAUSING) {
@@ -742,10 +817,14 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
             }
             updateButtons();
             if (pendingSend != null && !finishRequested) {
-                AndroidUtilities.runOnUIThread(InstantCameraView2.this::finishPendingSend);
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (sessionToken == token) finishPendingSend();
+                });
             }
             if (info.isPreviewPlaying() && getWindowVisibility() != VISIBLE) {
-                AndroidUtilities.runOnUIThread(InstantCameraView2.this::pauseForHiddenWindow);
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (sessionToken == token) pauseForHiddenWindow();
+                });
             }
         }
 
@@ -753,6 +832,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         public void onCameraCapabilitiesChanged(
                 @NonNull RoundVideoSession.CameraCapabilities cameraCapabilities
         ) {
+            if (sessionToken != token) return;
             capabilities = cameraCapabilities;
             if (cameraCapabilities.getActiveFacing() != null) {
                 SharedSettings.roundVideoLastCamera.set(cameraCapabilities.getActiveFacing());
@@ -762,11 +842,13 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
         @Override
         public void onCameraSwitchStarted(@NonNull RoundVideoSession.CameraFacing facing) {
+            if (sessionToken != token) return;
             startCameraFlipAnimation(facing);
         }
 
         @Override
         public void onCameraSwitchCompleted(@NonNull RoundVideoSession.CameraFacing facing) {
+            if (sessionToken != token) return;
             cameraFlipSessionReady = true;
             FileLog.d("RoundVideo camera flip session ready: facing=" + facing
                     + ", elapsedMs=" + getCameraFlipElapsedMs());
@@ -775,6 +857,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
         @Override
         public void onCameraSwitchFirstFrame() {
+            if (sessionToken != token) return;
             cameraFlipFirstFrameReady = true;
             FileLog.d("RoundVideo camera flip first frame: elapsedMs="
                     + getCameraFlipElapsedMs());
@@ -784,6 +867,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
         @Override
         public void onPreviewReady(long durationMs, long trimStartMs, long trimEndMs) {
+            if (sessionToken != token) return;
             progressView.setProgress(durationMs / 60_000f);
             muted = false;
             muteImageView.setAlpha(0f);
@@ -806,21 +890,47 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
 
         @Override
         public void onPreviewFirstFrame() {
+            if (sessionToken != token) return;
             hideInitialPlaceholder();
         }
 
         @Override
         public void onCompleted(@NonNull RoundVideoSession.Result result) {
+            if (sessionToken != token) return;
+            if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, accountSession)) {
+                final RoundVideoSession retired = session;
+                sessionToken = null;
+                session = null;
+                pendingSend = null;
+                sendDetached = false;
+                if (upload != null) upload.release(true);
+                upload = null;
+                releaseAudioFocus(token);
+                if (retired != null) retired.release();
+                return;
+            }
             completeSend(result);
         }
 
         @Override
         public void onError(@NonNull Exception error) {
+            if (sessionToken != token) return;
+            if (scheduledSend != null) {
+                FileLog.e(error);
+                discardScheduledSend(scheduledSend, true, 6);
+                return;
+            }
             startHeavyOperations();
             FileLog.e(error);
             if (upload != null) upload.release(true);
             upload = null;
-            MediaController.getInstance().requestRecordAudioFocus(false);
+            releaseAudioFocus(token);
+            if (sendDetached) {
+                sendDetached = false;
+                session = null;
+                sessionToken = null;
+                return;
+            }
             if (startedNotificationSent) {
                 postRecordStopped(6);
             } else {
@@ -831,7 +941,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         }
             startAnimation(false, false);
         }
-    };
+    }
 
     private void stopHeavyOperations() {
         if (heavyOperationsStopped) return;
@@ -889,13 +999,127 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     }
 
     private void completeSend(@NonNull RoundVideoSession.Result result) {
+        final ScheduledSend scheduled = scheduledSend;
+        if (scheduled != null) {
+            if (scheduled.result != null) return;
+            scheduled.result = result;
+            if (!isCurrentScheduledSend(scheduled)) {
+                discardScheduledSend(scheduled, true, 6);
+                return;
+            }
+            releaseAudioFocus(scheduled.token);
+            startHeavyOperations();
+            if (!isCurrentScheduledSend(scheduled)) {
+                discardScheduledSend(scheduled, true, 6);
+                return;
+            }
+            try {
+                final BottomSheet.Builder builder = AlertsCreator.createScheduleDatePickerDialog(
+                        scheduled.activity, scheduled.dialogId, -1, scheduled.options.scheduleRepeatPeriod,
+                        (notify, scheduleDate, scheduleRepeatPeriod) -> {
+                            if (!isCurrentScheduledSend(scheduled) || scheduleDate <= 0) {
+                                discardScheduledSend(scheduled, true, 6);
+                                return;
+                            }
+                            scheduledSend = null;
+                            scheduled.picker = null;
+                            pendingSend = null;
+                            deliverResult(scheduled.result, new SendOptions(notify, scheduleDate, scheduleRepeatPeriod,
+                                    scheduled.options.ttl, scheduled.options.effectId, scheduled.options.stars),
+                                    scheduled.token, scheduled.upload);
+                        }, () -> discardScheduledSend(scheduled, true, 6), resourcesProvider);
+                final BottomSheet picker = builder == null ? null : builder.create();
+                if (scheduledSend != scheduled) {
+                    if (picker != null) picker.dismiss();
+                    return;
+                }
+                scheduled.picker = picker;
+                if (picker == null || !picker.isShowing() || !isCurrentScheduledSend(scheduled)) {
+                    discardScheduledSend(scheduled, true, 6);
+                }
+            } catch (Exception error) {
+                FileLog.e(error);
+                discardScheduledSend(scheduled, true, 6);
+            }
+            return;
+        }
         SendOptions options = pendingSend;
         if (options == null) return;
         pendingSend = null;
+        deliverResult(result, options, sessionToken, upload);
+    }
+
+    private boolean isCurrentScheduledSend(ScheduledSend owner) {
+        if (delegate instanceof BaseFragment) {
+            final BaseFragment fragment = (BaseFragment) delegate;
+            if (fragment.isFinished || fragment.isPaused() || fragment.getCurrentAccount() != currentAccount) return false;
+        }
+        return owner != null && scheduledSend == owner && sessionToken == owner.token && session == owner.session
+                && upload == owner.upload && pendingSend == owner.options && !sent
+                && UserConfig.selectedAccount == currentAccount
+                && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, owner.userId, owner.accountSession)
+                && owner.activity != null && !owner.activity.isFinishing() && !owner.activity.isDestroyed()
+                && owner.fragmentView != null && delegate.getParentActivity() == owner.activity
+                && delegate.getFragmentView() == owner.fragmentView
+                && delegate.getClassGuid() == recordingGuid && delegate.getDialogId() == owner.dialogId
+                && delegate.isInScheduleMode() && isAttachedToWindow() && getWindowVisibility() == VISIBLE;
+    }
+
+    private void discardScheduledSend(ScheduledSend owner, boolean animate, int reason) {
+        if (owner == null || scheduledSend != owner) return;
+        scheduledSend = null;
+        if (pendingSend == owner.options) pendingSend = null;
+        final BottomSheet picker = owner.picker;
+        owner.picker = null;
+        final boolean current = session == owner.session && sessionToken == owner.token;
+        if (current) {
+            sessionToken = null;
+            session = null;
+            finishRequested = false;
+        }
+        if (upload == owner.upload) upload = null;
+        if (current) {
+            setRecordingUiFrameClockActive(false);
+            cancelCameraFlipAnimation();
+            if (zoomResetAnimator != null) zoomResetAnimator.cancel();
+            if (sessionToken == null) {
+                setScreenFlashEnabled(false);
+                releaseAudioFocus(owner.token);
+                startHeavyOperations();
+            }
+        }
+        owner.session.cancel();
+        owner.session.release();
+        if (owner.upload != null) owner.upload.release(true);
+        if (owner.result != null) owner.result.getFile().delete();
+        if (picker != null) picker.dismiss();
+        if (!current || sessionToken != null) return;
+        postRecordStopped(reason);
+        if (sessionToken != null) return;
+        if (animate) {
+            startAnimation(false, false);
+        } else {
+            opened = false;
+            dispatchAnimationState(false, false);
+            if (sessionToken == null) setVisibility(INVISIBLE);
+        }
+    }
+
+    private void releaseAudioFocus(Object token) {
+        if (token == null || audioFocusToken != token) return;
+        final long generation = audioFocusGeneration;
+        audioFocusToken = null;
+        audioFocusGeneration = -1;
+        MediaController.getInstance().releaseRecordingAudioFocus(generation);
+    }
+
+    private void deliverResult(RoundVideoSession.Result result, SendOptions options,
+                               Object token, TelegramRoundVideoUpload sendingUpload) {
         sent = true;
-        TelegramRoundVideoUpload.UploadInfo uploadInfo = upload == null
+        if (upload == sendingUpload) upload = null;
+        TelegramRoundVideoUpload.UploadInfo uploadInfo = sendingUpload == null
                 ? null
-                : upload.getUploadInfo(result.getOutputId(), result.getFile());
+                : sendingUpload.getUploadInfo(result.getOutputId(), result.getFile());
         VideoEditedInfo info = createVideoEditedInfo(
                 result.getFile(),
                 result.getDurationMs(),
@@ -915,6 +1139,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         );
         entry.ttl = options.ttl;
         entry.effectId = options.effectId;
+        try {
         delegate.sendMedia(
                 entry,
                 info,
@@ -924,9 +1149,15 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                 false,
                 options.stars
         );
-        if (upload != null) upload.release(false);
-        upload = null;
-            MediaController.getInstance().requestRecordAudioFocus(false);
+        } finally {
+            if (sendingUpload != null) sendingUpload.release(false);
+            releaseAudioFocus(token);
+            if (sendDetached && sessionToken == token) {
+                sendDetached = false;
+                session = null;
+                sessionToken = null;
+            }
+        }
     }
 
     private VideoEditedInfo createVideoEditedInfo(
@@ -1420,6 +1651,30 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         }
     }
 
+    private static final class ScheduledSend {
+        final Object token;
+        final RoundVideoSession session;
+        final TelegramRoundVideoUpload upload;
+        final SendOptions options;
+        final Activity activity;
+        final View fragmentView;
+        final long dialogId, userId, accountSession;
+        RoundVideoSession.Result result;
+        BottomSheet picker;
+
+        ScheduledSend(Object token, RoundVideoSession session, TelegramRoundVideoUpload upload, SendOptions options,
+                      Activity activity, View fragmentView, long dialogId, long userId, long accountSession) {
+            this.token = token;
+            this.session = session;
+            this.upload = upload;
+            this.options = options;
+            this.activity = activity;
+            this.fragmentView = fragmentView;
+            this.dialogId = dialogId;
+            this.userId = userId;
+            this.accountSession = accountSession;
+        }
+    }
     private static final class SendOptions {
         final boolean notify;
         final int scheduleDate;

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -31,6 +33,7 @@ import androidx.media3.datasource.TransferListener;
 
 import org.telegram.messenger.FileStreamLoadOperation;
 
+import org.telegram.messenger.FileLoader;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -122,13 +125,11 @@ public final class ExtendedDefaultDataSource implements DataSource {
      *     content. This {@link DataSource} should normally support at least http(s).
      */
     public ExtendedDefaultDataSource(Context context, DataSource baseDataSource, LongSparseArray<Uri> mtprotoUris) {
-        this.context = context.getApplicationContext();
-        this.baseDataSource = Assertions.checkNotNull(baseDataSource);
-        transferListeners = new ArrayList<>();
-        this.mtprotoUris = mtprotoUris;
+        this(context, null, baseDataSource, mtprotoUris, null);
     }
 
     private final LongSparseArray<Uri> mtprotoUris;
+    private final FileLoader.PlayerStreamScope playerStreamScope;
 
     /**
      * Constructs a new instance that delegates to a provided {@link DataSource} for URI schemes other
@@ -144,7 +145,17 @@ public final class ExtendedDefaultDataSource implements DataSource {
     @Deprecated
     public ExtendedDefaultDataSource(
             Context context, @Nullable TransferListener listener, DataSource baseDataSource, LongSparseArray<Uri> mtprotoUris) {
-        this(context, baseDataSource, mtprotoUris);
+        this(context, listener, baseDataSource, mtprotoUris, null);
+    }
+
+    public ExtendedDefaultDataSource(
+            Context context, @Nullable TransferListener listener, DataSource baseDataSource, LongSparseArray<Uri> mtprotoUris,
+            FileLoader.PlayerStreamScope playerStreamScope) {
+        this.context = context.getApplicationContext();
+        this.baseDataSource = Assertions.checkNotNull(baseDataSource);
+        transferListeners = new ArrayList<>();
+        this.mtprotoUris = mtprotoUris;
+        this.playerStreamScope = playerStreamScope;
         if (listener != null) {
             transferListeners.add(listener);
             baseDataSource.addTransferListener(listener);
@@ -257,7 +268,7 @@ public final class ExtendedDefaultDataSource implements DataSource {
     private FileStreamLoadOperation streamLoadOperation;
     private DataSource getStreamDataSource() {
         if (streamLoadOperation == null) {
-            streamLoadOperation = new FileStreamLoadOperation();
+            streamLoadOperation = new FileStreamLoadOperation(null, playerStreamScope);
             addListenersToDataSource(streamLoadOperation);
         }
         return streamLoadOperation;

@@ -80,6 +80,9 @@ public class ReactionsEffectOverlay {
     private float dismissProgress;
     private final int messageId;
     private final long groupId;
+    private final long dialogId;
+    private final boolean targetsMessageCell;
+    private final boolean hasMessageTarget;
     private final ReactionsLayoutInBubble.VisibleReaction reaction;
     private float lastDrawnToX;
     private float lastDrawnToY;
@@ -99,20 +102,23 @@ public class ReactionsEffectOverlay {
     public ReactionsEffectOverlay(Context context, BaseFragment fragment, ReactionsContainerLayout reactionsLayout, View cell, View fromAnimationView, float x, float y, ReactionsLayoutInBubble.VisibleReaction visibleReaction, int currentAccount, int animationType, boolean isStories) {
         this.isStories = isStories;
         this.ownerFragment = fragment;
+        this.targetsMessageCell = cell instanceof ChatMessageCell || cell instanceof ChatActionCell;
         final MessageObject messageObject;
         if (cell instanceof ChatMessageCell) {
             messageObject = ((ChatMessageCell) cell).getMessageObject();
-            this.messageId = messageObject.getId();
-            this.groupId = messageObject.getGroupId();
+            this.messageId = messageObject == null ? 0 : messageObject.getId();
+            this.groupId = messageObject == null ? 0 : messageObject.getGroupId();
         } else if (cell instanceof ChatActionCell) {
             messageObject = ((ChatActionCell) cell).getMessageObject();
-            this.messageId = messageObject.getId();
+            this.messageId = messageObject == null ? 0 : messageObject.getId();
             this.groupId = 0;
         } else {
             messageObject = null;
             this.messageId = 0;
             this.groupId = 0;
         }
+        this.hasMessageTarget = messageObject != null;
+        this.dialogId = messageObject == null ? 0 : messageObject.getDialogId();
         this.reaction = visibleReaction;
         this.animationType = animationType;
         this.currentAccount = currentAccount;
@@ -288,6 +294,7 @@ public class ReactionsEffectOverlay {
 
             @Override
             protected void dispatchDraw(Canvas canvas) {
+                if (viewRemoved) return;
                 if (dismissed) {
                     if (dismissProgress != 1f) {
                         dismissProgress += AndroidUtilities.screenRefreshTime / 150f;
@@ -314,12 +321,7 @@ public class ReactionsEffectOverlay {
                         holderView.pressedBackupImageView.setAlpha(0);
                     }
                 }
-                View drawingCell;
-                if (fragment instanceof ChatActivity) {
-                    drawingCell = ((ChatActivity) fragment).findCell(messageId, false);
-                } else {
-                    drawingCell = cell;
-                }
+                View drawingCell = findTargetCell();
                 float toX, toY, toH;
 
                 if (isStories) {
@@ -507,11 +509,7 @@ public class ReactionsEffectOverlay {
                         }
                         if (ReactionsEffectOverlay.this.animateOutProgress >= 1f) {
                             if (animationType == LONG_ANIMATION || animationType == ONLY_MOVE_ANIMATION) {
-                                if (cell instanceof ChatMessageCell) {
-                                    ((ChatMessageCell) cell).reactionsLayoutInBubble.animateReaction(reaction);
-                                } else if (cell instanceof ChatActionCell) {
-                                    ((ChatActionCell) cell).reactionsLayoutInBubble.animateReaction(reaction);
-                                }
+                                animateTargetReaction();
                             }
                             ReactionsEffectOverlay.this.animateOutProgress = 1f;
                             if (animationType == SHORT_ANIMATION) {
@@ -751,6 +749,44 @@ public class ReactionsEffectOverlay {
         return sizeForAroundReaction() + "_" + sizeForAroundReaction() + "_nolimit_pcache";
     }
 
+    private boolean matchesTargetCell(View target) {
+        if (!targetsMessageCell) return target == cell;
+        if (!hasMessageTarget) return false;
+        MessageObject object = target instanceof ChatMessageCell ? ((ChatMessageCell) target).getMessageObject()
+                : target instanceof ChatActionCell ? ((ChatActionCell) target).getMessageObject() : null;
+        return object != null && object.currentAccount == currentAccount && object.getDialogId() == dialogId
+                && (object.getId() == messageId || groupId != 0 && object.getGroupId() == groupId);
+    }
+
+    private View findTargetCell() {
+        if (viewRemoved || dismissed) return null;
+        if (targetsMessageCell && ownerFragment instanceof ChatActivity) {
+            ChatActivity chat = (ChatActivity) ownerFragment;
+            if (chat.getCurrentAccount() != currentAccount || chat.getChatListView() == null) return null;
+            View groupTarget = null;
+            for (int i = 0; i < chat.getChatListView().getChildCount(); i++) {
+                View target = chat.getChatListView().getChildAt(i);
+                if (!matchesTargetCell(target)) continue;
+                MessageObject object = target instanceof ChatMessageCell ? ((ChatMessageCell) target).getMessageObject()
+                        : ((ChatActionCell) target).getMessageObject();
+                if (object.getId() == messageId) return target;
+                ReactionsLayoutInBubble.ReactionButton button = target instanceof ChatMessageCell
+                        ? ((ChatMessageCell) target).getReactionButton(reaction) : ((ChatActionCell) target).getReactionButton(reaction);
+                if (button != null && !button.drawingImageRect.isEmpty()) groupTarget = target;
+            }
+            return groupTarget;
+        }
+        return matchesTargetCell(cell) ? cell : null;
+    }
+
+    private void animateTargetReaction() {
+        View target = findTargetCell();
+        if (target instanceof ChatMessageCell) {
+            ((ChatMessageCell) target).reactionsLayoutInBubble.animateReaction(reaction);
+        } else if (target instanceof ChatActionCell) {
+            ((ChatActionCell) target).reactionsLayoutInBubble.animateReaction(reaction);
+        }
+    }
     private void removeCurrentView() {
         if (viewRemoved) {
             return;
@@ -836,11 +872,7 @@ public class ReactionsEffectOverlay {
         } else {
             startShortAnimation();
             if (currentShortOverlay != null) {
-                if (currentShortOverlay.cell instanceof ChatMessageCell) {
-                    ((ChatMessageCell) currentShortOverlay.cell).reactionsLayoutInBubble.animateReaction(currentShortOverlay.reaction);
-                } else if (currentShortOverlay.cell instanceof ChatActionCell) {
-                    ((ChatActionCell) currentShortOverlay.cell).reactionsLayoutInBubble.animateReaction(currentShortOverlay.reaction);
-                }
+                currentShortOverlay.animateTargetReaction();
             }
         }
     }
@@ -881,6 +913,14 @@ public class ReactionsEffectOverlay {
         }
     }
 
+    public static boolean isPlaying(MessageObject messageObject, ReactionsLayoutInBubble.VisibleReaction reaction) {
+        return messageObject != null && currentOverlay != null
+                && !currentOverlay.dismissed && !currentOverlay.viewRemoved
+                && currentOverlay.hasMessageTarget
+                && currentOverlay.currentAccount == messageObject.currentAccount
+                && currentOverlay.dialogId == messageObject.getDialogId()
+                && isPlaying(messageObject.getId(), messageObject.getGroupId(), reaction);
+    }
     public static boolean isPlaying(int messageId, long groupId, ReactionsLayoutInBubble.VisibleReaction reaction) {
         if (currentOverlay != null && (currentOverlay.animationType == ONLY_MOVE_ANIMATION || currentOverlay.animationType == LONG_ANIMATION)) {
             return ((currentOverlay.groupId != 0 && groupId == currentOverlay.groupId) || messageId == currentOverlay.messageId) && currentOverlay.reaction.equals(reaction);
@@ -909,6 +949,7 @@ public class ReactionsEffectOverlay {
 
         public AnimationView(Context context) {
             super(context);
+            getImageReceiver().setCurrentAccount(currentAccount);
             getImageReceiver().setFileLoadingPriority(FileLoader.PRIORITY_HIGH);
         }
 

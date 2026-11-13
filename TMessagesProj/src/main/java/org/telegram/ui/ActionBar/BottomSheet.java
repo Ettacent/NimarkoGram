@@ -84,6 +84,7 @@ import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.LaunchActivity;
 
+import org.telegram.utils.glass.BaseFragmentSimpleGlass;
 import org.telegram.utils.glass.GlassEngine;
 import java.util.ArrayList;
 
@@ -1178,6 +1179,60 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
     }
 
     protected final GlassEngine glassEngine = new GlassEngine();
+    @Nullable
+    private SimpleActionBarMenuOverlay simpleMenuOverlay;
+    @Nullable
+    private BaseFragmentSimpleGlass simpleMenuGlass;
+    @Nullable
+    private SimpleButtonMenuHost simpleButtonMenuHost;
+
+    public SimpleActionBarMenuOverlay getSimpleMenuOverlay() {
+        if (simpleMenuOverlay == null) {
+            final GlassEngine engine = new GlassEngine();
+            engine.setRoot(container);
+            simpleMenuGlass = new BaseFragmentSimpleGlass(engine, () -> getThemedColor(Theme.key_dialogBackground));
+            simpleMenuGlass.setViews(container, null, resourcesProvider);
+            simpleMenuGlass.setCapture((canvas, position) -> {
+                final View sheet = containerView;
+                if (sheet == null || sheet.getVisibility() != View.VISIBLE || sheet.getParent() != container) {
+                    return;
+                }
+                canvas.save();
+                canvas.translate(sheet.getX(), sheet.getY());
+                sheet.draw(canvas);
+                canvas.restore();
+            });
+            simpleMenuOverlay = new SimpleActionBarMenuOverlay(getContext());
+            container.addView(simpleMenuOverlay, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        }
+        return simpleMenuOverlay;
+    }
+
+    public BaseFragmentSimpleGlass getSimpleMenuGlass() {
+        getSimpleMenuOverlay();
+        return simpleMenuGlass;
+    }
+
+    public void showSimpleMenu(View button, ItemOptions options) {
+        if (!(options.getLayout() instanceof ActionBarPopupWindow.ActionBarPopupWindowLayout) || !button.isLaidOut() || !container.isAttachedToWindow()) {
+            options.show();
+            return;
+        }
+        final SimpleActionBarMenuOverlay overlay = getSimpleMenuOverlay();
+        if (overlay.isOpened()) {
+            return;
+        }
+        if (simpleButtonMenuHost == null) {
+            simpleButtonMenuHost = new SimpleButtonMenuHost(overlay, simpleMenuGlass, resourcesProvider);
+        }
+        simpleButtonMenuHost.setButton(button);
+        options.setOnDismiss(() -> overlay.close(true));
+        overlay.open(simpleButtonMenuHost, (ActionBarPopupWindow.ActionBarPopupWindowLayout) options.getLayout());
+    }
+
+    public boolean isSimpleMenuShown() {
+        return simpleMenuOverlay != null && simpleMenuOverlay.getVisibility() == View.VISIBLE;
+    }
     public static class BottomSheetDelegate implements BottomSheetDelegateInterface {
         @Override
         public void onOpenAnimationStart() {
@@ -2257,6 +2312,9 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
             return;
         }
         dismissed = true;
+        if (simpleMenuOverlay != null) {
+            simpleMenuOverlay.close(false);
+        }
         if (onHideListener != null) {
             onHideListener.onDismiss(this);
         }
@@ -2744,6 +2802,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
 
     @Override
     public void onBackPressed() {
+        if (simpleMenuOverlay != null && simpleMenuOverlay.isOpened()) {
+            simpleMenuOverlay.close(true);
+            return;
+        }
         if (attachedFragment == null) {
             super.onBackPressed();
         } else {

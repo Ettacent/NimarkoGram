@@ -23,6 +23,7 @@ import android.view.animation.LinearInterpolator;
 import androidx.annotation.NonNull;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.Utilities;
@@ -257,10 +258,31 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
     public final HashSet<Long> giftIds = new HashSet<>();
     public int maxCount;
 
+    private boolean areGiftsEnabled() {
+        return !app.nimarkogram.messenger.AppConfig.disablePremiumStatuses
+                && MessagesController.getInstance(currentAccount).enableGiftsInProfile;
+    }
+
+    private void clearGifts() {
+        final boolean changed = !gifts.isEmpty() || !oldGifts.isEmpty() || pressedGift != null;
+        if (pressedGift != null) {
+            pressedGift.bounce.setPressed(false);
+            pressedGift = null;
+        }
+        for (Gift gift : gifts) {
+            if (gift.emojiDrawable != null) gift.emojiDrawable.removeView(this);
+        }
+        gifts.clear();
+        oldGifts.clear();
+        giftIds.clear();
+        maxCount = 0;
+        list = null;
+        if (changed) invalidate();
+    }
     public void update() {
 
-        if (app.nimarkogram.messenger.AppConfig.disablePremiumStatuses) return;
-        if (!MessagesController.getInstance(currentAccount).enableGiftsInProfile) {
+        if (!areGiftsEnabled()) {
+            clearGifts();
             return;
         }
 
@@ -275,10 +297,10 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
             final TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
             emojiStatus = user == null ? null : user.emoji_status;
         } else {
-            final TLRPC.User chat = MessagesController.getInstance(currentAccount).getUser(-dialogId);
+            final TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-dialogId);
             emojiStatus = chat == null ? null : chat.emoji_status;
         }
-        if (emojiStatus instanceof TLRPC.TL_emojiStatusCollectible) {
+        if (DialogObject.isEmojiStatusCollectible(emojiStatus)) {
             giftIds.add(((TLRPC.TL_emojiStatusCollectible) emojiStatus).collectible_id);
         }
         list = StarsController.getInstance(currentAccount).getProfileGiftsList(dialogId);
@@ -342,14 +364,18 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
         for (int i = 0; i < oldGifts.size(); i++) {
             final Gift g = oldGifts.get(i);
             Gift newGift = null;
+            boolean drawableStillUsed = false;
             for (int j = 0; j < gifts.size(); ++j) {
+                if (gifts.get(j).emojiDrawable == g.emojiDrawable) {
+                    drawableStillUsed = true;
+                }
                 if (gifts.get(j).id == g.id) {
                     newGift = gifts.get(j);
                     break;
                 }
             }
             if (newGift == null) {
-                g.emojiDrawable.removeView(this);
+                if (!drawableStillUsed) g.emojiDrawable.removeView(this);
                 g.emojiDrawable = null;
                 g.gradient = null;
             } else {
@@ -377,7 +403,7 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
 
-        if (gifts.isEmpty() || expandProgress >= 1.0f || collapseProgress <= 0f) return;
+        if (!areGiftsEnabled() || gifts.isEmpty() || expandProgress >= 1.0f || collapseProgress <= 0f) return;
 
         final float realX = avatarContainer.getX();
         final float realY = avatarContainer.getY();
@@ -470,6 +496,7 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
     }
 
     public Gift getGiftUnder(float x, float y) {
+        if (!areGiftsEnabled()) return null;
         for (int i = 0; i < gifts.size(); ++i) {
             if (gifts.get(i).bounds.contains(x, y))
                 return gifts.get(i);
@@ -481,6 +508,10 @@ public class ProfileGiftsView extends View implements NotificationCenter.Notific
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (!areGiftsEnabled()) {
+            clearGifts();
+            return false;
+        }
         if (!active) return false;
         final Gift hit = getGiftUnder(event.getX(), event.getY());
         if (event.getAction() == MotionEvent.ACTION_DOWN) {

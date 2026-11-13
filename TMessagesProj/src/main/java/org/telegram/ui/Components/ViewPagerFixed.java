@@ -181,6 +181,9 @@ public class ViewPagerFixed extends FrameLayout {
     public int getNextPosition() {
         return nextPosition;
     }
+    public boolean isPositionBound(int position) {
+        return position == currentPosition || viewPages[1] != null && position == nextPosition;
+    }
     public float getNextPositionAlpha() {
         if (viewPages[1] != null && viewPages[1].getVisibility() == View.VISIBLE) {
             return Utilities.clamp(1f - Math.abs(viewPages[1].getTranslationX() / getAvailableTranslationX()), 1, 0);

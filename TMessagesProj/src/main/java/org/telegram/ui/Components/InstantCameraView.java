@@ -1476,7 +1476,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             } catch (Exception ignore) {}
             AndroidUtilities.lockOrientation(delegate.getParentActivity());
             invalidate();
-            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordResumed);
+            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.recordResumed, recordingGuid);
         }
     }
 
@@ -3976,7 +3976,7 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             if (session instanceof CameraSession) {
                 rotationAngle = ((CameraSession) session).getWorldAngle();
             } else if (session instanceof Camera2Session) {
-                rotationAngle = ((Camera2Session) session).getWorldAngle();
+                rotationAngle = ((Camera2Session) session).getRoundVideoRotationAngle();
             } else if (session instanceof app.nimarkogram.messenger.camera.CameraXSurfaceSession) {
                 CameraXSurfaceSession cameraXSession = (CameraXSurfaceSession) session;
 

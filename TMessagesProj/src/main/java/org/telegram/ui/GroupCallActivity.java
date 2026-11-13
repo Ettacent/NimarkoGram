@@ -123,6 +123,7 @@ import org.telegram.messenger.support.LongSparseIntArray;
 import org.telegram.messenger.voip.GroupCallMessage;
 import org.telegram.messenger.voip.GroupCallMessagesController;
 import org.telegram.messenger.voip.Instance;
+import org.telegram.messenger.voip.VoIPPreNotificationService;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.messenger.voip.VoipAudioManager;
 import org.telegram.tgnet.ConnectionsManager;
@@ -218,7 +219,6 @@ import java.util.Calendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -1848,27 +1848,33 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
     }
 
     public static void create(LaunchActivity activity, AccountInstance account, TLRPC.Chat scheduleChat, TLRPC.InputPeer schedulePeer, boolean hasFewPeers, String scheduledHash) {
-        if (groupCallInstance != null || schedulePeer == null && VoIPService.getSharedInstance() == null) {
-            return;
-        }
+        if (groupCallInstance != null || activity == null || activity.isFinishing() || activity.isDestroyed() || account == null) return;
+        final int accountId = account.getCurrentAccount();
+        final long ownerId = account.getUserConfig().getClientUserId();
+        final long ownerSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(accountId);
+        if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(accountId, ownerId, ownerSession)) return;
+        final ChatObject.Call call;
+        final TLRPC.Chat chat;
         if (schedulePeer != null) {
-            ChatObject.Call call = account.getMessagesController().getGroupCall(scheduleChat.id, false);
-            groupCallInstance = new GroupCallActivity(activity, account, call, scheduleChat, schedulePeer, hasFewPeers, scheduledHash);
+            if (scheduleChat == null) return;
+            call = account.getMessagesController().getGroupCall(scheduleChat.id, false);
+            chat = scheduleChat;
         } else {
-            ChatObject.Call call = VoIPService.getSharedInstance().groupCall;
-            if (call == null) {
-                return;
-            }
-            TLRPC.Chat chat = account.getMessagesController().getChat(call.chatId);
+            final VoIPService service = VoIPService.getSharedInstance();
+            if (service == null || service.getAccount() != accountId) return;
+            final Intent owner = VoIPPreNotificationService.bindOwner(new Intent(), service);
+            if (!VoIPPreNotificationService.isCurrentServiceAction(service, owner)) return;
+            call = service.groupCall;
+            if (call == null || !(call.call instanceof TLRPC.TL_groupCall)
+                    || call.currentAccount == null || call.currentAccount.getCurrentAccount() != accountId) return;
+            chat = account.getMessagesController().getChat(call.chatId);
+            if (chat == null && !service.isConference()) return;
             call.addSelfDummyParticipant(true);
-            groupCallInstance = new GroupCallActivity(activity, account, call, chat, null, hasFewPeers, scheduledHash);
         }
-        groupCallInstance.parentActivity = activity;
-        AndroidUtilities.runOnUIThread(() -> {
-            if (groupCallInstance != null) {
-                groupCallInstance.show();
-            }
-        });
+        final GroupCallActivity candidate = new GroupCallActivity(activity, account, call, chat, schedulePeer, hasFewPeers, scheduledHash);
+        candidate.parentActivity = activity;
+        groupCallInstance = candidate;
+        candidate.show();
     }
 
     private RenderNode renderNodeBlur;
@@ -1905,13 +1911,6 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
 
             @Override
             public void onOpenAnimationEnd() {
-                VoIPService voipService = VoIPService.getSharedInstance();
-                if (voipService != null) {
-                    CountDownLatch latch = voipService.getGroupCallBottomSheetLatch();
-                    if (latch != null) {
-                        latch.countDown();
-                    }
-                }
 
                 if (muteButtonState == MUTE_BUTTON_STATE_SET_REMINDER) {
                     showReminderHint();
@@ -7512,10 +7511,11 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         buttonsContainer.invalidate();
     }
 
-    private static void processOnLeave(ChatObject.Call call, boolean discard, long selfId, Runnable onLeave) {
-        if (VoIPService.getSharedInstance() != null) {
-            VoIPService.getSharedInstance().hangUp(discard ? 1 : 0);
-        }
+    private static void processOnLeave(VoIPService service, Intent actionOwner, boolean discard, Runnable onLeave) {
+        if (!VoIPPreNotificationService.isCurrentServiceAction(service, actionOwner)) return;
+        final ChatObject.Call call = service.groupCall;
+        final long selfId = service.getSelfId();
+        service.hangUp(discard ? 1 : 0);
         if (call != null) {
             TLRPC.GroupCallParticipant participant = call.participants.get(selfId);
             if (participant != null) {
@@ -7552,12 +7552,13 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
         if (service == null) {
             return;
         }
+        final Intent actionOwner = VoIPPreNotificationService.bindOwner(new Intent(), service);
+        if (!VoIPPreNotificationService.isCurrentServiceAction(service, actionOwner)) return;
         TLRPC.Chat currentChat = service.getChat();
         ChatObject.Call call = service.groupCall;
 
-        long selfId = service.getSelfId();
         if (doNotAsk || !ChatObject.canManageCalls(currentChat)) {
-            processOnLeave(call, false, selfId, onLeave);
+            processOnLeave(service, actionOwner, false, onLeave);
             return;
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
@@ -7609,7 +7610,8 @@ public class GroupCallActivity extends BottomSheet implements NotificationCenter
 
         builder.setView(linearLayout);
         builder.setDialogButtonColorKey(Theme.key_voipgroup_listeningText);
-        builder.setPositiveButton(getString(R.string.VoipGroupLeave), (dialogInterface, position) -> processOnLeave(call, cells[0] != null && cells[0].isChecked(), selfId, onLeave));
+        builder.setPositiveButton(getString(R.string.VoipGroupLeave), (dialogInterface, position) ->
+                processOnLeave(service, actionOwner, cells[0] != null && cells[0].isChecked(), onLeave));
         builder.setNegativeButton(getString(R.string.Cancel), null);
         if (fromOverlayWindow) {
             builder.setDimEnabled(false);

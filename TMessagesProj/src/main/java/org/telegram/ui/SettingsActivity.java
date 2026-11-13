@@ -15,6 +15,7 @@ import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -53,6 +54,9 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.ActivityResultRegistryOwner;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.collection.LongSparseArray;
@@ -88,6 +92,7 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.ActionBar;
@@ -145,6 +150,7 @@ import org.telegram.ui.bots.SetupEmojiStatusSheet;
 
 import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
 
 import app.nimarkogram.messenger.utils.UiAnimationClock;
@@ -153,6 +159,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Set;
 
+import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 
@@ -206,7 +214,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         return search;
     }
 
-    private ImageUpdater imageUpdater;
+    private SettingsAvatarUpdater imageUpdater;
+    private AvatarUploadAttempt avatarUploadAttempt;
+    private static long nextAvatarRequestOrder;
+    private static final long[] appliedAvatarRequestOrder = new long[UserConfig.MAX_ACCOUNT_COUNT];
+    private View avatarViewRoot;
+    private long avatarViewGeneration;
     private AnimatorSet avatarAnimation;
     private RadialProgressView avatarProgressView;
     private TLRPC.FileLocation avatar;
@@ -259,7 +272,8 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             .add(NotificationCenter.newSuggestionsAvailable)
             .add(NotificationCenter.walletUpdate)
             .add(NotificationCenter.appConfigUpdated)
-            .add(NotificationCenter.attachMenuBotsDidLoad);
+            .add(NotificationCenter.attachMenuBotsDidLoad)
+            .addGlobal(NotificationCenter.onRequestPermissionResultReceived);
         if (arguments != null) {
             hasMainTabs = arguments.getBoolean("hasMainTabs", false);
         }
@@ -272,6 +286,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     @Override
     public void clearViews() {
         if (ignoreClearViews) return;
+        clearAvatarViews(false);
         search = null;
         super.clearViews();
     }
@@ -283,6 +298,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     @Override
     public View createView(Context context) {
+        clearAvatarViews(false);
         setHasOwnBackground(true);
         contentView = new SizeNotifierFrameLayout(context) {
             @Override
@@ -394,10 +410,6 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         contentView.addView(actionBarFadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 0, Gravity.TOP));
         contentView.addView(simpleActionBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.FILL_HORIZONTAL | Gravity.TOP));
 
-        imageUpdater = new ImageUpdater(true, ImageUpdater.FOR_TYPE_USER, true);
-        imageUpdater.setOpenWithFrontfaceCamera(true);
-        imageUpdater.parentFragment = this;
-        imageUpdater.setDelegate(this);
 
         topView = new FrameLayout(context);
 
@@ -409,7 +421,10 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             }
         };
         topView.addView(avatarTouchView, LayoutHelper.createFrame(120, 120, Gravity.CENTER_HORIZONTAL | Gravity.TOP, 0, 23 - 12, 0, 0));
+        final View avatarMenuRoot = contentView;
+        final long avatarMenuGeneration = avatarViewGeneration;
         avatarTouchView.setOnClickListener(v -> {
+            if (!isAvatarMenuCurrent(avatarMenuRoot, avatarMenuGeneration)) return;
             TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(UserConfig.getInstance(currentAccount).getClientUserId());
             if (user == null) {
                 user = UserConfig.getInstance(currentAccount).getCurrentUser();
@@ -417,8 +432,18 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             if (user == null) {
                 return;
             }
-            imageUpdater.openMenu(user.photo != null && user.photo.photo_big != null && !(user.photo instanceof TLRPC.TL_userProfilePhotoEmpty), () -> {
-                MessagesController.getInstance(currentAccount).deleteUserPhoto(null);
+            final SettingsAvatarUpdater updater = new SettingsAvatarUpdater(currentAccount, avatarMenuGeneration);
+            final SettingsAvatarUpdater previous = imageUpdater;
+            retainAvatarTransfer(previous);
+            imageUpdater = updater;
+            if (previous != null && (avatarUploadAttempt == null || avatarUploadAttempt.updater != previous)) {
+                previous.release(false);
+            }
+            updater.openMenu(user.photo != null && user.photo.photo_big != null && !(user.photo instanceof TLRPC.TL_userProfilePhotoEmpty), () -> {
+                if (!isAvatarMenuCurrent(avatarMenuRoot, avatarMenuGeneration) || !isAvatarSelectionCurrent(updater)) return;
+                appliedAvatarRequestOrder[updater.account] = ++nextAvatarRequestOrder;
+                retireAvatarUpload();
+                MessagesController.getInstance(updater.account).deleteUserPhoto(null);
             }, dialog -> {
 
             }, 0);
@@ -549,11 +574,20 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         updateActionBarFadeHeight(mSystemInsets.top);
         updateActionBarVisible(true, false);
         ViewCompat.setOnApplyWindowInsetsListener(contentView, this::onApplyWindowInsets);
-        return fragmentView = contentView;
+        fragmentView = contentView;
+        avatarViewRoot = fragmentView;
+        if (imageUpdater != null && !imageUpdater.cleared && imageUpdater.account == currentAccount
+                && imageUpdater.accountCurrent()) {
+            imageUpdater.viewRoot = avatarViewRoot;
+            imageUpdater.viewGeneration = avatarViewGeneration;
+        }
+        bindAvatarUploadToView();
+        return fragmentView;
     }
 
     @Override
     public void onFragmentDestroy() {
+        clearAvatarViews(true);
         search = null;
         super.onFragmentDestroy();
 
@@ -565,6 +599,13 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.onRequestPermissionResultReceived) {
+            final SettingsAvatarUpdater picker = activeAvatarPicker();
+            if (picker != null) {
+                picker.onRequestPermissionsResultFragment((Integer) args[0], (String[]) args[1], (int[]) args[2]);
+            }
+            return;
+        }
         if (account != currentAccount) return;
         if (id == NotificationCenter.starBalanceUpdated) {
             setInfo();
@@ -586,10 +627,12 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     public void setInfo(TLRPC.User user) {
         if (avatarView == null) return;
-        if (avatarUploadingRequest != -1) return;
 
         avatarDrawable.setInfo(user);
+        if (avatarUploadAttempt == null || avatarUploadAttempt.updater.account != currentAccount
+                || !isAvatarAttemptCurrent(avatarUploadAttempt)) {
         avatarView.setForUserOrChat(user, avatarDrawable);
+        }
         titleView.setText(UserObject.getUserName(user));
         final StringBuilder sb = new StringBuilder();
         if (user != null) {
@@ -706,9 +749,30 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
     @Override
     public void onResume() {
         super.onResume();
-        if (listView.adapter != null) {
+        final SettingsAvatarUpdater picker = imageUpdater;
+        if (isAvatarSelectionCurrent(picker)) picker.onResume();
+        if (listView != null && listView.adapter != null) {
             listView.adapter.update(false);
         }
+    }
+
+    @Override
+    public void onPause() {
+        final SettingsAvatarUpdater picker = imageUpdater;
+        if (isAvatarSelectionCurrent(picker)) picker.onPause();
+        super.onPause();
+    }
+
+    @Override
+    public boolean dismissDialogOnPause(Dialog dialog) {
+        return (activeAvatarPicker() == null || dialog != getVisibleDialog()) && super.dismissDialogOnPause(dialog);
+    }
+
+    private SettingsAvatarUpdater activeAvatarPicker() {
+        final Dialog dialog = getVisibleDialog();
+        final SettingsAvatarUpdater picker = imageUpdater;
+        return dialog != null && dialog.isShowing() && isAvatarSelectionCurrent(picker) && !picker.dismissDialogOnPause(dialog)
+                ? picker : null;
     }
 
     private void setActionBarVisibilityFactor(float factor) {
@@ -982,21 +1046,61 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     private void onClick(UItem item, View view, int position, float x, float y) {
         if (item.object instanceof TLRPC.TL_attachMenuBot) {
-            TLRPC.TL_attachMenuBot attachMenuBot = (TLRPC.TL_attachMenuBot) item.object;
+            final TLRPC.TL_attachMenuBot attachMenuBot = (TLRPC.TL_attachMenuBot) item.object;
+            final int account = currentAccount;
+            final long owner = UserConfig.getInstance(account).getClientUserId();
+            final long session = InAppNotifications.session(account);
+            final Activity activity = getParentActivity();
+            final INavigationLayout layout = getParentLayout();
+            final BaseFragment root = layout == null ? null : layout.getLastFragment();
+            final View sourceView = fragmentView;
+            final BooleanSupplier navigationCurrent = captureNavigationRequest();
+            final BooleanSupplier uiCurrent = () -> activity instanceof LaunchActivity
+                    && LaunchActivity.instance == activity && !activity.isFinishing() && !activity.isDestroyed()
+                    && !isFinished && !isPaused && currentAccount == account && UserConfig.selectedAccount == account
+                    && InAppNotifications.isCurrent(account, owner, session)
+                    && getParentActivity() == activity && getParentLayout() == layout
+                    && sourceView != null && fragmentView == sourceView && sourceView.isAttachedToWindow()
+                    && navigationCurrent.getAsBoolean()
+                    && (root == this || root instanceof ViewPagerActivity
+                    && !((ViewPagerActivity) root).isPageTransitionRunning()
+                    && ((ViewPagerActivity) root).getCurrentVisibleFragment() == this);
+            if (!uiCurrent.getAsBoolean()) {
+                return;
+            }
             if (attachMenuBot.inactive || attachMenuBot.side_menu_disclaimer_needed) {
-                WebAppDisclaimerAlert.show(getContext(), (allowSendMessage) -> {
+                WebAppDisclaimerAlert.show(activity, (allowSendMessage) -> {
+                    if (!uiCurrent.getAsBoolean()) {
+                        return;
+                    }
                     TLRPC.TL_messages_toggleBotInAttachMenu botRequest = new TLRPC.TL_messages_toggleBotInAttachMenu();
-                    botRequest.bot = MessagesController.getInstance(currentAccount).getInputUser(attachMenuBot.bot_id);
+                    botRequest.bot = MessagesController.getInstance(account).getInputUser(attachMenuBot.bot_id);
                     botRequest.enabled = true;
-                    botRequest.write_allowed = true;
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(botRequest, (response2, error2) -> AndroidUtilities.runOnUIThread(() -> {
+                    botRequest.write_allowed = allowSendMessage;
+                    ConnectionsManager.getInstance(account).sendRequest(botRequest, (response2, error2) -> AndroidUtilities.runOnUIThread(() -> {
+                        if (error2 != null || !(response2 instanceof TLRPC.TL_boolTrue)
+                                || !InAppNotifications.isCurrent(account, owner, session)) {
+                            return;
+                        }
                         attachMenuBot.inactive = attachMenuBot.side_menu_disclaimer_needed = false;
-                        LaunchActivity.showAttachMenuBot(LaunchActivity.instance, currentAccount, attachMenuBot, null, true);
-                        MediaDataController.getInstance(currentAccount).updateAttachMenuBotsInCache();
+                        final MediaDataController mediaDataController = MediaDataController.getInstance(account);
+                        final TLRPC.TL_attachMenuBots menuBots = mediaDataController.getAttachMenuBots();
+                        if (menuBots != null && menuBots.bots != null) {
+                            for (TLRPC.TL_attachMenuBot bot : menuBots.bots) {
+                                if (bot.bot_id == attachMenuBot.bot_id) {
+                                    bot.inactive = bot.side_menu_disclaimer_needed = false;
+                                    break;
+                                }
+                            }
+                        }
+                        mediaDataController.updateAttachMenuBotsInCache();
+                        if (uiCurrent.getAsBoolean()) {
+                            LaunchActivity.showAttachMenuBot((LaunchActivity) activity, account, attachMenuBot, null, true);
+                        }
                     }), ConnectionsManager.RequestFlagInvokeAfter | ConnectionsManager.RequestFlagFailOnServerErrors);
                 }, null, null);
             } else {
-                LaunchActivity.showAttachMenuBot(LaunchActivity.instance, currentAccount, attachMenuBot, null, true);
+                LaunchActivity.showAttachMenuBot((LaunchActivity) activity, account, attachMenuBot, null, true);
             }
             return;
         }
@@ -1985,13 +2089,344 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
     int avatarUploadingRequest = -1;
 
-    @Override
-    public void didUploadPhoto(final TLRPC.InputFile photo, final TLRPC.InputFile video, double videoStartTimestamp, String videoPath, TLRPC.PhotoSize bigSize, final TLRPC.PhotoSize smallSize, boolean isVideo, TLRPC.VideoSize emojiMarkup) {
-        AndroidUtilities.runOnUIThread(() -> {
-            if (photo != null || video != null || emojiMarkup != null) {
-                if (avatar == null) {
+    private final class SettingsAvatarUpdater extends ImageUpdater implements ImageUpdater.ImageUpdaterDelegate {
+        final int account;
+        final long owner, session;
+        long viewGeneration;
+        View viewRoot;
+        private volatile AvatarUploadAttempt attempt;
+        private boolean cleared;
+        private boolean preparingRetainedTransfer;
+        private ActivityResultLauncher<Intent> externalPicker;
+        private Object externalPickerOwner;
+
+        SettingsAvatarUpdater(int account, long viewGeneration) {
+            super(account, true, ImageUpdater.FOR_TYPE_USER, true);
+            this.account = account;
+            this.owner = UserConfig.getInstance(account).getClientUserId();
+            this.session = InAppNotifications.session(account);
+            this.viewGeneration = viewGeneration;
+            this.viewRoot = avatarViewRoot;
+            parentFragment = SettingsActivity.this;
+            setOpenWithFrontfaceCamera(true);
+            setDelegate(this);
+        }
+
+        boolean accountCurrent() {
+            return owner > 0 && InAppNotifications.isCurrent(account, owner, session);
+        }
+
+        @Override
+        protected void launchExternalPicker(Intent intent, int requestCode) {
+            if (!isAvatarSelectionCurrent(this)) return;
+            final Activity activity = getParentActivity();
+            if (!(activity instanceof ActivityResultRegistryOwner)) {
+                super.launchExternalPicker(intent, requestCode);
+                return;
+            }
+            retireExternalPicker();
+            final Object request = new Object();
+            final String picturePath = currentPicturePath;
+            externalPickerOwner = request;
+            try {
+                externalPicker = ((ActivityResultRegistryOwner) activity).getActivityResultRegistry().register(
+                        "settings-avatar-" + UUID.randomUUID(), new ActivityResultContracts.StartActivityForResult(), result ->
+                                AndroidUtilities.runOnUIThread(() -> {
+                                    if (externalPickerOwner != request) return;
+                                    retireExternalPicker();
+                                    currentPicturePath = null;
+                                    if (getParentActivity() != activity || !isAvatarSelectionCurrent(this)
+                                            || result.getResultCode() != Activity.RESULT_OK
+                                            || (requestCode == 13 || requestCode == 15) && TextUtils.isEmpty(picturePath)) return;
+                                    currentPicturePath = picturePath;
+                                    onActivityResult(requestCode, result.getResultCode(), result.getData());
+                                }));
+                externalPicker.launch(intent);
+            } catch (RuntimeException e) {
+                retireExternalPicker();
+                currentPicturePath = null;
+                FileLog.e(e);
+            }
+        }
+
+        private void retireExternalPicker() {
+            externalPickerOwner = null;
+            final ActivityResultLauncher<Intent> launcher = externalPicker;
+            externalPicker = null;
+            if (launcher != null) launcher.unregister();
+        }
+
+        private AvatarUploadAttempt startAttempt() {
+            final AvatarUploadAttempt next = new AvatarUploadAttempt(this);
+            attempt = next;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (attempt != next) return;
+                if (!isAvatarSelectionCurrent(this)) {
+                    next.finished = true;
+                    release(true);
                     return;
                 }
+                beginAvatarUpload(next);
+            });
+            return next;
+        }
+
+        @Override
+        public void didStartUpload(boolean fromAvatarConstructor, boolean isVideo) {
+            if (preparingRetainedTransfer) {
+                preparingRetainedTransfer = false;
+                if (isAvatarAttemptCurrent(attempt) && !attempt.submitted) {
+                    onUploadProgressChanged(0.0f);
+                    return;
+                }
+            }
+            startAttempt();
+        }
+
+        @Override
+        public void didUploadPhoto(TLRPC.InputFile photo, TLRPC.InputFile video, double videoStartTimestamp,
+                                   String videoPath, TLRPC.PhotoSize bigSize, TLRPC.PhotoSize smallSize,
+                                   boolean isVideo, TLRPC.VideoSize emojiMarkup) {
+            AvatarUploadAttempt selected = attempt;
+            if (selected == null && photo == null && video == null && emojiMarkup == null) {
+                selected = startAttempt();
+            }
+            if (selected == null || selected.finished) return;
+            final AvatarUploadAttempt captured = selected;
+            if (!accountCurrent()) {
+                AndroidUtilities.runOnUIThread(() -> finishAvatarUpload(captured, false));
+                return;
+            }
+            try {
+                final AvatarUploadFiles files = new AvatarUploadFiles(account, smallSize, bigSize, videoPath);
+                AndroidUtilities.runOnUIThread(() -> onAvatarUploadPhoto(captured, files, photo, video,
+                        videoStartTimestamp, emojiMarkup));
+            } catch (Exception e) {
+                FileLog.e(e);
+                uploadFailed(captured);
+            }
+        }
+
+        @Override
+        public void onUploadProgressChanged(float progress) {
+            final AvatarUploadAttempt captured = attempt;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!isAvatarAttemptCurrent(captured) || captured.submitted) return;
+                captured.progress = progress;
+                if (isAvatarUiCurrent(captured)) avatarProgressView.setProgress(progress);
+            });
+        }
+
+        @Override
+        public void didUploadFailed() {
+            uploadFailed(attempt);
+        }
+
+        private void uploadFailed(AvatarUploadAttempt captured) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (captured != null && !captured.submitted) finishAvatarUpload(captured, true);
+            });
+        }
+
+        @Override
+        public void didReceivedNotification(int id, int account, Object... args) {
+            if (account != this.account) return;
+            super.didReceivedNotification(id, account, args);
+        }
+
+        void release(boolean cancelUpload) {
+            setDelegate(null);
+            clear();
+            if (cancelUpload && isUploadingImage()) cancel();
+        }
+
+        @Override
+        public void clear() {
+            if (cleared) return;
+            cleared = true;
+            retireExternalPicker();
+            super.clear();
+        }
+    }
+
+    private static final class AvatarUploadAttempt {
+        final SettingsAvatarUpdater updater;
+        AvatarUploadFiles files;
+        volatile boolean finished;
+        boolean submitted, responseReceived;
+        int requestId = -1;
+        long requestOrder;
+        float progress;
+
+        AvatarUploadAttempt(SettingsAvatarUpdater updater) {
+            this.updater = updater;
+        }
+    }
+
+    private static TLRPC.FileLocation copyAvatarLocation(TLRPC.FileLocation location) {
+        if (location == null) return null;
+        final TLRPC.FileLocation copy = new TLRPC.TL_fileLocationToBeDeprecated();
+        copy.dc_id = location.dc_id;
+        copy.volume_id = location.volume_id;
+        copy.local_id = location.local_id;
+        copy.secret = location.secret;
+        copy.file_reference = location.file_reference == null ? null : location.file_reference.clone();
+        copy.key = location.key == null ? null : location.key.clone();
+        copy.iv = location.iv == null ? null : location.iv.clone();
+        return copy;
+    }
+
+    private static final class AvatarUploadFiles {
+        final TLRPC.FileLocation small, big;
+        final String smallPath, bigPath, smallKey, videoPath;
+
+        AvatarUploadFiles(int account, TLRPC.PhotoSize small, TLRPC.PhotoSize big, String videoPath) {
+            this.small = copyAvatarLocation(small == null ? null : small.location);
+            this.big = copyAvatarLocation(big == null ? null : big.location);
+            smallPath = this.small == null ? null : FileLoader.getInstance(account).getPathToAttach(this.small, true).getAbsolutePath();
+            bigPath = this.big == null ? null : FileLoader.getInstance(account).getPathToAttach(this.big, true).getAbsolutePath();
+            smallKey = this.small == null ? null : this.small.volume_id + "_" + this.small.local_id + "@90_90";
+            this.videoPath = videoPath;
+        }
+    }
+
+    private boolean isAvatarMenuCurrent(View root, long generation) {
+        return !isFinished && root != null && root == avatarViewRoot && fragmentView == root
+                && generation == avatarViewGeneration && root.isAttachedToWindow()
+                && UserConfig.selectedAccount == currentAccount;
+    }
+
+    private boolean isAvatarSelectionCurrent(SettingsAvatarUpdater updater) {
+        return updater != null && imageUpdater == updater && !updater.cleared && !isFinished
+                && updater.viewGeneration == avatarViewGeneration && updater.viewRoot != null
+                && updater.viewRoot == avatarViewRoot && fragmentView == avatarViewRoot
+                && currentAccount == updater.account && UserConfig.selectedAccount == updater.account
+                && updater.accountCurrent();
+    }
+
+    private boolean isAvatarAttemptCurrent(AvatarUploadAttempt attempt) {
+        return attempt != null && avatarUploadAttempt == attempt && !attempt.finished && attempt.updater.accountCurrent();
+    }
+
+    private boolean isAvatarUiCurrent(AvatarUploadAttempt attempt) {
+        return isAvatarAttemptCurrent(attempt) && !isFinished && currentAccount == attempt.updater.account
+                && avatarViewRoot != null && fragmentView == avatarViewRoot
+                && avatarView != null && avatarProgressView != null;
+    }
+
+    private void beginAvatarUpload(AvatarUploadAttempt attempt) {
+        final AvatarUploadAttempt previous = avatarUploadAttempt;
+        avatarUploadAttempt = attempt;
+        avatarUploadingRequest = -1;
+        avatar = null;
+        avatarBig = null;
+        if (previous != null && previous != attempt) {
+            previous.finished = true;
+            if (previous.updater != attempt.updater) previous.updater.release(true);
+        }
+        if (isAvatarUiCurrent(attempt)) {
+            avatarProgressView.setProgress(0.0f);
+            showAvatarProgress(true, false);
+        }
+    }
+
+    private void bindAvatarUploadToView() {
+        final AvatarUploadAttempt attempt = avatarUploadAttempt;
+        if (!isAvatarUiCurrent(attempt)) {
+            showAvatarProgress(false, false);
+            return;
+        }
+        if (attempt.files != null) {
+            avatar = attempt.files.small;
+            avatarBig = attempt.files.big;
+            final TLRPC.FileLocation preview = avatar != null ? avatar : avatarBig;
+            if (preview != null) avatarView.setImage(ImageLocation.getForLocal(preview), "90_90", avatarDrawable, null);
+        } else {
+            avatarView.setForUserOrChat(UserConfig.getInstance(attempt.updater.account).getCurrentUser(), avatarDrawable);
+        }
+        avatarProgressView.setProgress(attempt.progress);
+        showAvatarProgress(true, false);
+    }
+
+    private void finishAvatarUpload(AvatarUploadAttempt attempt, boolean animated) {
+        if (attempt == null || avatarUploadAttempt != attempt || attempt.finished) return;
+        final boolean updateView = isAvatarUiCurrent(attempt);
+        final View root = avatarViewRoot;
+        final long generation = avatarViewGeneration;
+        attempt.finished = true;
+        avatarUploadAttempt = null;
+        avatarUploadingRequest = -1;
+        avatar = null;
+        avatarBig = null;
+        attempt.updater.release(false);
+        if (updateView && root == avatarViewRoot && generation == avatarViewGeneration
+                && fragmentView == root && !isFinished) {
+            showAvatarProgress(false, animated);
+            setInfo();
+            if (simpleActionBar != null) simpleActionBar.createMenu().requestLayout();
+        }
+    }
+
+    private void retireAvatarUpload() {
+        final AvatarUploadAttempt previous = avatarUploadAttempt;
+        if (previous == null) return;
+        finishAvatarUpload(previous, false);
+        previous.updater.release(true);
+    }
+
+    private void retainAvatarTransfer(SettingsAvatarUpdater updater) {
+        if (updater != null && updater.attempt == null && !updater.cleared && updater.isUploadingImage()
+                && updater.accountCurrent() && updater.account == currentAccount && !isFinished
+                && updater.viewRoot != null && updater.viewRoot == avatarViewRoot
+                && updater.viewGeneration == avatarViewGeneration && fragmentView == avatarViewRoot) {
+            final AvatarUploadAttempt retained = new AvatarUploadAttempt(updater);
+            updater.attempt = retained;
+            updater.preparingRetainedTransfer = true;
+            beginAvatarUpload(retained);
+        }
+    }
+
+    private void clearAvatarViews(boolean destroy) {
+        final SettingsAvatarUpdater updater = imageUpdater;
+        retainAvatarTransfer(updater);
+        destroy |= isFinished;
+        ++avatarViewGeneration;
+        avatarViewRoot = null;
+        final AnimatorSet animation = avatarAnimation;
+        avatarAnimation = null;
+        if (animation != null) animation.cancel();
+        if (avatarTouchView != null) avatarTouchView.setOnClickListener(null);
+        avatarProgressView = null;
+        avatarView = null;
+        avatar = null;
+        avatarBig = null;
+        final AvatarUploadAttempt attempt = avatarUploadAttempt;
+        if (updater != null) {
+            updater.viewRoot = null;
+            if (destroy || updater.account != currentAccount || !updater.accountCurrent()) {
+                imageUpdater = null;
+                if (attempt != null && attempt.updater == updater && !attempt.finished) updater.clear();
+                else updater.release(true);
+            }
+        }
+        if (attempt != null && attempt.updater != updater && !attempt.finished) {
+            attempt.updater.viewRoot = null;
+            attempt.updater.clear();
+        }
+    }
+    @Override
+    public void didUploadPhoto(final TLRPC.InputFile photo, final TLRPC.InputFile video, double videoStartTimestamp, String videoPath, TLRPC.PhotoSize bigSize, final TLRPC.PhotoSize smallSize, boolean isVideo, TLRPC.VideoSize emojiMarkup) {
+        final SettingsAvatarUpdater updater = imageUpdater;
+        if (updater != null) updater.didUploadPhoto(photo, video, videoStartTimestamp, videoPath, bigSize, smallSize, isVideo, emojiMarkup);
+    }
+
+    private void onAvatarUploadPhoto(AvatarUploadAttempt attempt, AvatarUploadFiles files, TLRPC.InputFile photo,
+                                     TLRPC.InputFile video, double videoStartTimestamp, TLRPC.VideoSize emojiMarkup) {
+        if (!isAvatarAttemptCurrent(attempt) || attempt.submitted) return;
+        attempt.files = files;
+        if (isAvatarUiCurrent(attempt)) bindAvatarUploadToView();
+        if (!isAvatarAttemptCurrent(attempt)) return;
+            if (photo != null || video != null || emojiMarkup != null) {
                 final TLRPC.TL_photos_uploadProfilePhoto req = new TLRPC.TL_photos_uploadProfilePhoto();
                 if (photo != null) {
                     req.file = photo;
@@ -2007,142 +2442,164 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
                     req.video_emoji_markup = emojiMarkup;
                     req.flags |= 16;
                 }
-                avatarUploadingRequest = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    avatarUploadingRequest = -1;
-                    if (error == null) {
-                        TLRPC.User user = getMessagesController().getUser(getUserConfig().getClientUserId());
+            attempt.submitted = true;
+            attempt.requestOrder = ++nextAvatarRequestOrder;
+            final int account = attempt.updater.account;
+            final int request;
+            try {
+                request = ConnectionsManager.getInstance(account).sendRequest(req, (response, error) ->
+                        AndroidUtilities.runOnUIThread(() -> onAvatarUploadResult(attempt, files, response, error)));
+            } catch (Exception e) {
+                FileLog.e(e);
+                finishAvatarUpload(attempt, true);
+                return;
+            }
+            attempt.requestId = request;
+            if (isAvatarAttemptCurrent(attempt)) {
+                if (request == 0) finishAvatarUpload(attempt, true);
+                else avatarUploadingRequest = request;
+            }
+        }
+        if (isAvatarUiCurrent(attempt) && simpleActionBar != null) simpleActionBar.createMenu().requestLayout();
+    }
+
+    private void onAvatarUploadResult(AvatarUploadAttempt attempt, AvatarUploadFiles files, TLObject response, TLRPC.TL_error error) {
+        if (attempt.responseReceived) return;
+        attempt.responseReceived = true;
+        if (!attempt.updater.accountCurrent()) {
+            finishAvatarUpload(attempt, false);
+            return;
+        }
+        final int account = attempt.updater.account;
+        try {
+            if (error == null && response instanceof TLRPC.TL_photos_photo
+                    && ((TLRPC.TL_photos_photo) response).photo != null
+                    && attempt.requestOrder > appliedAvatarRequestOrder[account]) {
+                final MessagesController controller = MessagesController.getInstance(account);
+                final UserConfig config = UserConfig.getInstance(account);
+                TLRPC.User user = controller.getUser(attempt.updater.owner);
                         if (user == null) {
-                            user = getUserConfig().getCurrentUser();
-                            if (user == null) {
-                                return;
-                            }
-                            getMessagesController().putUser(user, false);
+                    user = config.getCurrentUser();
+                    if (user == null) return;
+                    controller.putUser(user, false);
                         } else {
-                            getUserConfig().setCurrentUser(user);
-                        }
-
-                        final TLRPC.TL_photos_photo photos_photo = (TLRPC.TL_photos_photo) response;
-                        final ArrayList<TLRPC.PhotoSize> sizes = photos_photo.photo.sizes;
-                        final TLRPC.PhotoSize small = FileLoader.getClosestPhotoSizeWithSize(sizes, 150);
-                        final TLRPC.PhotoSize big = FileLoader.getClosestPhotoSizeWithSize(sizes, 800);
-                        final TLRPC.VideoSize videoSize = photos_photo.photo.video_sizes.isEmpty() ? null : FileLoader.getClosestVideoSizeWithSize(photos_photo.photo.video_sizes, 1000);
+                    config.setCurrentUser(user);
+                }
+                if (user.id != attempt.updater.owner || !attempt.updater.accountCurrent()
+                        || attempt.requestOrder <= appliedAvatarRequestOrder[account]) return;
+                appliedAvatarRequestOrder[account] = attempt.requestOrder;
+                final TLRPC.TL_photos_photo photosPhoto = (TLRPC.TL_photos_photo) response;
+                final TLRPC.PhotoSize small = FileLoader.getClosestPhotoSizeWithSize(photosPhoto.photo.sizes, 150);
+                final TLRPC.PhotoSize big = FileLoader.getClosestPhotoSizeWithSize(photosPhoto.photo.sizes, 800);
+                final TLRPC.VideoSize videoSize = photosPhoto.photo.video_sizes == null || photosPhoto.photo.video_sizes.isEmpty()
+                        ? null : FileLoader.getClosestVideoSizeWithSize(photosPhoto.photo.video_sizes, 1000);
                         user.photo = new TLRPC.TL_userProfilePhoto();
-                        user.photo.photo_id = photos_photo.photo.id;
-                        if (small != null) {
-                            user.photo.photo_small = small.location;
-                        }
-                        if (big != null) {
-                            user.photo.photo_big = big.location;
-                        }
-
-                        if (small != null && avatar != null) {
-                            final File destFile = FileLoader.getInstance(currentAccount).getPathToAttach(small, true);
-                            final File src = FileLoader.getInstance(currentAccount).getPathToAttach(avatar, true);
-                            src.renameTo(destFile);
-                            final String oldKey = avatar.volume_id + "_" + avatar.local_id + "@90_90";
+                user.photo.photo_id = photosPhoto.photo.id;
+                if (small != null) user.photo.photo_small = small.location;
+                if (big != null) user.photo.photo_big = big.location;
+                if (small != null && small.location != null && files.smallPath != null) {
+                    new File(files.smallPath).renameTo(FileLoader.getInstance(account).getPathToAttach(small, true));
                             final String newKey = small.location.volume_id + "_" + small.location.local_id + "@90_90";
-                            ImageLoader.getInstance().replaceImageInCache(oldKey, newKey, ImageLocation.getForUserOrChat(currentAccount, user, ImageLocation.TYPE_SMALL), false);
-                        }
-
-                        if (videoSize != null && videoPath != null) {
-                            final File destFile = FileLoader.getInstance(currentAccount).getPathToAttach(videoSize, "mp4", true);
-                            final File src = new File(videoPath);
-                            src.renameTo(destFile);
-                        } else if (big != null && avatarBig != null) {
-                            final File destFile = FileLoader.getInstance(currentAccount).getPathToAttach(big, true);
-                            final File src = FileLoader.getInstance(currentAccount).getPathToAttach(avatarBig, true);
-                            src.renameTo(destFile);
-                        }
-                        getMessagesController().getDialogPhotos(user.id).addPhotoAtStart(((TLRPC.TL_photos_photo) response).photo);
+                    ImageLoader.getInstance().replaceImageInCache(files.smallKey, newKey,
+                            ImageLocation.getForUserOrChat(account, user, ImageLocation.TYPE_SMALL), false);
+                }
+                if (!ownsAppliedAvatarResult(attempt)) return;
+                if (videoSize != null && files.videoPath != null) {
+                    new File(files.videoPath).renameTo(FileLoader.getInstance(account).getPathToAttach(videoSize, "mp4", true));
+                } else if (big != null && files.bigPath != null) {
+                    new File(files.bigPath).renameTo(FileLoader.getInstance(account).getPathToAttach(big, true));
+                }
+                controller.getDialogPhotos(user.id).addPhotoAtStart(photosPhoto.photo);
+                if (!ownsAppliedAvatarResult(attempt)) return;
                         final ArrayList<TLRPC.User> users = new ArrayList<>();
                         users.add(user);
-                        getMessagesStorage().putUsersAndChats(users, null, false, true);
-                        final TLRPC.UserFull userFull = getMessagesController().getUserFull(getUserConfig().getClientUserId());
+                MessagesStorage.getInstance(account).putUsersAndChats(users, null, false, true);
+                final TLRPC.UserFull userFull = controller.getUserFull(attempt.updater.owner);
                         if (userFull != null) {
-                            userFull.profile_photo = photos_photo.photo;
-                            getMessagesStorage().updateUserInfo(userFull, false);
-                        }
-
-                        setInfo(user);
-                    }
-
-                    avatar = null;
-                    avatarBig = null;
-                    showAvatarProgress(false, true);
-                    getNotificationCenter().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_ALL);
-                    getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
-                    getUserConfig().saveConfig(true);
-                }));
-            } else {
-                avatar = smallSize.location;
-                avatarBig = bigSize.location;
-                avatarView.setImage(ImageLocation.getForLocal(avatar), "90_90", avatarDrawable, null);
-                showAvatarProgress(true, false);
+                    userFull.profile_photo = photosPhoto.photo;
+                    MessagesStorage.getInstance(account).updateUserInfo(userFull, false);
+                }
+                if (!ownsAppliedAvatarResult(attempt)) return;
+                config.saveConfig(true);
+                NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_ALL);
+                if (ownsAppliedAvatarResult(attempt)) {
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.mainUserInfoChanged);
+                }
             }
-            simpleActionBar.createMenu().requestLayout();
-        });
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            finishAvatarUpload(attempt, true);
+        }
+    }
+
+    private boolean ownsAppliedAvatarResult(AvatarUploadAttempt attempt) {
+        return attempt.updater.accountCurrent() && appliedAvatarRequestOrder[attempt.updater.account] == attempt.requestOrder;
     }
 
     private void showAvatarProgress(boolean show, boolean animated) {
-        if (avatarProgressView == null) {
-            return;
-        }
-        if (avatarAnimation != null) {
-            avatarAnimation.cancel();
-            avatarAnimation = null;
-        }
+        final RadialProgressView progressView = avatarProgressView;
+        if (progressView == null) return;
+        final long generation = avatarViewGeneration;
+        final AnimatorSet previous = avatarAnimation;
+        avatarAnimation = null;
+        if (previous != null) previous.cancel();
         if (animated) {
-            avatarAnimation = new AnimatorSet();
+            final AnimatorSet animator = new AnimatorSet();
+            avatarAnimation = animator;
             if (show) {
-                avatarProgressView.setVisibility(View.VISIBLE);
-                avatarAnimation.playTogether(ObjectAnimator.ofFloat(avatarProgressView, View.ALPHA, 1.0f));
+                progressView.setVisibility(View.VISIBLE);
+                animator.playTogether(ObjectAnimator.ofFloat(progressView, View.ALPHA, 1.0f));
             } else {
-                avatarAnimation.playTogether(ObjectAnimator.ofFloat(avatarProgressView, View.ALPHA, 0.0f));
+                animator.playTogether(ObjectAnimator.ofFloat(progressView, View.ALPHA, 0.0f));
             }
-            avatarAnimation.setDuration(180);
-            avatarAnimation.addListener(new AnimatorListenerAdapter() {
+            animator.setDuration(180);
+            animator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (avatarAnimation == null || avatarProgressView == null) {
+                    if (avatarAnimation != animator || avatarProgressView != progressView
+                            || generation != avatarViewGeneration) {
                         return;
                     }
-                    if (!show) {
-                        avatarProgressView.setVisibility(View.INVISIBLE);
-                    }
                     avatarAnimation = null;
+                    if (!show) {
+                        progressView.setVisibility(View.INVISIBLE);
+                    }
                 }
 
                 @Override
                 public void onAnimationCancel(Animator animation) {
-                    avatarAnimation = null;
+                    if (avatarAnimation == animator) avatarAnimation = null;
                 }
-            });
-            avatarAnimation.start();
+        });
+            animator.start();
         } else {
             if (show) {
-                avatarProgressView.setAlpha(1.0f);
-                avatarProgressView.setVisibility(View.VISIBLE);
+                progressView.setAlpha(1.0f);
+                progressView.setVisibility(View.VISIBLE);
             } else {
-                avatarProgressView.setAlpha(0.0f);
-                avatarProgressView.setVisibility(View.INVISIBLE);
+                progressView.setAlpha(0.0f);
+                progressView.setVisibility(View.INVISIBLE);
             }
         }
     }
 
     @Override
     public void onUploadProgressChanged(float progress) {
-        if (avatarProgressView == null) {
-            return;
-        }
-        avatarProgressView.setProgress(progress);
+        final SettingsAvatarUpdater updater = imageUpdater;
+        if (updater != null) updater.onUploadProgressChanged(progress);
     }
 
     @Override
     public void didStartUpload(boolean fromAvatarConstructor, boolean isVideo) {
-        if (avatarProgressView == null) {
-            return;
-        }
-        avatarProgressView.setProgress(0.0f);
+        final SettingsAvatarUpdater updater = imageUpdater;
+        if (updater != null) updater.didStartUpload(fromAvatarConstructor, isVideo);
+    }
+
+    @Override
+    public void didUploadFailed() {
+        final SettingsAvatarUpdater updater = imageUpdater;
+        if (updater != null) updater.didUploadFailed();
     }
 
 

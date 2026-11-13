@@ -98,6 +98,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.MenuOverlayHost;
 import org.telegram.ui.ActionBar.SimpleActionBarMenu;
 import org.telegram.ui.ActionBar.SimpleActionBarMenuOverlay;
+import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -575,6 +576,15 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
                 });
         }
 
+        final SimpleTextView titleView = simpleActionBar.getTitleTextView();
+        if (titleView != null) {
+            titleView.setBackground(getBaseSimpleGlass().factory.create(titleView)
+                .setColorProvider(BlurredBackgroundProviderImpl.simpleActionBar(getResourceProvider()))
+                .setRadius(dp(MAP_BUTTON_DP / 2f)));
+            final Paint.FontMetricsInt metrics = titleView.getTextPaint().getFontMetricsInt();
+            final int vertical = Math.max(0, (dp(MAP_BUTTON_DP) - (metrics.descent - metrics.ascent)) / 2);
+            titleView.setPadding(dp(18), vertical, dp(18), vertical);
+        }
         locationButton = new ImageView(context);
         setMapButtonGlass(locationButton);
         locationButton.setImageResource(R.drawable.msg_current_location);
@@ -604,9 +614,11 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
                 if (myLocation != null && map != null) {
                     ThemeBind.colorFilter(locationButton, Theme.key_location_actionActiveIcon, getResourceProvider(), PorterDuff.Mode.MULTIPLY);
                     locationButton.setTag(Theme.key_location_actionActiveIcon);
-                    adapter.setCustomLocation(null);
+                    final Location location = new Location(myLocation);
+                    userLocation = location;
                     userLocationMoved = false;
-                    map.animateCamera(ApplicationLoader.getMapsProvider().newCameraUpdateLatLng(new IMapsProvider.LatLng(myLocation.getLatitude(), myLocation.getLongitude())));
+                    adapter.setCustomLocation(null);
+                    map.animateCamera(ApplicationLoader.getMapsProvider().newCameraUpdateLatLng(new IMapsProvider.LatLng(location.getLatitude(), location.getLongitude())));
                 }
             }
         });

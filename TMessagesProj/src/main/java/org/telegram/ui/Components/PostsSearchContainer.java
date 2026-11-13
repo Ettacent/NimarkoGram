@@ -11,6 +11,8 @@ import static org.telegram.ui.DialogsActivity.highlightFoundQuote;
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
+import android.text.BidiFormatter;
+import android.text.Layout;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
@@ -133,7 +135,13 @@ public class PostsSearchContainer extends FrameLayout {
         emptyTextView.setEllipsize(TextUtils.TruncateAt.END);
         emptyView.addView(emptyTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 9, 0, 0));
 
-        emptyButton = new ButtonWithCounterView(context, null).setRound();
+        emptyButton = new ButtonWithCounterView(context, null) {
+            @Override
+            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+                if (queryButtonLabel) updateQueryButtonText();
+            }
+        }.setRound();
         emptyView.addView(emptyButton, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 44, Gravity.FILL_HORIZONTAL, 0, 19, 0, 0));
 
         emptyUnderButtonTextView = new TextView(context);
@@ -496,10 +504,64 @@ public class PostsSearchContainer extends FrameLayout {
     private ForegroundColorAlphaSpan colorSpan;
     private ColoredImageSpan[] starSpan = new ColoredImageSpan[1];
     private final Runnable updateEmptyViewRunnable = this::updateEmptyView;
+    private boolean queryButtonLabel;
+
+    private void setQueryButtonLabel(boolean active) {
+        if (queryButtonLabel == active) return;
+        queryButtonLabel = active;
+        emptyButton.text.setHacks(true, true, false, false, true);
+        if (!active) emptyButton.setText(null, false);
+    }
+
+    private void updateQueryButtonText() {
+        if (!queryButtonLabel) return;
+        final TextPaint paint = emptyButton.getTextPaint();
+        final float available = Math.max(0, emptyButton.getMeasuredWidth()
+                - emptyButton.getPaddingLeft() - emptyButton.getPaddingRight() - dp(24) - 2);
+        if (searchSpan == null) {
+            searchSpan = new ColoredImageSpan(R.drawable.smiles_tab_search);
+            searchSpan.setScale(.79f, .79f);
+            searchSpan.setWidth(searchSpan.drawable.getIntrinsicWidth() + 2);
+        }
+        if (arrowSpan == null) {
+            arrowSpan = new ColoredImageSpan(R.drawable.msg_mini_forumarrow);
+            arrowSpan.setScale(1.05f, 1.05f);
+            arrowSpan.setWidth(arrowSpan.drawable.getIntrinsicWidth() + 2);
+        }
+        if (colorSpan == null) {
+            colorSpan = new ForegroundColorAlphaSpan(Theme.blendOver(
+                    Theme.getColor(Theme.key_featuredStickers_addButton),
+                    Theme.multAlpha(Theme.getColor(Theme.key_featuredStickers_buttonText), .75f)));
+        }
+        final SpannableStringBuilder suffix = new SpannableStringBuilder(" >");
+        suffix.setSpan(arrowSpan, 1, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        final CharSequence fittedSuffix = TextUtils.ellipsize(suffix, paint, available, TextUtils.TruncateAt.END);
+        final float bodyWidth = Math.max(0, available - Layout.getDesiredWidth(fittedSuffix, paint));
+        final String query = lastQuery == null ? "" : lastQuery.replace('\n', ' ').replace('\r', ' ')
+                .replace('\t', ' ').replace('\u2028', ' ').replace('\u2029', ' ');
+        final float queryReserve = Math.min(Layout.getDesiredWidth(query, paint), paint.measureText("\u2026"));
+        final float gapWidth = paint.measureText(" ");
+        final SpannableStringBuilder prefix = new SpannableStringBuilder("s ");
+        prefix.setSpan(searchSpan, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        prefix.append(getString(R.string.SearchPostsButton));
+        final CharSequence fittedPrefix = TextUtils.ellipsize(prefix, paint,
+                Math.max(0, bodyWidth - queryReserve - gapWidth), TextUtils.TruncateAt.END);
+        final SpannableStringBuilder label = new SpannableStringBuilder(fittedPrefix);
+        if (label.length() > 0) label.append(" ");
+        final float queryWidth = Math.max(0, bodyWidth - Layout.getDesiredWidth(label, paint));
+        final int queryStart = label.length();
+        label.append(BidiFormatter.getInstance(false).unicodeWrap(
+                TextUtils.ellipsize(query, paint, queryWidth, TextUtils.TruncateAt.END).toString()));
+        if (label.length() > queryStart) label.setSpan(colorSpan, queryStart, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.append(fittedSuffix);
+        emptyButton.text.setText(null, false);
+        emptyButton.setText(label, false);
+    }
     private void updateEmptyView() {
         AndroidUtilities.cancelRunOnUIThread(updateEmptyViewRunnable);
         final int now = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
         if (!UserConfig.getInstance(currentAccount).isPremium()) {
+            setQueryButtonLabel(false);
             emptyImageView.setVisibility(View.GONE);
             emptyTitleView.setText(getString(R.string.SearchPostsTitle));
             emptyTextView.setText(getString(R.string.SearchPostsText));
@@ -515,6 +577,7 @@ public class PostsSearchContainer extends FrameLayout {
             emptyUnderButtonTextView.setVisibility(View.VISIBLE);
             emptyUnderButtonTextView.setText(getString(R.string.SearchPostsPremium));
         } else if (!TextUtils.isEmpty(lastQuery) && messages.isEmpty() && endReached) {
+            setQueryButtonLabel(false);
             if (emptyImageView.getImageReceiver().getImageDrawable() == null) {
                 emptyImageView.setImageDrawable(new RLottieDrawable(R.raw.utyan_empty, dp(130), dp(130)));
             }
@@ -524,6 +587,7 @@ public class PostsSearchContainer extends FrameLayout {
             emptyButton.setVisibility(View.GONE);
             emptyUnderButtonTextView.setVisibility(View.GONE);
         } else if (!TextUtils.isEmpty(lastQuery) && flood != null && (flood.flags & 2) != 0 && now < flood.wait_till) {
+            setQueryButtonLabel(false);
             emptyImageView.setVisibility(View.GONE);
             emptyTitleView.setText(getString(R.string.SearchPostsLimitReached));
             emptyTextView.setText(formatPluralStringComma("SearchPostsLimitReachedText", flood.total_daily));
@@ -545,39 +609,14 @@ public class PostsSearchContainer extends FrameLayout {
 
             emptyUnderButtonTextView.setVisibility(View.GONE);
         } else if (messages.isEmpty() && !loading && !TextUtils.isEmpty(lastQuery)) {
+            setQueryButtonLabel(true);
             emptyImageView.setVisibility(View.GONE);
             emptyTitleView.setText(getString(R.string.SearchPostsTitle));
             emptyTextView.setText(getString(R.string.SearchPostsText));
 
-            final SpannableStringBuilder sb = new SpannableStringBuilder("s ");
-            if (searchSpan == null) {
-                searchSpan = new ColoredImageSpan(R.drawable.smiles_tab_search);
-                searchSpan.setScale(.79f, .79f);
-            }
-            if (colorSpan == null) {
-                colorSpan = new ForegroundColorAlphaSpan(
-                    Theme.blendOver(
-                        Theme.getColor(Theme.key_featuredStickers_addButton),
-                        Theme.multAlpha(Theme.getColor(Theme.key_featuredStickers_buttonText), .75f)
-                    )
-                );
-            }
-            sb.setSpan(searchSpan, 0, 1, 0);
-            sb.append(getString(R.string.SearchPostsButton));
-            sb.append(" ");
-            int startIndex = sb.length();
-            sb.append(TextUtils.ellipsize(lastQuery, emptyButton.getTextPaint(), dp(100), TextUtils.TruncateAt.END));
-            sb.setSpan(colorSpan, startIndex, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            sb.append(" >");
-            if (arrowSpan == null) {
-                arrowSpan = new ColoredImageSpan(R.drawable.msg_mini_forumarrow);
-                arrowSpan.setScale(1.05f, 1.05f);
-            }
-            sb.setSpan(arrowSpan, sb.length() - 1, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
             emptyButton.setVisibility(View.VISIBLE);
-            emptyButton.setText(sb, true);
-            emptyButton.text.setHacks(false, true, false);
+            updateQueryButtonText();
             emptyButton.setSubText(null, true);
             emptyButton.setOnClickListener(v -> {
                 emptyButton.setLoading(true);
@@ -590,6 +629,7 @@ public class PostsSearchContainer extends FrameLayout {
                 emptyUnderButtonTextView.setVisibility(View.GONE);
             }
         } else                                                           {
+            setQueryButtonLabel(false);
             emptyImageView.setVisibility(View.GONE);
             emptyTitleView.setText(getString(R.string.SearchPostsTitle));
             emptyTextView.setText(getString(R.string.SearchPostsText));

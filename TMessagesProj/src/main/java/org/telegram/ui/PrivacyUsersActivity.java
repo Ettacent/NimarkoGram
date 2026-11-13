@@ -12,6 +12,9 @@ package org.telegram.ui;
 
 import org.telegram.messenger.FileLog;
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.View;
@@ -19,6 +22,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -31,6 +35,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -46,11 +51,13 @@ import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.EmptyTextProgressView;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ListContentReveal;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.util.ArrayList;
 
 import java.util.HashSet;
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class PrivacyUsersActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private RecyclerListView listView;
@@ -58,6 +65,136 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
     private ListAdapter listViewAdapter;
     private EmptyTextProgressView emptyView;
 
+    private final long presentationUserId = getUserConfig().getClientUserId();
+    private boolean blockedPresentationSettled, listPresentationReady, pendingNativeAppearance;
+    private final int presentationLoginTime = getUserConfig().loginTime;
+    private final Rect presentationVisibleRect = new Rect();
+    private static final int RETRY_BLOCKED = 1;
+    private ActionBarMenuItem retryItem;
+
+    private boolean publishBlockedPresentation(boolean wasVisible) {
+        if (currentType != TYPE_BLOCKED || blockedPresentationSettled || getMessagesController().totalBlockedCount < 0) return false;
+        blockedPresentationSettled = true;
+        return wasVisible && getMessagesController().blockePeers.size() > 0;
+    }
+
+    private void wakeListPresentation() {
+        if (listView instanceof MemberListView) ((MemberListView) listView).wakePresentation();
+    }
+
+    private boolean canAnimateListPresentation() {
+        if (!(listView instanceof MemberListView) || ((MemberListView) listView).captureDepth != 0
+                || isFinished || presentationUserId == 0 || presentationUserId != getUserConfig().getClientUserId()
+                || presentationLoginTime != getUserConfig().loginTime || !listPresentationReady
+                || isPaused || inTransitionAnimation || !isLastFragment()
+                || parentLayout != null && (parentLayout.isSwipeInProgress() || parentLayout.isTransitionAnimationInProgress())
+                || UiAnimationClock.isPaused() || !ListContentReveal.isMotionEnabled()) return false;
+        View source = rowCount == 0 ? fragmentView : listView;
+        if (source == null || !source.isAttachedToWindow() || !source.isShown() || !source.hasWindowFocus()
+                || source.getWindowVisibility() != View.VISIBLE || source.getWidth() <= 0 || source.getHeight() <= 0
+                || !source.getLocalVisibleRect(presentationVisibleRect)) return false;
+        for (View view = source; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != View.VISIBLE || view.getAlpha() < 1f) return false;
+        }
+        return true;
+    }
+
+    private void configureListAnimator(final RecyclerListView owner) {
+        DefaultItemAnimator animator = new DefaultItemAnimator() {
+            private final long normalAdd = getAddDuration(), normalRemove = getRemoveDuration(),
+                    normalMove = getMoveDuration(), normalChange = getChangeDuration();
+            @Override public void runPendingAnimations() {
+                boolean appearance = owner == listView && pendingNativeAppearance;
+                if (owner == listView) pendingNativeAppearance = false;
+                setAddDuration(appearance ? 180 : normalAdd);
+                setRemoveDuration(appearance ? 180 : normalRemove);
+                setMoveDuration(appearance ? 180 : normalMove);
+                setChangeDuration(appearance ? 180 : normalChange);
+                setDelayAnimations(!appearance);
+                if (owner != listView || !canAnimateListPresentation()) {
+                    endAnimations();
+                    return;
+                }
+                super.runPendingAnimations();
+            }
+            @Override public void endAnimations() {
+                super.endAnimations();
+                if (owner == listView) {
+                    pendingNativeAppearance = false;
+                    owner.invalidate();
+                }
+            }
+            @Override protected void onAllAnimationsDone() {
+                super.onAllAnimationsDone();
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onAddAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onAddAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onRemoveAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onRemoveAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onMoveAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onMoveAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onChangeAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onChangeAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+        };
+
+        owner.setItemAnimator(animator);
+    }
+
+    private class MemberListView extends RecyclerListView {
+        private int captureDepth;
+        private final Runnable presentationWake = this::wakePresentation;
+
+        MemberListView(Context context) { super(context); }
+
+        private void wakePresentation() {
+            if (currentType != TYPE_BLOCKED) return;
+            if (this != listView || captureDepth != 0) return;
+            if (!canAnimateListPresentation() && getItemAnimator() != null) getItemAnimator().endAnimations();
+            invalidate();
+        }
+
+        @Override protected void dispatchDraw(Canvas canvas) {
+            if (currentType != TYPE_BLOCKED) { super.dispatchDraw(canvas); return; }
+            if (captureDepth == 0 && (!canvas.isHardwareAccelerated() || !canAnimateListPresentation())
+                    && getItemAnimator() != null && getItemAnimator().isRunning()) getItemAnimator().endAnimations();
+            super.dispatchDraw(canvas);
+        }
+
+        @Override public void capture(Canvas canvas, RectF position) {
+            captureDepth++;
+            try { super.capture(canvas, position); } finally { captureDepth--; }
+        }
+
+        @Override protected void captureChildren(Canvas canvas, RectF position, long drawingTime) {
+            captureDepth++;
+            try { super.captureChildren(canvas, position, drawingTime); } finally { captureDepth--; }
+        }
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            UiAnimationClock.setResumeCallback(presentationWake, true);
+            wakePresentation();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            UiAnimationClock.setResumeCallback(presentationWake, false);
+            if (currentType == TYPE_BLOCKED && this == listView && getItemAnimator() != null) getItemAnimator().endAnimations();
+            super.onDetachedFromWindow();
+        }
+
+        @Override public void onWindowFocusChanged(boolean focused) { super.onWindowFocusChanged(focused); wakePresentation(); }
+        @Override protected void onWindowVisibilityChanged(int visibility) { super.onWindowVisibilityChanged(visibility); wakePresentation(); }
+        @Override protected void onVisibilityChanged(View changedView, int visibility) { super.onVisibilityChanged(changedView, visibility); wakePresentation(); }
+    }
     private int rowCount;
     private int blockUserRow;
     private int blockUserDetailRow;
@@ -118,6 +255,9 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
 
     @Override
     public void onFragmentDestroy() {
+        pendingNativeAppearance = false;
+        if (listView != null && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
+        if (listView != null) listView.invalidate();
         super.onFragmentDestroy();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.updateInterfaces);
         if (currentType == TYPE_BLOCKED) {
@@ -162,21 +302,32 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
             public void onItemClick(int id) {
                 if (id == -1) {
                     finishFragment();
+                } else if (id == RETRY_BLOCKED && currentType == TYPE_BLOCKED && !isFinished
+                        && presentationUserId == getUserConfig().getClientUserId()
+                        && presentationLoginTime == getUserConfig().loginTime
+                        && getMessagesController().totalBlockedCount < 0 && !getMessagesController().loadingBlockedPeers) {
+                    getMessagesController().getBlockedPeers(true);
+                    updateBlockedLoadState();
                 }
             }
         });
 
+        if (currentType == TYPE_BLOCKED) {
+            retryItem = simpleActionBar.createMenu().addItem(RETRY_BLOCKED, LocaleController.getString(R.string.Retry));
+            retryItem.setVisibility(View.GONE);
+        }
         fragmentView = new FrameLayout(context);
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
-        emptyView = new EmptyTextProgressView(context);
+        emptyView = currentType == TYPE_BLOCKED
+                ? new EmptyTextProgressView(context, new View(context)) : new EmptyTextProgressView(context);
         if (currentType == TYPE_BLOCKED) {
             emptyView.setText(LocaleController.getString(R.string.NoBlocked));
         } else {
             emptyView.setText(LocaleController.getString(R.string.NoContacts));
         }
 
-        listView = new RecyclerListView(context);
+        listView = new MemberListView(context);
         listView.setSections();
         listView.setItemSelectorColorProvider(position -> {
             if (position == deleteAllRow) {
@@ -189,6 +340,7 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
         listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
         listView.setVerticalScrollBarEnabled(false);
         listView.setAdapter(listViewAdapter = new ListAdapter(context));
+        if (currentType == TYPE_BLOCKED) configureListAnimator(listView);
         listView.setVerticalScrollbarPosition(LocaleController.isRTL ? RecyclerListView.SCROLLBAR_POSITION_LEFT : RecyclerListView.SCROLLBAR_POSITION_RIGHT);
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
@@ -285,11 +437,7 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
                 }
             });
 
-            if (getMessagesController().totalBlockedCount < 0) {
-                emptyView.showProgress();
-            } else {
-                emptyView.showTextView();
-            }
+            updateBlockedLoadState();
         }
 
         updateRows();
@@ -321,8 +469,26 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
             .show();
     }
 
+    private void updateBlockedLoadState() {
+        if (currentType != TYPE_BLOCKED || emptyView == null || listView == null) return;
+        boolean unknown = getMessagesController().totalBlockedCount < 0;
+        boolean failed = unknown && !getMessagesController().loadingBlockedPeers;
+        if (retryItem != null) retryItem.setVisibility(failed ? View.VISIBLE : View.GONE);
+        if (unknown && !failed) {
+            listView.setEmptyView(null);
+            emptyView.setVisibility(View.GONE);
+        } else {
+            emptyView.setText(failed ? LocaleController.getString(R.string.ErrorOccurred) + System.lineSeparator() + LocaleController.getString(R.string.TryAgain)
+                    : LocaleController.getString(R.string.NoBlocked));
+            emptyView.showTextView();
+            listView.setEmptyView(emptyView);
+        }
+    }
     private void updateRows() {
+        final int previousRows = rowCount;
+        final boolean wasVisible = currentType == TYPE_BLOCKED && canAnimateListPresentation();
         rowCount = 0;
+        usersStartRow = usersEndRow = usersDetailRow = -1;
         blockUserRow = -1;
         usersHeaderRow = -1;
         blockUserDetailRow = -1;
@@ -361,7 +527,15 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
 
         }
         if (listViewAdapter != null) {
+            boolean appearance = publishBlockedPresentation(wasVisible) && previousRows == 0;
+            updateBlockedLoadState();
+            if (appearance) {
+                pendingNativeAppearance = true;
+                listViewAdapter.notifyItemRangeInserted(0, rowCount);
+            } else {
+                if (currentType == TYPE_BLOCKED && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
             listViewAdapter.notifyDataSetChanged();
+            }
         }
     }
 
@@ -372,8 +546,7 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
             if ((mask & MessagesController.UPDATE_MASK_AVATAR) != 0 || (mask & MessagesController.UPDATE_MASK_NAME) != 0) {
                 updateVisibleRows(mask);
             }
-        } else if (id == NotificationCenter.blockedUsersDidLoad) {
-            emptyView.showTextView();
+        } else if (id == NotificationCenter.blockedUsersDidLoad && currentType == TYPE_BLOCKED) {
             updateRows();
         }
     }
@@ -394,9 +567,46 @@ public class PrivacyUsersActivity extends BaseFragment implements NotificationCe
     @Override
     public void onResume() {
         super.onResume();
+        wakeListPresentation();
         if (listViewAdapter != null) {
             listViewAdapter.notifyDataSetChanged();
         }
+    }
+
+    @Override public void onPause() {
+        if (listView != null && listView.getItemAnimator() != null && currentType == TYPE_BLOCKED) listView.getItemAnimator().endAnimations();
+        super.onPause();
+    }
+
+    @Override
+    public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
+        super.prepareFragmentToSlide(topFragment, beginSlide);
+        if (listView != null && currentType == TYPE_BLOCKED && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
+        if (topFragment && !beginSlide) wakeListPresentation();
+    }
+
+    @Override public void onTransitionAnimationStart(boolean isOpen, boolean backward) {
+        listPresentationReady = false;
+        if (listView != null && currentType == TYPE_BLOCKED && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
+        super.onTransitionAnimationStart(isOpen, backward);
+    }
+
+    @Override public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
+        super.onTransitionAnimationEnd(isOpen, backward);
+        listPresentationReady = isOpen;
+        wakeListPresentation();
+    }
+
+    @Override public void onBecomeFullyVisible() {
+        super.onBecomeFullyVisible();
+        listPresentationReady = true;
+        wakeListPresentation();
+    }
+
+    @Override public void onBecomeFullyHidden() {
+        listPresentationReady = false;
+        if (listView != null && currentType == TYPE_BLOCKED && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
+        super.onBecomeFullyHidden();
     }
 
     private class ListAdapter extends RecyclerListView.SelectionAdapter {

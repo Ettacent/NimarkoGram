@@ -241,6 +241,80 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
     public float bubblesOffset;
     private float miniBubblesOffset;
 
+    private boolean reactionPreferencesAttached;
+    private boolean reactionPreferencesBound;
+    private boolean reactionPreferencesUsesCache;
+    private int reactionPreferencesAccount = -1;
+    private long reactionPreferencesGeneration = -1;
+    private long reactionPreferencesBinding;
+
+    private void bindReactionPreferenceObserver() {
+        if (!reactionPreferencesAttached || !reactionPreferencesBound || !reactionPreferencesUsesCache || type == TYPE_MESSAGE_EFFECTS) return;
+        if (reactionPreferencesAccount >= 0) {
+            NotificationCenter.getInstance(reactionPreferencesAccount).removeObserver(this, NotificationCenter.reactionPreferencesUpdated);
+        }
+        reactionPreferencesAccount = currentAccount;
+        reactionPreferencesGeneration = MediaDataController.getInstance(currentAccount).getMediaPreferencesGeneration();
+        NotificationCenter.getInstance(reactionPreferencesAccount).addWeakObserver(this, NotificationCenter.reactionPreferencesUpdated);
+        refreshReactionPreferences();
+    }
+
+    private boolean currentReactionPreferenceView(long binding) {
+        return reactionPreferencesAttached && reactionPreferencesBound && binding == reactionPreferencesBinding
+                && reactionPreferencesAccount == currentAccount
+                && reactionPreferencesGeneration == MediaDataController.getInstance(currentAccount).getMediaPreferencesGeneration();
+    }
+
+    private static final class ReactionPreferenceScroll {
+        final RecyclerView.LayoutManager manager;
+        final android.os.Parcelable state;
+        ReactionPreferenceScroll(RecyclerView view) {
+            manager = view == null ? null : view.getLayoutManager();
+            state = manager == null ? null : manager.onSaveInstanceState();
+        }
+        void restore() {
+            if (manager != null && state != null) manager.onRestoreInstanceState(state);
+        }
+    }
+
+    private void refreshReactionPreferences() {
+        final long binding = reactionPreferencesBinding;
+        if (!currentReactionPreferenceView(binding) || !reactionPreferencesUsesCache
+                || getVisibility() != View.VISIBLE || !isShown() || getAlpha() <= 0
+                || type == TYPE_MESSAGE_EFFECTS || type == TYPE_STICKER_SET_EMOJI) return;
+        List<ReactionsLayoutInBubble.VisibleReaction> next = new ArrayList<>();
+        if (hasStar) next.add(ReactionsLayoutInBubble.VisibleReaction.asStar());
+        fillRecentReactionsList(next);
+        filterReactions(next);
+        if (!currentReactionPreferenceView(binding)) return;
+        boolean expandable = !hitLimit && (!allReactionsAvailable && next.size() > 16
+                || allReactionsAvailable && !UserConfig.getInstance(currentAccount).isPremium()
+                && MessagesController.getInstance(currentAccount).premiumFeaturesBlocked());
+        if (type == TYPE_TAGS && !UserConfig.getInstance(currentAccount).isPremium()) expandable = false;
+        if (allReactionsList.equals(next) && showExpandableReactions == expandable) return;
+        ReactionPreferenceScroll strip = new ReactionPreferenceScroll(recyclerListView);
+        showExpandableReactions = expandable;
+        setVisibleReactionsList(next, false);
+        if (!currentReactionPreferenceView(binding)) return;
+        strip.restore();
+        CustomEmojiReactionsWindow window = reactionsWindow;
+        if (window == null || !window.isShowing()) return;
+        org.telegram.ui.SelectAnimatedEmojiDialog dialog = window.getSelectAnimatedEmojiDialog();
+        if (dialog == null || !currentReactionPreferenceView(binding)) return;
+        ReactionPreferenceScroll normal = new ReactionPreferenceScroll(dialog.emojiGridView);
+        ReactionPreferenceScroll search = new ReactionPreferenceScroll(dialog.emojiSearchGridView);
+        boolean scrolled = dialog.emojiGridView.scrolledByUserOnce;
+        dialog.emojiGridView.scrolledByUserOnce = true;
+        try {
+            window.setRecentReactions(next);
+        } finally {
+            if (currentReactionPreferenceView(binding) && reactionsWindow == window && window.isShowing()) {
+                dialog.emojiGridView.scrolledByUserOnce = scrolled;
+                normal.restore();
+                search.restore();
+            }
+        }
+    }
     public ReactionsContainerLayout(int type, BaseFragment fragment, @NonNull Context context, int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.type = type;
@@ -1146,6 +1220,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
     }
 
     public void setMessage(MessageObject message, TLRPC.ChatFull chatFull, boolean animated) {
+        ++reactionPreferencesBinding;
+        reactionPreferencesBound = true;
+        reactionPreferencesUsesCache = false;
         this.messageObject = message;
         int chosenCount = 0;
         if (messageObject != null && messageObject.messageOwner != null && messageObject.messageOwner.reactions != null) {
@@ -1171,6 +1248,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         hasStar = false;
         if (type == TYPE_TAGS) {
             allReactionsAvailable = UserConfig.getInstance(currentAccount).isPremium();
+            reactionPreferencesUsesCache = true;
             fillRecentReactionsList(visibleReactions);
         } else if (type == TYPE_MESSAGE_EFFECTS) {
             allReactionsAvailable = true;
@@ -1196,6 +1274,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                 } else {
                     allReactionsAvailable = false;
                 }
+                reactionPreferencesUsesCache = allReactionsAvailable;
                 fillRecentReactionsList(visibleReactions);
             } else if (reactionsChat.available_reactions instanceof TLRPC.TL_chatReactionsSome) {
                 TLRPC.TL_chatReactionsSome reactionsSome = (TLRPC.TL_chatReactionsSome) reactionsChat.available_reactions;
@@ -1213,6 +1292,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             }
         } else {
             allReactionsAvailable = true;
+            reactionPreferencesUsesCache = true;
             fillRecentReactionsList(visibleReactions);
         }
         filterReactions(visibleReactions);
@@ -1232,9 +1312,14 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                 }
             }
         }
+        if (reactionPreferencesAttached && (reactionPreferencesAccount != currentAccount
+                || reactionPreferencesGeneration != MediaDataController.getInstance(currentAccount).getMediaPreferencesGeneration())) {
+            bindReactionPreferenceObserver();
+        }
     }
 
     public void setStoryItem(TL_stories.StoryItem storyItem) {
+        ++reactionPreferencesBinding;
         selectedReactions.clear();
         if (storyItem != null && storyItem.sent_reaction != null) {
             selectedReactions.add(ReactionsLayoutInBubble.VisibleReaction.fromTL(storyItem.sent_reaction));
@@ -1244,6 +1329,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
 
     public void setSelectedReaction(ReactionsLayoutInBubble.VisibleReaction visibleReaction) {
+        ++reactionPreferencesBinding;
         selectedReactions.clear();
         if (visibleReaction != null) {
             selectedReactions.add(visibleReaction);
@@ -1688,7 +1774,12 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
     }
 
     public void setCurrentAccount(int currentAccount) {
+        if (this.currentAccount == currentAccount) return;
         this.currentAccount = currentAccount;
+        ++reactionPreferencesBinding;
+        reactionPreferencesBound = false;
+        if (reactionPreferencesAccount >= 0) NotificationCenter.getInstance(reactionPreferencesAccount).removeObserver(this, NotificationCenter.reactionPreferencesUpdated);
+        reactionPreferencesAccount = -1;
     }
 
     public void setFragment(BaseFragment lastFragment) {
@@ -2419,16 +2510,21 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        reactionPreferencesAttached = true;
         NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatInfoDidLoad);
         if (type == TYPE_MESSAGE_EFFECTS) {
             NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.availableEffectsUpdate);
         }
+        bindReactionPreferenceObserver();
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        reactionPreferencesAttached = false;
+        if (reactionPreferencesAccount >= 0) NotificationCenter.getInstance(reactionPreferencesAccount).removeObserver(this, NotificationCenter.reactionPreferencesUpdated);
+        reactionPreferencesAccount = -1;
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.chatInfoDidLoad);
         if (type == TYPE_MESSAGE_EFFECTS) {
@@ -2438,7 +2534,12 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.chatInfoDidLoad) {
+        if (id == NotificationCenter.reactionPreferencesUpdated) {
+            if (account != currentAccount || account != reactionPreferencesAccount || args.length < 2
+                    || (long) args[0] != reactionPreferencesGeneration) return;
+            int mask = (int) args[1];
+            if ((mask & (type == TYPE_TAGS ? 4 : 3)) != 0) refreshReactionPreferences();
+        } else if (id == NotificationCenter.chatInfoDidLoad) {
             TLRPC.ChatFull chatFull = (TLRPC.ChatFull) args[0];
             if (chatFull.id == waitingLoadingChatId && getVisibility() != View.VISIBLE && !(chatFull.available_reactions instanceof TLRPC.TL_chatReactionsNone)) {
                 setMessage(messageObject, null, true);
@@ -2462,6 +2563,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
     @Override
     public void setAlpha(float alpha) {
+        boolean becomingVisible = getAlpha() == 0 && alpha > 0;
         if (getAlpha() != alpha && alpha == 0) {
             lastVisibleViews.clear();
             for (int i = 0; i < recyclerListView.getChildCount(); i++) {
@@ -2472,6 +2574,13 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             }
         }
         super.setAlpha(alpha);
+        if (becomingVisible) refreshReactionPreferences();
+    }
+
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility == View.VISIBLE) refreshReactionPreferences();
     }
 
     @Override

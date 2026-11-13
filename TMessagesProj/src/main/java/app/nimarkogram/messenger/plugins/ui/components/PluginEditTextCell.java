@@ -10,11 +10,9 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.View;
 
-import com.chaquo.python.PyObject;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.EditTextCell;
 import org.telegram.ui.Components.UItem;
@@ -22,6 +20,7 @@ import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -38,11 +37,16 @@ public class PluginEditTextCell extends EditTextCell
     private static final int SAVE_DEBOUNCE_MS = 750;
     private EditTextSetting currentSetting;
     private PluginsController.PluginRuntimeToken ownedRuntimeToken;
+    private PluginsController.PluginSettingsUiSource settingsUiSource;
+    private PluginsController.PluginSettingsUiEdit pendingEdit;
+    private PluginsController.PluginSettingsUiEdit latestEdit;
     private Runnable pendingSaveRunnable;
     private String pluginId;
     private final TextWatcher saveTextWatcher;
     private String valueToSave;
 
+    private long boundResetRevision = -1;
+    private long editedRevision = -1;
     public PluginEditTextCell(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context, null, false, false, -1, resourcesProvider);
         setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider));
@@ -70,68 +74,45 @@ public class PluginEditTextCell extends EditTextCell
         if (runnable != null) {
             AndroidUtilities.cancelRunOnUIThread(runnable);
         }
-        final EditTextSetting editTextSetting = this.currentSetting;
-        final String key = editTextSetting != null ? editTextSetting.key : null;
         final String value = this.valueToSave;
-        final String pId = this.pluginId;
-        
-        if (key == null || pId == null) {
+        final PluginsController.PluginSettingsUiEdit edit = PluginsController.getInstance()
+                .capturePluginSettingsUiEdit(settingsUiSource, currentSetting);
+        pendingEdit = edit;
+        latestEdit = edit;
+        if (edit == null) {
+            pendingSaveRunnable = null;
             return;
         }
-        
-        Runnable runnable2 = () -> onSaveDebounce(editTextSetting, value, pId, key);
+        editedRevision = edit.getRevision();
+        Runnable runnable2 = () -> onSaveDebounce(edit, value);
         this.pendingSaveRunnable = runnable2;
         AndroidUtilities.runOnUIThread(runnable2, SAVE_DEBOUNCE_MS);
     }
 
-    private void onSaveDebounce(final EditTextSetting editTextSetting, final String value, final String pId, final String key) {
+    private void onSaveDebounce(PluginsController.PluginSettingsUiEdit edit, String value) {
+        if (pendingEdit != edit) return;
         this.pendingSaveRunnable = null;
-        Utilities.pluginsQueue.postRunnable(() -> performSave(editTextSetting, value, pId, key));
+        pendingEdit = null;
+        performSave(edit, value);
     }
 
-    private void performSave(EditTextSetting editTextSetting, String value, String pId, String key) {
+    private void performSave(PluginsController.PluginSettingsUiEdit edit, String value) {
         PluginsController controller = PluginsController.getInstance();
-        PluginsController.PluginRuntimeToken token = editTextSetting.runtimeToken;
-        
-        boolean entered = token != null
-                && controller.getPluginRuntimeTaskDecision(token)
-                        == PluginsController.RUNTIME_TASK_RUN
-                && controller.enterPluginRuntime(token);
-        if (!entered) {
-            return;
-        }
-        controller.getWatchdog().onPluginExecutionStarted(pId);
+        controller.applyPluginSettingsUiEdit(edit, value, result -> {
+            if (result != PluginsController.PluginSettingsUiResult.APPLIED || latestEdit != edit
+                    || !isAttachedToWindow() || !controller.isPluginSettingsUiEditCurrent(edit)
+                    || currentSetting == null || pluginId == null) return;
+            String saved = controller.getPluginSettingString(pluginId, currentSetting.key, currentSetting.defaultValue);
+            if (!TextUtils.equals(saved, editText.getText().toString())) {
+                setWatchersEnabled(false);
         try {
-            if (editTextSetting.maxLength > 0 && value.length() > editTextSetting.maxLength) {
-                controller.setPluginSetting(pId, key,
-                        value.substring(0, editTextSetting.maxLength));
-            } else {
-                controller.setPluginSetting(pId, key, value);
-            }
-            PyObject callback = editTextSetting.onChangeCallback;
-            if (callback != null) {
-                callback.call(value);
-            }
-        } catch (Throwable failure) {
-            controller.getWatchdog().onPluginExecutionFailed(
-                    pId, failure);
-            FileLog.e("Error executing on_change callback for " + pId + "/" + key,
-                    failure);
-            if (failure instanceof VirtualMachineError) {
-                throw (VirtualMachineError) failure;
-            }
-            if (failure instanceof ThreadDeath) {
-                throw (ThreadDeath) failure;
-            }
-            if (failure instanceof LinkageError) {
-                throw (LinkageError) failure;
-            }
+                    setText(saved);
+                    valueToSave = saved;
         } finally {
-            controller.getWatchdog().onPluginExecutionFinished(pId);
-            if (token != null) {
-                controller.exitPluginRuntime(token);
+                    setWatchersEnabled(true);
+                }
             }
-        }
+        });
     }
 
     @Override
@@ -161,6 +142,8 @@ public class PluginEditTextCell extends EditTextCell
     private void dropPendingSave() {
         Runnable runnable = pendingSaveRunnable;
         pendingSaveRunnable = null;
+        pendingEdit = null;
+        latestEdit = null;
         if (runnable != null) {
             AndroidUtilities.cancelRunOnUIThread(runnable);
         }
@@ -178,11 +161,23 @@ public class PluginEditTextCell extends EditTextCell
         pluginId = null;
         valueToSave = null;
         ownedRuntimeToken = null;
+        settingsUiSource = null;
+        boundResetRevision = editedRevision = -1;
     }
 
     public void bind(String pId, EditTextSetting editTextSetting) {
+        bind(pId, editTextSetting, null);
+    }
+
+    public void bind(String pId, EditTextSetting editTextSetting,
+            PluginsController.PluginSettingsUiSource source) {
+        if (editTextSetting == null) return;
+        PluginsController controller = PluginsController.getInstance();
         PluginsController.PluginRuntimeToken newToken =
-                editTextSetting != null ? editTextSetting.runtimeToken : null;
+                editTextSetting.runtimeToken;
+        PluginsController.PluginSettingsUiSource nextSource = source != null ? source
+                : controller.createPluginSettingsUiSource(pId, newToken,
+                        Collections.singletonList(editTextSetting), null);
         if (!Objects.equals(ownedRuntimeToken, newToken)) {
             PluginsController.PluginRuntimeToken oldToken =
                     ownedRuntimeToken;
@@ -193,6 +188,7 @@ public class PluginEditTextCell extends EditTextCell
             dropPendingSave();
             currentSetting = null;
             pluginId = null;
+            boundResetRevision = editedRevision = -1;
             ownedRuntimeToken = newToken;
             if (newToken == null
                     || !PluginUiRegistry.registerRuntimeOwnedUi(
@@ -202,12 +198,21 @@ public class PluginEditTextCell extends EditTextCell
             }
         }
         EditTextSetting oldSetting = this.currentSetting;
-        boolean sameSetting = oldSetting != null && TextUtils.equals(oldSetting.key, editTextSetting.key);
+        boolean sameSetting = oldSetting != null && TextUtils.equals(oldSetting.key, editTextSetting.key)
+                && TextUtils.equals(pluginId, pId) && (settingsUiSource == nextSource || source == null);
         if (!sameSetting) {
             flushPendingSave();
+            editedRevision = -1;
+            latestEdit = null;
         }
         this.pluginId = pId;
         this.currentSetting = editTextSetting;
+        this.settingsUiSource = nextSource;
+        long revision = controller.getPluginSettingsUiRevision(pId);
+        long completedReset = controller.getCompletedPluginSettingsUiResetRevision(pId);
+        if (pendingEdit != null && !controller.isPluginSettingsUiEditCurrent(pendingEdit)) dropPendingSave();
+        boolean preserveInput = sameSetting && (boundResetRevision == completedReset || editedRevision == revision);
+        boundResetRevision = completedReset;
         setWatchersEnabled(false);
         setMultiline(editTextSetting.multiline);
         int inputType = (editTextSetting.multiline ? 131072 : 0) | 573441;
@@ -233,10 +238,10 @@ public class PluginEditTextCell extends EditTextCell
         } else {
             this.editText.setFilters(new InputFilter[0]);
         }
-        
+
         String pluginSettingString = PluginsController.getInstance().getPluginSettingString(pId, editTextSetting.key, editTextSetting.defaultValue);
         if (!TextUtils.equals(pluginSettingString, this.editText.getText().toString())) {
-            if (this.editText.hasFocus() && sameSetting) {
+            if (this.editText.hasFocus() && preserveInput) {
                 setWatchersEnabled(true);
                 return;
             }
@@ -293,7 +298,9 @@ public class PluginEditTextCell extends EditTextCell
                     EditTextSetting editTextSetting = (EditTextSetting) settingItem;
                     Plugin plugin = uItem.plugin;
                     if (plugin != null) {
-                        pluginEditTextCell.bind(plugin.getId(), editTextSetting);
+                        PluginsController.PluginSettingsUiSource source = uItem.object instanceof PluginsController.PluginSettingsUiSource
+                                ? (PluginsController.PluginSettingsUiSource) uItem.object : null;
+                        pluginEditTextCell.bind(plugin.getId(), editTextSetting, source);
                         pluginEditTextCell.setDivider(z);
                     }
                 }
@@ -301,9 +308,15 @@ public class PluginEditTextCell extends EditTextCell
         }
 
         public static UItem as(Plugin plugin, EditTextSetting editTextSetting) {
+            return as(plugin, editTextSetting, null);
+        }
+
+        public static UItem as(Plugin plugin, EditTextSetting editTextSetting,
+                PluginsController.PluginSettingsUiSource source) {
             UItem uItemOfFactory = UItem.ofFactory(Factory.class);
             uItemOfFactory.plugin = plugin;
             uItemOfFactory.settingItem = editTextSetting;
+            uItemOfFactory.object = source;
             return uItemOfFactory;
         }
     }

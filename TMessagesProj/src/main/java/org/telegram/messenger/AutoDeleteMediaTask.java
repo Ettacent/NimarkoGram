@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import static org.telegram.messenger.CacheByChatsController.KEEP_MEDIA_TYPE_STORIES;
@@ -9,6 +11,7 @@ import android.util.SparseArray;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,6 +19,35 @@ public class AutoDeleteMediaTask {
 
     public static Set<String> usingFilePaths = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
+    private static final ConcurrentHashMap<String, Set<Object>> fileOwners = new ConcurrentHashMap<>();
+    private static final Object[] pathLocks = new Object[64];
+
+    static {
+        for (int i = 0; i < pathLocks.length; i++) pathLocks[i] = new Object();
+    }
+
+    private static Object pathLock(String path) {
+        return pathLocks[path.hashCode() & (pathLocks.length - 1)];
+    }
+
+    private static boolean isInUse(String path) {
+        return usingFilePaths.contains(path) || fileOwners.containsKey(path);
+    }
+
+    public static boolean deleteIfUnused(File file) {
+        final String path = file.getAbsolutePath();
+        synchronized (pathLock(path)) {
+            return !isInUse(path) && file.delete();
+        }
+    }
+
+    public static void protectPersistedVoiceDraftFiles() {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            if (UserConfig.getInstance(account).isClientActivated()) {
+                MediaDataController.getInstance(account).loadDraftVoiceMessages();
+            }
+        }
+    }
     public static void run() {
         int time = (int) (System.currentTimeMillis() / 1000);
         if (Math.abs(time - SharedConfig.lastKeepMediaCheckTime) < 24 * 60 * 60) {
@@ -25,6 +57,7 @@ public class AutoDeleteMediaTask {
         File cacheDir = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE);
 
         Utilities.cacheClearQueue.postRunnable(() -> {
+            protectPersistedVoiceDraftFiles();
             long startTime = System.currentTimeMillis();
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("checkKeepMedia start task");
@@ -81,7 +114,7 @@ public class AutoDeleteMediaTask {
                         ArrayList<CacheByChatsController.KeepMediaFile> keepMediaFiles = new ArrayList<>();
                         if (files != null) {
                             for (int i = 0; i < files.length; i++) {
-                                if (files[i].isDirectory() || usingFilePaths.contains(files[i].getAbsolutePath())) {
+                                if (files[i].isDirectory() || isInUse(files[i].getAbsolutePath())) {
                                     continue;
                                 }
                                 keepMediaFiles.add(new CacheByChatsController.KeepMediaFile(files[i]));
@@ -117,17 +150,18 @@ public class AutoDeleteMediaTask {
                                 timeLocal = time - seconds;
                             }
                             long lastUsageTime = Utilities.getLastUsageFileTime(file.file.getAbsolutePath());
-                            boolean needDelete = lastUsageTime > 316000000 && lastUsageTime < timeLocal && !usingFilePaths.contains(file.file.getPath());
+                            boolean needDelete = lastUsageTime > 316000000 && lastUsageTime < timeLocal;
                             if (needDelete) {
                                 try {
+                                    final long size = BuildVars.LOGS_ENABLED ? file.file.length() : 0;
+                                    if (!deleteIfUnused(file.file)) continue;
                                     if (BuildVars.LOGS_ENABLED) {
                                         autoDeletedFiles++;
-                                        autoDeletedFilesSize += file.file.length();
+                                        autoDeletedFilesSize += size;
                                     }
                                     if (BuildVars.DEBUG_PRIVATE_VERSION) {
                                         FileLog.d("delete file " + file.file.getPath() + " last_usage_time=" + lastUsageTime + " time_local=" + timeLocal + " story=" + file.isStory);
                                     }
-                                    file.file.delete();
                                 } catch (Exception exception) {
                                     FileLog.e(exception);
                                 }
@@ -177,18 +211,22 @@ public class AutoDeleteMediaTask {
                             skippedFiles++;
                             continue;
                         }
-                        long size = allFiles.get(i).file.length();
+                        try {
+                            final File file = allFiles.get(i).file;
+                            final long size = file.length();
+                            if (!deleteIfUnused(file)) {
+                                skippedFiles++;
+                                continue;
+                            }
                         totalSize -= size;
 
-                        try {
                             deletedFilesBySize++;
                             deletedFilesBySizeSize += size;
-                            allFiles.get(i).file.delete();
                         } catch (Exception e) {
 
                         }
 
-                        if (totalSize < maxCacheSize) {
+                        if (totalSize <= maxCacheSize) {
                             break;
                         }
                     }
@@ -229,7 +267,7 @@ public class AutoDeleteMediaTask {
                 if (fileEntry.getName().equals(".nomedia")) {
                     continue;
                 }
-                if (usingFilePaths.contains(fileEntry.getAbsolutePath())) {
+                if (isInUse(fileEntry.getAbsolutePath())) {
                     continue;
                 }
                 fileInfoList.add(new FileInfoInternal(fileEntry));
@@ -264,14 +302,44 @@ public class AutoDeleteMediaTask {
         if (file == null) {
             return;
         }
-        usingFilePaths.add(file);
+        final String path = new File(file).getAbsolutePath();
+        synchronized (pathLock(path)) {
+            usingFilePaths.add(path);
+        }
     }
 
     public static void unlockFile(String file) {
         if (file == null) {
             return;
         }
-        usingFilePaths.remove(file);
+        final String path = new File(file).getAbsolutePath();
+        synchronized (pathLock(path)) {
+            usingFilePaths.remove(path);
+        }
+    }
+
+    public static void lockFile(String file, Object owner) {
+        if (file == null || owner == null) return;
+        final String path = new File(file).getAbsolutePath();
+        synchronized (pathLock(path)) {
+            Set<Object> owners = fileOwners.get(path);
+            if (owners == null) {
+                owners = Collections.newSetFromMap(new IdentityHashMap<>());
+                fileOwners.put(path, owners);
+            }
+            owners.add(owner);
+        }
+    }
+
+    public static void unlockFile(String file, Object owner) {
+        if (file == null || owner == null) return;
+        final String path = new File(file).getAbsolutePath();
+        synchronized (pathLock(path)) {
+            Set<Object> owners = fileOwners.get(path);
+            if (owners != null && owners.remove(owner) && owners.isEmpty()) {
+                fileOwners.remove(path);
+            }
+        }
     }
 
 }

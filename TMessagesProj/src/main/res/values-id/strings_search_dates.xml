@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Filter tanggal</string>
+    <string name="NM_SearchDatesDay">Hari</string>
+    <string name="NM_SearchDatesPeriod">Rentang</string>
+    <string name="NM_SearchDatesFrom">Dari</string>
+    <string name="NM_SearchDatesUntil">Hingga</string>
+    <string name="NM_SearchDatesAddEnd">Tambah tanggal akhir</string>
+    <string name="NM_SearchDatesToday">Hari ini</string>
+    <string name="NM_SearchDatesYesterday">Kemarin</string>
+    <string name="NM_SearchDatesLast7">7 hari terakhir</string>
+    <string name="NM_SearchDatesLast30">30 hari terakhir</string>
+    <string name="NM_SearchDatesApply">Terapkan filter</string>
+    <string name="NM_SearchDatesReset">Semua tanggal</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Filter tanggal: %1$s</string>
+    <string name="NM_SearchDatesChange">Ubah tanggal</string>
+    <string name="NM_SearchDatesClear">Hapus filter tanggal</string>
+    <string name="NM_SearchDatesJump">Ke tanggal</string>
+    <string name="NM_SearchDatesInvalid">Tanggal akhir tidak boleh sebelum tanggal awal.</string>
+    <string name="NM_SearchDatesDayValue">Hari: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Bulan: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Tahun: %1$s</string>
+</resources>

@@ -44,6 +44,7 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import app.nimarkogram.messenger.utils.ui.MonetHelper;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
@@ -787,7 +788,23 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
         }
     }
 
-    private class TagButton extends View {
+    private int tagTextColor(boolean selected) {
+        final boolean monet = MonetHelper.isActiveMonetTheme();
+        final int key = selected ? Theme.key_chat_inReactionButtonTextSelected
+                : monet ? Theme.key_chat_searchPanelText : Theme.key_actionBarActionModeReactionText;
+        final int color = Theme.getColor(key, resourcesProvider);
+        if (!monet) return color;
+        int background = Theme.getColor(Theme.key_chat_topPanelBackground, resourcesProvider);
+        if (blurredColorProvider != null) {
+            background = Theme.blendOver(background, blurredColorProvider.getBackgroundColor());
+        }
+        if (selected) {
+            background = Theme.blendOver(background, Theme.getColor(Theme.key_chat_inReactionButtonBackground, resourcesProvider));
+        }
+        return MonetHelper.ensureReadableWidgetForeground(color, background);
+    }
+
+    private class TagButton extends View implements Theme.Colorable {
         public ReactionsLayoutInBubble.ReactionButton reactionButton;
         private boolean attached;
         private ViewTreeObserver presentationObserver;
@@ -863,7 +880,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
                 reactionButton = new ReactionsLayoutInBubble.ReactionButton(null, currentAccount, this, reactionCount, false, true, resourcesProvider) {
                     @Override
                     protected void updateColors(float progress) {
-                        lastDrawnTextColor = ColorUtils.blendARGB(fromTextColor, chosen ? Theme.getColor(Theme.key_chat_inReactionButtonTextSelected, resourcesProvider) : Theme.getColor(Theme.key_actionBarActionModeReactionText, resourcesProvider), progress);
+                        lastDrawnTextColor = ColorUtils.blendARGB(fromTextColor, tagTextColor(chosen), progress);
                         lastDrawnBackgroundColor = ColorUtils.blendARGB(fromBackgroundColor, chosen ? Theme.getColor(Theme.key_chat_inReactionButtonBackground, resourcesProvider) : 0, progress);
                         lastDrawnTextColor = Theme.blendOver(lastDrawnBackgroundColor, lastDrawnTextColor);
                         lastDrawnTagDotColor = ColorUtils.blendARGB(fromTagDotColor, chosen ? 0x5affffff : Theme.getColor(Theme.key_actionBarActionModeReactionDot, resourcesProvider), progress);
@@ -963,6 +980,24 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
         private final Path clipPath = new Path();
         private final RectF clipPathRect = new RectF();
         private final RectF clipPathTmpRect = new RectF();
+
+        @Override
+        public void updateColors() {
+            if (blurredDrawable != null) blurredDrawable.updateColors();
+            invalidate();
+        }
+
+        @Override
+        public void addColorKeys(HashSet<Integer> colors) {
+            colors.add(Theme.key_chat_searchPanelText);
+            colors.add(Theme.key_actionBarActionModeReactionText);
+            colors.add(Theme.key_chat_inReactionButtonTextSelected);
+            colors.add(Theme.key_chat_inReactionButtonBackground);
+            colors.add(Theme.key_actionBarActionModeReactionDot);
+            colors.add(Theme.key_chat_topPanelBackground);
+            colors.add(Theme.key_chat_topPanelTitle);
+            colors.add(Theme.key_chat_topPanelMessage);
+        }
 
         @Override
         protected void onDraw(@NonNull Canvas canvas) {

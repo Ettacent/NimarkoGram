@@ -437,7 +437,7 @@ public class ActionBarMenu extends LinearLayout {
             View view = getChildAt(a);
             if (view instanceof ActionBarMenuItem) {
                 ActionBarMenuItem item = (ActionBarMenuItem) view;
-                if (item.isSearchField() && item.isSearchFieldVisible()) {
+                if (item.isSearchField() && item.isSearchFieldVisible() && !item.isSearchFieldClosing()) {
                     if (item.listener == null || item.listener.canCollapseSearch()) {
                         parentActionBar.onSearchFieldVisibilityChanged(false);
                         item.toggleSearch(closeKeyboard);

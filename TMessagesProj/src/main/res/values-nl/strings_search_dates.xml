@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Filter op datum</string>
+    <string name="NM_SearchDatesDay">Dag</string>
+    <string name="NM_SearchDatesPeriod">Periode</string>
+    <string name="NM_SearchDatesFrom">Van</string>
+    <string name="NM_SearchDatesUntil">Tot en met</string>
+    <string name="NM_SearchDatesAddEnd">Einddatum toevoegen</string>
+    <string name="NM_SearchDatesToday">Vandaag</string>
+    <string name="NM_SearchDatesYesterday">Gisteren</string>
+    <string name="NM_SearchDatesLast7">Afgelopen 7 dagen</string>
+    <string name="NM_SearchDatesLast30">Afgelopen 30 dagen</string>
+    <string name="NM_SearchDatesApply">Filter toepassen</string>
+    <string name="NM_SearchDatesReset">Alle datums</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Datumfilter: %1$s</string>
+    <string name="NM_SearchDatesChange">Datums wijzigen</string>
+    <string name="NM_SearchDatesClear">Datumfilter wissen</string>
+    <string name="NM_SearchDatesJump">Ga naar datum</string>
+    <string name="NM_SearchDatesInvalid">De einddatum mag niet vóór de begindatum liggen.</string>
+    <string name="NM_SearchDatesDayValue">Dag: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Maand: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Jaar: %1$s</string>
+</resources>

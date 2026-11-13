@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">סינון לפי תאריך</string>
+    <string name="NM_SearchDatesDay">יום</string>
+    <string name="NM_SearchDatesPeriod">טווח</string>
+    <string name="NM_SearchDatesFrom">מ־</string>
+    <string name="NM_SearchDatesUntil">עד</string>
+    <string name="NM_SearchDatesAddEnd">הוספת תאריך סיום</string>
+    <string name="NM_SearchDatesToday">היום</string>
+    <string name="NM_SearchDatesYesterday">אתמול</string>
+    <string name="NM_SearchDatesLast7">7 הימים האחרונים</string>
+    <string name="NM_SearchDatesLast30">30 הימים האחרונים</string>
+    <string name="NM_SearchDatesApply">החלת סינון</string>
+    <string name="NM_SearchDatesReset">כל התאריכים</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">סינון לפי תאריך: %1$s</string>
+    <string name="NM_SearchDatesChange">שינוי תאריכים</string>
+    <string name="NM_SearchDatesClear">הסרת סינון לפי תאריך</string>
+    <string name="NM_SearchDatesJump">מעבר לתאריך</string>
+    <string name="NM_SearchDatesInvalid">תאריך הסיום לא יכול להיות לפני תאריך ההתחלה.</string>
+    <string name="NM_SearchDatesDayValue">יום: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">חודש: %1$s</string>
+    <string name="NM_SearchDatesYearValue">שנה: %1$s</string>
+</resources>

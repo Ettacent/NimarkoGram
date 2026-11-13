@@ -18,7 +18,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.FileStreamLoadOperation;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
@@ -36,7 +36,12 @@ public class VideoPlayerHolderBase {
     public float progress;
     int lastState;
     public volatile long currentPosition;
-    private int currentAccount;
+    private final int currentAccount;
+    private final long accountUserId;
+    private final FileLoader.PlayerStreamScope streamOwner;
+    private final Object engineStreamLock = new Object();
+    private FileLoader.PlayerStreamScope playerStreamScope;
+    private int streamPriority = FileLoader.PRIORITY_HIGH;
     long playerDuration;
     boolean audioDisabled;
     public boolean stubAvailable;
@@ -57,6 +62,25 @@ public class VideoPlayerHolderBase {
 
     public VideoPlayerHolderBase() {
 
+        this(-1);
+    }
+
+    public VideoPlayerHolderBase(int account) {
+        currentAccount = account;
+        accountUserId = account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT
+                ? UserConfig.getInstance(account).getClientUserId() : 0;
+        streamOwner = account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT
+                ? FileLoader.getInstance(account).createPlayerStreamScope(accountUserId, streamPriority) : null;
+    }
+
+    public void setStreamPriority(int priority) {
+        final FileLoader.PlayerStreamScope scope;
+        synchronized (engineStreamLock) {
+            if (released) return;
+            streamPriority = priority;
+            scope = playerStreamScope;
+        }
+        if (scope != null) scope.setPriority(priority);
     }
 
     public VideoPlayerHolderBase with(SurfaceView surfaceView) {
@@ -116,9 +140,9 @@ public class VideoPlayerHolderBase {
     long startTime;
 
     public void preparePlayer(Uri uri, boolean audioDisabled, float speed) {
+        setStreamPriority(FileLoader.PRIORITY_LOW);
         bindMedia(uri);
         this.audioDisabled = audioDisabled;
-        this.currentAccount = currentAccount;
         this.contentUri = uri;
         paused = true;
         dispatchQueue.cancelRunnable(progressRunnable);
@@ -139,6 +163,7 @@ public class VideoPlayerHolderBase {
     }
 
     public void start(boolean attach, boolean paused, Uri uri, long position, boolean audioDisabled, float speed) {
+        setStreamPriority(FileLoader.PRIORITY_HIGH);
         bindMedia(uri);
         startTime = System.currentTimeMillis();
         this.audioDisabled = audioDisabled;
@@ -220,7 +245,15 @@ public class VideoPlayerHolderBase {
         if (videoPlayer != null) {
             videoPlayer.releasePlayer(true);
         }
-        final VideoPlayer player = new VideoPlayer(false, audioDisabled);
+        final FileLoader.PlayerStreamScope scope;
+        final boolean closeScope;
+        synchronized (engineStreamLock) {
+            scope = streamOwner == null ? null : streamOwner.fork(streamPriority);
+            playerStreamScope = scope;
+            closeScope = released;
+        }
+        if (closeScope && scope != null) scope.close();
+        final VideoPlayer player = new VideoPlayer(false, audioDisabled, scope);
         final long delegatePlayerGeneration = ++playerGeneration;
         final long delegateMediaGeneration = mediaGeneration;
         videoPlayer = player;
@@ -350,16 +383,18 @@ public class VideoPlayerHolderBase {
         onErrorListener = listener;
     }
 
+    private static boolean isAccountOwnerCurrent(int account, long userId) {
+        return account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT && userId != 0
+                && UserConfig.getInstance(account).getClientUserId() == userId;
+    }
     public boolean release(Runnable whenReleased) {
-        TLRPC.Document document = this.document;
-        if (document != null) {
-            int priority = FileStreamLoadOperation.getStreamPrioriy(document);
-            if (priority != FileLoader.PRIORITY_LOW) {
-                FileStreamLoadOperation.setPriorityForDocument(document, FileLoader.PRIORITY_LOW);
-                FileLoader.getInstance(currentAccount).changePriority(FileLoader.PRIORITY_LOW, document, null, null, null, null, null);
-            }
-        }
+        final FileLoader.PlayerStreamScope scope;
+        synchronized (engineStreamLock) {
         released = true;
+            scope = playerStreamScope;
+        }
+        if (streamOwner != null) streamOwner.close();
+        if (scope != null) scope.close();
         invalidateStubCapture();
         setOnReadyListener(null);
         dispatchQueue.cancelRunnable(initRunnable);
@@ -371,9 +406,6 @@ public class VideoPlayerHolderBase {
                 videoPlayer.setTextureView(null);
                 videoPlayer.setSurfaceView(null);
                 videoPlayer.releasePlayer(false);
-            }
-            if (document != null) {
-                FileLoader.getInstance(currentAccount).cancelLoadFile(document);
             }
             if (whenReleased != null) {
                 AndroidUtilities.runOnUIThread(whenReleased);

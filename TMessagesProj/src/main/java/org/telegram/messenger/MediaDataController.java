@@ -119,6 +119,7 @@ import java.util.regex.Pattern;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 
+import app.nimarkogram.messenger.search.MessageSearchDateRange;
 @SuppressWarnings("unchecked")
 public class MediaDataController extends BaseController {
     public final static String
@@ -141,6 +142,8 @@ public class MediaDataController extends BaseController {
     public static String SHORTCUT_CATEGORY = "org.telegram.messenger.SHORTCUT_SHARE";
 
     private static volatile MediaDataController[] Instance = new MediaDataController[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final java.util.concurrent.atomic.AtomicReferenceArray<MediaDataController> preferenceInstances =
+            new java.util.concurrent.atomic.AtomicReferenceArray<>(UserConfig.MAX_ACCOUNT_COUNT);
     private static final Object[] lockObjects = new Object[UserConfig.MAX_ACCOUNT_COUNT];
 
     static {
@@ -157,10 +160,15 @@ public class MediaDataController extends BaseController {
                 localInstance = Instance[num];
                 if (localInstance == null) {
                     Instance[num] = localInstance = new MediaDataController(num);
+                    preferenceInstances.set(num, localInstance);
                 }
             }
         }
         return localInstance;
+    }
+
+    public static MediaDataController getInstanceIfCreated(int num) {
+        return preferenceInstances.get(num);
     }
 
     public MediaDataController(int num) {
@@ -223,6 +231,7 @@ public class MediaDataController extends BaseController {
 
         menuBotsUpdateDate = getMessagesController().getMainSettings().getInt("menuBotsUpdateDate", 0);
         Utilities.globalQueue.postRunnable(() -> loadDoubleTapReaction(0));
+        finishMediaPreferenceConstruction();
     }
 
     private void loadRepliesOfDraftReplies(final ArrayList<TLRPC.Message> messages) {
@@ -367,7 +376,14 @@ public class MediaDataController extends BaseController {
     private boolean[] emojiStatusesFetching = new boolean[4];
 
     public void cleanup() {
+        retireMessageSearch();
+        retireMediaPreferences();
+        clearLoadedDraftVoices();
         stickerSetGeneration++;
+        loadingPremiumGiftStickers = false;
+        loadingPremiumTonStickers = false;
+        loadingGenericAnimations = false;
+        loadingDefaultTopicIcons = false;
         for (Integer requestId : new ArrayList<>(stickerRequestTimeouts.keySet())) {
             cancelStickerRequest(requestId, false);
         }
@@ -2820,6 +2836,31 @@ public class MediaDataController extends BaseController {
         }
     }
 
+    private void fetchSpecialStickerSet(TLRPC.InputStickerSet inputStickerSet, Utilities.Callback<TLRPC.TL_messages_stickerSet> onDone) {
+        final int generation = stickerSetGeneration;
+        final long userId = getUserConfig().getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+        if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, session)) {
+            onDone.run(null);
+            return;
+        }
+        TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
+        req.stickerset = inputStickerSet;
+        try {
+            getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (generation != stickerSetGeneration || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, session)) return;
+                TLRPC.TL_messages_stickerSet set = error == null && response instanceof TLRPC.TL_messages_stickerSet
+                        ? (TLRPC.TL_messages_stickerSet) response : null;
+                if (set != null && (set.set == null || set.documents == null)) set = null;
+                onDone.run(set);
+            }));
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (generation == stickerSetGeneration && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, session)) {
+                onDone.run(null);
+            }
+        }
+    }
     public void checkPremiumGiftStickers() {
         if (getUserConfig().premiumGiftsStickerPack != null) {
             String packName = getUserConfig().premiumGiftsStickerPack;
@@ -2836,11 +2877,9 @@ public class MediaDataController extends BaseController {
         }
         loadingPremiumGiftStickers = true;
 
-        TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
-        req.stickerset = new TLRPC.TL_inputStickerSetPremiumGifts();
-        getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response instanceof TLRPC.TL_messages_stickerSet) {
-                TLRPC.TL_messages_stickerSet stickerSet = (TLRPC.TL_messages_stickerSet) response;
+        fetchSpecialStickerSet(new TLRPC.TL_inputStickerSetPremiumGifts(), stickerSet -> {
+            loadingPremiumGiftStickers = false;
+            if (stickerSet != null) {
                 getUserConfig().premiumGiftsStickerPack = stickerSet.set.short_name;
                 getUserConfig().lastUpdatedPremiumGiftsStickerPack = System.currentTimeMillis();
                 getUserConfig().saveConfig(false);
@@ -2849,7 +2888,7 @@ public class MediaDataController extends BaseController {
 
                 getNotificationCenter().postNotificationName(NotificationCenter.didUpdatePremiumGiftStickers);
             }
-        }));
+        });
     }
 
     public void checkTonGiftStickers() {
@@ -2868,11 +2907,9 @@ public class MediaDataController extends BaseController {
         }
         loadingPremiumTonStickers = true;
 
-        TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
-        req.stickerset = new TLRPC.TL_inputStickerSetTonGifts();
-        getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response instanceof TLRPC.TL_messages_stickerSet) {
-                TLRPC.TL_messages_stickerSet stickerSet = (TLRPC.TL_messages_stickerSet) response;
+        fetchSpecialStickerSet(new TLRPC.TL_inputStickerSetTonGifts(), stickerSet -> {
+            loadingPremiumTonStickers = false;
+            if (stickerSet != null) {
                 getUserConfig().premiumTonStickerPack = stickerSet.set.short_name;
                 getUserConfig().lastUpdatedTonGiftsStickerPack = System.currentTimeMillis();
                 getUserConfig().saveConfig(false);
@@ -2881,7 +2918,7 @@ public class MediaDataController extends BaseController {
 
                 getNotificationCenter().postNotificationName(NotificationCenter.didUpdateTonGiftStickers);
             }
-        }));
+        });
     }
 
     public void checkGenericAnimations() {
@@ -2900,11 +2937,9 @@ public class MediaDataController extends BaseController {
         }
         loadingGenericAnimations = true;
 
-        TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
-        req.stickerset = new TLRPC.TL_inputStickerSetEmojiGenericAnimations();
-        getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response instanceof TLRPC.TL_messages_stickerSet) {
-                TLRPC.TL_messages_stickerSet stickerSet = (TLRPC.TL_messages_stickerSet) response;
+        fetchSpecialStickerSet(new TLRPC.TL_inputStickerSetEmojiGenericAnimations(), stickerSet -> {
+            loadingGenericAnimations = false;
+            if (stickerSet != null) {
                 getUserConfig().genericAnimationsStickerPack = stickerSet.set.short_name;
                 getUserConfig().lastUpdatedGenericAnimations = System.currentTimeMillis();
                 getUserConfig().saveConfig(false);
@@ -2916,7 +2951,7 @@ public class MediaDataController extends BaseController {
                     }
                 }
             }
-        }));
+        });
     }
 
     public void checkDefaultTopicIcons() {
@@ -2935,18 +2970,16 @@ public class MediaDataController extends BaseController {
         }
         loadingDefaultTopicIcons = true;
 
-        TLRPC.TL_messages_getStickerSet req = new TLRPC.TL_messages_getStickerSet();
-        req.stickerset = new TLRPC.TL_inputStickerSetEmojiDefaultTopicIcons();
-        getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response instanceof TLRPC.TL_messages_stickerSet) {
-                TLRPC.TL_messages_stickerSet stickerSet = (TLRPC.TL_messages_stickerSet) response;
+        fetchSpecialStickerSet(new TLRPC.TL_inputStickerSetEmojiDefaultTopicIcons(), stickerSet -> {
+            loadingDefaultTopicIcons = false;
+            if (stickerSet != null) {
                 getUserConfig().defaultTopicIcons = stickerSet.set.short_name;
                 getUserConfig().lastUpdatedDefaultTopicIcons = System.currentTimeMillis();
                 getUserConfig().saveConfig(false);
 
                 processLoadedDiceStickers(getUserConfig().defaultTopicIcons, false, stickerSet, false, (int) (System.currentTimeMillis() / 1000));
             }
-        }));
+        });
     }
 
     public void loadStickersByEmojiOrName(String name, boolean isEmoji, boolean cache) {
@@ -3868,13 +3901,14 @@ public class MediaDataController extends BaseController {
     private void updateSearchResults() {
         ArrayList<MessageObject> previousSearchResultMessages = new ArrayList<>(searchResultMessages);
         searchResultMessages.clear();
-        HashSet<Integer> messageIds = new HashSet<>();
+        HashSet<MessageSearchKey> messageIds = new HashSet<>();
         for (int i = 0; i < searchServerResultMessages.size(); ++i) {
             MessageObject m = searchServerResultMessages.get(i);
-            if ((!m.hasValidGroupId() || m.isPrimaryGroupMessage) && !messageIds.contains(m.getId())) {
+            MessageSearchKey key = new MessageSearchKey(m);
+            if ((!m.hasValidGroupId() || m.isPrimaryGroupMessage) && !messageIds.contains(key)) {
                 MessageObject prev = null;
                 for (int j = 0; j < previousSearchResultMessages.size(); ++j) {
-                    if (previousSearchResultMessages.get(j).getId() == m.getId()) {
+                    if (previousSearchResultMessages.get(j).getId() == m.getId() && previousSearchResultMessages.get(j).getDialogId() == m.getDialogId()) {
                         prev = previousSearchResultMessages.get(j);
                         break;
                     }
@@ -3886,15 +3920,16 @@ public class MediaDataController extends BaseController {
                 }
                 m.isSavedFiltered = true;
                 searchResultMessages.add(m);
-                messageIds.add(m.getId());
+                messageIds.add(key);
             }
         }
         for (int i = 0; i < searchLocalResultMessages.size(); ++i) {
             MessageObject m = searchLocalResultMessages.get(i);
-            if (!messageIds.contains(m.getId())) {
+            MessageSearchKey key = new MessageSearchKey(m);
+            if (!messageIds.contains(key)) {
                 MessageObject prev = null;
                 for (int j = 0; j < previousSearchResultMessages.size(); ++j) {
-                    if (previousSearchResultMessages.get(j).getId() == m.getId()) {
+                    if (previousSearchResultMessages.get(j).getId() == m.getId() && previousSearchResultMessages.get(j).getDialogId() == m.getDialogId()) {
                         prev = previousSearchResultMessages.get(j);
                         break;
                     }
@@ -3906,7 +3941,7 @@ public class MediaDataController extends BaseController {
                 }
                 m.isSavedFiltered = true;
                 searchResultMessages.add(m);
-                messageIds.add(m.getId());
+                messageIds.add(key);
             }
         }
     }
@@ -3927,9 +3962,7 @@ public class MediaDataController extends BaseController {
     }
 
     public void clearFoundMessageObjects() {
-        searchResultMessages.clear();
-        searchServerResultMessages.clear();
-        searchLocalResultMessages.clear();
+        retireMessageSearch();
     }
 
     public boolean isMessageFound(int messageId, boolean mergeDialog) {
@@ -3940,13 +3973,20 @@ public class MediaDataController extends BaseController {
         searchMessagesInChat(query, dialogId, mergeDialogId, guid, direction, replyMessageId, false, user, chat, true, reaction);
     }
 
+    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, TLRPC.User user, TLRPC.Chat chat, ReactionsLayoutInBubble.VisibleReaction reaction, MessageSearchDateRange dates) {
+        searchMessagesInChat(query, dialogId, mergeDialogId, guid, direction, replyMessageId, false, user, chat, true, reaction, dates);
+    }
+
     public void jumpToSearchedMessage(int guid, int index) {
+        MessageSearchSession session = messageSearchSession;
+        if (!currentMessageSearch(session) || session.guid != guid) return;
         if (index < 0 || index >= searchResultMessages.size()) {
             return;
         }
         lastReturnedNum = index;
+        ++session.navigationRevision;
         MessageObject messageObject = searchResultMessages.get(lastReturnedNum);
-        getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, messageObject.getId(), getMask(), messageObject.getDialogId(), lastReturnedNum, getSearchCount(), true);
+        getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, messageObject.getId(), getMask(), messageObject.getDialogId(), lastReturnedNum, getSearchCount(), true, session);
     }
 
     public int getSearchPosition() {
@@ -3954,10 +3994,23 @@ public class MediaDataController extends BaseController {
     }
 
     public int getSearchCount() {
+        MessageSearchSession session = messageSearchSession;
+        if (currentMessageSearch(session) && session.dateHistory) return searchServerResultMessages.size();
         if (searchServerResultMessages.isEmpty()) {
             return Math.max(Math.max(messagesSearchCount[0] + messagesSearchCount[1], messagesLocalSearchCount), searchServerResultMessages.size());
         }
         return Math.max(messagesSearchCount[0] + messagesSearchCount[1], searchServerResultMessages.size());
+    }
+
+    public boolean isSearchCountExact() {
+        MessageSearchSession session = messageSearchSession;
+        return !currentMessageSearch(session) || !session.dateHistory
+                || !session.failed && messageSearchOperation == null && messagesSearchEndReached[0] && messagesSearchEndReached[1];
+    }
+
+    public boolean isCurrentSearchNotification(int guid, Object source) {
+        MessageSearchSession session = messageSearchSession;
+        return source == session && currentMessageSearch(session) && session.guid == guid;
     }
 
     public void setSearchedPosition(int index) {
@@ -3965,324 +4018,564 @@ public class MediaDataController extends BaseController {
             return;
         }
         lastReturnedNum = index;
+        if (currentMessageSearch(messageSearchSession)) ++messageSearchSession.navigationRevision;
     }
 
     public boolean searchEndReached() {
-        return messagesSearchEndReached[0] && lastMergeDialogId == 0 && messagesSearchEndReached[1] || (loadingSearchLocal || loadedPredirectedSearchLocal);
+        return messagesSearchEndReached[0] && messagesSearchEndReached[1] || loadingSearchLocal || loadedPredirectedSearchLocal;
     }
 
     public void loadMoreSearchMessages(boolean fromList) {
-        if (loadingMoreSearchMessages || reqId != 0 || messagesSearchEndReached[0] && lastMergeDialogId == 0 && messagesSearchEndReached[1]) {
-            return;
-        }
-        int temp = lastReturnedNum;
-        lastReturnedNum = searchResultMessages.size();
-        loadingMoreSearchMessages = true;
-        searchMessagesInChat(null, lastDialogId, lastMergeDialogId, lastGuid, 1, lastReplyMessageId, false, lastSearchUser, lastSearchChat, false, lastReaction);
-        lastReturnedNum = temp;
+        messageSearchUi(() -> {
+            MessageSearchSession session = messageSearchSession;
+            if (!currentMessageSearch(session) || session.failed || loadingMoreSearchMessages || messageSearchOperation != null) return;
+            continueMessageSearch(session, lastReturnedNum, false);
+        });
     }
 
     public boolean isSearchLoading() {
-        return reqId != 0;
+        return currentMessageSearch(messageSearchOperation);
+    }
+
+    private final java.util.concurrent.atomic.AtomicLong messageSearchGeneration = new java.util.concurrent.atomic.AtomicLong();
+    private volatile MessageSearchSession messageSearchSession;
+    private volatile MessageSearchOperation messageSearchOperation;
+    private Object messageSearchLocalOperation;
+
+    private static final class MessageSearchSession {
+        final long generation, dialogId, mergeDialogId, replyMessageId, selfId;
+        final int guid;
+        final String query;
+        final TLRPC.User user;
+        final TLRPC.Chat chat;
+        final long userId, chatId;
+        final TLRPC.InputPeer from;
+        final TLRPC.Reaction reaction;
+        final TLRPC.MessagesFilter filter;
+        final MessageSearchDateRange dates;
+        final boolean saved, hashtag, dateHistory;
+        final int[] offsets = new int[2];
+        long navigationRevision;
+        boolean failed;
+
+        MessageSearchSession(long generation, long dialogId, long mergeDialogId, int guid, long replyMessageId,
+                long selfId, String query, TLRPC.User user, TLRPC.Chat chat,
+                ReactionsLayoutInBubble.VisibleReaction reaction, TLRPC.MessagesFilter filter, MessageSearchDateRange dates, TLRPC.InputPeer from) {
+            this.generation = generation;
+            this.dialogId = dialogId;
+            this.mergeDialogId = mergeDialogId;
+            this.guid = guid;
+            this.replyMessageId = replyMessageId;
+            this.selfId = selfId;
+            this.query = query;
+            this.user = user;
+            this.chat = chat;
+            userId = user == null ? 0 : user.id;
+            chatId = chat == null ? 0 : chat.id;
+            this.from = from;
+            this.reaction = reaction == null ? null : reaction.toTLReaction();
+            this.filter = filter;
+            this.dates = dates;
+            saved = dialogId == selfId;
+            hashtag = query.trim().startsWith("#") || query.trim().startsWith("$");
+            dateHistory = dates.isActive() && TextUtils.isEmpty(query) && user == null && chat == null
+                    && reaction == null && filter instanceof TLRPC.TL_inputMessagesFilterEmpty;
+        }
+
+        boolean matches(long dialog, long merge, int owner, long reply, TLRPC.User user, TLRPC.Chat chat,
+                ReactionsLayoutInBubble.VisibleReaction reaction) {
+            return dialogId == dialog && mergeDialogId == merge && guid == owner && replyMessageId == reply
+                    && userId == (user == null ? 0 : user.id) && chatId == (chat == null ? 0 : chat.id)
+                    && (reaction == null ? this.reaction == null : reaction.isStar
+                    ? this.reaction instanceof TLRPC.TL_reactionPaid : reaction.isSame(this.reaction));
+        }
+
+        boolean canSearchSavedLocally() {
+            return saved && reaction != null && !dates.isActive() && user == null && chat == null
+                    && filter instanceof TLRPC.TL_inputMessagesFilterEmpty;
+        }
+    }
+
+    private static final class MessageSearchOperation {
+        final MessageSearchSession session;
+        final int leg, offset;
+        final boolean preflight;
+        int position;
+        long navigationRevision;
+        boolean jump;
+        MessageSearchOperation(MessageSearchSession session, int leg, int offset, int position, boolean preflight, boolean jump) {
+            this.session = session;
+            this.leg = leg;
+            this.offset = offset;
+            this.position = position;
+            navigationRevision = session.navigationRevision;
+            this.preflight = preflight;
+            this.jump = jump;
+        }
+    }
+
+    private static final class MessageSearchKey {
+        final long dialogId;
+        final int messageId;
+        MessageSearchKey(MessageObject message) {
+            dialogId = message.getDialogId();
+            messageId = message.getId();
+        }
+        @Override public boolean equals(Object object) {
+            if (!(object instanceof MessageSearchKey)) return false;
+            MessageSearchKey other = (MessageSearchKey) object;
+            return dialogId == other.dialogId && messageId == other.messageId;
+        }
+        @Override public int hashCode() {
+            return 31 * (int) (dialogId ^ dialogId >>> 32) + messageId;
+        }
+    }
+
+    private static void messageSearchUi(Runnable action) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) action.run();
+        else AndroidUtilities.runOnUIThread(action);
+    }
+
+    private boolean currentMessageSearch(MessageSearchSession session) {
+        return session != null && messageSearchSession == session && messageSearchGeneration.get() == session.generation;
+    }
+
+    private boolean currentMessageSearch(MessageSearchOperation operation) {
+        return operation != null && messageSearchOperation == operation && currentMessageSearch(operation.session);
+    }
+
+    private void resetMessageSearchState() {
+        messageSearchOperation = null;
+        messageSearchLocalOperation = null;
+        reqId = mergeReqId = 0;
+        loadingMoreSearchMessages = loadingSearchLocal = loadedPredirectedSearchLocal = false;
+        lastReturnedNum = messagesLocalSearchCount = 0;
+        messagesSearchCount[0] = messagesSearchCount[1] = 0;
+        messagesSearchEndReached[0] = messagesSearchEndReached[1] = true;
+        searchResultMessages.clear();
+        searchServerResultMessages.clear();
+        searchLocalResultMessages.clear();
+            searchServerResultMessagesMap[0].clear();
+            searchServerResultMessagesMap[1].clear();
+    }
+
+    private void cancelMessageSearchRequests(int primary, int merge) {
+        if (primary != 0) getConnectionsManager().cancelRequest(primary, true);
+        if (merge != 0) getConnectionsManager().cancelRequest(merge, true);
+    }
+
+    private void retireMessageSearch() {
+        long generation = messageSearchGeneration.incrementAndGet();
+        messageSearchUi(() -> {
+            if (messageSearchGeneration.get() != generation) return;
+            int primary = reqId, merge = mergeReqId;
+            messageSearchSession = null;
+            resetMessageSearchState();
+            lastMergeDialogId = lastDialogId = lastReplyMessageId = 0;
+            lastSearchUser = null;
+            lastSearchChat = null;
+            lastReaction = null;
+            lastSearchQuery = null;
+            cancelMessageSearchRequests(primary, merge);
+        });
+    }
+
+    public void cancelSearchMessagesInChat(int guid) {
+        messageSearchUi(() -> {
+            MessageSearchSession session = messageSearchSession;
+            if (session != null && session.guid == guid) retireMessageSearch();
+        });
+    }
+
+    private MessageSearchSession beginMessageSearch(String query, long dialogId, long mergeDialogId, int guid,
+            long replyMessageId, TLRPC.User user, TLRPC.Chat chat, ReactionsLayoutInBubble.VisibleReaction reaction,
+            TLRPC.MessagesFilter filter, MessageSearchDateRange dates) {
+        long generation = messageSearchGeneration.incrementAndGet();
+        int primary = reqId, merge = mergeReqId;
+        MessageSearchSession session = new MessageSearchSession(generation, dialogId, mergeDialogId, guid, replyMessageId,
+                getUserConfig().getClientUserId(), query, user, chat, reaction, filter, dates, messageSearchFrom(user, chat));
+        if (messageSearchGeneration.get() != generation) return session;
+        messageSearchSession = session;
+        resetMessageSearchState();
+        lastGuid = guid;
+        lastDialogId = dialogId;
+        lastMergeDialogId = mergeDialogId;
+        lastReplyMessageId = replyMessageId;
+        lastSearchUser = user;
+        lastSearchChat = chat;
+        lastReaction = reaction;
+        lastSearchQuery = query;
+        messagesSearchEndReached[0] = false;
+        messagesSearchEndReached[1] = mergeDialogId == 0;
+        cancelMessageSearchRequests(primary, merge);
+        return session;
+    }
+
+    private TLRPC.InputPeer messageSearchFrom(TLRPC.User user, TLRPC.Chat chat) {
+        if (user != null) {
+            if (user.access_hash == 0 && user.fromMessageDialogId != 0 && user.fromMessageId != 0) {
+                TLRPC.TL_inputPeerUserFromMessage peer = new TLRPC.TL_inputPeerUserFromMessage();
+                peer.user_id = user.id;
+                peer.msg_id = user.fromMessageId;
+                peer.peer = getMessagesController().getInputPeer(user.fromMessageDialogId);
+                return peer.peer == null ? null : peer;
+            }
+            return MessagesController.getInputPeer(user);
+        }
+        if (chat != null) {
+            if (ChatObject.isChannel(chat) && chat.access_hash == 0 && chat.fromMessageDialogId != 0 && chat.fromMessageId != 0) {
+                TLRPC.TL_inputPeerChannelFromMessage peer = new TLRPC.TL_inputPeerChannelFromMessage();
+                peer.channel_id = chat.id;
+                peer.msg_id = chat.fromMessageId;
+                peer.peer = getMessagesController().getInputPeer(chat.fromMessageDialogId);
+                return peer.peer == null ? null : peer;
+            }
+            return MessagesController.getInputPeer(chat);
+        }
+        return null;
+    }
+
+    private TLRPC.TL_messages_search messageSearchRequest(MessageSearchOperation operation) {
+        MessageSearchSession session = operation.session;
+        long dialog = operation.leg == 0 ? session.dialogId : session.mergeDialogId;
+        TLRPC.TL_messages_search request = new TLRPC.TL_messages_search();
+        request.peer = getMessagesController().getInputPeer(dialog);
+        request.q = session.query;
+        request.filter = session.filter;
+        request.min_date = session.dates.getMinDate();
+        request.max_date = session.dates.getMaxDate();
+        request.limit = operation.preflight ? 1 : 21;
+        request.offset_id = operation.offset;
+        if (session.from != null) {
+            request.from_id = session.from;
+            request.flags |= 1;
+        }
+        if (session.replyMessageId != 0) {
+            if (dialog == session.selfId || getMessagesController().isMonoForum(dialog)) {
+                request.saved_peer_id = getMessagesController().getInputPeer(session.replyMessageId);
+                request.flags |= 4;
+            } else {
+                request.top_msg_id = (int) session.replyMessageId;
+                request.flags |= 2;
+            }
+        }
+        if (session.reaction != null) {
+            request.saved_reaction.add(session.reaction);
+            request.flags |= 8;
+        }
+        return request;
+    }
+
+    private TLObject messageDateHistoryRequest(MessageSearchOperation operation, TLRPC.TL_messages_search criteria) {
+        int date = operation.offset == 0 ? operation.session.dates.getMaxDate() : 0;
+        if ((criteria.flags & 4) != 0) {
+            if (criteria.saved_peer_id == null) return null;
+            TLRPC.TL_messages_getSavedHistory request = new TLRPC.TL_messages_getSavedHistory();
+            request.peer = criteria.saved_peer_id;
+            long dialog = operation.leg == 0 ? operation.session.dialogId : operation.session.mergeDialogId;
+            if (dialog != operation.session.selfId) request.parent_peer = criteria.peer;
+            request.offset_id = operation.offset;
+            request.offset_date = date;
+            request.limit = criteria.limit;
+            return request;
+        }
+        if ((criteria.flags & 2) != 0) {
+            TLRPC.TL_messages_getReplies request = new TLRPC.TL_messages_getReplies();
+            request.peer = criteria.peer;
+            request.msg_id = criteria.top_msg_id;
+            request.offset_id = operation.offset;
+            request.offset_date = date;
+            request.limit = criteria.limit;
+            return request;
+        }
+        TLRPC.TL_messages_getHistory request = new TLRPC.TL_messages_getHistory();
+        request.peer = criteria.peer;
+        request.offset_id = operation.offset;
+        request.offset_date = date;
+        request.limit = criteria.limit;
+        return request;
+    }
+
+    private boolean messageSearchDateAdmitted(MessageSearchSession session, TLRPC.Message message) {
+        return message != null && (!session.dates.isActive()
+                || message.date > session.dates.getMinDate() && message.date < session.dates.getMaxDate());
+    }
+
+    private void notifyMessageSearch(MessageSearchSession session, boolean jump) {
+        if (!currentMessageSearch(session)) return;
+        MessageObject selected = lastReturnedNum >= 0 && lastReturnedNum < searchResultMessages.size()
+                ? searchResultMessages.get(lastReturnedNum) : null;
+        getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, session.guid,
+                selected == null ? 0 : selected.getId(), getMask(), selected == null ? 0L : selected.getDialogId(),
+                lastReturnedNum, getSearchCount(), jump, session);
+    }
+
+    private void finishMessageSearchOperation(MessageSearchOperation operation, boolean failed) {
+        if (!currentMessageSearch(operation)) return;
+        messageSearchOperation = null;
+        reqId = mergeReqId = 0;
+        loadingMoreSearchMessages = false;
+        operation.session.failed = failed;
+    }
+
+    private void startSavedMessageSearch(MessageSearchSession session) {
+        if (!currentMessageSearch(session) || !session.canSearchSavedLocally()) return;
+        Object local = messageSearchLocalOperation = new Object();
+        int predictedCount = getMessagesController().getSavedTagCount(session.replyMessageId, lastReaction);
+        if (!currentMessageSearch(session) || messageSearchLocalOperation != local) return;
+        messagesLocalSearchCount = TextUtils.isEmpty(session.query) ? predictedCount : 0;
+        loadingSearchLocal = true;
+        getMessagesStorage().searchSavedByTag(session.reaction, session.replyMessageId, session.query, 300, 0, (messages, users, chats, emojis) -> {
+            if (!currentMessageSearch(session) || messageSearchLocalOperation != local) return;
+            getMessagesController().putUsers(users, true);
+            if (!currentMessageSearch(session) || messageSearchLocalOperation != local) return;
+            getMessagesController().putChats(chats, true);
+            if (!currentMessageSearch(session) || messageSearchLocalOperation != local) return;
+            AnimatedEmojiDrawable.getDocumentFetcher(currentAccount).processDocuments(emojis);
+            if (!currentMessageSearch(session) || messageSearchLocalOperation != local) return;
+            loadingSearchLocal = false;
+            loadedPredirectedSearchLocal = TextUtils.isEmpty(session.query) && predictedCount > 0 && predictedCount < 300
+                    && messages.size() == predictedCount;
+            searchLocalResultMessages.clear();
+            searchLocalResultMessages.addAll(messages);
+            updateSearchResults();
+            notifyMessageSearch(session, true);
+        }, true);
+    }
+
+    private void sendMessageSearch(MessageSearchSession session, int leg, int position, boolean jump, boolean preflight) {
+        sendMessageSearchPage(session, leg, position, jump, preflight, 2);
+    }
+
+    private void sendMessageSearchPage(MessageSearchSession session, int leg, int position, boolean jump, boolean preflight, int emptyPagesRemaining) {
+        if (!currentMessageSearch(session)) return;
+        MessageSearchOperation operation = new MessageSearchOperation(session, leg, preflight ? 0 : session.offsets[leg], position, preflight, jump);
+        messageSearchOperation = operation;
+        ++lastReqId;
+        TLRPC.TL_messages_search criteria = messageSearchRequest(operation);
+        if (!currentMessageSearch(operation)) return;
+        TLObject request = session.dateHistory ? messageDateHistoryRequest(operation, criteria) : criteria;
+        if (!currentMessageSearch(operation)) return;
+        if (request == null || criteria.peer == null || (session.user != null || session.chat != null) && session.from == null
+                || session.dates.isActive() && DialogObject.isEncryptedDialog(session.dialogId)) {
+            boolean navigate = currentMessageSearchJump(operation);
+            finishMessageSearchOperation(operation, true);
+            notifyMessageSearch(session, navigate);
+            return;
+        }
+        try {
+            int requestId = getConnectionsManager().sendRequest(request, (response, error) -> {
+                if (!currentMessageSearch(operation)) return;
+                TLRPC.messages_Messages result = error == null && response instanceof TLRPC.messages_Messages
+                        && !(session.dateHistory && response instanceof TLRPC.TL_messages_messagesNotModified)
+                        ? (TLRPC.messages_Messages) response : null;
+                ArrayList<MessageObject> objects = new ArrayList<>();
+                int rawCount = result == null ? 0 : result.messages.size();
+                ArrayList<TLRPC.Message> page = result == null ? new ArrayList<>() : new ArrayList<>(result.messages);
+                if (session.dateHistory) page.sort((a, b) -> {
+                    if (a == null || b == null) return a == b ? 0 : a == null ? 1 : -1;
+                    int byDate = Integer.compare(b.date, a.date);
+                    return byDate != 0 ? byDate : Integer.compare(b.id, a.id);
+                });
+                int consumed = preflight ? 0 : session.dateHistory ? rawCount : Math.min(rawCount, criteria.limit - 1);
+                int cursor = operation.offset;
+                boolean datedPage = false, entirelyBeforeRange = true, entirelyAfterRange = true;
+                for (int i = 0; i < consumed; i++) {
+                    if (!currentMessageSearch(operation)) return;
+                    TLRPC.Message message = page.get(i);
+                    if (message == null) continue;
+                    if (session.dateHistory) {
+                        if (message.id <= 0 || operation.offset > 0 && message.id >= operation.offset) continue;
+                        cursor = cursor == 0 ? message.id : Math.min(cursor, message.id);
+                        if (message.date > 0) {
+                            datedPage = true;
+                            entirelyBeforeRange &= message.date <= session.dates.getMinDate();
+                            entirelyAfterRange &= message.date >= session.dates.getMaxDate();
+                        }
+                        if (message instanceof TLRPC.TL_messageService) continue;
+                    } else if (message.id > 0) cursor = message.id;
+                    if (message instanceof TLRPC.TL_messageEmpty || message.action instanceof TLRPC.TL_messageActionHistoryClear) continue;
+                    if (!messageSearchDateAdmitted(session, message)) continue;
+                    MessageObject object = new MessageObject(currentAccount, message, null, null, null, null, null, true, true, 0, false, false, session.saved);
+                    if (object.hasValidGroupId()) object.isPrimaryGroupMessage = true;
+                    object.setQuery(session.query, !session.hashtag);
+                    objects.add(object);
+                }
+                final int nextOffset = cursor;
+                final boolean historyFloor = datedPage && entirelyBeforeRange;
+                final boolean historyAboveRange = datedPage && entirelyAfterRange;
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!currentMessageSearch(operation)) return;
+                    if (preflight) {
+                        if (result != null) {
+                            messagesSearchEndReached[1] = rawCount == 0;
+                            messagesSearchCount[1] = result instanceof TLRPC.TL_messages_messagesSlice || result instanceof TLRPC.TL_messages_channelMessages ? result.count : rawCount;
+                        }
+                        finishMessageSearchOperation(operation, false);
+                        sendMessageSearch(session, 0, operation.position, operation.jump, false);
+                        return;
+                    }
+                    if (result == null) {
+                        boolean navigate = currentMessageSearchJump(operation);
+                        finishMessageSearchOperation(operation, true);
+                        notifyMessageSearch(session, navigate);
+                        return;
+                    }
+                    getMessagesStorage().putUsersAndChats(result.users, result.chats, true, true);
+                    if (!currentMessageSearch(operation)) return;
+                    getMessagesController().putUsers(result.users, false);
+                    if (!currentMessageSearch(operation)) return;
+                    getMessagesController().putChats(result.chats, false);
+                    if (!currentMessageSearch(operation)) return;
+                    Runnable done = () -> {
+                        if (!currentMessageSearch(operation)) return;
+                        int previousSize = searchServerResultMessages.size();
+                        for (MessageObject object : objects) {
+                            if (!messageSearchDateAdmitted(session, object.messageOwner)) continue;
+                            if (searchServerResultMessagesMap[leg].indexOfKey(object.getId()) >= 0) continue;
+                            searchServerResultMessages.add(object);
+                            searchServerResultMessagesMap[leg].put(object.getId(), object);
+                        }
+                        session.offsets[leg] = nextOffset;
+                        boolean stalled = session.dateHistory
+                                ? rawCount > 0 && (nextOffset <= 0 || nextOffset == operation.offset || historyAboveRange)
+                                : rawCount >= criteria.limit && (nextOffset <= 0 || nextOffset == operation.offset);
+                        messagesSearchEndReached[leg] = !stalled && (rawCount < criteria.limit || session.dateHistory && historyFloor);
+                        messagesSearchCount[leg] = session.dateHistory ? searchServerResultMessagesMap[leg].size()
+                                : result instanceof TLRPC.TL_messages_messagesSlice || result instanceof TLRPC.TL_messages_channelMessages ? result.count : rawCount;
+                        updateSearchResults();
+                        boolean sameNavigation = session.navigationRevision == operation.navigationRevision;
+                        int selectedPosition = sameNavigation ? operation.position : lastReturnedNum;
+                        boolean merging = leg == 0 && messagesSearchEndReached[0] && session.mergeDialogId != 0 && !messagesSearchEndReached[1];
+                        boolean jumpNow = operation.jump && sameNavigation
+                                && (selectedPosition >= 0 && selectedPosition < searchResultMessages.size()
+                                || !session.dateHistory && !merging && searchResultMessages.isEmpty());
+                        boolean jumpLater = operation.jump && sameNavigation && !jumpNow;
+                        lastReturnedNum = searchResultMessages.isEmpty() ? 0 : Math.max(0, Math.min(selectedPosition, searchResultMessages.size() - 1));
+                        boolean pauseEmptyTraversal = session.dateHistory && !messagesSearchEndReached[leg]
+                                && searchServerResultMessages.size() == previousSize && emptyPagesRemaining == 0;
+                        finishMessageSearchOperation(operation, stalled || pauseEmptyTraversal);
+                        notifyMessageSearch(session, jumpNow);
+                        if (!currentMessageSearch(session) || messageSearchOperation != null) return;
+                        if (merging) {
+                            boolean stillSameNavigation = session.navigationRevision == operation.navigationRevision;
+                            sendMessageSearch(session, 1, stillSameNavigation ? operation.position : lastReturnedNum, jumpLater && stillSameNavigation, false);
+                        } else if (session.dateHistory && !stalled && !messagesSearchEndReached[leg]
+                                && searchServerResultMessages.size() == previousSize && emptyPagesRemaining > 0) {
+                            boolean stillSameNavigation = session.navigationRevision == operation.navigationRevision;
+                            sendMessageSearchPage(session, leg, stillSameNavigation ? operation.position : lastReturnedNum,
+                                    jumpLater && stillSameNavigation, false, emptyPagesRemaining - 1);
+                        }
+                    };
+                    if (session.saved) loadReplyMessagesForMessages(objects, session.dialogId, 0, session.replyMessageId, done, session.guid, null);
+                    else done.run();
+                });
+            }, ConnectionsManager.RequestFlagFailOnServerErrors);
+            if (currentMessageSearch(operation)) {
+                if (preflight) mergeReqId = requestId;
+                else reqId = requestId;
+            } else getConnectionsManager().cancelRequest(requestId, true);
+        } catch (RuntimeException failure) {
+            FileLog.e(failure);
+            if (currentMessageSearch(operation)) {
+                boolean navigate = currentMessageSearchJump(operation);
+                finishMessageSearchOperation(operation, true);
+                notifyMessageSearch(session, navigate);
+            }
+        }
+    }
+
+    private void continueMessageSearch(MessageSearchSession session, int position, boolean jump) {
+        if (!currentMessageSearch(session) || messageSearchOperation != null) return;
+        int leg = messagesSearchEndReached[0] ? 1 : 0;
+        if (leg == 1 && (session.mergeDialogId == 0 || messagesSearchEndReached[1])) return;
+        session.failed = false;
+        loadingMoreSearchMessages = true;
+        sendMessageSearch(session, leg, position, jump, false);
+    }
+
+    private boolean promoteMessageSearchNavigation(MessageSearchSession session, int position, boolean jump) {
+        MessageSearchOperation operation = messageSearchOperation;
+        if (!currentMessageSearch(operation) || operation.session != session || operation.preflight) return false;
+        operation.position = position;
+        operation.jump |= jump;
+        operation.navigationRevision = session.navigationRevision;
+        return true;
+    }
+
+    private boolean currentMessageSearchJump(MessageSearchOperation operation) {
+        return currentMessageSearch(operation) && operation.jump
+                && operation.session.navigationRevision == operation.navigationRevision
+                && (searchResultMessages.isEmpty() ? !operation.session.dateHistory
+                : operation.position >= 0 && operation.position < searchResultMessages.size());
+    }
+
+    private void searchMessagesInChatOwned(String query, long dialogId, long mergeDialogId, int guid, int direction,
+            long replyMessageId, boolean internal, TLRPC.User user, TLRPC.Chat chat, boolean jumpToMessage,
+            ReactionsLayoutInBubble.VisibleReaction reaction, MessageSearchDateRange dates) {
+        MessageSearchSession session = messageSearchSession;
+        if (query == null && dates != null && currentMessageSearch(session) && !session.dates.equals(dates)
+                && session.matches(dialogId, mergeDialogId, guid, replyMessageId, user, chat, reaction)) {
+            query = session.query;
+            internal = false;
+        }
+        if (query != null && (!internal || !currentMessageSearch(session) || !session.query.equals(query)
+                || !session.matches(dialogId, mergeDialogId, guid, replyMessageId, user, chat, reaction)
+                || dates != null && !session.dates.equals(dates))) {
+            session = beginMessageSearch(query, dialogId, mergeDialogId, guid, replyMessageId, user, chat, reaction,
+                    app.nimarkogram.messenger.utils.chats.ChatHelper2.getSearchFilterType(), dates == null ? MessageSearchDateRange.ALL : dates);
+            if (!currentMessageSearch(session)) return;
+            getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsLoading, guid, session);
+            if (!currentMessageSearch(session)) return;
+            startSavedMessageSearch(session);
+            if (currentMessageSearch(session)) sendMessageSearch(session, session.dateHistory || mergeDialogId == 0 ? 0 : 1,
+                    0, jumpToMessage, !session.dateHistory && mergeDialogId != 0);
+            return;
+        }
+        if (!currentMessageSearch(session) || !session.matches(dialogId, mergeDialogId, guid, replyMessageId, user, chat, reaction)) return;
+        if (query != null) {
+            continueMessageSearch(session, lastReturnedNum, jumpToMessage);
+            return;
+        }
+        if (direction == 2) {
+            ++session.navigationRevision;
+            lastReturnedNum = Math.max(0, lastReturnedNum - 1);
+            notifyMessageSearch(session, jumpToMessage);
+        } else if (direction == 1) {
+            ++session.navigationRevision;
+            int position = searchResultMessages.isEmpty() ? 0 : lastReturnedNum + 1;
+            if (position < searchResultMessages.size()) {
+                lastReturnedNum = position;
+                notifyMessageSearch(session, jumpToMessage);
+            } else if (!promoteMessageSearchNavigation(session, position, jumpToMessage)) {
+                continueMessageSearch(session, position, jumpToMessage);
+            }
+        }
     }
 
     public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, boolean internal, TLRPC.User user, TLRPC.Chat chat, boolean jumpToMessage, ReactionsLayoutInBubble.VisibleReaction reaction) {
-        int max_id = 0;
-        long queryWithDialog = dialogId;
-        boolean firstQuery = !internal;
-        if (reqId != 0) {
-            loadingMoreSearchMessages = false;
-            getConnectionsManager().cancelRequest(reqId, true);
-            reqId = 0;
-        }
-        if (mergeReqId != 0) {
-            getConnectionsManager().cancelRequest(mergeReqId, true);
-            mergeReqId = 0;
-        }
-        if (query == null) {
-            if (searchResultMessages.isEmpty()) {
-                loadingMoreSearchMessages = false;
-                return;
-            }
-            if (direction == 1) {
-                lastReturnedNum++;
-                if (lastReturnedNum < searchResultMessages.size()) {
-                    MessageObject messageObject = searchResultMessages.get(lastReturnedNum);
-                    getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, messageObject.getId(), getMask(), messageObject.getDialogId(), lastReturnedNum, getSearchCount(), jumpToMessage);
-                    loadingMoreSearchMessages = false;
-                    return;
-                } else {
-                    if (messagesSearchEndReached[0] && mergeDialogId == 0 && messagesSearchEndReached[1]) {
-                        lastReturnedNum--;
-                        loadingMoreSearchMessages = false;
-                        return;
-                    }
-                    firstQuery = false;
-                    query = lastSearchQuery;
-                    MessageObject messageObject = searchResultMessages.get(searchResultMessages.size() - 1);
-                    if (messageObject.getDialogId() == dialogId && !messagesSearchEndReached[0]) {
-                        max_id = messageObject.getId();
-                        queryWithDialog = dialogId;
-                    } else {
-                        if (messageObject.getDialogId() == mergeDialogId) {
-                            max_id = messageObject.getId();
-                        }
-                        queryWithDialog = mergeDialogId;
-                        messagesSearchEndReached[1] = false;
-                    }
-                }
-            } else if (direction == 2) {
-                lastReturnedNum--;
-                if (lastReturnedNum < 0) {
-                    lastReturnedNum = 0;
-                    return;
-                }
-                if (lastReturnedNum >= searchResultMessages.size()) {
-                    lastReturnedNum = searchResultMessages.size() - 1;
-                }
-                MessageObject messageObject = searchResultMessages.get(lastReturnedNum);
-                getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, messageObject.getId(), getMask(), messageObject.getDialogId(), lastReturnedNum, getSearchCount(), jumpToMessage);
-                loadingMoreSearchMessages = false;
-                return;
-            } else {
-                loadingMoreSearchMessages = false;
-                return;
-            }
-        } else if (firstQuery) {
-            messagesSearchEndReached[0] = messagesSearchEndReached[1] = false;
-            messagesSearchCount[0] = messagesSearchCount[1] = 0;
-            searchResultMessages.clear();
-            searchLocalResultMessages.clear();
-            searchServerResultMessagesMap[0].clear();
-            searchServerResultMessagesMap[1].clear();
-            getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsLoading, guid);
-        }
-        final boolean isHashtag = query != null && (query.trim().startsWith("#") || query.trim().startsWith("$"));
-        if (messagesSearchEndReached[0] && !messagesSearchEndReached[1] && mergeDialogId != 0) {
-            queryWithDialog = mergeDialogId;
-        }
-        if (queryWithDialog == dialogId && firstQuery) {
-            if (mergeDialogId != 0) {
-                TLRPC.InputPeer inputPeer = getMessagesController().getInputPeer(mergeDialogId);
-                if (inputPeer == null) {
-                    return;
-                }
-                TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
-                req.peer = inputPeer;
-                lastMergeDialogId = mergeDialogId;
-                req.limit = 1;
-                req.q = query;
-                if (user != null) {
-                    req.from_id = MessagesController.getInputPeer(user);
-                    req.flags |= 1;
-                } else if (chat != null) {
-                    req.from_id = MessagesController.getInputPeer(chat);
-                    req.flags |= 1;
-                }
-                if (replyMessageId != 0) {
-                    if (dialogId == getUserConfig().getClientUserId() || getMessagesController().isMonoForum(queryWithDialog)) {
-                        req.saved_peer_id = getMessagesController().getInputPeer(replyMessageId);
-                        req.flags |= 4;
-                    } else {
-                        req.top_msg_id = (int) replyMessageId;
-                        req.flags |= 2;
-                    }
-                }
-                if (reaction != null) {
-                    req.saved_reaction.add(reaction.toTLReaction());
-                    req.flags |= 8;
-                }
-                // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos /
-                // Files / etc.) instead of always Empty. Mirrors CG MediaDataController line ~3918
-                // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
-                req.filter = app.nimarkogram.messenger.utils.chats.ChatHelper2.getSearchFilterType();
-                mergeReqId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    if (lastMergeDialogId == mergeDialogId) {
-                        mergeReqId = 0;
-                        if (response != null) {
-                            TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-                            messagesSearchEndReached[1] = res.messages.isEmpty();
-                            messagesSearchCount[1] = res instanceof TLRPC.TL_messages_messagesSlice ? res.count : res.messages.size();
-                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction);
-                        } else {
-                            messagesSearchEndReached[1] = true;
-                            messagesSearchCount[1] = 0;
-                            searchMessagesInChat(req.q, dialogId, mergeDialogId, guid, direction, replyMessageId, true, user, chat, jumpToMessage, reaction);
-                        }
-                    }
-                }), ConnectionsManager.RequestFlagFailOnServerErrors);
-                return;
-            } else {
-                lastMergeDialogId = 0;
-                messagesSearchEndReached[1] = true;
-                messagesSearchCount[1] = 0;
-            }
-        }
-        TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
-        req.peer = getMessagesController().getInputPeer(queryWithDialog);
-        if (req.peer == null) {
-            loadingMoreSearchMessages = false;
-            return;
-        }
-        lastGuid = guid;
-        lastDialogId = dialogId;
-        lastSearchUser = user;
-        lastSearchChat = chat;
-        lastReplyMessageId = replyMessageId;
-        lastReaction = reaction;
-        req.limit = 21;
-        req.q = query != null ? query : "";
-        req.offset_id = max_id;
-        if (user != null) {
-            req.from_id = MessagesController.getInputPeer(user);
-            req.flags |= 1;
-        } else if (chat != null) {
-            req.from_id = MessagesController.getInputPeer(chat);
-            req.flags |= 1;
-        }
-        loadingSearchLocal = false;
-        loadedPredirectedSearchLocal = false;
-        int currentReqId = ++lastReqId;
-        final boolean isSaved = dialogId == getUserConfig().getClientUserId();
-        if (isSaved && reaction != null && firstQuery) {
-            lastReturnedNum = 0;
-            searchServerResultMessages.clear();
-            searchServerResultMessagesMap[0].clear();
-            searchServerResultMessagesMap[1].clear();
+        searchMessagesInChat(query, dialogId, mergeDialogId, guid, direction, replyMessageId, internal, user, chat, jumpToMessage, reaction, null);
+    }
 
-            final int predictedCount = getMessagesController().getSavedTagCount(lastReplyMessageId, reaction);
-            messagesLocalSearchCount = TextUtils.isEmpty(req.q) ? predictedCount : 0;
-            loadingSearchLocal = true;
-            loadedPredirectedSearchLocal = false;
-            getMessagesStorage().searchSavedByTag(reaction.toTLReaction(), lastReplyMessageId, query, 300, searchLocalResultMessages == null ? 0 : searchLocalResultMessages.size(), (messages, users, chats, emojis) -> {
-                if (currentReqId == lastReqId) {
-                    loadedPredirectedSearchLocal = messages.size() == predictedCount;
-                    loadingSearchLocal = false;
-                    getMessagesController().putUsers(users, true);
-                    getMessagesController().putChats(chats, true);
-                    AnimatedEmojiDrawable.getDocumentFetcher(currentAccount).processDocuments(emojis);
-                    searchLocalResultMessages = messages;
-                    updateSearchResults();
-                    getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, 0, getMask(), dialogId, lastReturnedNum, getSearchCount(), true);
-                }
-            }, true);
-        }
-        if (lastReplyMessageId != 0) {
-            if (queryWithDialog == getUserConfig().getClientUserId() || getMessagesController().isMonoForum(queryWithDialog)) {
-                req.saved_peer_id = getMessagesController().getInputPeer(lastReplyMessageId);
-                req.flags |= 4;
-            } else {
-                req.top_msg_id = (int) lastReplyMessageId;
-                req.flags |= 2;
-            }
-        }
-        if (reaction != null) {
-            req.saved_reaction.add(reaction.toTLReaction());
-            req.flags |= 8;
-        }
-        // NimarkoGram: CG parity — honor user-selected search filter (Photos / Videos / Files /
-        // etc.) instead of always Empty. Mirrors CG MediaDataController line ~4003
-        // (req.filter = ChatsHelper2.INSTANCE.getSearchFilterType()).
-        req.filter = app.nimarkogram.messenger.utils.chats.ChatHelper2.getSearchFilterType();
-        lastSearchQuery = query;
-        long queryWithDialogFinal = queryWithDialog;
-        String finalQuery = query;
-        reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
-            ArrayList<MessageObject> messageObjects = new ArrayList<>();
-
-            if (error == null) {
-                TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-                int N = Math.min(res.messages.size(), req.limit - 1);
-                for (int a = 0; a < N; a++) {
-                    TLRPC.Message message = res.messages.get(a);
-                    MessageObject messageObject = new MessageObject(currentAccount, message, null, null, null, null, null, true, true, 0, false, false, isSaved);
-                    if (messageObject.hasValidGroupId()) {
-                        messageObject.isPrimaryGroupMessage = true;
-                    }
-                    messageObject.setQuery(finalQuery, !isHashtag);
-                    messageObjects.add(messageObject);
-                }
-            }
-            AndroidUtilities.runOnUIThread(() -> {
-                if (currentReqId == lastReqId) {
-                    reqId = 0;
-                    if (!jumpToMessage) {
-                        loadingMoreSearchMessages = false;
-                    }
-                    if (response != null) {
-                        TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-                        for (int a = 0; a < res.messages.size(); a++) {
-                            TLRPC.Message message = res.messages.get(a);
-                            if (message instanceof TLRPC.TL_messageEmpty || message.action instanceof TLRPC.TL_messageActionHistoryClear) {
-                                res.messages.remove(a);
-                                a--;
-                            }
-                        }
-                        getMessagesStorage().putUsersAndChats(res.users, res.chats, true, true);
-                        getMessagesController().putUsers(res.users, false);
-                        getMessagesController().putChats(res.chats, false);
-                        Runnable done = () -> {
-                            if (req.offset_id == 0 && queryWithDialogFinal == dialogId) {
-                                lastReturnedNum = 0;
-                                searchServerResultMessages.clear();
-                                searchServerResultMessagesMap[0].clear();
-                                searchServerResultMessagesMap[1].clear();
-                                messagesSearchCount[0] = 0;
-                                getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsLoading, guid);
-                            }
-                            boolean added = false;
-                            int N = Math.min(res.messages.size(), req.limit - 1);
-                            for (int a = 0; a < N; a++) {
-                                added = true;
-                                MessageObject messageObject = messageObjects.get(a);
-                                searchServerResultMessages.add(messageObject);
-                                searchServerResultMessagesMap[queryWithDialogFinal == dialogId ? 0 : 1].put(messageObject.getId(), messageObject);
-                            }
-                            updateSearchResults();
-                            messagesSearchEndReached[queryWithDialogFinal == dialogId ? 0 : 1] = res.messages.size() < req.limit;
-                            messagesSearchCount[queryWithDialogFinal == dialogId ? 0 : 1] = res instanceof TLRPC.TL_messages_messagesSlice || res instanceof TLRPC.TL_messages_channelMessages ? res.count : res.messages.size();
-                            if (searchServerResultMessages.isEmpty()) {
-                                getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, 0, getMask(), (long) 0, 0, 0, jumpToMessage);
-                            } else {
-                                if (added) {
-                                    if (lastReturnedNum >= searchResultMessages.size()) {
-                                        lastReturnedNum = searchResultMessages.size() - 1;
-                                    }
-                                    MessageObject messageObject = searchResultMessages.get(lastReturnedNum);
-                                    getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, messageObject.getId(), getMask(), messageObject.getDialogId(), lastReturnedNum, getSearchCount(), jumpToMessage);
-                                } else if (isSaved) {
-                                    getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, 0, getMask(), dialogId, lastReturnedNum, getSearchCount(), false);
-                                }
-                            }
-                            if (queryWithDialogFinal == dialogId && messagesSearchEndReached[0] && mergeDialogId != 0 && !messagesSearchEndReached[1]) {
-                                searchMessagesInChat(lastSearchQuery, dialogId, mergeDialogId, guid, 0, replyMessageId, true, user, chat, jumpToMessage, lastReaction);
-                            }
-                        };
-                        if (isSaved) {
-                            loadReplyMessagesForMessages(messageObjects, dialogId, 0, lastReplyMessageId, done, guid, null);
-                        } else {
-                            done.run();
-                        }
-                    }
-                }
-            });
-        }, ConnectionsManager.RequestFlagFailOnServerErrors);
+    public void searchMessagesInChat(String query, long dialogId, long mergeDialogId, int guid, int direction, long replyMessageId, boolean internal, TLRPC.User user, TLRPC.Chat chat, boolean jumpToMessage, ReactionsLayoutInBubble.VisibleReaction reaction, MessageSearchDateRange dates) {
+        messageSearchUi(() -> searchMessagesInChatOwned(query, dialogId, mergeDialogId, guid, direction, replyMessageId, internal, user, chat, jumpToMessage, reaction, dates));
     }
 
     public void portSavedSearchResults(int guid, ReactionsLayoutInBubble.VisibleReaction reaction, String query, ArrayList<MessageObject> local, ArrayList<MessageObject> loaded, int num, int count, boolean reached) {
-        lastReaction = reaction;
-        lastSearchQuery = query;
+        messageSearchUi(() -> {
+            MessageSearchSession session = beginMessageSearch(query == null ? "" : query, getUserConfig().getClientUserId(), 0,
+                    guid, 0, null, null, reaction, new TLRPC.TL_inputMessagesFilterEmpty(), MessageSearchDateRange.ALL);
+            if (!currentMessageSearch(session)) return;
+            searchServerResultMessages.addAll(loaded);
+            searchLocalResultMessages.addAll(local);
+            for (MessageObject object : loaded) searchServerResultMessagesMap[0].put(object.getId(), object);
+            session.offsets[0] = loaded.isEmpty() ? 0 : loaded.get(loaded.size() - 1).getId();
         messagesSearchEndReached[0] = reached;
-        messagesSearchEndReached[1] = true;
-        searchServerResultMessages.clear();
-        searchServerResultMessages.addAll(loaded);
-        searchLocalResultMessages.clear();
-        searchLocalResultMessages.addAll(local);
+            messagesSearchCount[0] = count;
         updateSearchResults();
-        messagesSearchCount[0] = count;
-        messagesSearchCount[1] = 0;
-        lastReturnedNum = num;
-        getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsAvailable, guid, 0, getMask(), getUserConfig().getClientUserId(), lastReturnedNum, getSearchCount(), true);
+            lastReturnedNum = searchResultMessages.isEmpty() ? 0 : Math.max(0, Math.min(num, searchResultMessages.size() - 1));
+            notifyMessageSearch(session, true);
+        });
     }
 
     public String getLastSearchQuery() {
@@ -4304,13 +4597,21 @@ public class MediaDataController extends BaseController {
 
 
     public void loadMedia(long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, int requestIndex, ReactionsLayoutInBubble.VisibleReaction tag, String query) {
+        loadMedia(dialogId, count, max_id, min_id, type, topicId, fromCache, classGuid, requestIndex, tag, query, null);
+    }
+
+    private static void reportMediaLoadFailure(Runnable onFailure) {
+        if (onFailure != null) AndroidUtilities.runOnUIThread(onFailure);
+    }
+
+    public void loadMedia(long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, int requestIndex, ReactionsLayoutInBubble.VisibleReaction tag, String query, Runnable onFailure) {
         boolean isChannel = DialogObject.isChatDialog(dialogId) && ChatObject.isChannel(-dialogId, currentAccount);
 
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("load media did " + dialogId + " count = " + count + " max_id " + max_id + " type = " + type + " cache = " + fromCache + " classGuid = " + classGuid);
         }
         if (fromCache != 0 && TextUtils.isEmpty(query) || DialogObject.isEncryptedDialog(dialogId)) {
-            loadMediaDatabase(dialogId, count, max_id, min_id, type, topicId, tag, classGuid, isChannel, fromCache, requestIndex);
+            loadMediaDatabase(dialogId, count, max_id, min_id, type, topicId, tag, classGuid, isChannel, fromCache, requestIndex, onFailure);
         } else {
             TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
             req.limit = count;
@@ -4360,10 +4661,11 @@ public class MediaDataController extends BaseController {
                 }
             }
             if (req.peer == null) {
+                reportMediaLoadFailure(onFailure);
                 return;
             }
             int reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
-                if (error == null) {
+                if (error == null && response instanceof TLRPC.messages_Messages) {
                     TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                     getMessagesController().removeDeletedMessagesFromArray(dialogId, res.messages);
                     boolean topReached;
@@ -4373,10 +4675,16 @@ public class MediaDataController extends BaseController {
                         topReached = res.messages.size() == 0;
                     }
 
-                    processLoadedMedia(res, dialogId, count, max_id, min_id, type, topicId, 0, classGuid, isChannel, topReached, requestIndex);
+                    processLoadedMedia(res, dialogId, count, max_id, min_id, type, topicId, 0, classGuid, isChannel, topReached, requestIndex, onFailure);
+                } else {
+                    reportMediaLoadFailure(onFailure);
                 }
             });
+            if (reqId != 0) {
             getConnectionsManager().bindRequestToGuid(reqId, classGuid);
+            } else {
+                reportMediaLoadFailure(onFailure);
+            }
         }
     }
 
@@ -4651,7 +4959,7 @@ public class MediaDataController extends BaseController {
         }
     }
 
-    private void processLoadedMedia(TLRPC.messages_Messages res, long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, boolean isChannel, boolean topReached, int requestIndex) {
+    private void processLoadedMedia(TLRPC.messages_Messages res, long dialogId, int count, int max_id, int min_id, int type, long topicId, int fromCache, int classGuid, boolean isChannel, boolean topReached, int requestIndex, Runnable onFailure) {
         if (BuildVars.LOGS_ENABLED) {
             int messagesCount = 0;
             if (res != null && res.messages != null) {
@@ -4661,9 +4969,10 @@ public class MediaDataController extends BaseController {
         }
         if (fromCache != 0 && res != null && res.messages != null && ((res.messages.isEmpty() && min_id == 0) || (res.messages.size() <= 1 && min_id != 0)) && !DialogObject.isEncryptedDialog(dialogId)) {
             if (fromCache == 2) {
+                reportMediaLoadFailure(onFailure);
                 return;
             }
-            loadMedia(dialogId, count, max_id, min_id, type, topicId, 0, classGuid, requestIndex, null, null);
+            loadMedia(dialogId, count, max_id, min_id, type, topicId, 0, classGuid, requestIndex, null, null, onFailure);
         } else {
             if (fromCache == 0) {
                 ImageLoader.saveMessagesThumbs(res.messages);
@@ -4671,7 +4980,7 @@ public class MediaDataController extends BaseController {
                 putMediaDatabase(dialogId, topicId, type, res.messages, max_id, min_id, topReached);
             }
 
-            Utilities.searchQueue.postRunnable(() -> {
+            boolean posted = Utilities.searchQueue.postRunnable(() -> {
                 LongSparseArray<TLRPC.User> usersDict = new LongSparseArray<>();
                 for (int a = 0; a < res.users.size(); a++) {
                     TLRPC.User u = res.users.get(a);
@@ -4696,20 +5005,23 @@ public class MediaDataController extends BaseController {
                 };
 
                 if (getMessagesController().getTranslateController().isFeatureAvailable(dialogId)) {
-                    getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                    boolean translationsPosted = getMessagesStorage().getStorageQueue().postRunnable(() -> {
                         for (int i = 0; i < objects.size(); ++i) {
                            MessageObject messageObject = objects.get(i);
                            TLRPC.Message message = getMessagesStorage().getMessageWithCustomParamsOnlyInternal(messageObject.getId(), messageObject.getDialogId());
+                           if (message == null) continue;
                            messageObject.messageOwner.translatedToLanguage = message.translatedToLanguage;
                            messageObject.messageOwner.translatedText = message.translatedText;
                            messageObject.updateTranslation();
                         }
                         notify.run();
                     });
+                    if (!translationsPosted) notify.run();
                 } else {
                     notify.run();
                 }
             });
+            if (!posted) reportMediaLoadFailure(onFailure);
         }
     }
 
@@ -4789,7 +5101,7 @@ public class MediaDataController extends BaseController {
         });
     }
 
-    private void loadMediaDatabase(long uid, int count, int max_id, int min_id, int type, long topicId, ReactionsLayoutInBubble.VisibleReaction tag, int classGuid, boolean isChannel, int fromCache, int requestIndex) {
+    private void loadMediaDatabase(long uid, int count, int max_id, int min_id, int type, long topicId, ReactionsLayoutInBubble.VisibleReaction tag, int classGuid, boolean isChannel, int fromCache, int requestIndex, Runnable onFailure) {
         Runnable runnable = new Runnable() {
             @Override
             public void run() {
@@ -5046,13 +5358,16 @@ public class MediaDataController extends BaseController {
                 } finally {
                     Runnable task = this;
                     AndroidUtilities.runOnUIThread(() -> getMessagesStorage().completeTaskForGuid(task, classGuid));
-                    processLoadedMedia(res, uid, count, max_id, min_id, type, topicId, fromCache, classGuid, isChannel, topReached, requestIndex);
+                    processLoadedMedia(res, uid, count, max_id, min_id, type, topicId, fromCache, classGuid, isChannel, topReached, requestIndex, onFailure);
                 }
             }
         };
         MessagesStorage messagesStorage = getMessagesStorage();
-        messagesStorage.getStorageQueue().postRunnable(runnable);
+        if (messagesStorage.getStorageQueue().postRunnable(runnable)) {
         messagesStorage.bindTaskToGuid(runnable, classGuid);
+        } else {
+            reportMediaLoadFailure(onFailure);
+        }
     }
 
     private void putMediaDatabase(long uid, long topicId, int type, ArrayList<TLRPC.Message> messages, int max_id, int min_id, boolean topReached) {
@@ -5110,7 +5425,17 @@ public class MediaDataController extends BaseController {
     }
 
     public void loadMusic(long dialogId, long topicId, long maxId, long minId) {
-        getMessagesStorage().getStorageQueue().postRunnable(() -> {
+        loadMusic(dialogId, topicId, maxId, minId, null);
+    }
+
+    public void loadMusic(long dialogId, long topicId, long maxId, long minId, Object playlistOwner) {
+        final MessagesStorage storage = getMessagesStorage();
+        final long userId = getUserConfig().getClientUserId();
+        final int loginTime = getUserConfig().loginTime;
+        storage.getStorageQueue().postRunnable(() -> {
+            if (getUserConfig().getClientUserId() != userId || getUserConfig().loginTime != loginTime) {
+                return;
+            }
             ArrayList<MessageObject> arrayListBegin = new ArrayList<>();
             ArrayList<MessageObject> arrayListEnd = new ArrayList<>();
             try {
@@ -5118,40 +5443,57 @@ public class MediaDataController extends BaseController {
                     ArrayList<MessageObject> arrayList = a == 0 ? arrayListBegin : arrayListEnd;
                     SQLiteCursor cursor;
                     if (topicId != 0) {
-                        cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_topics WHERE uid = %d AND topic_id = %d AND mid %s %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, topicId, a == 0 ? "<" : ">", a == 0 ? maxId : minId, MEDIA_MUSIC));
+                        cursor = storage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_topics WHERE uid = %d AND topic_id = %d AND mid %s %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, topicId, a == 0 ? "<" : ">", a == 0 ? maxId : minId, MEDIA_MUSIC));
                     } else if (a == 0) {
                         if (!DialogObject.isEncryptedDialog(dialogId)) {
-                            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid < %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, maxId, MEDIA_MUSIC));
+                            cursor = storage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid < %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, maxId, MEDIA_MUSIC));
                         } else {
-                            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid > %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, maxId, MEDIA_MUSIC));
+                            cursor = storage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid > %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, maxId, MEDIA_MUSIC));
                         }
                     } else {
                         if (!DialogObject.isEncryptedDialog(dialogId)) {
-                            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid > %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, minId, MEDIA_MUSIC));
+                            cursor = storage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid > %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, minId, MEDIA_MUSIC));
                         } else {
-                            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid < %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, minId, MEDIA_MUSIC));
+                            cursor = storage.getDatabase().queryFinalized(String.format(Locale.US, "SELECT data, mid FROM media_v4 WHERE uid = %d AND mid < %d AND type = %d ORDER BY date DESC, mid DESC LIMIT 1000", dialogId, minId, MEDIA_MUSIC));
                         }
                     }
+
+                    try {
 
                     while (cursor.next()) {
                         NativeByteBuffer data = cursor.byteBufferValue(0);
                         if (data != null) {
-                            TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
-                            message.readAttachPath(data, getUserConfig().clientUserId);
+                                TLRPC.Message message;
+                                try {
+                                    message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                                    if (message != null) message.readAttachPath(data, userId);
+                                } finally {
                             data.reuse();
-                            if (MessageObject.isMusicMessage(message)) {
+                                }
+                                if (message != null && MessageObject.isMusicMessage(message)) {
                                 message.id = cursor.intValue(1);
                                 message.dialog_id = dialogId;
                                 arrayList.add(0, new MessageObject(currentAccount, message, false, true));
                             }
                         }
                     }
+                    } finally {
                     cursor.dispose();
+                    }
                 }
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd, topicId));
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getUserConfig().getClientUserId() != userId || getUserConfig().loginTime != loginTime) {
+                    return;
+                }
+                if (playlistOwner == null) {
+                    getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd, topicId);
+                } else {
+                    getNotificationCenter().postNotificationName(NotificationCenter.musicDidLoad, dialogId, arrayListBegin, arrayListEnd, topicId, playlistOwner);
+                }
+            });
         });
     }
     //---------------- MEDIA END ----------------
@@ -9836,80 +10178,23 @@ public class MediaDataController extends BaseController {
     }
 
     public void loadEmojiThemes() {
-        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("emojithemes_config_" + currentAccount, Context.MODE_PRIVATE);
-        int count = preferences.getInt("count", 0);
-        ArrayList<ChatThemeBottomSheet.ChatThemeItem> previewItems = new ArrayList<>();
-        previewItems.add(new ChatThemeBottomSheet.ChatThemeItem(EmojiThemes.createHomePreviewTheme(currentAccount)));
-        for (int i = 0; i < count; ++i) {
-            String value = preferences.getString("theme_" + i, "");
-            SerializedData serializedData = new SerializedData(Utilities.hexToBytes(value));
-            try {
-                TLRPC.TL_theme theme = TLRPC.Theme.TLdeserialize(serializedData, serializedData.readInt32(true), true);
-                EmojiThemes fullTheme = EmojiThemes.createPreviewFullTheme(currentAccount, theme);
-                if (fullTheme.items.size() >= 4) {
-                    previewItems.add(new ChatThemeBottomSheet.ChatThemeItem(fullTheme));
-                }
-
-                ChatThemeController.chatThemeQueue.postRunnable(new Runnable() {
-                    @Override
-                    public void run() {
-                        for (int i = 0; i < previewItems.size(); i++) {
-                            if (previewItems.get(i) != null && previewItems.get(i).chatTheme != null) {
-                                previewItems.get(i).chatTheme.loadPreviewColors(0);
-                            }
-                        }
-                        AndroidUtilities.runOnUIThread(() -> {
-                            defaultEmojiThemes.clear();
-                            defaultEmojiThemes.addAll(previewItems);
-                        });
-                    }
-                });
-            } catch (Throwable e) {
-                FileLog.e(e);
-            }
-        }
+        mediaPreferenceUi(this::ensureEmojiThemePreferences);
     }
 
     public void generateEmojiPreviewThemes(final ArrayList<TLRPC.TL_theme> emojiPreviewThemes, int currentAccount) {
-        SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("emojithemes_config_" + currentAccount, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = preferences.edit();
-        editor.putInt("count", emojiPreviewThemes.size());
-        for (int i = 0; i < emojiPreviewThemes.size(); ++i) {
-            TLRPC.TL_theme tlChatTheme = emojiPreviewThemes.get(i);
-            SerializedData data = new SerializedData(tlChatTheme.getObjectSize());
-            tlChatTheme.serializeToStream(data);
-            editor.putString("theme_" + i, Utilities.bytesToHex(data.toByteArray()));
-        }
-        editor.apply();
-
-        if (!emojiPreviewThemes.isEmpty()) {
-            final ArrayList<ChatThemeBottomSheet.ChatThemeItem> previewItems = new ArrayList<>();
-            previewItems.add(new ChatThemeBottomSheet.ChatThemeItem(EmojiThemes.createHomePreviewTheme(currentAccount)));
-            for (int i = 0; i < emojiPreviewThemes.size(); i++) {
-                TLRPC.TL_theme theme = emojiPreviewThemes.get(i);
-                EmojiThemes chatTheme = EmojiThemes.createPreviewFullTheme(currentAccount, theme);
-                ChatThemeBottomSheet.ChatThemeItem item = new ChatThemeBottomSheet.ChatThemeItem(chatTheme);
-                if (chatTheme.items.size() >= 4) {
-                    previewItems.add(item);
-                }
-            }
-            ChatThemeController.chatThemeQueue.postRunnable(new Runnable() {
-                @Override
-                public void run() {
-                    for (int i = 0; i < previewItems.size(); i++) {
-                        previewItems.get(i).chatTheme.loadPreviewColors(currentAccount);
-                    }
-                    AndroidUtilities.runOnUIThread(() -> {
-                        defaultEmojiThemes.clear();
-                        defaultEmojiThemes.addAll(previewItems);
-                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiPreviewThemesChanged);
-                    });
-                }
-            });
-        } else {
-            defaultEmojiThemes.clear();
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiPreviewThemesChanged);
-        }
+        if (currentAccount != this.currentAccount) throw new IllegalArgumentException("Theme account mismatch");
+        final long generation = getMediaPreferencesGeneration();
+        final long expectedVersion = emojiThemePreferenceVersion;
+        final ArrayList<String> encoded;
+        try { encoded = freezeMediaPreferenceObjects(emojiPreviewThemes); }
+        catch (Exception failure) { FileLog.e(failure); return; }
+        mediaPreferenceUi(() -> {
+            ensureMediaPreferenceSession();
+            if (!currentEmojiThemePreference(generation, expectedVersion)) return;
+            long version = ++emojiThemePreferenceVersion;
+            emojiThemePreferenceState = PREF_LOADING;
+            generateEncodedEmojiThemePreferences(encoded, null, generation, version);
+        });
     }
 
     //---------------- EMOJI END ----------------
@@ -10072,6 +10357,566 @@ public class MediaDataController extends BaseController {
     }
 
 
+    private static final int PREF_UNREAD = 0, PREF_LOADING = 1, PREF_READY = 2, PREF_FAILED = 3;
+    private static final int PREF_RECENT = 0, PREF_TOP = 1, PREF_SAVED = 2;
+    private static final class MediaPreferenceQueue {
+        static final java.util.concurrent.ExecutorService IO = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "media-preferences");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static final class ReactionPreference {
+        volatile ReactionPreferenceOperation operation;
+        volatile Object write;
+        int state = PREF_UNREAD;
+        boolean attempted;
+        boolean loading;
+        ReactionPreferenceSnapshot snapshot;
+    }
+
+    private static final class ReactionPreferenceOperation {
+        final long generation;
+        final int type;
+        ReactionPreferenceOperation(long generation, int type) {
+            this.generation = generation;
+            this.type = type;
+        }
+    }
+
+    private static final class ReactionPreferenceSnapshot {
+        final long hash;
+        final ArrayList<TLRPC.Reaction> values;
+        final ArrayList<String> encoded;
+        ReactionPreferenceSnapshot(long hash, ArrayList<TLRPC.Reaction> values, ArrayList<String> encoded) {
+            this.hash = hash;
+            this.values = values;
+            this.encoded = encoded;
+        }
+    }
+
+    private static final class EmojiThemePreferenceSnapshot {
+        final ArrayList<TLRPC.TL_theme> themes;
+        final ArrayList<String> encoded;
+        final Long hash;
+        EmojiThemePreferenceSnapshot(ArrayList<TLRPC.TL_theme> themes, ArrayList<String> encoded, Long hash) {
+            this.themes = themes;
+            this.encoded = encoded;
+            this.hash = hash;
+        }
+    }
+
+    public interface EmojiThemesReadyCallback {
+        void onReady(EmojiThemesLoad load);
+        void onCancelled(EmojiThemesLoad load);
+    }
+
+    public final class EmojiThemesLoad {
+        private final long generation;
+        private final EmojiThemesReadyCallback callback;
+        private boolean delivered;
+        private volatile boolean finished;
+        private EmojiThemesLoad(EmojiThemesReadyCallback callback) {
+            generation = mediaPreferenceEpoch.get();
+            this.callback = callback;
+        }
+        public boolean isCurrent() {
+            return !finished && generation == mediaPreferenceEpoch.get();
+        }
+        public void finish() {
+            mediaPreferenceUi(() -> {
+                finished = true;
+                emojiThemesLoads.remove(this);
+            });
+        }
+    }
+
+    private final ReactionPreference[] reactionPreferences = {
+            new ReactionPreference(), new ReactionPreference(), new ReactionPreference()
+    };
+    private final java.util.concurrent.atomic.AtomicLong mediaPreferenceEpoch = new java.util.concurrent.atomic.AtomicLong();
+    private long mediaPreferenceUiGeneration;
+    private volatile long emojiThemePreferenceVersion;
+    private volatile Object emojiThemePreferenceWrite;
+    private int emojiThemePreferenceState = PREF_UNREAD;
+    private Long emojiThemePreferenceHash;
+    private ArrayList<String> emojiThemePreferencePayload;
+    private final ArrayList<EmojiThemesLoad> emojiThemesLoads = new ArrayList<>();
+    private final Object mediaPreferenceConstructionLock = new Object();
+    private boolean mediaPreferenceConstructionReady;
+    private final ArrayList<Runnable> mediaPreferenceConstructionResults = new ArrayList<>();
+
+    private static void mediaPreferenceUi(Runnable action) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) action.run();
+        else AndroidUtilities.runOnUIThread(action);
+    }
+
+    private void postMediaPreferenceResult(Runnable action) {
+        synchronized (mediaPreferenceConstructionLock) {
+            if (!mediaPreferenceConstructionReady) {
+                mediaPreferenceConstructionResults.add(action);
+                return;
+            }
+        }
+        AndroidUtilities.runOnUIThread(action);
+    }
+
+    private void finishMediaPreferenceConstruction() {
+        ArrayList<Runnable> pending;
+        synchronized (mediaPreferenceConstructionLock) {
+            mediaPreferenceConstructionReady = true;
+            pending = new ArrayList<>(mediaPreferenceConstructionResults);
+            mediaPreferenceConstructionResults.clear();
+        }
+        for (Runnable action : pending) AndroidUtilities.runOnUIThread(action);
+    }
+
+    public long getMediaPreferencesGeneration() { return mediaPreferenceEpoch.get(); }
+    public long getEmojiThemesPreferencesVersion() { return emojiThemePreferenceVersion; }
+    public boolean hasEmojiThemesPreferenceHash() { return emojiThemePreferenceHash != null; }
+    public long getEmojiThemesPreferenceHash() { return emojiThemePreferenceHash == null ? 0 : emojiThemePreferenceHash; }
+
+    public void whenEmojiThemesReady(EmojiThemesReadyCallback callback) {
+        mediaPreferenceUi(() -> {
+            ensureMediaPreferenceSession();
+            EmojiThemesLoad load = new EmojiThemesLoad(callback);
+            emojiThemesLoads.add(load);
+            ensureEmojiThemePreferences();
+            deliverEmojiThemesLoads();
+        });
+    }
+
+    private void deliverEmojiThemesLoads() {
+        for (EmojiThemesLoad load : new ArrayList<>(emojiThemesLoads)) {
+            if (emojiThemePreferenceState != PREF_READY && emojiThemePreferenceState != PREF_FAILED) break;
+            if (load.isCurrent() && !load.delivered) {
+                load.delivered = true;
+                load.callback.onReady(load);
+            }
+        }
+    }
+
+    private static int preferenceCount(Map<String, ?> snapshot) {
+        Object value = snapshot.get("count");
+        if (value == null) return 0;
+        if (!(value instanceof Integer) || (Integer) value < 0) throw new IllegalStateException("Invalid media preference count");
+        return (Integer) value;
+    }
+
+    private static String preferenceObject(Map<String, ?> snapshot, String key) {
+        Object value = snapshot.get(key);
+        if (!(value instanceof String) || ((String) value).isEmpty()) throw new IllegalStateException("Missing media preference object");
+        return (String) value;
+    }
+
+    private static long preferenceHash(Map<String, ?> snapshot) {
+        Object value = snapshot.get("hash");
+        if (value == null) return 0;
+        if (!(value instanceof Long)) throw new IllegalStateException("Invalid media preference hash");
+        return (Long) value;
+    }
+
+    private String reactionPreferenceName(int type) {
+        return (type == PREF_RECENT ? "recent_reactions_" : type == PREF_TOP ? "top_reactions_" : "saved_reactions_") + currentAccount;
+    }
+
+    private ArrayList<TLRPC.Reaction> reactionPreferenceList(int type) {
+        return type == PREF_RECENT ? recentReactions : type == PREF_TOP ? topReactions : savedReactions;
+    }
+
+    private boolean currentReactionPreference(ReactionPreferenceOperation operation) {
+        return operation.generation == mediaPreferenceEpoch.get() && reactionPreferences[operation.type].operation == operation;
+    }
+
+    private void updateReactionPreferenceFlags() {
+        loadingRecentReactions = reactionPreferences[PREF_RECENT].loading || reactionPreferences[PREF_TOP].loading;
+        loadedRecentReactions = reactionPreferences[PREF_RECENT].attempted && reactionPreferences[PREF_TOP].attempted;
+        loadingSavedReactions = reactionPreferences[PREF_SAVED].loading;
+        loadedSavedReactions = reactionPreferences[PREF_SAVED].attempted;
+    }
+
+    private ReactionPreferenceOperation stageReactionPreference(int type, boolean force) {
+        ReactionPreference slot = reactionPreferences[type];
+        if (slot.loading || slot.attempted && !force) return null;
+        ReactionPreferenceOperation operation = new ReactionPreferenceOperation(mediaPreferenceEpoch.get(), type);
+        slot.operation = operation;
+        slot.loading = slot.attempted = true;
+        if (slot.state == PREF_UNREAD || slot.state == PREF_FAILED) slot.state = PREF_LOADING;
+        return operation;
+    }
+
+    private void startReactionPreferences(boolean saved, boolean force) {
+        ensureMediaPreferenceSession();
+        if (saved ? loadingSavedReactions : loadingRecentReactions) return;
+        ReactionPreferenceOperation first = stageReactionPreference(saved ? PREF_SAVED : PREF_RECENT, force);
+        ReactionPreferenceOperation second = saved ? null : stageReactionPreference(PREF_TOP, force);
+        updateReactionPreferenceFlags();
+        if (first != null) launchReactionPreference(first);
+        if (second != null && currentReactionPreference(second)) launchReactionPreference(second);
+    }
+
+    private void launchReactionPreference(ReactionPreferenceOperation operation) {
+        if (!currentReactionPreference(operation)) return;
+        ReactionPreference slot = reactionPreferences[operation.type];
+        if (slot.state != PREF_LOADING) {
+            requestReactionPreference(operation);
+            return;
+        }
+        MediaPreferenceQueue.IO.execute(() -> {
+            if (!currentReactionPreference(operation)) return;
+            ReactionPreferenceSnapshot result = null;
+            try {
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences(reactionPreferenceName(operation.type), Context.MODE_PRIVATE);
+                Map<String, ?> snapshot = preferences.getAll();
+                int count = preferenceCount(snapshot);
+                long hash = preferenceHash(snapshot);
+                ArrayList<TLRPC.Reaction> values = new ArrayList<>();
+                ArrayList<String> encoded = new ArrayList<>();
+                for (int i = 0; i < count; i++) {
+                    String value = preferenceObject(snapshot, "object_" + i);
+                    SerializedData data = new SerializedData(Utilities.hexToBytes(value));
+                    try {
+                        TLRPC.Reaction reaction = TLRPC.Reaction.TLdeserialize(data, data.readInt32(true), true);
+                        if (reaction == null) throw new IllegalStateException("Invalid cached reaction");
+                        values.add(reaction);
+                        encoded.add(value);
+                    } finally { data.cleanup(); }
+                }
+                result = new ReactionPreferenceSnapshot(hash, values, encoded);
+            } catch (Exception failure) { FileLog.e(failure); }
+            final ReactionPreferenceSnapshot loaded = result;
+            postMediaPreferenceResult(() -> {
+                if (!currentReactionPreference(operation)) return;
+                if (loaded != null) {
+                    installReactionPreference(operation.type, loaded);
+                } else {
+                    reactionPreferences[operation.type].state = PREF_FAILED;
+                }
+                updateReactionPreferenceFlags();
+                if (loaded != null) notifyReactionPreference(operation.type, operation.generation);
+                if (currentReactionPreference(operation)) requestReactionPreference(operation);
+            });
+        });
+    }
+
+    private static ArrayList<String> freezeMediaPreferenceObjects(List<? extends TLObject> values) {
+        ArrayList<String> encoded = new ArrayList<>();
+        for (TLObject value : values) {
+            SerializedData data = new SerializedData(value.getObjectSize());
+            try {
+                value.serializeToStream(data);
+                encoded.add(Utilities.bytesToHex(data.toByteArray()));
+            } finally { data.cleanup(); }
+        }
+        return encoded;
+    }
+
+    private void installReactionPreference(int type, ReactionPreferenceSnapshot snapshot) {
+        ReactionPreference slot = reactionPreferences[type];
+        if (slot.snapshot == null || !slot.snapshot.encoded.equals(snapshot.encoded)) {
+            ArrayList<TLRPC.Reaction> published = reactionPreferenceList(type);
+            published.clear();
+            published.addAll(snapshot.values);
+        }
+        slot.snapshot = snapshot;
+        slot.state = PREF_READY;
+    }
+
+    private void requestReactionPreference(ReactionPreferenceOperation operation) {
+        if (!currentReactionPreference(operation)) return;
+        ReactionPreferenceSnapshot requestSnapshot = reactionPreferences[operation.type].snapshot;
+        long hash = requestSnapshot == null ? 0 : requestSnapshot.hash;
+        RequestDelegate callback = (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (!currentReactionPreference(operation)) return;
+            ReactionPreference slot = reactionPreferences[operation.type];
+            ReactionPreferenceSnapshot replacement = null;
+            if (error == null && response instanceof TLRPC.TL_messages_reactions) {
+                TLRPC.TL_messages_reactions result = (TLRPC.TL_messages_reactions) response;
+                try {
+                    replacement = new ReactionPreferenceSnapshot(result.hash, new ArrayList<>(result.reactions), freezeMediaPreferenceObjects(result.reactions));
+                } catch (Exception failure) { FileLog.e(failure); }
+            }
+            if (!currentReactionPreference(operation)) return;
+            if (replacement != null) {
+                installReactionPreference(operation.type, replacement);
+                queueReactionPreferenceWrite(operation.type, replacement, false);
+            }
+            slot.loading = false;
+            slot.operation = null;
+            updateReactionPreferenceFlags();
+            if (replacement != null) notifyReactionPreference(operation.type, operation.generation);
+        });
+        if (operation.type == PREF_RECENT) {
+            TLRPC.TL_messages_getRecentReactions request = new TLRPC.TL_messages_getRecentReactions();
+            request.hash = hash;
+            request.limit = 50;
+            getConnectionsManager().sendRequest(request, callback);
+        } else if (operation.type == PREF_TOP) {
+            TLRPC.TL_messages_getTopReactions request = new TLRPC.TL_messages_getTopReactions();
+            request.hash = hash;
+            request.limit = 100;
+            getConnectionsManager().sendRequest(request, callback);
+        } else {
+            TLRPC.TL_messages_getDefaultTagReactions request = new TLRPC.TL_messages_getDefaultTagReactions();
+            request.hash = hash;
+            getConnectionsManager().sendRequest(request, callback);
+        }
+    }
+
+    private void queueReactionPreferenceWrite(int type, ReactionPreferenceSnapshot snapshot, boolean clear) {
+        long generation = mediaPreferenceEpoch.get();
+        ReactionPreference slot = reactionPreferences[type];
+        Object write = slot.write = new Object();
+        MediaPreferenceQueue.IO.execute(() -> {
+            if (mediaPreferenceEpoch.get() != generation || slot.write != write) return;
+            try {
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences(reactionPreferenceName(type), Context.MODE_PRIVATE);
+                SharedPreferences.Editor editor = preferences.edit();
+                if (clear) editor.clear();
+                else {
+                    editor.putInt("count", snapshot.encoded.size()).putLong("hash", snapshot.hash);
+                    for (int i = 0; i < snapshot.encoded.size(); i++) editor.putString("object_" + i, snapshot.encoded.get(i));
+                }
+                if (mediaPreferenceEpoch.get() == generation && slot.write == write) editor.apply();
+            } catch (Exception failure) { FileLog.e(failure); }
+        });
+    }
+
+    private void notifyReactionPreference(int type, long generation) {
+        if (mediaPreferenceEpoch.get() != generation) return;
+        getNotificationCenter().postNotificationName(NotificationCenter.reactionPreferencesUpdated, generation, 1 << type);
+        if (type == PREF_SAVED && mediaPreferenceEpoch.get() == generation) {
+            getNotificationCenter().postNotificationName(NotificationCenter.savedReactionTagsUpdate, 0L);
+        }
+    }
+
+    private void clearRecentReactionPreferences() {
+        ensureMediaPreferenceSession();
+        long generation = mediaPreferenceEpoch.get();
+        ReactionPreference slot = reactionPreferences[PREF_RECENT];
+        ReactionPreferenceSnapshot empty = new ReactionPreferenceSnapshot(0, new ArrayList<>(), new ArrayList<>());
+        slot.operation = null;
+        slot.loading = false;
+        slot.attempted = true;
+        installReactionPreference(PREF_RECENT, empty);
+        queueReactionPreferenceWrite(PREF_RECENT, empty, true);
+        Object write = slot.write;
+        updateReactionPreferenceFlags();
+        TLRPC.TL_messages_clearRecentReactions request = new TLRPC.TL_messages_clearRecentReactions();
+        getConnectionsManager().sendRequest(request, (response, error) -> {});
+        if (mediaPreferenceEpoch.get() == generation && slot.write == write) notifyReactionPreference(PREF_RECENT, generation);
+    }
+
+    private boolean currentEmojiThemePreference(long generation, long version) {
+        return generation == mediaPreferenceEpoch.get() && version == emojiThemePreferenceVersion;
+    }
+
+    private void ensureEmojiThemePreferences() {
+        ensureMediaPreferenceSession();
+        if (emojiThemePreferenceState != PREF_UNREAD) return;
+        long generation = mediaPreferenceEpoch.get();
+        long version = ++emojiThemePreferenceVersion;
+        emojiThemePreferenceState = PREF_LOADING;
+        MediaPreferenceQueue.IO.execute(() -> {
+            if (!currentEmojiThemePreference(generation, version)) return;
+            EmojiThemePreferenceSnapshot result = null;
+            try {
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("emojithemes_config_" + currentAccount, Context.MODE_PRIVATE);
+                Map<String, ?> snapshot = preferences.getAll();
+                int count = preferenceCount(snapshot);
+                ArrayList<String> encoded = new ArrayList<>();
+                for (int i = 0; i < count; i++) encoded.add(preferenceObject(snapshot, "theme_" + i));
+                Object hash = snapshot.get("preview_hash");
+                if (hash != null && !(hash instanceof Long)) throw new IllegalStateException("Invalid preview hash");
+                result = decodeEmojiThemePreferences(encoded, (Long) hash);
+            } catch (Exception failure) { FileLog.e(failure); }
+            final EmojiThemePreferenceSnapshot loaded = result;
+            postMediaPreferenceResult(() -> {
+                if (!currentEmojiThemePreference(generation, version)) return;
+                if (loaded == null) failEmojiThemePreferences(generation, version);
+                else prepareEmojiThemePreferences(generation, version, loaded);
+            });
+        });
+    }
+
+    private static EmojiThemePreferenceSnapshot decodeEmojiThemePreferences(ArrayList<String> encoded, Long hash) {
+        ArrayList<TLRPC.TL_theme> themes = new ArrayList<>();
+        for (String value : encoded) {
+            SerializedData data = new SerializedData(Utilities.hexToBytes(value));
+            try {
+                TLRPC.TL_theme theme = TLRPC.Theme.TLdeserialize(data, data.readInt32(true), true);
+                if (theme == null) throw new IllegalStateException("Invalid cached theme");
+                themes.add(theme);
+            } finally { data.cleanup(); }
+        }
+        return new EmojiThemePreferenceSnapshot(themes, encoded, hash);
+    }
+
+    private void prepareEmojiThemePreferences(long generation, long version, EmojiThemePreferenceSnapshot snapshot) {
+        if (!currentEmojiThemePreference(generation, version)) return;
+        final ArrayList<ChatThemeBottomSheet.ChatThemeItem> items = new ArrayList<>();
+        try {
+            if (!snapshot.themes.isEmpty()) {
+                items.add(new ChatThemeBottomSheet.ChatThemeItem(EmojiThemes.createHomePreviewTheme(currentAccount)));
+                if (!currentEmojiThemePreference(generation, version)) return;
+                for (TLRPC.TL_theme theme : snapshot.themes) {
+                    EmojiThemes preview = EmojiThemes.createPreviewFullTheme(currentAccount, theme);
+                    if (!currentEmojiThemePreference(generation, version)) return;
+                    if (preview.items.size() >= 4) items.add(new ChatThemeBottomSheet.ChatThemeItem(preview));
+                }
+            }
+        } catch (Exception failure) {
+            FileLog.e(failure);
+            failEmojiThemePreferences(generation, version);
+            return;
+        }
+        if (items.isEmpty()) {
+            publishEmojiThemePreferences(generation, version, snapshot, items);
+            return;
+        }
+        ChatThemeController.chatThemeQueue.postRunnable(() -> {
+            if (!currentEmojiThemePreference(generation, version)) return;
+            try {
+                for (ChatThemeBottomSheet.ChatThemeItem item : items) {
+                    item.chatTheme.loadPreviewColors(currentAccount);
+                    if (!currentEmojiThemePreference(generation, version)) return;
+                }
+            } catch (Exception failure) {
+                FileLog.e(failure);
+                AndroidUtilities.runOnUIThread(() -> failEmojiThemePreferences(generation, version));
+                return;
+            }
+            AndroidUtilities.runOnUIThread(() -> publishEmojiThemePreferences(generation, version, snapshot, items));
+        });
+    }
+
+    private void publishEmojiThemePreferences(long generation, long version, EmojiThemePreferenceSnapshot snapshot, ArrayList<ChatThemeBottomSheet.ChatThemeItem> items) {
+        if (!currentEmojiThemePreference(generation, version)) return;
+        defaultEmojiThemes.clear();
+        defaultEmojiThemes.addAll(items);
+        emojiThemePreferencePayload = snapshot.encoded;
+        emojiThemePreferenceHash = snapshot.hash;
+        emojiThemePreferenceState = PREF_READY;
+        deliverEmojiThemesLoads();
+        if (currentEmojiThemePreference(generation, version)) NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiPreviewThemesChanged);
+    }
+
+    private void failEmojiThemePreferences(long generation, long version) {
+        if (!currentEmojiThemePreference(generation, version)) return;
+        emojiThemePreferenceState = PREF_FAILED;
+        deliverEmojiThemesLoads();
+    }
+
+    public long beginEmojiThemesUpdate(long generation, long expectedVersion) {
+        if (!currentEmojiThemePreference(generation, expectedVersion)) return -1;
+        emojiThemePreferenceState = PREF_LOADING;
+        return ++emojiThemePreferenceVersion;
+    }
+
+    public void abortEmojiThemesUpdate(long generation, long version) {
+        mediaPreferenceUi(() -> {
+            if (currentEmojiThemePreference(generation, version) && emojiThemePreferenceState == PREF_LOADING) failEmojiThemePreferences(generation, version);
+        });
+    }
+
+    public void generateEmojiPreviewThemes(ArrayList<TLRPC.TL_theme> themes, int account, long hash, long generation, long version) {
+        if (account != currentAccount) throw new IllegalArgumentException("Theme account mismatch");
+        generateEmojiThemePreferences(themes, hash, generation, version);
+    }
+
+    private void generateEmojiThemePreferences(ArrayList<TLRPC.TL_theme> themes, Long hash, long generation, long version) {
+        if (!currentEmojiThemePreference(generation, version)) return;
+        final ArrayList<String> encoded;
+        try { encoded = freezeMediaPreferenceObjects(themes); }
+        catch (Exception failure) {
+            FileLog.e(failure);
+            mediaPreferenceUi(() -> failEmojiThemePreferences(generation, version));
+            return;
+        }
+        mediaPreferenceUi(() -> generateEncodedEmojiThemePreferences(encoded, hash, generation, version));
+    }
+
+    private void generateEncodedEmojiThemePreferences(ArrayList<String> encoded, Long hash, long generation, long version) {
+        if (!currentEmojiThemePreference(generation, version)) return;
+        Object write = emojiThemePreferenceWrite = new Object();
+        MediaPreferenceQueue.IO.execute(() -> {
+            if (!currentEmojiThemePreference(generation, version) || emojiThemePreferenceWrite != write) return;
+            EmojiThemePreferenceSnapshot snapshot;
+            try { snapshot = decodeEmojiThemePreferences(encoded, hash); }
+            catch (Exception failure) {
+                FileLog.e(failure);
+                postMediaPreferenceResult(() -> failEmojiThemePreferences(generation, version));
+                return;
+            }
+            try {
+                SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("emojithemes_config_" + currentAccount, Context.MODE_PRIVATE);
+                SharedPreferences.Editor editor = preferences.edit().putInt("count", encoded.size());
+                if (hash == null) editor.remove("preview_hash"); else editor.putLong("preview_hash", hash);
+                for (int i = 0; i < encoded.size(); i++) editor.putString("theme_" + i, encoded.get(i));
+                if (currentEmojiThemePreference(generation, version) && emojiThemePreferenceWrite == write) editor.apply();
+            } catch (Exception failure) { FileLog.e(failure); }
+            if (!encoded.isEmpty()) postMediaPreferenceResult(() -> prepareEmojiThemePreferences(generation, version, snapshot));
+        });
+        if (encoded.isEmpty()) {
+            publishEmojiThemePreferences(generation, version,
+                    new EmojiThemePreferenceSnapshot(new ArrayList<>(), encoded, hash), new ArrayList<>());
+        }
+    }
+
+    private void retireMediaPreferences() {
+        long generation = mediaPreferenceEpoch.incrementAndGet();
+        mediaPreferenceUi(() -> resetMediaPreferencesOnUi(generation));
+    }
+
+    private void ensureMediaPreferenceSession() {
+        if (mediaPreferenceUiGeneration != mediaPreferenceEpoch.get()) resetMediaPreferencesOnUi(mediaPreferenceEpoch.get());
+    }
+
+    private void resetMediaPreferencesOnUi(long generation) {
+        if (generation != mediaPreferenceEpoch.get() || mediaPreferenceUiGeneration == generation) return;
+        mediaPreferenceUiGeneration = generation;
+        ++emojiThemePreferenceVersion;
+        emojiThemePreferenceWrite = null;
+        emojiThemePreferenceState = PREF_UNREAD;
+        emojiThemePreferenceHash = null;
+        emojiThemePreferencePayload = null;
+        defaultEmojiThemes.clear();
+        for (int type = PREF_RECENT; type <= PREF_SAVED; type++) {
+            ReactionPreference slot = reactionPreferences[type];
+            slot.operation = null;
+            slot.write = null;
+            slot.state = PREF_UNREAD;
+            slot.snapshot = null;
+            slot.attempted = slot.loading = false;
+            reactionPreferenceList(type).clear();
+        }
+        updateReactionPreferenceFlags();
+        ArrayList<EmojiThemesLoad> retired = new ArrayList<>(emojiThemesLoads);
+        emojiThemesLoads.clear();
+        for (EmojiThemesLoad load : retired) load.finished = true;
+        MediaPreferenceQueue.IO.execute(() -> {
+            for (String name : new String[]{reactionPreferenceName(PREF_RECENT), reactionPreferenceName(PREF_TOP), reactionPreferenceName(PREF_SAVED), "emojithemes_config_" + currentAccount}) {
+                if (mediaPreferenceEpoch.get() != generation) return;
+                try {
+                    SharedPreferences.Editor editor = ApplicationLoader.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear();
+                    if (mediaPreferenceEpoch.get() == generation) editor.apply();
+                } catch (Exception failure) { FileLog.e(failure); }
+            }
+            if (mediaPreferenceEpoch.get() != generation) return;
+            try {
+                String suffix = currentAccount == 0 ? "" : Integer.toString(currentAccount);
+                SharedPreferences.Editor editor = ApplicationLoader.applicationContext.getSharedPreferences("themeconfig", Context.MODE_PRIVATE).edit()
+                        .remove("2remoteThemesHash" + suffix).remove("lastLoadingThemesTime" + suffix);
+                if (mediaPreferenceEpoch.get() == generation) editor.apply();
+            } catch (Exception failure) { FileLog.e(failure); }
+        });
+        for (EmojiThemesLoad load : retired) load.callback.onCancelled(load);
+        if (mediaPreferenceEpoch.get() == generation) {
+            getNotificationCenter().postNotificationName(NotificationCenter.reactionPreferencesUpdated, generation, 7);
+            if (mediaPreferenceEpoch.get() == generation) NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.emojiPreviewThemesChanged);
+        }
+    }
     ArrayList<TLRPC.Reaction> recentReactions = new ArrayList<>();
     ArrayList<TLRPC.Reaction> topReactions = new ArrayList<>();
     ArrayList<TLRPC.Reaction> savedReactions = new ArrayList<>();
@@ -10079,131 +10924,29 @@ public class MediaDataController extends BaseController {
     boolean loadingSavedReactions, loadedSavedReactions;
 
     public ArrayList<TLRPC.Reaction> getRecentReactions() {
+        loadRecentAndTopReactions(false);
         return recentReactions;
     }
 
     public void clearRecentReactions() {
-        recentReactions.clear();
-        SharedPreferences recentReactionsPref = ApplicationLoader.applicationContext.getSharedPreferences("recent_reactions_" + currentAccount, Context.MODE_PRIVATE);
-        recentReactionsPref.edit().clear().apply();
-        TLRPC.TL_messages_clearRecentReactions clearRecentReaction = new TLRPC.TL_messages_clearRecentReactions();
-        ConnectionsManager.getInstance(currentAccount).sendRequest(clearRecentReaction, new RequestDelegate() {
-            @Override
-            public void run(TLObject response, TLRPC.TL_error error) {
-
-            }
-        });
+        mediaPreferenceUi(this::clearRecentReactionPreferences);
     }
 
     public ArrayList<TLRPC.Reaction> getTopReactions() {
+        loadRecentAndTopReactions(false);
         return topReactions;
     }
 
     public void loadRecentAndTopReactions(boolean force) {
-        if (loadingRecentReactions || loadedRecentReactions && !force) {
-            return;
-        }
-        SharedPreferences recentReactionsPref = ApplicationLoader.applicationContext.getSharedPreferences("recent_reactions_" + currentAccount, Context.MODE_PRIVATE);
-        SharedPreferences topReactionsPref = ApplicationLoader.applicationContext.getSharedPreferences("top_reactions_" + currentAccount, Context.MODE_PRIVATE);
-
-        recentReactions.clear();
-        topReactions.clear();
-        recentReactions.addAll(loadReactionsFromPref(recentReactionsPref));
-        topReactions.addAll(loadReactionsFromPref(topReactionsPref));
-        loadingRecentReactions = true;
-        loadedRecentReactions = true;
-
-        boolean loadFromServer = true;
-
-        if (loadFromServer) {
-            boolean[] loaded = new boolean[2];
-
-            TLRPC.TL_messages_getRecentReactions recentReactionsRequest = new TLRPC.TL_messages_getRecentReactions();
-            recentReactionsRequest.hash = recentReactionsPref.getLong("hash", 0);
-            recentReactionsRequest.limit = 50;
-            ConnectionsManager.getInstance(currentAccount).sendRequest(recentReactionsRequest, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (error == null) {
-                    if (response instanceof TLRPC.TL_messages_reactions) {
-                        TLRPC.TL_messages_reactions reactions = (TLRPC.TL_messages_reactions) response;
-                        recentReactions.clear();
-                        recentReactions.addAll(reactions.reactions);
-
-                        saveReactionsToPref(recentReactionsPref, reactions.hash, reactions.reactions);
-                    }
-                    if (response instanceof TLRPC.TL_messages_reactionsNotModified) {
-
-                    }
-                }
-
-                loaded[0] = true;
-                if (loaded[1]) {
-                    loadingRecentReactions = false;
-                }
-            }));
-
-            TLRPC.TL_messages_getTopReactions topReactionsRequest = new TLRPC.TL_messages_getTopReactions();
-            topReactionsRequest.hash = topReactionsPref.getLong("hash", 0);
-            topReactionsRequest.limit = 100;
-            ConnectionsManager.getInstance(currentAccount).sendRequest(topReactionsRequest, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (error == null) {
-                    if (response instanceof TLRPC.TL_messages_reactions) {
-                        TLRPC.TL_messages_reactions reactions = (TLRPC.TL_messages_reactions) response;
-                        topReactions.clear();
-                        topReactions.addAll(reactions.reactions);
-
-                        saveReactionsToPref(topReactionsPref, reactions.hash, reactions.reactions);
-
-                    }
-                    if (response instanceof TLRPC.TL_messages_reactionsNotModified) {
-
-                    }
-                }
-
-                loaded[1] = true;
-                if (loaded[0]) {
-                    loadingRecentReactions = false;
-                }
-            }));
-        }
+        mediaPreferenceUi(() -> startReactionPreferences(false, force));
     }
 
     public ArrayList<TLRPC.Reaction> getSavedReactions() {
+        loadSavedReactions(false);
         return savedReactions;
     }
     public void loadSavedReactions(boolean force) {
-        if (loadingSavedReactions || loadedSavedReactions && !force) {
-            return;
-        }
-        SharedPreferences savedReactionsPref = ApplicationLoader.applicationContext.getSharedPreferences("saved_reactions_" + currentAccount, Context.MODE_PRIVATE);
-
-        savedReactions.clear();
-        savedReactions.addAll(loadReactionsFromPref(savedReactionsPref));
-        loadingSavedReactions = true;
-        loadedSavedReactions = true;
-
-        boolean loadFromServer = true;
-        if (loadFromServer) {
-            TLRPC.TL_messages_getDefaultTagReactions recentReactionsRequest = new TLRPC.TL_messages_getDefaultTagReactions();
-            recentReactionsRequest.hash = savedReactionsPref.getLong("hash", 0);
-            ConnectionsManager.getInstance(currentAccount).sendRequest(recentReactionsRequest, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (error == null) {
-                    if (response instanceof TLRPC.TL_messages_reactions) {
-                        TLRPC.TL_messages_reactions reactions = (TLRPC.TL_messages_reactions) response;
-                        savedReactions.clear();
-                        savedReactions.addAll(reactions.reactions);
-
-                        saveReactionsToPref(savedReactionsPref, reactions.hash, reactions.reactions);
-
-                        getNotificationCenter().postNotificationName(NotificationCenter.savedReactionTagsUpdate, 0L);
-                    }
-                    if (response instanceof TLRPC.TL_messages_reactionsNotModified) {
-
-                    }
-                }
-
-                loadingSavedReactions = false;
-            }));
-        }
+        mediaPreferenceUi(() -> startReactionPreferences(true, force));
     }
 
     public static void saveReactionsToPref(SharedPreferences preferences, long hash, ArrayList<? extends TLObject> object) {
@@ -10378,11 +11121,10 @@ public class MediaDataController extends BaseController {
     private SharedPreferences draftVoicePreferences() {
         return ApplicationLoader.applicationContext.getSharedPreferences("3voicedrafts_" + currentAccount + "_" + draftVoicesUserId, Context.MODE_PRIVATE);
     }
-    private void loadDraftVoiceMessages() {
+    synchronized void loadDraftVoiceMessages() {
         final long userId = UserConfig.getInstance(currentAccount).getClientUserId();
         if (draftVoicesLoaded && draftVoicesUserId == userId) return;
-        for (DraftVoice draft : draftVoices.values()) draft.discarded = true;
-        draftVoices.clear();
+        clearLoadedDraftVoices();
         draftVoicesUserId = userId;
         draftVoicesLoaded = true;
         if (userId == 0) return;
@@ -10399,17 +11141,43 @@ public class MediaDataController extends BaseController {
             }
             DraftVoice draft = DraftVoice.fromString((String) entry.getValue());
             if (draft == null) continue;
+            protectDraftVoiceFile(draft);
             draftVoices.put(key, draft);
         }
     }
-    public void toggleDraftVoiceOnce(long dialog_id, long topic_id, boolean once) {
+    private synchronized void clearLoadedDraftVoices() {
+        for (DraftVoice draft : draftVoices.values()) {
+            retireDraftVoice(draft);
+        }
+        draftVoices.clear();
+        draftVoicesLoaded = false;
+        draftVoicesUserId = 0;
+    }
+
+    private static void protectDraftVoiceFile(DraftVoice draft) {
+        final String path = TextUtils.isEmpty(draft.path) ? null : new File(draft.path).getAbsolutePath();
+        final String previous = draft.fileLeasePath;
+        if (Objects.equals(previous, path)) return;
+        AutoDeleteMediaTask.lockFile(path, draft);
+        draft.fileLeasePath = path;
+        AutoDeleteMediaTask.unlockFile(previous, draft);
+    }
+
+    private static void retireDraftVoice(DraftVoice draft) {
+        if (draft == null) return;
+        draft.discarded = true;
+        AutoDeleteMediaTask.unlockFile(draft.fileLeasePath, draft);
+        draft.fileLeasePath = null;
+    }
+
+    public synchronized void toggleDraftVoiceOnce(long dialog_id, long topic_id, boolean once) {
         DraftVoice draft = getDraftVoice(dialog_id, topic_id);
         if (draft != null && draft.once != once) {
             draft.once = once;
             draftVoicePreferences().edit().putString(draftVoiceKey(dialog_id, topic_id), draft.toString()).apply();
         }
     }
-    public void setDraftVoiceRegion(long dialog_id, long topic_id, float left, float right) {
+    public synchronized void setDraftVoiceRegion(long dialog_id, long topic_id, float left, float right) {
         DraftVoice draft = getDraftVoice(dialog_id, topic_id);
         if (draft != null && (Math.abs(draft.left - left) >= 0.001f || Math.abs(draft.right - right) >= 0.001f)) {
             draft.left = left;
@@ -10417,28 +11185,30 @@ public class MediaDataController extends BaseController {
             draftVoicePreferences().edit().putString(draftVoiceKey(dialog_id, topic_id), draft.toString()).apply();
         }
     }
-    public void pushDraftVoiceMessage(long dialog_id, long topic_id, DraftVoice draft) {
+    public synchronized void pushDraftVoiceMessage(long dialog_id, long topic_id, DraftVoice draft) {
         loadDraftVoiceMessages();
         if (draftVoicesUserId == 0 || draft != null && draft.isDiscarded()) return;
         SharedPreferences prefs = draftVoicePreferences();
         final String key = draftVoiceKey(dialog_id, topic_id);
         final DraftVoice previous = draftVoices.get(key);
-        if (previous != null && previous != draft) previous.discarded = true;
         if (draft == null) {
             prefs.edit().remove(key).apply();
             draftVoices.remove(key);
         } else {
+            protectDraftVoiceFile(draft);
             prefs.edit().putString(key, draft.toString()).apply();
             draftVoices.put(key, draft);
         }
+        if (previous != draft) retireDraftVoice(previous);
     }
-    public DraftVoice getDraftVoice(long dialog_id, long topic_id) {
+    public synchronized DraftVoice getDraftVoice(long dialog_id, long topic_id) {
         loadDraftVoiceMessages();
         return draftVoices.get(draftVoiceKey(dialog_id, topic_id));
     }
 
     public static class DraftVoice {
         private volatile boolean discarded;
+        private String fileLeasePath;
         public boolean isDiscarded() {
             return discarded;
         }

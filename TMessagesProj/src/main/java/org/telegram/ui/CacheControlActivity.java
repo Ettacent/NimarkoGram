@@ -55,6 +55,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.AutoDeleteMediaTask;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.CacheByChatsController;
@@ -127,6 +128,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Objects;
 
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 public class CacheControlActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int VIEW_TYPE_TEXT_SETTINGS = 0;
@@ -217,6 +220,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     private static final int clear_database_id = 3;
     private static final int reset_database_id = 4;
     private boolean loadingDialogs;
+    private boolean cleanupInProgress;
+    private volatile long cleanupGeneration;
+    private final AtomicLong cacheModelGeneration = new AtomicLong();
     private SiblingRecyclerPagerLayout scrollCoordinator;
 
     private ActionBarMenuSubItem clearDatabaseItem;
@@ -456,23 +462,32 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     }
 
     private void loadDialogEntities() {
+        final long generation = cacheModelGeneration.incrementAndGet();
+        final long cleanup = cleanupGeneration;
+        final int account = currentAccount;
+        final long userId = getUserConfig().getClientUserId();
+        final long loginSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final BooleanSupplier current = () -> cleanupGeneration == cleanup && !isFinished
+                && cacheModelGeneration.get() == generation && currentAccount == account
+                && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, loginSession);
         getFileLoader().getFileDatabase().getQueue().postRunnable(() -> {
+            if (!current.getAsBoolean()) return;
             getFileLoader().getFileDatabase().ensureDatabaseCreated();
             CacheModel cacheModel = new CacheModel(false);
             LongSparseArray<DialogFileEntities> dilogsFilesEntities = new LongSparseArray<>();
 
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), TYPE_OTHER, dilogsFilesEntities, cacheModel);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), TYPE_OTHER, dilogsFilesEntities, cacheModel, current);
 
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), TYPE_PHOTOS, dilogsFilesEntities, cacheModel);
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE_PUBLIC), TYPE_PHOTOS, dilogsFilesEntities, cacheModel);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), TYPE_PHOTOS, dilogsFilesEntities, cacheModel, current);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE_PUBLIC), TYPE_PHOTOS, dilogsFilesEntities, cacheModel, current);
 
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), TYPE_VIDEOS, dilogsFilesEntities, cacheModel);
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO_PUBLIC), TYPE_VIDEOS, dilogsFilesEntities, cacheModel);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), TYPE_VIDEOS, dilogsFilesEntities, cacheModel, current);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO_PUBLIC), TYPE_VIDEOS, dilogsFilesEntities, cacheModel, current);
 
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), TYPE_VOICE, dilogsFilesEntities, cacheModel);
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), TYPE_OTHER, dilogsFilesEntities, cacheModel);
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel);
-            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), TYPE_VOICE, dilogsFilesEntities, cacheModel, current);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), TYPE_OTHER, dilogsFilesEntities, cacheModel, current);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel, current);
+            fillDialogsEntitiesRecursive(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), TYPE_DOCUMENTS, dilogsFilesEntities, cacheModel, current);
 
             ArrayList<DialogFileEntities> entities = new ArrayList<>();
             ArrayList<Long> unknownUsers = new ArrayList<>();
@@ -490,6 +505,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             }
             cacheModel.sortBySize();
             getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                if (!current.getAsBoolean()) return;
                 ArrayList<TLRPC.User> users = new ArrayList<>();
                 ArrayList<TLRPC.Chat> chats = new ArrayList<>();
                 if (!unknownUsers.isEmpty()) {
@@ -514,6 +530,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 }
                 sort(entities);
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (!current.getAsBoolean() || cleanupInProgress) return;
                     loadingDialogs = false;
                     getMessagesController().putUsers(users, true);
                     getMessagesController().putChats(chats, true);
@@ -538,7 +555,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     }
                     cacheModel.setEntities(entities);
 
-                    if (!canceled) {
+                    if (current.getAsBoolean()) {
                         setCacheModel(cacheModel);
                         updateRows();
                         updateChart();
@@ -576,7 +593,12 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     }
 
     public void fillDialogsEntitiesRecursive(final File fromFolder, int type, LongSparseArray<DialogFileEntities> dilogsFilesEntities, CacheModel cacheModel) {
-        if (fromFolder == null) {
+        fillDialogsEntitiesRecursive(fromFolder, type, dilogsFilesEntities, cacheModel, () -> !canceled);
+    }
+
+    private void fillDialogsEntitiesRecursive(final File fromFolder, int type, LongSparseArray<DialogFileEntities> dilogsFilesEntities,
+                                              CacheModel cacheModel, BooleanSupplier current) {
+        if (fromFolder == null || !current.getAsBoolean()) {
             return;
         }
         File[] files = fromFolder.listFiles();
@@ -584,11 +606,11 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             return;
         }
         for (final File fileEntry : files) {
-            if (canceled) {
+            if (!current.getAsBoolean()) {
                 return;
             }
             if (fileEntry.isDirectory()) {
-                fillDialogsEntitiesRecursive(fileEntry, type, dilogsFilesEntities, cacheModel);
+                fillDialogsEntitiesRecursive(fileEntry, type, dilogsFilesEntities, cacheModel, current);
             } else {
                 if (fileEntry.getName().equals(".nomedia")) {
                     continue;
@@ -813,6 +835,9 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        cleanupGeneration++;
+        cacheModelGeneration.incrementAndGet();
+        cleanupInProgress = false;
         getNotificationCenter().removeObserver(this, NotificationCenter.didClearDatabase);
         try {
             if (progressDialog != null) {
@@ -839,7 +864,183 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         return size;
     }
 
+    private final class CacheCleanupTask {
+        final int account = currentAccount;
+        final long userId = getUserConfig().getClientUserId();
+        final long loginSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final long generation = ++cleanupGeneration;
+        final FileLoader fileLoader = FileLoader.getInstance(account);
+        final boolean[] selectedSections = selected.clone();
+        final ArrayList<CacheModel.FileInfo> deletedFiles = new ArrayList<>();
+        final boolean folders;
+        long deletedSize;
+
+        CacheCleanupTask(boolean folders) {
+            this.folders = folders;
+        }
+
+        boolean isAccountCurrent() {
+            return app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, loginSession);
+        }
+
+        boolean isCurrent() {
+            return cleanupGeneration == generation && !isFinished && currentAccount == account && isAccountCurrent();
+        }
+    }
+
+    private static final class CacheCleanupDirectory {
+        final File file;
+        final int docType;
+        final boolean images;
+
+        CacheCleanupDirectory(File file, int docType, boolean images) {
+            this.file = file;
+            this.docType = docType;
+            this.images = images;
+        }
+    }
+
+    private CacheCleanupTask beginCacheCleanup(boolean folders) {
+        if (cleanupInProgress || isFinished || getParentActivity() == null
+                || getParentActivity().isFinishing() || getParentActivity().isDestroyed()
+                || getUserConfig().getClientUserId() == 0) {
+            return null;
+        }
+        CacheCleanupTask task = new CacheCleanupTask(folders);
+        if (!task.isCurrent()) return null;
+        cleanupInProgress = true;
+        cacheModelGeneration.incrementAndGet();
+        return task;
+    }
+
+    private static long getCleanupDirectorySize(File dir, int docType) {
+        return getCleanupDirectorySize(dir, docType, null);
+    }
+
+    private static long getCleanupDirectorySize(File dir, int docType, File excluded) {
+        if (dir == null || isProtectedCacheFile(dir)) return 0;
+        if (dir.isFile()) return dir.length();
+        File[] entries = dir.listFiles();
+        if (entries == null) return 0;
+        long size = 0;
+        for (File entry : entries) {
+            if (entry.equals(excluded) || skipCacheEntry(entry, docType)) continue;
+            size += getCleanupDirectorySize(entry, docType, excluded);
+        }
+        return size;
+    }
+
+    private long[] measureCacheAfterCleanup() {
+        final long[] sizes = new long[13];
+        sizes[0] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), 0)
+                + getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE_PUBLIC), 0);
+        sizes[1] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), 0)
+                + getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO_PUBLIC), 0);
+        sizes[2] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), 1)
+                + getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), 1);
+        sizes[3] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), 2)
+                + getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), 2);
+        sizes[4] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), 0);
+        sizes[5] = getCleanupDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), 0);
+        File cache = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE);
+        File animatedCache = cache == null ? null : new File(cache, "acache");
+        sizes[12] = getCleanupDirectorySize(cache, 3);
+        sizes[6] = getCleanupDirectorySize(animatedCache, 0) + sizes[12];
+        sizes[7] = getCleanupDirectorySize(cache, 5, animatedCache);
+        sizes[8] = getCleanupDirectorySize(cache, 4);
+        sizes[9] = getCleanupDirectorySize(AndroidUtilities.getLogsDir(), 1);
+        if (!BuildVars.DEBUG_VERSION && sizes[9] < 1024 * 1024 * 256) sizes[9] = 0;
+        sizes[10] = totalDeviceSize;
+        sizes[11] = totalDeviceFreeSize;
+        try {
+            StatFs stat = new StatFs(Environment.getDataDirectory().getPath());
+            sizes[10] = stat.getBlockCountLong() * stat.getBlockSizeLong();
+            sizes[11] = stat.getAvailableBlocksLong() * stat.getBlockSizeLong();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return sizes;
+    }
+
+    private void applyCacheAfterCleanup(long[] sizes) {
+        photoSize = sizes[0];
+        videoSize = sizes[1];
+        documentsSize = sizes[2];
+        musicSize = sizes[3];
+        audioSize = sizes[4];
+        storiesSize = sizes[5];
+        stickersCacheSize = sizes[6];
+        cacheSize = sizes[7];
+        cacheTempSize = sizes[8];
+        logsSize = sizes[9];
+        totalDeviceSize = sizes[10];
+        totalDeviceFreeSize = sizes[11];
+        cacheEmojiSize = sizes[12];
+        totalSize = lastTotalSizeCalculated = photoSize + videoSize + documentsSize + musicSize + audioSize
+                + storiesSize + stickersCacheSize + cacheSize + cacheTempSize + logsSize;
+        lastTotalSizeCalculatedTime = System.currentTimeMillis();
+    }
+
+    private void finishCacheCleanup(CacheCleanupTask task, boolean imagesCleared, Runnable onDone) {
+        task.deletedSize = 0;
+        for (CacheModel.FileInfo fileInfo : task.deletedFiles) task.deletedSize += fileInfo.size;
+        if (!task.deletedFiles.isEmpty()) {
+            lastTotalSizeCalculated = null;
+            lastDeviceTotalSize = lastDeviceTotalFreeSize = null;
+            if (task.isAccountCurrent()) {
+                try {
+                    task.fileLoader.getFileDatabase().removeDeletedCacheFiles(new ArrayList<>(task.deletedFiles));
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+        }
+        long[] measured = null;
+        if (task.isCurrent()) {
+            try {
+                measured = measureCacheAfterCleanup();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+        final long[] sizes = measured;
+        AndroidUtilities.runOnUIThread(() -> {
+            try {
+                if (!task.isCurrent()) return;
+                if (sizes != null) applyCacheAfterCleanup(sizes);
+                if (task.folders) Arrays.fill(selected, true);
+                if (imagesCleared && !task.deletedFiles.isEmpty()) ImageLoader.getInstance().clearMemory();
+                task.fileLoader.checkCurrentDownloadsFiles();
+                if (!task.isCurrent()) return;
+                if (task.folders) {
+                    getMediaDataController().ringtoneDataStore.checkRingtoneSoundsLoaded();
+                    MediaDataController.getInstance(task.account).checkAllMedia(true);
+                }
+                if (!task.isCurrent()) return;
+                setCacheModel(null);
+                loadingDialogs = true;
+                updateRows();
+                updateChart();
+                loadDialogEntities();
+                if (!task.deletedFiles.isEmpty() && !isPaused() && getParentActivity() != null
+                        && !getParentActivity().isFinishing() && !getParentActivity().isDestroyed()) {
+                    Bulletin b = BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete,
+                            formatString(R.string.CacheWasCleared, AndroidUtilities.formatFileSize(task.deletedSize)));
+                    b.hideAfterBottomSheet = false;
+                    b.show();
+                }
+            } finally {
+                if (cleanupGeneration == task.generation) cleanupInProgress = false;
+                if (onDone != null) onDone.run();
+            }
+        });
+    }
     private void cleanupFolders(Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
+        final CacheCleanupTask task = beginCacheCleanup(true);
+        if (task == null) {
+            if (onDone != null) onDone.run();
+            return;
+        }
         if (cacheModel != null) {
             cacheModel.clearSelection();
         }
@@ -851,12 +1052,40 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 //        progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
 //        progressDialog.setCanCancel(false);
 //        progressDialog.showDelayed(500);
-        getFileLoader().cancelLoadAllFiles();
-        getFileLoader().getFileLoaderQueue().postRunnable(() -> Utilities.globalQueue.postRunnable(() -> {
-            cleanupFoldersInternal(onProgress, onDone);
-        }));
-        setCacheModel(null);
-        loadingDialogs = true;
+        enqueueCacheCleanup(task, () -> cleanupFoldersInternal(task, onProgress, onDone), onDone);
+    }
+
+    private void enqueueCacheCleanup(CacheCleanupTask task, Runnable cleanup, Runnable onDone) {
+        final Runnable rejected = () -> AndroidUtilities.runOnUIThread(() -> {
+            try {
+                if (cleanupGeneration != task.generation) return;
+                cleanupInProgress = false;
+                if (!task.isCurrent()) return;
+                if (cacheModel == null) loadDialogEntities();
+                if (!isPaused() && getParentActivity() != null && !getParentActivity().isFinishing()
+                        && !getParentActivity().isDestroyed()) {
+                    BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.ErrorOccurred)).show();
+                }
+            } finally {
+                if (onDone != null) onDone.run();
+            }
+        });
+        try {
+            task.fileLoader.cancelLoadAllFiles();
+            if (!task.fileLoader.getFileLoaderQueue().postRunnable(() -> {
+                try {
+                    if (!Utilities.cacheClearQueue.postRunnable(cleanup)) rejected.run();
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                    rejected.run();
+                }
+            })) {
+                rejected.run();
+            }
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+            rejected.run();
+        }
 //        updateRows();
     }
 
@@ -871,36 +1100,15 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     public static int countDirJava(String fileName, int docType) {
         int count = 0;
         File dir = new File(fileName);
-        if (dir.exists()) {
+        if (!isProtectedCacheFile(dir) && dir.exists()) {
             File[] entries = dir.listFiles();
             if (entries == null) return count;
             for (int i = 0; i < entries.length; ++i) {
                 File entry = entries[i];
-                String name = entry.getName();
-                if (".".equals(name)) {
-                    continue;
-                }
-
-                if (docType > 0 && name.length() >= 4) {
-                    String namelc = name.toLowerCase();
-                    boolean isMusic = namelc.endsWith(".mp3") || namelc.endsWith(".m4a");
-                    boolean isEmoji = namelc.endsWith(".tgs") || namelc.endsWith(".webm");
-                    boolean isTemp = namelc.endsWith(".tmp") || namelc.endsWith(".temp") || namelc.endsWith(".preload");
-
-                    if (
-                        isMusic && docType == LISTDIR_DOCTYPE_OTHER_THAN_MUSIC ||
-                        !isMusic && docType == LISTDIR_DOCTYPE_MUSIC ||
-                        isEmoji && docType == LISTDIR_DOCTYPE2_OTHER ||
-                        !isEmoji && docType == LISTDIR_DOCTYPE2_EMOJI ||
-                        isTemp && docType == LISTDIR_DOCTYPE2_OTHER ||
-                        !isTemp && docType == LISTDIR_DOCTYPE2_TEMP
-                    ) {
-                        continue;
-                    }
-                }
+                if (skipCacheEntry(entry, docType)) continue;
 
                 if (entry.isDirectory()) {
-                    count += countDirJava(fileName + "/" + name, docType);
+                    count += countDirJava(entry.getAbsolutePath(), docType);
                 } else {
                     count++;
                 }
@@ -910,20 +1118,21 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     }
 
     public static void cleanDirJava(String fileName, int docType, int[] p, Utilities.Callback<Float> onProgress) {
-        int count = countDirJava(fileName, docType);
-        if (p == null) {
-            p = new int[] { 0 };
+        cleanDirJava(fileName, docType, p, onProgress, null, () -> true);
+    }
+
+    private static boolean isProtectedCacheFile(File file) {
+        if (".".equals(file.getName()) || ".nomedia".equals(file.getName())) return true;
+        for (File parent = file; parent != null; parent = parent.getParentFile()) {
+            if ("drafts".equals(parent.getName())) return true;
         }
-        File dir = new File(fileName);
-        if (dir.exists()) {
-            File[] entries = dir.listFiles();
-            if (entries == null) return;
-            for (int i = 0; i < entries.length; ++i) {
-                File entry = entries[i];
+        return false;
+    }
+
+    private static boolean skipCacheEntry(File entry, int docType) {
+        if (isProtectedCacheFile(entry)) return true;
                 String name = entry.getName();
-                if (".".equals(name)) {
-                    continue;
-                }
+        if (docType == LISTDIR_DOCTYPE2_OTHER && entry.isDirectory() && "acache".equals(name)) return true;
 
                 if (docType > 0 && name.length() >= 4) {
                     String namelc = name.toLowerCase();
@@ -931,226 +1140,131 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                     boolean isEmoji = namelc.endsWith(".tgs") || namelc.endsWith(".webm");
                     boolean isTemp = namelc.endsWith(".tmp") || namelc.endsWith(".temp") || namelc.endsWith(".preload");
 
-                    if (
-                        isMusic && docType == LISTDIR_DOCTYPE_OTHER_THAN_MUSIC ||
-                        !isMusic && docType == LISTDIR_DOCTYPE_MUSIC ||
-                        isEmoji && docType == LISTDIR_DOCTYPE2_OTHER ||
-                        !isEmoji && docType == LISTDIR_DOCTYPE2_EMOJI ||
-                        isTemp && docType == LISTDIR_DOCTYPE2_OTHER ||
-                        !isTemp && docType == LISTDIR_DOCTYPE2_TEMP
-                    ) {
-                        continue;
-                    }
-                }
-
-                if (entry.isDirectory()) {
-                    if ("drafts".equals(entry.getName())) {
-                        continue;
-                    }
-                    cleanDirJava(fileName + "/" + name, docType, p, onProgress);
-                } else {
-                    entry.delete();
-
-                    p[0]++;
-                    if (onProgress != null) {
-                        onProgress.run(p[0] / (float) count);
-                    }
-                }
-            }
+            return isMusic && docType == LISTDIR_DOCTYPE_OTHER_THAN_MUSIC
+                    || !isMusic && docType == LISTDIR_DOCTYPE_MUSIC
+                    || isEmoji && docType == LISTDIR_DOCTYPE2_OTHER
+                    || !isEmoji && docType == LISTDIR_DOCTYPE2_EMOJI
+                    || isTemp && docType == LISTDIR_DOCTYPE2_OTHER
+                    || !isTemp && docType == LISTDIR_DOCTYPE2_TEMP;
         }
+        return false;
     }
 
-    private void cleanupFoldersInternal(Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
-        boolean imagesCleared = false;
-        long clearedSize = 0;
-        boolean allItemsClear = true;
-        final int[] clearDirI = new int[] { 0 };
-        int clearDirCount = (selected[0] ? 2 : 0) + (selected[1] ? 2 : 0) + (selected[2] ? 2 : 0) + (selected[3] ? 2 : 0) + (selected[4] ? 1 : 0) + (selected[5] ? 2 : 0) + (selected[6] ? 1 : 0) + (selected[7] ? 1 : 0) + (selected[8] ? 1 : 0) + (selected[9] ? 1 : 0);
-        long time = System.currentTimeMillis();
-        Utilities.Callback<Float> updateProgress = t -> {
-            onProgress.run(clearDirI[0] / (float) clearDirCount + (1f / clearDirCount) * MathUtils.clamp(t, 0, 1), false);
-        };
-        Runnable next = () -> {
-            final long now = System.currentTimeMillis();
-            onProgress.run(clearDirI[0] / (float) clearDirCount, now - time > 250);
-        };
-        for (int a = 0; a < 10; a++) {
-            if (!selected[a]) {
-                allItemsClear = false;
-                continue;
-            }
-            int type = -1;
-            int documentsMusicType = 0;
-            if (a == 0) {
-                type = FileLoader.MEDIA_DIR_IMAGE;
-                clearedSize += photoSize;
-            } else if (a == 1) {
-                type = FileLoader.MEDIA_DIR_VIDEO;
-                clearedSize += videoSize;
-            } else if (a == 2) {
-                type = FileLoader.MEDIA_DIR_DOCUMENT;
-                documentsMusicType = 1;
-                clearedSize += documentsSize;
-            } else if (a == 3) {
-                type = FileLoader.MEDIA_DIR_DOCUMENT;
-                documentsMusicType = 2;
-                clearedSize += musicSize;
-            } else if (a == 4) {
-                type = FileLoader.MEDIA_DIR_AUDIO;
-                clearedSize += audioSize;
-            } else if (a == 5) {
-                type = FileLoader.MEDIA_DIR_STORIES;
-                clearedSize += storiesSize;
-            } else if (a == 6) {
-                type = 100;
-                clearedSize += stickersCacheSize;
-            } else if (a == 7) {
-                clearedSize += cacheSize;
-                documentsMusicType = 5;
-                type = FileLoader.MEDIA_DIR_CACHE;
-            } else if (a == 8) {
-                clearedSize += cacheTempSize;
-                documentsMusicType = 4;
-                type = FileLoader.MEDIA_DIR_CACHE;
-            } else if (a == 9) {
-                clearedSize += logsSize;
-                documentsMusicType = 1;
-                type = 0;
-            }
-            if (type == -1) {
-                continue;
-            }
-            if (a == 7) {
+    private static long deleteCacheFile(File file, ArrayList<CacheModel.FileInfo> deletedFiles) {
                 try {
-                    cleanDirJava(ApplicationLoader.getFilesDirFixed("rasterized/wallpaper").getAbsolutePath(), 0, null, null);
+            final long size = file.length();
+            if (AutoDeleteMediaTask.deleteIfUnused(file)) {
+                if (deletedFiles != null) {
+                    CacheModel.FileInfo fileInfo = new CacheModel.FileInfo(file);
+                    fileInfo.size = size;
+                    deletedFiles.add(fileInfo);
+                }
+                return size;
+            }
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
-            }
-            File file;
-            if (a == 9) {
-                file = AndroidUtilities.getLogsDir();
-            } else if (type == 100) {
-                file = new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache");
+        return 0;
+    }
+
+    private static long cleanDirJava(String fileName, int docType, int[] p, Utilities.Callback<Float> onProgress,
+                                     ArrayList<CacheModel.FileInfo> deletedFiles, BooleanSupplier current) {
+        final int[] processed = p == null ? new int[] { 0 } : p;
+        final int start = processed[0];
+        final int count = countDirJava(fileName, docType);
+        final long size = cleanDirJavaInternal(new File(fileName), docType, processed, start, count, onProgress, deletedFiles, current);
+        if (onProgress != null && current.getAsBoolean()) onProgress.run(1f);
+        return size;
+    }
+
+    private static long cleanDirJavaInternal(File dir, int docType, int[] processed, int start, int count,
+                                             Utilities.Callback<Float> onProgress, ArrayList<CacheModel.FileInfo> deletedFiles,
+                                             BooleanSupplier current) {
+        if (!current.getAsBoolean() || isProtectedCacheFile(dir)) return 0;
+        File[] entries = dir.listFiles();
+        if (entries == null) return 0;
+        long size = 0;
+        for (File entry : entries) {
+            if (!current.getAsBoolean()) break;
+            if (skipCacheEntry(entry, docType)) continue;
+            if (entry.isDirectory()) {
+                size += cleanDirJavaInternal(entry, docType, processed, start, count, onProgress, deletedFiles, current);
             } else {
-                file = FileLoader.checkDirectory(type);
-            }
-            if (file != null) {
-                cleanDirJava(file.getAbsolutePath(), documentsMusicType, null, updateProgress);
-            }
-            clearDirI[0]++;
-            next.run();
-            if (type == 100) {
-                file = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE);
-                if (file != null) {
-                    cleanDirJava(file.getAbsolutePath(), 3, null, updateProgress);
+                size += deleteCacheFile(entry, deletedFiles);
+                processed[0]++;
+                if (onProgress != null) {
+                    onProgress.run(count == 0 ? 1f : MathUtils.clamp((processed[0] - start) / (float) count, 0f, 1f));
                 }
-                clearDirI[0]++;
-                next.run();
-            }
-            if (type == FileLoader.MEDIA_DIR_IMAGE || type == FileLoader.MEDIA_DIR_VIDEO) {
-                int publicDirectoryType;
-                if (type == FileLoader.MEDIA_DIR_IMAGE) {
-                    publicDirectoryType = FileLoader.MEDIA_DIR_IMAGE_PUBLIC;
-                } else {
-                    publicDirectoryType = FileLoader.MEDIA_DIR_VIDEO_PUBLIC;
-                }
-                file = FileLoader.checkDirectory(publicDirectoryType);
-
-                if (file != null) {
-                    cleanDirJava(file.getAbsolutePath(), documentsMusicType, null, updateProgress);
-                }
-                clearDirI[0]++;
-                next.run();
-            }
-            if (type == FileLoader.MEDIA_DIR_DOCUMENT) {
-                file = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES);
-                if (file != null) {
-                    cleanDirJava(file.getAbsolutePath(), documentsMusicType, null, updateProgress);
-                }
-                clearDirI[0]++;
-                next.run();
-            }
-
-            if (a == 9) {
-                logsSize = getDirectorySize(AndroidUtilities.getLogsDir(), 1);
-            } else if (type == FileLoader.MEDIA_DIR_CACHE) {
-                cacheSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 5);
-                cacheTempSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 4);
-                imagesCleared = true;
-            } else if (type == FileLoader.MEDIA_DIR_AUDIO) {
-                audioSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), documentsMusicType);
-            } else if (type == FileLoader.MEDIA_DIR_STORIES) {
-                storiesSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), documentsMusicType);
-            } else if (type == FileLoader.MEDIA_DIR_DOCUMENT) {
-                if (documentsMusicType == 1) {
-                    documentsSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), documentsMusicType);
-                    documentsSize += getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), documentsMusicType);
-                } else {
-                    musicSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), documentsMusicType);
-                    musicSize += getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), documentsMusicType);
-                }
-            } else if (type == FileLoader.MEDIA_DIR_IMAGE) {
-                imagesCleared = true;
-                photoSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), documentsMusicType);
-                photoSize += getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE_PUBLIC), documentsMusicType);
-            } else if (type == FileLoader.MEDIA_DIR_VIDEO) {
-                videoSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), documentsMusicType);
-                videoSize += getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO_PUBLIC), documentsMusicType);
-            } else if (type == 100) {
-                imagesCleared = true;
-                stickersCacheSize = getDirectorySize(new File(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), "acache"), documentsMusicType);
-                cacheEmojiSize = getDirectorySize(FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE), 3);
-                stickersCacheSize += cacheEmojiSize;
             }
         }
-        final boolean imagesClearedFinal = imagesCleared;
-        totalSize = lastTotalSizeCalculated = cacheSize + cacheTempSize + logsSize + videoSize + audioSize + photoSize + documentsSize + musicSize + stickersCacheSize + storiesSize;
-        lastTotalSizeCalculatedTime = System.currentTimeMillis();
-        Arrays.fill(selected, true);
+        return size;
+    }
 
-        File path = Environment.getDataDirectory();
-        StatFs stat = new StatFs(path.getPath());
-        final long blockSize = stat.getBlockSizeLong();
-        final long availableBlocks = stat.getAvailableBlocksLong();
-        final long blocksTotal = stat.getBlockCountLong();
+    private static void addCleanupDirectory(ArrayList<CacheCleanupDirectory> directories, File file, int docType, boolean images) {
+        if (file != null) directories.add(new CacheCleanupDirectory(file, docType, images));
+    }
 
-        totalDeviceSize = blocksTotal * blockSize;
-        totalDeviceFreeSize = availableBlocks * blockSize;
-        long finalClearedSize = clearedSize;
-
-        if (allItemsClear) {
-            FileLoader.getInstance(currentAccount).clearFilePaths();
-        }
-        FileLoader.getInstance(currentAccount).checkCurrentDownloadsFiles();
-
-        AndroidUtilities.runOnUIThread(() -> {
-            if (imagesClearedFinal) {
-                ImageLoader.getInstance().clearMemory();
-            }
+    private void cleanupFoldersInternal(CacheCleanupTask task, Utilities.Callback2<Float, Boolean> onProgress, Runnable onDone) {
+        boolean imagesCleared = false;
             try {
-                if (progressDialog != null) {
-                    progressDialog.dismiss();
-                    progressDialog = null;
-                }
+            if (!task.isCurrent()) return;
+            AutoDeleteMediaTask.protectPersistedVoiceDraftFiles();
+            ArrayList<CacheCleanupDirectory> directories = new ArrayList<>();
+            File cache = FileLoader.checkDirectory(FileLoader.MEDIA_DIR_CACHE);
+            for (int a = 0; a < 10; a++) {
+                if (!task.selectedSections[a]) continue;
+                if (a == 0) {
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE), 0, true);
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_IMAGE_PUBLIC), 0, true);
+                } else if (a == 1) {
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO), 0, false);
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_VIDEO_PUBLIC), 0, false);
+                } else if (a == 2 || a == 3) {
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_DOCUMENT), a == 2 ? 1 : 2, false);
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_FILES), a == 2 ? 1 : 2, false);
+                } else if (a == 4) {
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_AUDIO), 0, false);
+                } else if (a == 5) {
+                    addCleanupDirectory(directories, FileLoader.checkDirectory(FileLoader.MEDIA_DIR_STORIES), 0, false);
+                } else if (a == 6) {
+                    if (cache != null) addCleanupDirectory(directories, new File(cache, "acache"), 0, true);
+                    addCleanupDirectory(directories, cache, 3, true);
+                } else if (a == 7) {
+                    try {
+                        addCleanupDirectory(directories, ApplicationLoader.getFilesDirFixed("rasterized/wallpaper"), 0, true);
             } catch (Exception e) {
                 FileLog.e(e);
             }
 
-            getMediaDataController().ringtoneDataStore.checkRingtoneSoundsLoaded();
-            AndroidUtilities.runOnUIThread(() -> {
-                Bulletin b = BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete, formatString(R.string.CacheWasCleared, AndroidUtilities.formatFileSize(finalClearedSize)));
-                b.hideAfterBottomSheet = false;
-                b.show();
-            }, 150);
-            MediaDataController.getInstance(currentAccount).checkAllMedia(true);
-
-            loadDialogEntities();
-
-            if (onDone != null) {
-                onDone.run();
+                    addCleanupDirectory(directories, cache, 5, true);
+                } else if (a == 8) {
+                    addCleanupDirectory(directories, cache, 4, true);
+                } else if (a == 9) {
+                    addCleanupDirectory(directories, AndroidUtilities.getLogsDir(), 1, false);
+                }
             }
-        });
+            final int count = directories.size();
+            final long time = System.currentTimeMillis();
+            for (int i = 0; i < count && task.isCurrent(); i++) {
+                final int index = i;
+                CacheCleanupDirectory directory = directories.get(i);
+                final int deletedBefore = task.deletedFiles.size();
+                cleanDirJava(directory.file.getAbsolutePath(), directory.docType, null, t -> {
+                    if (onProgress != null && task.isCurrent()) {
+                        onProgress.run((index + MathUtils.clamp(t, 0f, 1f)) / count, false);
+                    }
+                }, task.deletedFiles, task::isCurrent);
+                imagesCleared |= directory.images && task.deletedFiles.size() > deletedBefore;
+                if (onProgress != null && task.isCurrent()) {
+                    onProgress.run((i + 1f) / count, System.currentTimeMillis() - time > 250);
+                }
+            }
+            if (count == 0 && onProgress != null && task.isCurrent()) onProgress.run(1f, false);
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            finishCacheCleanup(task, imagesCleared, onDone);
+        }
     }
 
     private boolean changeStatusBar;
@@ -1447,14 +1561,18 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     }
 
     private void clearSelectedFiles() {
-        if (cacheModel.getSelectedFiles() == 0 || getParentActivity() == null) {
+        if (cleanupInProgress || cacheModel == null || cacheModel.getSelectedFiles() == 0 || getParentActivity() == null) {
             return;
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         builder.setTitle(LocaleController.getString(R.string.ClearCache));
         builder.setMessage(LocaleController.getString(R.string.ClearCacheForChats));
         builder.setPositiveButton(LocaleController.getString(R.string.Clear), (di, which) -> {
-            DialogFileEntities mergedEntities = cacheModel.removeSelectedFiles();
+            if (cleanupInProgress || cacheModel == null || isFinished) return;
+            DialogFileEntities mergedEntities = new DialogFileEntities(0);
+            for (CacheModel.FileInfo fileInfo : new ArrayList<>(cacheModel.selectedFiles)) {
+                mergedEntities.addFile(fileInfo, fileInfo.type);
+            }
             if (mergedEntities.totalSize > 0) {
                 cleanupDialogFiles(mergedEntities, null, null);
             }
@@ -1507,12 +1625,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
     }
 
     private void cleanupDialogFiles(DialogFileEntities dialogEntities, StorageDiagramView.ClearViewData[] clearViewData, CacheModel dialogCacheModel) {
-        final AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
-        progressDialog.setCanCancel(false);
-        progressDialog.showDelayed(500);
 
         HashSet<CacheModel.FileInfo> filesToRemove = new HashSet<>();
-        long totalSizeBefore = totalSize;
         for (int a = 0; a < 8; a++) {
             if (clearViewData != null) {
                 if (clearViewData[a] == null || !clearViewData[a].clear) {
@@ -1524,91 +1638,47 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 continue;
             }
             filesToRemove.addAll(entitiesToDelete.files);
-            dialogEntities.totalSize -= entitiesToDelete.totalSize;
-            totalSize -= entitiesToDelete.totalSize;
-            totalDeviceFreeSize += entitiesToDelete.totalSize;
-            dialogEntities.entitiesByType.delete(a);
-            if (a == TYPE_PHOTOS) {
-                photoSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_VIDEOS) {
-                videoSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_DOCUMENTS) {
-                documentsSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_MUSIC) {
-                musicSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_VOICE) {
-                audioSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_ANIMATED_STICKERS_CACHE) {
-                stickersCacheSize -= entitiesToDelete.totalSize;
-            } else if (a == TYPE_STORIES) {
-                for (int i = 0; i < entitiesToDelete.files.size(); i++) {
-                    CacheModel.FileInfo fileInfo = entitiesToDelete.files.get(i);
-                    int type = getTypeByPath(entitiesToDelete.files.get(i).file.getAbsolutePath());
-                    if (type == TYPE_STORIES) {
-                        storiesSize -= fileInfo.size;
-                    } else if (type == TYPE_PHOTOS) {
-                        photoSize -= fileInfo.size;
-                    } else if (type == TYPE_VIDEOS) {
-                        videoSize -= fileInfo.size;
-                    } else {
-                        cacheSize -= fileInfo.size;
-                    }
-                }
-              //  cacheSize -= entitiesToDelete.totalSize;
-            }else {
-                cacheSize -= entitiesToDelete.totalSize;
-            }
         }
-        if (dialogEntities.entitiesByType.size() == 0) {
-            cacheModel.remove(dialogEntities);
-        }
-        updateRows();
         if (dialogCacheModel != null) {
-            for (CacheModel.FileInfo fileInfo : dialogCacheModel.selectedFiles) {
-                if (!filesToRemove.contains(fileInfo)) {
-                    totalSize -= fileInfo.size;
-                    totalDeviceFreeSize += fileInfo.size;
-                    filesToRemove.add(fileInfo);
-                    dialogEntities.removeFile(fileInfo);
-                    if (fileInfo.type == TYPE_PHOTOS) {
-                        photoSize -= fileInfo.size;
-                    } else if (fileInfo.type == TYPE_VIDEOS) {
-                        videoSize -= fileInfo.size;
-                    } else if (fileInfo.type == TYPE_DOCUMENTS) {
-                        documentsSize -= fileInfo.size;
-                    } else if (fileInfo.type == TYPE_MUSIC) {
-                        musicSize -= fileInfo.size;
-                    } else if (fileInfo.type == TYPE_VOICE) {
-                        audioSize -= fileInfo.size;
-                    }
-                }
-            }
+            filesToRemove.addAll(dialogCacheModel.selectedFiles);
         }
-        for (CacheModel.FileInfo fileInfo : filesToRemove) {
-            this.cacheModel.onFileDeleted(fileInfo);
+        final CacheCleanupTask task = beginCacheCleanup(false);
+        if (task == null) return;
+        final ArrayList<CacheModel.FileInfo> fileInfos = new ArrayList<>(filesToRemove);
+        final AlertDialog cleanupDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+        progressDialog = cleanupDialog;
+        cleanupDialog.setCanCancel(false);
+        cleanupDialog.showDelayed(500);
+        if (cacheModel != null) cacheModel.clearSelection();
+        if (cachedMediaLayout != null) {
+            cachedMediaLayout.showActionMode(false);
+            cachedMediaLayout.updateVisibleRows();
         }
-
-        final Bulletin b = BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete, formatString(R.string.CacheWasCleared, AndroidUtilities.formatFileSize(totalSizeBefore - totalSize)));
-        b.hideAfterBottomSheet = false;
-        b.show();
-
-        ArrayList<CacheModel.FileInfo> fileInfos = new ArrayList<>(filesToRemove);
-        getFileLoader().getFileDatabase().removeFiles(fileInfos);
-        getFileLoader().cancelLoadAllFiles();
-        getFileLoader().getFileLoaderQueue().postRunnable(() -> {
-            for (int i = 0; i < fileInfos.size(); i++) {
-                fileInfos.get(i).file.delete();
-            }
-
-            AndroidUtilities.runOnUIThread(() -> {
-                FileLoader.getInstance(currentAccount).checkCurrentDownloadsFiles();
+        final Runnable dismissCleanupDialog = () -> {
+            if (progressDialog == cleanupDialog) progressDialog = null;
                 try {
-                    progressDialog.dismiss();
+                cleanupDialog.dismiss();
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
-            });
-        });
+        };
+        enqueueCacheCleanup(task, () -> {
+            try {
+                if (!task.isCurrent()) return;
+                AutoDeleteMediaTask.protectPersistedVoiceDraftFiles();
+                HashSet<String> paths = new HashSet<>();
+                for (CacheModel.FileInfo fileInfo : fileInfos) {
+                    if (!task.isCurrent()) break;
+                    File file = fileInfo.file;
+                    if (file == null || file.isDirectory() || isProtectedCacheFile(file) || !paths.add(file.getAbsolutePath())) continue;
+                    deleteCacheFile(file, task.deletedFiles);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            } finally {
+                finishCacheCleanup(task, false, dismissCleanupDialog);
+            }
+        }, dismissCleanupDialog);
     }
 
     private int getTypeByPath(String absolutePath) {
@@ -2083,6 +2153,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
         }
 
         private void doClearCache() {
+            if (cleanupInProgress || isFinished || getParentActivity() == null) return;
             BottomSheet bottomSheet = new BottomSheet(getContext(), false) {
                 @Override
                 protected boolean canDismissWithTouchOutside() {
@@ -2099,6 +2170,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
             final float[] progress = new float[] { 0 };
             final boolean[] nextSection = new boolean[] { false };
             Runnable updateProgress = () -> {
+                if (done[0] || isFinished) return;
                 cacheView.setProgress(progress[0]);
                 if (nextSection[0]) {
                     updateRows();
@@ -2107,7 +2179,8 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
 
             final long[] start = new long[] { -1 };
             AndroidUtilities.runOnUIThread(() -> {
-                if (!done[0]) {
+                if (!done[0] && !isFinished && getParentActivity() != null
+                        && !getParentActivity().isFinishing() && !getParentActivity().isDestroyed()) {
                     start[0] = System.currentTimeMillis();
                     showDialog(bottomSheet);
                 }
@@ -2122,6 +2195,7 @@ public class CacheControlActivity extends BaseFragment implements NotificationCe
                 },
                 () -> AndroidUtilities.runOnUIThread(() -> {
                     done[0] = true;
+                        AndroidUtilities.cancelRunOnUIThread(updateProgress);
                     cacheView.setProgress(1F);
                     if (start[0] > 0) {
                         AndroidUtilities.runOnUIThread(bottomSheet::dismiss, Math.max(0, 1000 - (System.currentTimeMillis() - start[0])));

@@ -122,7 +122,7 @@ final class SystemHost {
             appliedParamsKey = null;
             AndroidUtilities.resetPictureInPictureParams(activity);
         }
-        updateMediaSession(candidate);
+        releaseMediaSession();
     }
 
     private @Nullable PipSession findCandidate() {
@@ -445,6 +445,7 @@ final class SystemHost {
         activeTarget = target;
         activeSystemView = systemView;
         session.state = PipSession.STATE_SYSTEM;
+        updateMediaSession(session);
     }
 
     private void completeEnter() {

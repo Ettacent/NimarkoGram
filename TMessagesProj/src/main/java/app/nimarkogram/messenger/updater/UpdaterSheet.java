@@ -208,18 +208,20 @@ public class UpdaterSheet extends BottomSheet implements AppUpdater.DownloadUiOw
                 downloadButton.setText(LocaleController.formatString(R.string.AppUpdateDownloading, downloadState.progress), false);
             }
             downloadButton.setOnClickListener(v -> {
+                AppUpdater.DownloadUiState currentState = AppUpdater.getDownloadUiState();
+                downloadFinished = currentState.finished;
                 if (downloadFinished) {
                     if (AppUpdater.apkFile != null) {
                         AppUpdater.installApk(getContext(), AppUpdater.apkFile.getAbsolutePath());
                     }
                     return;
                 }
-                AppUpdater.DownloadUiState currentState = AppUpdater.getDownloadUiState();
                 if (currentState.paused) {
                     downloadButtonClicked = true;
                     AppUpdater.resumeDownload(getContext().getApplicationContext());
                     return;
                 }
+                downloadButtonClicked = currentState.downloading;
                 if (!downloadButtonClicked) {
                     downloadButtonClicked = AppUpdater.downloadApk(getContext(), update, downloadBindingToken);
                 }

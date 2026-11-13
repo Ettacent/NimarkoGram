@@ -227,11 +227,13 @@ public abstract class ViewPagerActivity extends BaseFragment {
     }
 
     protected void clearAllHiddenFragments() {
-        final int visiblePosition = viewPager.getCurrentPosition();
+        final ViewPagerFixed pager = viewPager;
+        if (pager == null) return;
         for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
+            if (viewPager != pager) return;
             final FragmentState state = fragmentsArr.valueAt(a);
             final int position = fragmentsArr.keyAt(a);
-            if (position == visiblePosition) {
+            if (pager.isPositionBound(position)) {
                 continue;
             }
 

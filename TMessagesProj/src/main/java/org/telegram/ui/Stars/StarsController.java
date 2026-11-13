@@ -1277,6 +1277,14 @@ public class StarsController {
     private boolean paymentFormOpened;
 
     public void openPaymentForm(MessageObject messageObject, TLRPC.InputInvoice inputInvoice, TLRPC.TL_payments_paymentFormStars form, Runnable whenShown, Utilities.Callback<String> whenAllDone) {
+        openPaymentForm(messageObject, inputInvoice, form, whenShown, whenAllDone, null);
+    }
+
+    public void openPaymentForm(MessageObject messageObject, TLRPC.InputInvoice inputInvoice, TLRPC.TL_payments_paymentFormStars form, Runnable whenShown, Utilities.Callback<String> whenAllDone, java.util.function.BooleanSupplier presentationCurrent) {
+        if (presentationCurrent != null && !presentationCurrent.getAsBoolean()) {
+            if (whenShown != null) whenShown.run();
+            return;
+        }
         if (form == null || form.invoice == null || paymentFormOpened) return;
         MessagesController.getInstance(currentAccount).putUsers(form.users, false);
 
@@ -1287,6 +1295,10 @@ public class StarsController {
 
         if (!balanceAvailable()) {
             getBalance(() -> {
+                if (presentationCurrent != null && !presentationCurrent.getAsBoolean()) {
+                    if (whenShown != null) whenShown.run();
+                    return;
+                }
                 if (!balanceAvailable()) {
                     bulletinError("NO_BALANCE");
                     if (whenShown != null) {
@@ -1294,7 +1306,7 @@ public class StarsController {
                     }
                     return;
                 }
-                openPaymentForm(messageObject, inputInvoice, form, whenShown, whenAllDone);
+                openPaymentForm(messageObject, inputInvoice, form, whenShown, whenAllDone, presentationCurrent);
             });
             return;
         }

@@ -13,6 +13,8 @@
 
 #include <functional>
 #include <list>
+#include <memory>
+#include <vector>
 #include <limits.h>
 #include <sstream>
 #include <inttypes.h>
@@ -55,7 +57,8 @@ typedef std::function<void()> onQuickAckFunc;
 typedef std::function<void()> onWriteToSocketFunc;
 typedef std::function<void()> onRequestClearFunc;
 typedef std::function<void()> onRequestCancelDoneFunc;
-typedef std::function<void(int64_t messageId)> fillParamsFunc;
+enum class PacketBuildStatus { Ready, NoAuthKey, InvalidSize, NoMemory };
+typedef std::function<PacketBuildStatus(int64_t messageId)> fillParamsFunc;
 typedef std::function<void(int64_t requestTime)> onRequestTimeFunc;
 typedef std::list<std::unique_ptr<Request>> requestsList;
 typedef requestsList::iterator requestsIter;
@@ -65,7 +68,16 @@ typedef struct NetworkMessage {
     bool invokeAfter = false;
     bool needQuickAck = false;
     bool forceContainer = false;
-    int32_t requestId;
+    int32_t requestId = 0;
+    TLObject *requestBody = nullptr;
+    uint32_t connectionToken = 0;
+    uint32_t datacenterId = 0;
+    int64_t sessionId = 0;
+    uint32_t retryCountBefore = 0;
+    uint32_t retryCountAfter = 0;
+    bool rollbackRetryCount = false;
+    bool failedBySaltBefore = false;
+    bool notifyOnWrite = false;
 } NetworkMessage;
 
 enum ConnectionType {

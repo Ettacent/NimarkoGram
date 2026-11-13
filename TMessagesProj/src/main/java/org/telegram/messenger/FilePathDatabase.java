@@ -459,17 +459,43 @@ public class FilePathDatabase {
     }
 
     public void removeFiles(List<CacheModel.FileInfo> filesToRemove) {
+        removeFiles(filesToRemove, false);
+    }
+
+    public void removeDeletedCacheFiles(List<CacheModel.FileInfo> filesToRemove) {
+        removeFiles(filesToRemove, true);
+    }
+
+    private void removeFiles(List<CacheModel.FileInfo> filesToRemove, boolean cacheCleanup) {
         postRunnable(() -> {
+            SQLiteDatabase transactionDatabase = null;
+            SQLitePreparedStatement statement = null;
+            boolean transaction = false;
             try {
                 ensureDatabaseCreated();
-                database.beginTransaction();
+                transactionDatabase = database;
+                if (transactionDatabase == null) return;
+                transactionDatabase.beginTransaction();
+                transaction = true;
+                statement = transactionDatabase.executeFast("DELETE FROM paths_by_dialog_id WHERE path = ?");
                 for (int i = 0; i < filesToRemove.size(); i++) {
-                    database.executeFast("DELETE FROM paths_by_dialog_id WHERE path = '" + shield(filesToRemove.get(i).file.getPath()) + "'").stepThis().dispose();
+                    File file = filesToRemove.get(i).file;
+                    if (cacheCleanup) {
+                        String name = file.getName();
+                        if (name.endsWith(".temp") || name.endsWith(".temp.enc") || name.endsWith("_64.pt") || file.exists()) continue;
+                    }
+                    statement.requery();
+                    statement.bindString(1, shield(file.getPath()));
+                    statement.step();
                 }
             } catch (Throwable e) {
                 FileLog.e(e);
             } finally {
-                database.commitTransaction();
+                try {
+                    if (statement != null) statement.dispose();
+                } finally {
+                    if (transaction) transactionDatabase.commitTransaction();
+                }
             }
         });
     }

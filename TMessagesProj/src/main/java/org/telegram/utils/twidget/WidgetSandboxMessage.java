@@ -16,6 +16,9 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
 
         void onFailure(WidgetSandboxMessage message, String error);
 
+        default void onEngineDied(WidgetSandboxMessage message, boolean restart) {
+            if (restart) message.activate();
+        }
         default void onResized(WidgetSandboxMessage message) {}
 
         default void onLoadedFrame(WidgetSandboxMessage message) {}
@@ -190,7 +193,7 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
         active = false;
         if (session == null) return;
         WidgetSandboxSession.Frame frame = frame();
-        if (frame != null && sentPreview == null) {
+        if (frame != null && sentPreview == null && frame != snapshot) {
             snapshotLoaded = frame.loaded || session.hasLoadedFrame();
             snapshot = frame;
         }
@@ -251,6 +254,7 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
     public WidgetSandboxSession.Frame frame() {
         if (!isCurrent()) return null;
         WidgetSandboxSession.Frame live = session == null ? null : session.frame();
+        if (session != null && (snapshot != null || sentPreview != null)) session.ensureDisplayList();
         if (sentPreview != null) {
             if (!java.util.Objects.equals(sentPreview.data, data) || !java.util.Objects.equals(sentPreview.contextJson, contextJson)
                     || !java.util.Objects.equals(sentPreview.locale, locale) || !sentPreview.frame.recorded()) {
@@ -258,15 +262,14 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
             } else if (widthPx <= 0 || theme == null || safeArea == null) {
                 return live;
             } else if (!matchesSentPreview()
-                    || live != null && live.width > 0 && live.height > 0 && session.hasLoadedFrame()
-                            && live.recorded() && Math.abs(live.width - widthPx) <= 1) {
+                    || isDisplayReady(live) && Math.abs(live.width - widthPx) <= 1) {
                 sentPreview = null;
             } else {
                 return sentPreview.frame;
             }
         }
-        if (live != null && (snapshot == null || session.loaded())) return live;
-        if (snapshot != null && Math.abs(snapshot.width - widthPx) <= 1) return snapshot;
+        if (live != null && (snapshot == null || isDisplayReady(live))) return live;
+        if (snapshot != null && (Math.abs(snapshot.width - widthPx) <= 1 || isDisplayReady(snapshot))) return snapshot;
         return live != null ? live : snapshot;
     }
 
@@ -445,11 +448,8 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
         if (from != session) return;
         WidgetSandboxSession.Frame live = from.frame();
         if (live == null) return;
-        if (sentPreview != null) {
-            WidgetSandboxSession.Frame preview = sentPreview.frame;
-            if (frame() == preview) return;
-        }
-        boolean shown = snapshot == null || from.loaded();
+        if (frame() != live) return;
+        boolean shown = snapshot == null || isDisplayReady(live);
         if (!shown) return;
         snapshot = null;
         frameWidthPx = live.width;
@@ -464,7 +464,7 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
     }
 
     private boolean loadedFrameNow() {
-        if (loadedFrameSession == sessions || session == null || !session.hasLoadedFrame()) return false;
+        if (loadedFrameSession == sessions || session == null || !isDisplayReady(session.frame())) return false;
         loadedFrameSession = sessions;
         if (events != null) events.onLoadedFrame(this);
         return true;
@@ -514,12 +514,28 @@ public final class WidgetSandboxMessage implements WidgetSandboxSession.Listener
     public void onDiagnostics(JSONObject diagnostics) {
         if (!isCurrent()) return;
         if (events != null) events.onDiagnostics(this, diagnostics);
-        if (session != null && (diagnostics.optBoolean("loaded") && snapshot != null || sentPreview != null))
+        if (session != null && (snapshot != null || sentPreview != null))
             onFrame(session);
         else if (loadedFrameNow() && player != null)
             player.onMessageFrame(true);
     }
 
+    private int engineDeaths;
+    private long engineDeathsSince;
+
+    @Override
+    public void onEngineDied() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - engineDeathsSince > 60_000) {
+            engineDeathsSince = now;
+            engineDeaths = 0;
+        }
+        boolean restart = active && engineDeaths++ < 2;
+        unload();
+        if (events != null) events.onEngineDied(this, restart);
+        else if (restart) activate();
+        if (!restart) onFailure("Widget engine stopped");
+    }
     @Override
     public void onAction(JSONObject action) {
         if (!isCurrent()) return;

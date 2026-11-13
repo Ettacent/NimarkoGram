@@ -221,6 +221,11 @@ public class FiltersView extends RecyclerListView implements Theme.Colorable {
     }
 
     public void setUsersAndDates(ArrayList<Object> localUsers, ArrayList<DateData> dates, boolean archive) {
+        setUsersAndDates(localUsers, dates, archive, UserConfig.selectedAccount);
+    }
+
+    public void setUsersAndDates(ArrayList<Object> localUsers, ArrayList<DateData> dates, boolean archive, int account) {
+        final long selfId = UserConfig.isValidAccount(account) ? UserConfig.getInstance(account).getClientUserId() : 0;
         oldItems.clear();
         oldItems.addAll(usersFilters);
         usersFilters.clear();
@@ -230,7 +235,7 @@ public class FiltersView extends RecyclerListView implements Theme.Colorable {
                 if (object instanceof TLRPC.User) {
                     TLRPC.User user = (TLRPC.User) object;
                     String title;
-                    if (UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser().id == user.id) {
+                    if (selfId > 0 && selfId == user.id) {
                         title = LocaleController.getString(R.string.SavedMessages);
                     } else {
                         title = ContactsController.formatName(user.first_name, user.last_name, 10);

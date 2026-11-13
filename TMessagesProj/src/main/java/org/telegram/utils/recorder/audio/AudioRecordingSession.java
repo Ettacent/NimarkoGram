@@ -531,9 +531,18 @@ public final class AudioRecordingSession {
 
     @MainThread
     public @Nullable Result detachPreviewOutput() {
+        return detachPreviewOutput(false);
+    }
+
+    @MainThread
+    public @Nullable Result detachPreviewOutputForDraft() {
+        return detachPreviewOutput(true);
+    }
+
+    private @Nullable Result detachPreviewOutput(boolean retainRawDraft) {
         requireMainThread();
         if (state != State.PREVIEWING || outputGeneration == null) return null;
-        if (trimStartMs != 0L || trimEndMs != getRecordedDurationMs()) return null;
+        if (!retainRawDraft && (trimStartMs != 0L || trimEndMs != getRecordedDurationMs())) return null;
 
         releasePlayer();
         OutputGeneration generation = outputGeneration;

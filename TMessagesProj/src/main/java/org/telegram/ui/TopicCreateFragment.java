@@ -28,6 +28,7 @@ import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
@@ -36,6 +37,8 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.RequestDelegate;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_forum;
 import org.telegram.tgnet.tl.TL_stars;
@@ -61,8 +64,11 @@ import org.telegram.ui.Components.Premium.PremiumFeatureBottomSheet;
 import org.telegram.ui.Components.ReplaceableIconDrawable;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
 
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import java.util.ArrayList;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 public class TopicCreateFragment extends BaseFragment {
 
     private final static int CREATE_ID = 1;
@@ -84,8 +90,17 @@ public class TopicCreateFragment extends BaseFragment {
     ForumBubbleDrawable forumBubbleDrawable;
 
     private ChatActivity openInChatActivity;
+    private CreateTopicOperation createTopicOperation;
+    private CreateTopicOperation completedCreateTopicOperation;
+    private TL_forum.TL_messages_editForumTopic editTopicRequest;
+    private AlertDialog editTopicProgressDialog;
     public TopicCreateFragment setOpenInChatActivity(ChatActivity chatActivity) {
+        CreateTopicOperation operation = openInChatActivity == chatActivity ? null : createTopicOperation;
         openInChatActivity = chatActivity;
+        if (chatActivity != null && fragmentView == null) {
+            setCurrentAccount(chatActivity.getCurrentAccount());
+        }
+        retireCreateTopicUi(operation);
         return this;
     }
 
@@ -100,6 +115,401 @@ public class TopicCreateFragment extends BaseFragment {
 
     private TopicCreateFragment(Bundle bundle) {
         super(bundle);
+    }
+
+    private static final class CreateTopicOperation {
+        final int account;
+        final long userId;
+        final long session;
+        final long dialogId;
+        final String title;
+        final long emojiId;
+        final int iconColor;
+        final long randomId;
+        final View editorView;
+        final BooleanSupplier navigationCurrent;
+        final ChatActivity target;
+        final View targetView;
+        final Object targetLayout;
+        final AlertDialog progressDialog;
+        final AtomicBoolean responseHandled = new AtomicBoolean();
+        int targetGuid;
+        long targetTopicId;
+        boolean uiActive = true;
+
+        CreateTopicOperation(TopicCreateFragment fragment, String title) {
+            account = fragment.currentAccount;
+            userId = UserConfig.getInstance(account).getClientUserId();
+            session = InAppNotifications.session(account);
+            dialogId = fragment.dialogId;
+            this.title = title;
+            emojiId = fragment.selectedEmojiDocumentId;
+            iconColor = fragment.iconColor;
+            randomId = Utilities.random.nextLong();
+            editorView = fragment.fragmentView;
+            navigationCurrent = fragment.captureNavigationRequest();
+            target = fragment.openInChatActivity;
+            targetView = target == null ? null : target.getFragmentView();
+            targetLayout = target == null ? null : target.getParentLayout();
+            targetGuid = target == null ? 0 : target.getClassGuid();
+            targetTopicId = target == null ? 0 : target.getTopicId();
+            progressDialog = new AlertDialog(fragment.getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+        }
+
+        boolean isCurrentAccount() {
+            return InAppNotifications.isCurrent(account, userId, session);
+        }
+    }
+
+    private boolean isCurrentCreateTopicUi(CreateTopicOperation operation) {
+        return operation != null && createTopicOperation == operation && operation.uiActive
+                && isCurrentCreateTopicContext(operation);
+    }
+
+    private boolean isCurrentCreateTopicContext(CreateTopicOperation operation) {
+        if (isFinished || isPaused() || currentAccount != operation.account
+                || dialogId != operation.dialogId || fragmentView != operation.editorView
+                || !operation.isCurrentAccount() || !operation.navigationCurrent.getAsBoolean()
+                || openInChatActivity != operation.target) {
+            return false;
+        }
+        ChatActivity target = operation.target;
+        return target == null || !target.isFinished && target.getCurrentAccount() == operation.account
+                && target.getDialogId() == operation.dialogId && target.getTopicId() == operation.targetTopicId
+                && target.getClassGuid() == operation.targetGuid && target.getFragmentView() == operation.targetView
+                && target.getParentLayout() == operation.targetLayout;
+    }
+
+    private void retireCreateTopicUi(CreateTopicOperation operation) {
+        if (operation == null) {
+            return;
+        }
+        operation.uiActive = false;
+        if (createTopicOperation == operation) {
+            createTopicOperation = null;
+            created = false;
+        }
+        operation.progressDialog.dismiss();
+    }
+
+    private void createTopic(String title) {
+        if (created || isFinished || isPaused() || getParentActivity() == null) {
+            return;
+        }
+        final CreateTopicOperation operation = new CreateTopicOperation(this, title);
+        createTopicOperation = operation;
+        created = true;
+        if (!isCurrentCreateTopicUi(operation)) {
+            retireCreateTopicUi(operation);
+            return;
+        }
+        operation.progressDialog.setOnCancelListener(dialog -> retireCreateTopicUi(operation));
+        operation.progressDialog.showDelayed(500);
+        try {
+            TL_forum.TL_messages_createForumTopic request = new TL_forum.TL_messages_createForumTopic();
+            request.peer = MessagesController.getInstance(operation.account).getInputPeer(operation.dialogId);
+            request.title = operation.title;
+            request.icon_color = operation.iconColor;
+            request.flags |= 1;
+            if (operation.emojiId != 0) {
+                request.icon_emoji_id = operation.emojiId;
+                request.flags |= 8;
+            }
+            request.random_id = operation.randomId;
+            if (!Utilities.stageQueue.postRunnable(() -> {
+                if (!operation.isCurrentAccount()) {
+                    AndroidUtilities.runOnUIThread(() -> completeCreateTopic(operation, 0, false, null));
+                    return;
+                }
+                try {
+                    int token = ConnectionsManager.getInstance(operation.account).sendRequestSync(request,
+                            (response, error) -> onCreateTopicResponse(operation, response, error), null, null,
+                            0, ConnectionsManager.DEFAULT_DATACENTER_ID, ConnectionsManager.ConnectionTypeGeneric, true);
+                    if (token <= 0) {
+                        AndroidUtilities.runOnUIThread(() -> completeCreateTopic(operation, 0, false, null));
+                    }
+                } catch (Exception failure) {
+                    FileLog.e(failure);
+                    AndroidUtilities.runOnUIThread(() -> completeCreateTopic(operation, 0, false, null));
+                }
+            })) {
+                completeCreateTopic(operation, 0, false, null);
+            }
+        } catch (Exception error) {
+            FileLog.e(error);
+            completeCreateTopic(operation, 0, false, null);
+        }
+    }
+
+    private void retireEditTopicUi() {
+        editTopicRequest = null;
+        AlertDialog progress = editTopicProgressDialog;
+        editTopicProgressDialog = null;
+        if (progress != null) progress.dismiss();
+    }
+
+    private void editTopic(String title) {
+        if (editTopicRequest != null || topicForEdit == null || isFinished || isPaused() || getParentActivity() == null) return;
+        final TLRPC.TL_forumTopic topic = topicForEdit;
+        final int account = currentAccount;
+        final long userId = UserConfig.getInstance(account).getClientUserId();
+        final long session = InAppNotifications.session(account);
+        final BooleanSupplier accountCurrent = () -> InAppNotifications.isCurrent(account, userId, session);
+        if (!accountCurrent.getAsBoolean()) return;
+        final long editDialogId = dialogId;
+        final View editorView = fragmentView;
+        final TL_forum.TL_messages_editForumTopic request = new TL_forum.TL_messages_editForumTopic();
+        request.peer = MessagesController.getInstance(account).getInputPeer(editDialogId);
+        request.topic_id = topic.id;
+        if (!TextUtils.equals(topic.title, title)) {
+            request.title = title;
+            request.flags |= 1;
+        }
+        if (topic.icon_emoji_id != selectedEmojiDocumentId) {
+            request.icon_emoji_id = selectedEmojiDocumentId;
+            request.flags |= 2;
+        }
+        if (checkBoxCell != null && topic.id == 1 && !checkBoxCell.isChecked() != topic.hidden) {
+            request.hidden = !checkBoxCell.isChecked();
+            request.flags |= 8;
+        }
+        if (request.flags == 0) {
+            finishFragment();
+            return;
+        }
+        final BooleanSupplier navigationCurrent = captureNavigationRequest();
+        final BooleanSupplier uiCurrent = () -> !isFinished && !isPaused() && currentAccount == account
+                && dialogId == editDialogId && topicForEdit == topic && fragmentView == editorView
+                && accountCurrent.getAsBoolean() && navigationCurrent.getAsBoolean();
+        if (!uiCurrent.getAsBoolean()) return;
+        final AlertDialog progress = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
+        final AtomicBoolean responseHandled = new AtomicBoolean();
+        final RequestDelegate callback = (response, error) -> {
+            if (!responseHandled.compareAndSet(false, true)) return;
+            boolean success = false;
+            if (response instanceof TLRPC.Updates && accountCurrent.getAsBoolean()) {
+                try {
+                    MessagesController.getInstance(account).processUpdates((TLRPC.Updates) response, false);
+                    success = error == null;
+                } catch (Exception failure) {
+                    FileLog.e(failure);
+                }
+            }
+            final boolean successful = success;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (editTopicRequest != request) return;
+                retireEditTopicUi();
+                if (editTopicRequest != null || !uiCurrent.getAsBoolean()) return;
+                if (successful) finishFragment();
+                else BulletinFactory.of(this).showForError(error);
+            });
+        };
+        editTopicRequest = request;
+        editTopicProgressDialog = progress;
+        progress.setOnCancelListener(dialog -> {
+            if (editTopicRequest == request) retireEditTopicUi();
+        });
+        try {
+            progress.showDelayed(500);
+            if (!Utilities.stageQueue.postRunnable(() -> {
+                if (!accountCurrent.getAsBoolean()) {
+                    callback.run(null, null);
+                    return;
+                }
+                try {
+                    int token = ConnectionsManager.getInstance(account).sendRequestSync(request, callback, null, null,
+                            0, ConnectionsManager.DEFAULT_DATACENTER_ID, ConnectionsManager.ConnectionTypeGeneric, true);
+                    if (token <= 0) callback.run(null, null);
+                } catch (Exception failure) {
+                    FileLog.e(failure);
+                    callback.run(null, null);
+                }
+            })) callback.run(null, null);
+        } catch (Exception failure) {
+            FileLog.e(failure);
+            callback.run(null, null);
+        }
+    }
+
+    private void onCreateTopicResponse(CreateTopicOperation operation, TLObject response, TLRPC.TL_error error) {
+        if (!operation.responseHandled.compareAndSet(false, true)) {
+            return;
+        }
+        int topicId = 0;
+        TLRPC.Message createdMessage = null;
+        boolean success = false;
+        if (response instanceof TLRPC.Updates && operation.isCurrentAccount()) {
+            TLRPC.Updates updates = (TLRPC.Updates) response;
+            for (TLRPC.Update update : updates.updates) {
+                if (update instanceof TL_update.TL_updateMessageID
+                        && ((TL_update.TL_updateMessageID) update).random_id == operation.randomId) {
+                    topicId = ((TL_update.TL_updateMessageID) update).id;
+                    break;
+                }
+            }
+            for (TLRPC.Update update : updates.updates) {
+                TLRPC.Message message = update instanceof TL_update.TL_updateNewChannelMessage
+                        ? ((TL_update.TL_updateNewChannelMessage) update).message
+                        : update instanceof TL_update.TL_updateNewMessage ? ((TL_update.TL_updateNewMessage) update).message : null;
+                if (message != null && message.id == topicId && message.action instanceof TLRPC.TL_messageActionTopicCreate
+                        && MessageObject.getDialogId(message) == operation.dialogId) {
+                    createdMessage = message;
+                    break;
+                }
+            }
+            try {
+                MessagesController.getInstance(operation.account).processUpdates(updates, false);
+                success = error == null;
+            } catch (Exception failure) {
+                FileLog.e(failure);
+            }
+        }
+        final int createdTopicId = topicId;
+        final TLRPC.Message serverMessage = createdMessage;
+        final boolean successful = success;
+        AndroidUtilities.runOnUIThread(() -> completeCreateTopic(operation, createdTopicId, successful, error, serverMessage));
+    }
+
+    private TLRPC.TL_forumTopic cacheCreatedTopic(CreateTopicOperation operation, int topicId, TLRPC.Message serverMessage) {
+        if (topicId <= 0 || !operation.isCurrentAccount()) {
+            return null;
+        }
+        MessagesController controller = MessagesController.getInstance(operation.account);
+        TLRPC.TL_forumTopic topic = controller.getTopicsController().findTopic(-operation.dialogId, topicId);
+        if (topic != null) {
+            return topic;
+        }
+        TLRPC.TL_messageActionTopicCreate action = new TLRPC.TL_messageActionTopicCreate();
+        action.title = operation.title;
+        action.icon_color = operation.iconColor;
+        action.icon_emoji_id = operation.emojiId;
+        if (operation.emojiId != 0) {
+            action.flags |= 1;
+        }
+        TLRPC.Message message = serverMessage;
+        if (message != null && message.id == topicId && message.action instanceof TLRPC.TL_messageActionTopicCreate
+                && MessageObject.getDialogId(message) == operation.dialogId) {
+            action = (TLRPC.TL_messageActionTopicCreate) message.action;
+        } else {
+            message = new TLRPC.TL_messageService();
+            message.action = action;
+            message.peer_id = controller.getPeer(operation.dialogId);
+            message.from_id = controller.getPeer(operation.userId);
+            message.dialog_id = operation.dialogId;
+            message.id = topicId;
+            message.date = ConnectionsManager.getInstance(operation.account).getCurrentTime();
+            message.out = true;
+        }
+        topic = new TLRPC.TL_forumTopic();
+        topic.id = topicId;
+        topic.peer = message.peer_id;
+        topic.date = message.date;
+        topic.icon_emoji_id = action.icon_emoji_id;
+        topic.flags = 2 | (action.icon_emoji_id == 0 ? 0 : 1);
+        topic.my = true;
+        topic.topicStartMessage = message;
+        topic.title = action.title;
+        topic.top_message = topicId;
+        topic.topMessage = message;
+        topic.from_id = message.from_id != null ? message.from_id : controller.getPeer(operation.userId);
+        topic.notify_settings = new TLRPC.TL_peerNotifySettings();
+        topic.icon_color = action.icon_color;
+        if (!operation.isCurrentAccount()) {
+            return null;
+        }
+        controller.getTopicsController().onTopicCreated(operation.dialogId, topic, true);
+        return operation.isCurrentAccount()
+                ? controller.getTopicsController().findTopic(-operation.dialogId, topicId) : null;
+    }
+
+    private void completeCreateTopic(CreateTopicOperation operation, int topicId, boolean success, TLRPC.TL_error error) {
+        completeCreateTopic(operation, topicId, success, error, null);
+    }
+
+    private void completeCreateTopic(CreateTopicOperation operation, int topicId, boolean success, TLRPC.TL_error error, TLRPC.Message serverMessage) {
+        try {
+            TLRPC.TL_forumTopic topic = success ? cacheCreatedTopic(operation, topicId, serverMessage) : null;
+            if (!isCurrentCreateTopicUi(operation)) {
+                return;
+            }
+            operation.progressDialog.dismiss();
+            if (!isCurrentCreateTopicUi(operation)) {
+                return;
+            }
+            if (topic == null) {
+                retireCreateTopicUi(operation);
+                if (createTopicOperation == null && isCurrentCreateTopicContext(operation)) {
+                    BulletinFactory.of(this).showForError(error);
+                }
+                return;
+            }
+            TLRPC.Message message = topic.topicStartMessage;
+            if (message == null) {
+                return;
+            }
+            ArrayList<MessageObject> messageObjects = new ArrayList<>();
+            messageObjects.add(new MessageObject(operation.account, message, false, false));
+            if (!isCurrentCreateTopicUi(operation)) {
+                return;
+            }
+            TLRPC.Chat chat = MessagesController.getInstance(operation.account).getChat(-operation.dialogId);
+            ChatActivity target = operation.target;
+            if (target == null) {
+                Bundle args = new Bundle();
+                args.putLong("chat_id", -operation.dialogId);
+                args.putInt("message_id", 1);
+                args.putInt("unread_count", 0);
+                args.putBoolean("historyPreloaded", false);
+                ChatActivity activity = new ChatActivity(args);
+                activity.setCurrentAccount(operation.account);
+                if (!isCurrentCreateTopicUi(operation)) {
+                    return;
+                }
+                activity.setThreadMessages(messageObjects, chat, topic.id, 1, 1, topic);
+                activity.justCreatedTopic = true;
+                if (!isCurrentCreateTopicUi(operation)) {
+                    return;
+                }
+                completedCreateTopicOperation = operation;
+                if (!presentFragment(activity) && completedCreateTopicOperation == operation) {
+                    completedCreateTopicOperation = null;
+                }
+                return;
+            }
+            target.resetForReload();
+            operation.targetGuid = target.getClassGuid();
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.saveDraft();
+            if (!isCurrentCreateTopicUi(operation)) return;
+            operation.targetTopicId = topic.id;
+            target.setThreadMessages(messageObjects, chat, topic.id, 1, 1, topic);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.justCreatedTopic = true;
+            target.firstLoadMessages();
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.updateTitle(true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            if (target.getAvatarContainer() != null) target.getAvatarContainer().updateSubtitle(true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.updateTopicTitleIcon();
+            if (!isCurrentCreateTopicUi(operation)) return;
+            if (target.topicsTabs != null) target.topicsTabs.setCurrentTopic(target.getTopicId());
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.updateTopPanel(true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.updateBottomOverlay(true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.hideFieldPanel(true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.applyDraftMaybe(true, true);
+            if (!isCurrentCreateTopicUi(operation)) return;
+            target.reloadPinnedMessages();
+            if (!isCurrentCreateTopicUi(operation)) return;
+            completedCreateTopicOperation = operation;
+            finishFragment();
+        } finally {
+            retireCreateTopicUi(operation);
+        }
     }
 
     @Override
@@ -120,6 +530,8 @@ public class TopicCreateFragment extends BaseFragment {
 
     @Override
     public View createView(Context context) {
+        retireCreateTopicUi(createTopicOperation);
+        retireEditTopicUi();
         if (topicForEdit != null) {
             actionBar.setTitle(LocaleController.getString(R.string.EditTopic));
         } else {
@@ -130,6 +542,8 @@ public class TopicCreateFragment extends BaseFragment {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
+                    retireCreateTopicUi(createTopicOperation);
+                    retireEditTopicUi();
                     finishFragment();
                     return;
                 }
@@ -148,98 +562,7 @@ public class TopicCreateFragment extends BaseFragment {
                         return;
                     }
 
-                    final AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
-                    progressDialog.showDelayed(500);
-                    created = true;
-
-                    TL_forum.TL_messages_createForumTopic reqSend = new TL_forum.TL_messages_createForumTopic();
-
-                    reqSend.peer = getMessagesController().getInputPeer(dialogId);
-                    reqSend.title = topicName;
-                    if (selectedEmojiDocumentId != 0) {
-                        reqSend.icon_emoji_id = selectedEmojiDocumentId;
-                        reqSend.flags |= 8;
-                    }
-                    long randomId = Utilities.random.nextLong();
-                    reqSend.random_id = randomId;
-                    reqSend.icon_color = iconColor;
-                    reqSend.flags |= 1;
-
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(reqSend, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                        if (response != null) {
-                            TLRPC.Updates updates = (TLRPC.Updates) response;
-                            for (int i = 0; i < updates.updates.size(); i++) {
-                                if (updates.updates.get(i) instanceof TL_update.TL_updateMessageID) {
-                                    TL_update.TL_updateMessageID updateMessageID = (TL_update.TL_updateMessageID) updates.updates.get(i);
-                                    TLRPC.TL_messageActionTopicCreate actionMessage = new TLRPC.TL_messageActionTopicCreate();
-                                    actionMessage.title = topicName;
-                                    TLRPC.TL_messageService message = new TLRPC.TL_messageService();
-                                    message.action = actionMessage;
-                                    message.peer_id = getMessagesController().getPeer(dialogId);
-                                    message.dialog_id = dialogId;
-                                    message.id = updateMessageID.id;
-                                    message.date = (int) (System.currentTimeMillis() / 1000);
-
-                                    ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                                    messageObjects.add(new MessageObject(currentAccount, message, false, false));
-                                    TLRPC.Chat chatLocal = getMessagesController().getChat(-dialogId);
-                                    TLRPC.TL_forumTopic forumTopic = new TLRPC.TL_forumTopic();
-                                    forumTopic.id = updateMessageID.id;
-                                    if (selectedEmojiDocumentId != 0) {
-                                        forumTopic.icon_emoji_id = selectedEmojiDocumentId;
-                                        forumTopic.flags |= 1;
-                                    }
-                                    forumTopic.my = true;
-                                    forumTopic.flags |= 2;
-                                    forumTopic.topicStartMessage = message;
-                                    forumTopic.title = topicName;
-                                    forumTopic.top_message = message.id;
-                                    forumTopic.topMessage = message;
-                                    forumTopic.from_id = getMessagesController().getPeer(getUserConfig().clientUserId);
-                                    forumTopic.notify_settings = new TLRPC.TL_peerNotifySettings();
-                                    forumTopic.icon_color = iconColor;
-
-                                    if (openInChatActivity != null) {
-                                        final ChatActivity chatActivity = openInChatActivity;
-
-                                        chatActivity.resetForReload();
-                                        chatActivity.saveDraft();
-                                        chatActivity.setThreadMessages(messageObjects, chatLocal, message.id, 1, 1, forumTopic);
-                                        chatActivity.justCreatedTopic = true;
-
-                                        chatActivity.firstLoadMessages();
-
-                                        chatActivity.updateTitle(true);
-                                        chatActivity.avatarContainer.updateSubtitle(true);
-                                        chatActivity.updateTopicTitleIcon();
-                                        chatActivity.topicsTabs.setCurrentTopic(chatActivity.getTopicId());
-                                        chatActivity.updateTopPanel(true);
-                                        chatActivity.updateBottomOverlay(true);
-                                        chatActivity.hideFieldPanel(true);
-                                        chatActivity.applyDraftMaybe(true, true);
-
-                                        chatActivity.reloadPinnedMessages();
-                                        getMessagesController().getTopicsController().onTopicCreated(dialogId, forumTopic, true);
-
-                                        finishFragment();
-                                    } else {
-                                        Bundle args = new Bundle();
-                                        args.putLong("chat_id", -dialogId);
-                                        args.putInt("message_id", 1);
-                                        args.putInt("unread_count", 0);
-                                        args.putBoolean("historyPreloaded", false);
-                                        ChatActivity chatActivity = new ChatActivity(args);
-
-                                        chatActivity.setThreadMessages(messageObjects, chatLocal, message.id, 1, 1, forumTopic);
-                                        chatActivity.justCreatedTopic = true;
-                                        getMessagesController().getTopicsController().onTopicCreated(dialogId, forumTopic, true);
-                                        presentFragment(chatActivity);
-                                    }
-                                }
-                            }
-                        }
-                        progressDialog.dismiss();
-                    }));
+                    createTopic(topicName);
                 } else if (id == EDIT_ID) {
 
                     String topicName = editTextBoldCursor.getText() == null ? null : editTextBoldCursor.getText().toString();
@@ -251,49 +574,7 @@ public class TopicCreateFragment extends BaseFragment {
                         AndroidUtilities.shakeView(editTextBoldCursor);
                         return;
                     }
-                    if (!topicForEdit.title.equals(topicName) || topicForEdit.icon_emoji_id != selectedEmojiDocumentId) {
-                        TL_forum.TL_messages_editForumTopic editForumRequest = new TL_forum.TL_messages_editForumTopic();
-                        editForumRequest.peer = getMessagesController().getInputPeer(dialogId);
-                        editForumRequest.topic_id = topicForEdit.id;
-                        if (!topicForEdit.title.equals(topicName)) {
-                            editForumRequest.title = topicName;
-                            editForumRequest.flags |= 1;
-                        }
-                        if (topicForEdit.icon_emoji_id != selectedEmojiDocumentId) {
-                            editForumRequest.icon_emoji_id = selectedEmojiDocumentId;
-                            editForumRequest.flags |= 2;
-                        }
-//                        if (checkBoxCell != null ) {
-//                            editForumRequest.hidden = !checkBoxCell.isChecked();
-//                            editForumRequest.flags |= 8;
-//                        }
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(editForumRequest, (response, error) -> {
-
-                        });
-                    }
-                    if (checkBoxCell != null && topicForEdit.id == 1 && !checkBoxCell.isChecked() != topicForEdit.hidden) {
-                        TL_forum.TL_messages_editForumTopic editForumRequest = new TL_forum.TL_messages_editForumTopic();
-                        editForumRequest.peer = getMessagesController().getInputPeer(dialogId);
-                        editForumRequest.topic_id = topicForEdit.id;
-                        editForumRequest.hidden = !checkBoxCell.isChecked();
-                        editForumRequest.flags |= 8;
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(editForumRequest, (response, error) -> {
-
-                        });
-                    }
-
-                    topicForEdit.icon_emoji_id = selectedEmojiDocumentId;
-                    if (selectedEmojiDocumentId != 0) {
-                        topicForEdit.flags |= 1;
-                    } else {
-                        topicForEdit.flags &= ~1;
-                    }
-                    topicForEdit.title = topicName;
-                    if (checkBoxCell != null) {
-                        topicForEdit.hidden = !checkBoxCell.isChecked();
-                    }
-                    getMessagesController().getTopicsController().onTopicEdited(dialogId, topicForEdit);
-                    finishFragment();
+                    editTopic(topicName);
                 }
             }
         });
@@ -606,7 +887,9 @@ public class TopicCreateFragment extends BaseFragment {
     @Override
     public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
         super.onTransitionAnimationEnd(isOpen, backward);
-        if (!isOpen && created) {
+        if (!isOpen && completedCreateTopicOperation != null
+                && completedCreateTopicOperation.editorView == fragmentView) {
+            completedCreateTopicOperation = null;
             removeSelfFromStack();
         }
 
@@ -622,6 +905,30 @@ public class TopicCreateFragment extends BaseFragment {
         showKeyboard();
     }
 
+    @Override
+    public void onPause() {
+        retireCreateTopicUi(createTopicOperation);
+        retireEditTopicUi();
+        super.onPause();
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        retireCreateTopicUi(createTopicOperation);
+        retireEditTopicUi();
+        notificationsLocker.unlock();
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public boolean onBackPressed(boolean invoked) {
+        boolean close = super.onBackPressed(invoked);
+        if (close && invoked) {
+            retireCreateTopicUi(createTopicOperation);
+            retireEditTopicUi();
+        }
+        return close;
+    }
     public void showKeyboard() {
         editTextBoldCursor.requestFocus();
         AndroidUtilities.showKeyboard(editTextBoldCursor);

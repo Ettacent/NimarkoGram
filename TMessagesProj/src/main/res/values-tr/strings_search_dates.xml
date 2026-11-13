@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Tarihe göre filtrele</string>
+    <string name="NM_SearchDatesDay">Gün</string>
+    <string name="NM_SearchDatesPeriod">Aralık</string>
+    <string name="NM_SearchDatesFrom">Başlangıç</string>
+    <string name="NM_SearchDatesUntil">Bitiş</string>
+    <string name="NM_SearchDatesAddEnd">Bitiş tarihi ekle</string>
+    <string name="NM_SearchDatesToday">Bugün</string>
+    <string name="NM_SearchDatesYesterday">Dün</string>
+    <string name="NM_SearchDatesLast7">Son 7 gün</string>
+    <string name="NM_SearchDatesLast30">Son 30 gün</string>
+    <string name="NM_SearchDatesApply">Filtreyi uygula</string>
+    <string name="NM_SearchDatesReset">Tüm tarihler</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Tarih filtresi: %1$s</string>
+    <string name="NM_SearchDatesChange">Tarihleri değiştir</string>
+    <string name="NM_SearchDatesClear">Tarih filtresini kaldır</string>
+    <string name="NM_SearchDatesJump">Tarihe git</string>
+    <string name="NM_SearchDatesInvalid">Bitiş tarihi başlangıçtan önce olamaz.</string>
+    <string name="NM_SearchDatesDayValue">Gün: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Ay: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Yıl: %1$s</string>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Filtrer par date</string>
+    <string name="NM_SearchDatesDay">Jour</string>
+    <string name="NM_SearchDatesPeriod">Période</string>
+    <string name="NM_SearchDatesFrom">Du</string>
+    <string name="NM_SearchDatesUntil">Au</string>
+    <string name="NM_SearchDatesAddEnd">Ajouter une date de fin</string>
+    <string name="NM_SearchDatesToday">Aujourd’hui</string>
+    <string name="NM_SearchDatesYesterday">Hier</string>
+    <string name="NM_SearchDatesLast7">7 derniers jours</string>
+    <string name="NM_SearchDatesLast30">30 derniers jours</string>
+    <string name="NM_SearchDatesApply">Appliquer</string>
+    <string name="NM_SearchDatesReset">Toutes les dates</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Filtre de date : %1$s</string>
+    <string name="NM_SearchDatesChange">Modifier les dates</string>
+    <string name="NM_SearchDatesClear">Retirer le filtre de date</string>
+    <string name="NM_SearchDatesJump">Aller à la date</string>
+    <string name="NM_SearchDatesInvalid">La fin ne peut pas précéder le début.</string>
+    <string name="NM_SearchDatesDayValue">Jour : %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Mois : %1$s</string>
+    <string name="NM_SearchDatesYearValue">Année : %1$s</string>
+</resources>

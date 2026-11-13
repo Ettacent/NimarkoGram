@@ -58,6 +58,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
@@ -81,6 +82,13 @@ public class FilterTabsView extends FrameLayout {
 
     private final Theme.ResourcesProvider resourcesProvider;
 
+    private final int currentAccount;
+    private final long ownerUserId;
+    private final long ownerSession;
+    private final TouchHelperCallback touchHelperCallback;
+    private boolean destroyed;
+    private boolean reorderAttached;
+    private long tabsGeneration;
     public int getCurrentTabStableId() {
         return positionToStableId.get(currentPosition, -1);
     }
@@ -153,7 +161,7 @@ public class FilterTabsView extends FrameLayout {
             width += iconWidth;
             int c;
             if (store) {
-                c = delegate.getTabCounter(id);
+                c = delegate == null ? counter : delegate.getTabCounter(id);
                 if (c < 0) {
                     c = 0;
                 }
@@ -259,6 +267,8 @@ public class FilterTabsView extends FrameLayout {
         private float lastTabWidth;
         private float animateFromTabWidth;
         private float lastWidth;
+        private float lastAdditionalTabWidth;
+        private float animateFromAdditionalTabWidth;
         private float rotation;
         private float progressToLocked;
         private int emojiColorFilterColor = Integer.MIN_VALUE;
@@ -686,8 +696,10 @@ public class FilterTabsView extends FrameLayout {
             lastTitleWidth = currentTab.titleWidth;
             lastCountWidth = countWidth;
             lastCounterWidth = counterWidth;
-            lastTabWidth = tabWidth;
-            lastWidth = getMeasuredWidth();
+            lastTabWidth = animateTabWidth ? lerp(animateFromTabWidth, tabWidth, changeProgress) : tabWidth;
+            lastWidth = animateTabWidth ? lerp(animateFromWidth, getMeasuredWidth(), changeProgress) : getMeasuredWidth();
+            lastAdditionalTabWidth = animateTabWidth
+                    ? lerp(animateFromAdditionalTabWidth, additionalTabWidth, changeProgress) : additionalTabWidth;
 
             if (currentTab.isLocked || progressToLocked != 0) {
                 if (lockDrawable == null) {
@@ -783,11 +795,12 @@ public class FilterTabsView extends FrameLayout {
             int nmTabModeAC = app.nimarkogram.messenger.AppConfig.tabMode;
             int tabWidth;
             if (nmTabModeAC != app.nimarkogram.messenger.AppConfig.TAB_TYPE_ICON) {
-                tabWidth = currentTab.iconWidth + currentTab.titleWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
+                tabWidth = currentTab.iconWidth + currentTab.titleWidth + (countWidth != 0 ? countWidth + dp(-2 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
             } else {
-                tabWidth = currentTab.iconWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
+                tabWidth = currentTab.iconWidth + (countWidth != 0 ? countWidth + dp(-2 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
             }
-            int textX = (getMeasuredWidth() - tabWidth) / 2 + currentTab.iconWidth;
+            float textX = (getMeasuredWidth() - tabWidth) / 2f + currentTab.iconWidth
+                    - (countWidth != 0 && nmTabModeAC == app.nimarkogram.messenger.AppConfig.TAB_TYPE_MIX ? dp(4) : 0);
 
             if (textX != lastTextX) {
                 animateTextX = true;
@@ -847,7 +860,8 @@ public class FilterTabsView extends FrameLayout {
             }
 
             if (nmTabModeAC != app.nimarkogram.messenger.AppConfig.TAB_TYPE_TEXT) {
-                int iconXNow = (int) ((getMeasuredWidth() - tabWidth) / 2f);
+                int iconXNow = (int) ((getMeasuredWidth() - tabWidth) / 2f
+                        - (countWidth != 0 && nmTabModeAC == app.nimarkogram.messenger.AppConfig.TAB_TYPE_MIX ? dp(4) : 0));
 
                 if (iconXNow != lastIconX) {
                     animateIconX = true;
@@ -873,6 +887,7 @@ public class FilterTabsView extends FrameLayout {
                 animateTabWidth = true;
                 animateFromTabWidth = lastTabWidth;
                 animateFromWidth = lastWidth;
+                animateFromAdditionalTabWidth = lastAdditionalTabWidth;
                 changed = true;
             }
 
@@ -1056,8 +1071,15 @@ public class FilterTabsView extends FrameLayout {
     };
 
     public FilterTabsView(Context context, Theme.ResourcesProvider resourcesProvider) {
+        this(context, -1, resourcesProvider);
+    }
+
+    public FilterTabsView(Context context, int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.resourcesProvider = resourcesProvider;
+        this.currentAccount = currentAccount;
+        ownerUserId = UserConfig.isValidAccount(currentAccount) ? UserConfig.getInstance(currentAccount).getClientUserId() : 0;
+        ownerSession = InAppNotifications.session(currentAccount);
         textCounterPaint.setTextSize(dpf2(11f));
         textCounterPaint.setTypeface(AndroidUtilities.bold());
         textPaint.setTextSize(dpf2(14f));
@@ -1094,7 +1116,7 @@ public class FilterTabsView extends FrameLayout {
 
             @Override
             protected boolean allowSelectChildAtPosition(View child) {
-                return FilterTabsView.this.isEnabled() && delegate.canPerformActions();
+                return !destroyed && FilterTabsView.this.isEnabled() && delegate != null && delegate.canPerformActions();
             }
 
             @Override
@@ -1272,14 +1294,15 @@ public class FilterTabsView extends FrameLayout {
 
             @Override
             public int scrollHorizontallyBy(int dx, RecyclerView.Recycler recycler, RecyclerView.State state) {
-                if (delegate.isTabMenuVisible()) {
+                if (destroyed || delegate == null || delegate.isTabMenuVisible()) {
                     dx = 0;
                 }
                 if (dx != 0) trailingInsetAnchor = null;
                 return super.scrollHorizontallyBy(dx, recycler, state);
             }
         });
-        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
+        touchHelperCallback = new TouchHelperCallback();
+        ItemTouchHelper itemTouchHelper = new ItemTouchHelper(touchHelperCallback);
         itemTouchHelper.attachToRecyclerView(listView);
         listViewPaddingH = Math.max(0, dp(23.5f - TAB_PADDING_WIDTH / 2f));
         listView.setPadding(listViewPaddingH, 0, listViewPaddingH, 0);
@@ -1290,27 +1313,35 @@ public class FilterTabsView extends FrameLayout {
         listView.setAdapter(adapter);
 
         listView.setOnItemClickListener((view, position, x, y) -> {
-            if (!isEnabled() || !delegate.canPerformActions()) {
+            if (destroyed || !isEnabled() || delegate == null || !delegate.canPerformActions()) {
                 return;
             }
             TabView tabView = (TabView) view;
+            final Tab tab = tabView.currentTab;
+            final int tabPosition = tabs.indexOf(tab);
+            if (tabPosition < 0) return;
             if (isEditing) {
-                if (position != 0 || app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
+                if (!tab.isDefault) {
                     int side = dp(6);
                     if (tabView.rect.left - side < x && tabView.rect.right + side > x) {
-                        delegate.onDeletePressed(tabView.currentTab.id);
+                        delegate.onDeletePressed(tab.id);
                     }
                 }
                 return;
             }
-            if (position == currentPosition && delegate != null) {
+            if (tabPosition == currentPosition && delegate != null) {
                 delegate.onSamePageSelected();
                 return;
             }
-            scrollToTab(tabView.currentTab, position);
+            scrollToTab(tab, tabPosition);
         });
         listView.setOnItemLongClickListener((view, position) -> {
-            if (!isEnabled() || !delegate.canPerformActions() || isEditing || !delegate.didSelectTab((TabView) view, position == currentPosition)) {
+            if (destroyed || !isEnabled() || delegate == null || !delegate.canPerformActions() || isEditing) {
+                return false;
+            }
+            final TabView tabView = (TabView) view;
+            final int tabPosition = tabs.indexOf(tabView.currentTab);
+            if (tabPosition < 0 || !delegate.didSelectTab(tabView, tabPosition == currentPosition)) {
                 return false;
             }
             listView.hideSelector(true);
@@ -1328,7 +1359,27 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void setDelegate(FilterTabsViewDelegate filterTabsViewDelegate) {
+        if (!destroyed) {
         delegate = filterTabsViewDelegate;
+        }
+    }
+
+    private boolean canReorder() {
+        return !destroyed && reorderAttached && delegate != null && InAppNotifications.isCurrent(currentAccount, ownerUserId, ownerSession);
+    }
+
+    private boolean hasMatchingFilters(ArrayList<MessagesController.DialogFilter> filters) {
+        for (int position = 0; position < tabs.size(); position++) {
+            int index = tabs.get(position).id;
+            if (index < 0 || index >= filters.size()) {
+                return false;
+            }
+            MessagesController.DialogFilter filter = filters.get(index);
+            if ((filter.isDefault() ? 0 : filter.localId) != positionToStableId.get(position, -1)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public boolean isAnimatingIndicator() {
@@ -1341,7 +1392,55 @@ public class FilterTabsView extends FrameLayout {
         setEnabled(true);
     }
 
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        reorderAttached = true;
+        if (isEditing && orderChanged && canReorder()) {
+            touchHelperCallback.resetGeneration = tabsGeneration;
+            AndroidUtilities.runOnUIThread(touchHelperCallback.resetDefaultPosition, 320);
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        reorderAttached = false;
+        tabsGeneration++;
+        touchHelperCallback.dragGeneration = -1;
+        touchHelperCallback.resetGeneration = -1;
+        AndroidUtilities.cancelRunOnUIThread(touchHelperCallback.resetDefaultPosition);
+        super.onDetachedFromWindow();
+    }
+
+    private void restoreDefaultFilterOrder() {
+        if (!orderChanged || !InAppNotifications.isCurrent(currentAccount, ownerUserId, ownerSession)
+                || UserConfig.getInstance(currentAccount).isPremium()) return;
+        boolean hasDefaultTab = false;
+        for (Tab tab : tabs) {
+            if (tab.isDefault) {
+                hasDefaultTab = true;
+                break;
+            }
+        }
+        if (!hasDefaultTab) return;
+        ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(currentAccount).getDialogFilters();
+        for (int i = 1; i < filters.size(); i++) {
+            if (filters.get(i).isDefault()) {
+                filters.add(0, filters.remove(i));
+                for (int index = 0; index < filters.size(); index++) filters.get(index).order = index;
+                return;
+            }
+        }
+    }
     public void destroy() {
+        if (destroyed) {
+            return;
+        }
+        restoreDefaultFilterOrder();
+        destroyed = true;
+        isEditing = false;
+        setEnabled(false);
+        AndroidUtilities.cancelRunOnUIThread(touchHelperCallback.resetDefaultPosition);
         trailingInsetAnchor = null;
         trailingInsetLayoutPending = false;
         pendingPageScrollTab = null;
@@ -1440,6 +1539,9 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void removeTabs() {
+        tabsGeneration++;
+        listView.cancelClickRunnables(true);
+        AndroidUtilities.cancelRunOnUIThread(touchHelperCallback.resetDefaultPosition);
         trailingInsetAnchor = null;
         pendingPageScrollTab = null;
         pageScrollFrom = pageScrollTo = -1;
@@ -1532,7 +1634,7 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void finishAddingTabs(boolean animated) {
-        final int availableWidth = getMeasuredWidth() - listViewPaddingH * 2;
+        final int availableWidth = getTabsAvailableWidth(getMeasuredWidth());
         if (availableWidth > 0) {
             updateTabsLayoutForWidth(availableWidth);
         }
@@ -1698,6 +1800,7 @@ public class FilterTabsView extends FrameLayout {
         selectorDrawable.setAlpha((int) (255 * listView.getAlpha()));
         float indicatorX = 0;
         float indicatorWidth = 0;
+        float indicatorAdditionalWidth = additionalTabWidth;
         float counterVisible = 0;
         if (animatingIndicator || manualScrollingToPosition != -1) {
             int position = layoutManager.findFirstVisibleItemPosition();
@@ -1733,9 +1836,12 @@ public class FilterTabsView extends FrameLayout {
                 indicatorWidth = Math.max(dp(16), indicatorWidthC);
 
                 float viewWidth = tabView.animateTabWidth ?
-                        lerp(tabView.animateFromTabWidth+ dp(20), tabView.getMeasuredWidth(), tabView.changeProgress):
+                        lerp(tabView.animateFromWidth, tabView.getMeasuredWidth(), tabView.changeProgress):
                         tabView.getMeasuredWidth();
-                indicatorX = (int) (tabView.getX() + (viewWidth - indicatorWidth) / 2);
+                if (tabView.animateTabWidth) {
+                    indicatorAdditionalWidth = lerp(tabView.animateFromAdditionalTabWidth, additionalTabWidth, tabView.changeProgress);
+                }
+                indicatorX = tabView.getX() + (viewWidth - indicatorWidth) / 2f;
 
                 counterVisible = tabView.tabCounterVisible;
             }
@@ -1746,7 +1852,7 @@ public class FilterTabsView extends FrameLayout {
         }
         if (indicatorWidth != 0) {
 
-            final float add = additionalTabWidth / 2f;
+            final float add = indicatorAdditionalWidth / 2f;
             final float scale = listView.getScaleX();
             if (scale <= 0f) return;
             final float pivot = listView.getPivotX() + listView.getX();
@@ -1803,7 +1909,7 @@ public class FilterTabsView extends FrameLayout {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (!tabs.isEmpty()) {
-            final int width = MeasureSpec.getSize(widthMeasureSpec) - listViewPaddingH * 2;
+            final int width = getTabsAvailableWidth(MeasureSpec.getSize(widthMeasureSpec));
             if (updateTabsLayoutForWidth(width)) {
                 ignoreLayout = true;
                 RecyclerView.ItemAnimator animator = listView.getItemAnimator();
@@ -1816,6 +1922,9 @@ public class FilterTabsView extends FrameLayout {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
 
+    private int getTabsAvailableWidth(int width) {
+        return Math.max(0, width - listView.getPaddingLeft() - listView.getPaddingRight());
+    }
     private boolean updateTabsLayoutForWidth(int width) {
         if (tabs.isEmpty() || width <= 0) {
             return false;
@@ -1827,6 +1936,7 @@ public class FilterTabsView extends FrameLayout {
         }
 
         final int trueTabsWidth;
+        final CharSequence previousDefaultTitle = firstTab != null ? firstTab.title : null;
         if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
             firstTab.setTitle(LocaleController.getString(R.string.FilterAllChats), null, false);
             final int fullTitleWidth = firstTab.getWidth(false);
@@ -1848,7 +1958,8 @@ public class FilterTabsView extends FrameLayout {
                 : 0;
         updateTabsWidths();
         invalidated = false;
-        return previousWidth != additionalTabWidth;
+        return previousWidth != additionalTabWidth
+                || firstTab != null && !TextUtils.equals(previousDefaultTitle, firstTab.title);
     }
 
     private Tab findDefaultTab() {
@@ -2123,16 +2234,29 @@ public class FilterTabsView extends FrameLayout {
     }
 
     public void setIsEditing(boolean value) {
+        if (!canReorder()) {
+            return;
+        }
         isEditing = value;
+        if (!value) {
+            AndroidUtilities.cancelRunOnUIThread(touchHelperCallback.resetDefaultPosition);
+            if (orderChanged) {
+                touchHelperCallback.resetDefaultPosition();
+                if (!canReorder()) {
+                    return;
+                }
+            }
+        }
         editingForwardAnimation = true;
         listView.invalidateViews();
         listView.invalidate();
         adapter.notifyDataSetChanged();
         invalidate();
         if (!isEditing && orderChanged) {
-            MessagesStorage.getInstance(UserConfig.selectedAccount).saveDialogFiltersOrder();
+            orderChanged = false;
+            MessagesStorage.getInstance(currentAccount).saveDialogFiltersOrder();
             TLRPC.TL_messages_updateDialogFiltersOrder req = new TLRPC.TL_messages_updateDialogFiltersOrder();
-            ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(UserConfig.selectedAccount).getDialogFilters();
+            ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(currentAccount).getDialogFilters();
             for (int a = 0, N = filters.size(); a < N; a++) {
                 MessagesController.DialogFilter filter = filters.get(a);
                 if (filter.isDefault()) {
@@ -2141,10 +2265,11 @@ public class FilterTabsView extends FrameLayout {
                     req.order.add(filter.id);
                 }
             }
-            MessagesController.getInstance(UserConfig.selectedAccount).lockFiltersInternal();
-            ConnectionsManager.getInstance(UserConfig.selectedAccount).sendRequest(req, (response, error) -> {
+            MessagesController.getInstance(currentAccount).lockFiltersInternal();
+            if (InAppNotifications.isCurrent(currentAccount, ownerUserId, ownerSession)) {
+                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             });
-            orderChanged = false;
+            }
         }
     }
 
@@ -2280,29 +2405,18 @@ public class FilterTabsView extends FrameLayout {
             return 0;
         }
 
-        public void swapElements(int fromIndex, int toIndex) {
-            int idx1 = fromIndex;
-            int idx2 = toIndex;
+        public boolean swapElements(int fromIndex, int toIndex) {
             int count = tabs.size();
-            if (idx1 < 0 || idx2 < 0 || idx1 >= count || idx2 >= count) {
-                return;
+            if (!canReorder() || fromIndex < 0 || toIndex < 0 || fromIndex >= count || toIndex >= count || fromIndex == toIndex) {
+                return false;
             }
-            ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(UserConfig.selectedAccount).getDialogFilters();
-            if (app.nimarkogram.messenger.AppConfig.tabsHideAllChats) {
-                int defaultPosition = 0;
-                for (int i = 0; i < filters.size(); i++) {
-                    if (filters.get(i).isDefault()) {
-                        defaultPosition = i;
-                        break;
-                    }
-                }
-                if (idx1 >= defaultPosition) {
-                    idx1++;
-                }
-                if (idx2 >= defaultPosition) {
-                    idx2++;
-                }
+            ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(currentAccount).getDialogFilters();
+            if (!hasMatchingFilters(filters)) {
+                return false;
             }
+            final int idx1 = tabs.get(fromIndex).id;
+            final int idx2 = tabs.get(toIndex).id;
+            final FilterTabsViewDelegate callback = delegate;
             MessagesController.DialogFilter filter1 = filters.get(idx1);
             MessagesController.DialogFilter filter2 = filters.get(idx2);
             int temp = filter1.order;
@@ -2323,7 +2437,6 @@ public class FilterTabsView extends FrameLayout {
             positionToStableId.put(fromIndex, toStableId);
             positionToStableId.put(toIndex, fromStableId);
 
-            delegate.onPageReorder(tab2.id, tab1.id);
 
             if (currentPosition == fromIndex) {
                 currentPosition = toIndex;
@@ -2348,46 +2461,27 @@ public class FilterTabsView extends FrameLayout {
 
             orderChanged = true;
             setItemAnimatorIfChanged(itemAnimator);
+            if (!canReorder() || delegate != callback) {
+                return true;
+            }
             notifyItemMoved(fromIndex, toIndex);
+            if (canReorder() && delegate == callback) {
+                callback.onPageReorder(idx1, idx2);
+            }
+            return true;
         }
 
-        public void moveElementToStart(int theIndex) {
+        public boolean moveElementToStart(int theIndex) {
             int count = tabs.size();
-            if (theIndex < 0 || theIndex >= count) {
-                return;
+            if (!canReorder() || theIndex <= 0 || theIndex >= count) {
+                return false;
             }
-            ArrayList<MessagesController.DialogFilter> filters = MessagesController.getInstance(UserConfig.selectedAccount).getDialogFilters();
-            int temp = positionToStableId.get(theIndex),
-                temp2 = tabs.get(theIndex).id;
-            for (int i = theIndex - 1; i >= 0; --i) {
-                positionToStableId.put(i + 1, positionToStableId.get(i));
-            }
-            MessagesController.DialogFilter filter = filters.remove(theIndex);
-            filter.order = 0;
-            filters.add(0, filter);
-            positionToStableId.put(0, temp);
-            tabs.add(0, tabs.remove(theIndex));
-            tabs.get(0).id = temp2;
-            for (int i = 0; i <= theIndex; ++i) {
-                tabs.get(i).id = i;
-                filters.get(i).order = i;
-            }
-            for (int i = 0; i <= theIndex; ++i) {
-                if (currentPosition == i) {
-                    currentPosition = selectedTabId = i == theIndex ? 0 : i + 1;
-                }
-                if (previousPosition == i) {
-                    previousPosition = previousId = i == theIndex ? 0 : i + 1;
+            for (int i = theIndex; i > 0; --i) {
+                if (!swapElements(i, i - 1)) {
+                    return false;
                 }
             }
-            notifyItemMoved(theIndex, 0);
-
-            delegate.onPageReorder(tabs.get(theIndex).id, temp2);
-
-            updateTabsWidths();
-
-            orderChanged = true;
-            setItemAnimatorIfChanged(itemAnimator);
+            return true;
         }
     }
 
@@ -2395,12 +2489,16 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public boolean isLongPressDragEnabled() {
-            return isEditing;
+            return isEditing && canReorder();
         }
 
         @Override
         public int getMovementFlags(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
-            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && (!isEditing || (viewHolder.getAdapterPosition() == 0 && tabs.get(0).isDefault && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium()))) {
+            final int position = viewHolder.getAdapterPosition();
+            if (!isEditing || !canReorder() || position < 0 || position >= tabs.size()) {
+                return makeMovementFlags(0, 0);
+            }
+            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && position == 0 && tabs.get(0).isDefault && !UserConfig.getInstance(currentAccount).isPremium()) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
@@ -2408,36 +2506,60 @@ public class FilterTabsView extends FrameLayout {
 
         @Override
         public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder source, @NonNull RecyclerView.ViewHolder target) {
-            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !UserConfig.getInstance(UserConfig.selectedAccount).isPremium())) {
+            if (!isEditing || !canReorder()) {
                 return false;
             }
-            adapter.swapElements(source.getAdapterPosition(), target.getAdapterPosition());
-            return true;
+            if (!app.nimarkogram.messenger.AppConfig.tabsHideAllChats && MessagesController.getInstance(currentAccount).premiumFeaturesBlocked() && ((source.getAdapterPosition() == 0 || target.getAdapterPosition() == 0) && !UserConfig.getInstance(currentAccount).isPremium())) {
+                return false;
+            }
+            return adapter.swapElements(source.getAdapterPosition(), target.getAdapterPosition());
         }
 
+        private long dragGeneration = -1;
+        private long resetGeneration = -1;
+
         private final Runnable resetDefaultPosition = () ->  {
-            if (UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
+            if (resetGeneration == tabsGeneration) {
+                resetDefaultPosition();
+            }
+        };
+
+        private void resetDefaultPosition() {
+            if (!canReorder() || UserConfig.getInstance(currentAccount).isPremium()) {
                 return;
             }
             for (int i = 0; i < tabs.size(); ++i) {
                 if (tabs.get(i).isDefault && i != 0) {
-                    adapter.moveElementToStart(i);
+                    if (!adapter.moveElementToStart(i) || !canReorder()) {
+                        return;
+                    }
                     listView.scrollToPosition(0);
                     onDefaultTabMoved();
                     break;
                 }
             }
-        };
+        }
 
         @Override
         public void onSelectedChanged(RecyclerView.ViewHolder viewHolder, int actionState) {
+            AndroidUtilities.cancelRunOnUIThread(resetDefaultPosition);
+            if (!canReorder()) {
+                return;
+            }
             if (actionState != ItemTouchHelper.ACTION_STATE_IDLE) {
+                if (!isEditing || viewHolder == null) {
+                    return;
+                }
+                dragGeneration = tabsGeneration;
                 listView.cancelClickRunnables(false);
                 viewHolder.itemView.setPressed(true);
                 ThemeBind.backgroundColor(viewHolder.itemView, backgroundColorKey, resourcesProvider);
             } else {
-                AndroidUtilities.cancelRunOnUIThread(resetDefaultPosition);
+                if (isEditing && dragGeneration == tabsGeneration) {
+                    resetGeneration = tabsGeneration;
                 AndroidUtilities.runOnUIThread(resetDefaultPosition, 320);
+                }
+                dragGeneration = -1;
             }
             super.onSelectedChanged(viewHolder, actionState);
             if (viewHolder != null) {

@@ -58,6 +58,7 @@ import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.SharedConfig;
@@ -155,6 +156,10 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
     private boolean searching;
 
+    private final int currentAccount;
+    private final long ownerUserId;
+    private boolean searchActive = true;
+    private boolean destroyed;
     private boolean sortByName;
 
     private final static int search_button = 0;
@@ -201,6 +206,8 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
     public ChatAttachAlertDocumentLayout(ChatAttachAlert alert, Context context, int type, Theme.ResourcesProvider resourcesProvider) {
         super(alert, context, resourcesProvider);
+        currentAccount = alert.currentAccount;
+        ownerUserId = UserConfig.getInstance(currentAccount).getClientUserId();
         listAdapter = new ListAdapter(context);
         allowMusic = type == TYPE_MUSIC;
         isSoundPicker = type == TYPE_RINGTONE;
@@ -241,12 +248,12 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             @Override
             public void onSearchCollapse() {
                 searching = false;
+                searchAdapter.search(null, true);
                 sortItem.setVisibility(View.VISIBLE);
                 if (listView.getAdapter() != listAdapter) {
                     listView.setAdapter(listAdapter);
                 }
                 listAdapter.notifyDataSetChanged();
-                searchAdapter.search(null, true);
             }
 
             @Override
@@ -660,6 +667,16 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
     @Override
     public void onDestroy() {
+        if (destroyed) return;
+        destroyed = true;
+        searchActive = false;
+        searching = false;
+        searchAdapter.invalidateSearch();
+        if (filtersViewAnimator != null) {
+            AnimatorSet animator = filtersViewAnimator;
+            filtersViewAnimator = null;
+            animator.cancel();
+        }
         try {
             if (receiverRegistered) {
                 ApplicationLoader.applicationContext.unregisterReceiver(receiver);
@@ -780,7 +797,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
         return AlertsCreator.ensurePaidMessageConfirmation(parentAlert.currentAccount, parentAlert.getDialogId(), (!TextUtils.isEmpty(caption) ? 1 : 0) + files.size() + parentAlert.getAdditionalMessagesCount(), payStars -> {
             sendPressed = true;
-            delegate.didSelectFiles(files, caption, captionEntities, fmessages, notify, scheduleDate, 0, effectId, invertMedia, payStars);
+            delegate.didSelectFiles(files, caption, captionEntities, fmessages, notify, scheduleDate, scheduleRepeatPeriod, effectId, invertMedia, payStars);
             parentAlert.dismiss(true);
         });
     }
@@ -1078,9 +1095,13 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
     @Override
     public void onShow(ChatAttachAlert.AttachAlertLayout previousLayout) {
+        if (destroyed) return;
+        searchActive = true;
+        searching = false;
         selectedFiles.clear();
         selectedMessages.clear();
-        searchAdapter.currentSearchFilters.clear();
+        searchAdapter.clear();
+        if (listView.getAdapter() != listAdapter) listView.setAdapter(listAdapter);
         selectedFilesOrder.clear();
         listAdapter.history.clear();
         listRoots();
@@ -1093,6 +1114,14 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
     @Override
     public void onHide() {
+        searchActive = false;
+        searching = false;
+        searchAdapter.invalidateSearch();
+        if (filtersViewAnimator != null) {
+            AnimatorSet animator = filtersViewAnimator;
+            filtersViewAnimator = null;
+            animator.cancel();
+        }
         sortItem.setVisibility(GONE);
         searchItem.setVisibility(GONE);
     }
@@ -1538,15 +1567,45 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         private long currentSearchMinDate;
         private long currentSearchMaxDate;
 
-        private int searchIndex;
+        private volatile long searchIndex;
         private int nextSearchRate;
 
         private final FilteredSearchView.MessageHashId messageHashIdTmp = new FilteredSearchView.MessageHashId(0, 0);
 
-        private String lastSearchFilterQueryString;
         private String lastMessagesSearchString;
         private String currentDataQuery;
 
+        private String currentDataFilterQueryString;
+        private String activeSearchQuery;
+        private String activeTipsQueryKey;
+        private volatile TipsTask tipsTask;
+        private TipsOwner tipsOwner;
+
+        private final class TipsTask {
+            final String key, query;
+            final boolean searchChats;
+            final Runnable work;
+            ArrayList<Object> chats;
+            ArrayList<FiltersView.DateData> dates;
+            boolean completed;
+
+            TipsTask(String key, String query, boolean searchChats) {
+                this.key = key;
+                this.query = query;
+                this.searchChats = searchChats;
+                work = () -> loadTips(this);
+            }
+        }
+
+        private final class TipsOwner {
+            final TipsTask task;
+            final long generation;
+
+            TipsOwner(TipsTask task, long generation) {
+                this.task = task;
+                this.generation = generation;
+            }
+        }
         private ArrayList<Object> localTipChats = new ArrayList<>();
         private ArrayList<FiltersView.DateData> localTipDates = new ArrayList<>();
 
@@ -1558,51 +1617,171 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         private ArrayList<FiltersView.MediaFilterData> currentSearchFilters = new ArrayList<>();
 
         private boolean isLoading;
-        private int requestIndex;
+        private volatile long requestIndex;
+        private int currentRequestId;
+        private boolean requestPending;
         private boolean firstLoading = true;
         private AnimationNotificationsLocker notificationsLocker = new AnimationNotificationsLocker();
         private boolean endReached;
 
-        private Runnable clearCurrentResultsRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (isLoading) {
-                    messages.clear();
-                    sections.clear();
-                    sectionArrays.clear();
-                    notifyDataSetChanged();
-                }
-            }
-        };
+        private ViewTreeObserver resultsObserver;
+        private ViewTreeObserver.OnPreDrawListener resultsPreDrawListener;
+        private AnimatorSet resultsAnimator;
+        private boolean resultsNotificationsLocked;
+        private Animator progressAnimator;
+        private View progressAnimationView;
+        private RecyclerView.LayoutManager progressAnimationLayoutManager;
+        private boolean progressViewIgnored;
+        private final ArrayList<View> animatedResultViews = new ArrayList<>();
 
         public SearchAdapter(Context context) {
             mContext = context;
         }
 
-        public void search(final String query, boolean reset) {
-            if (localSearchRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(localSearchRunnable);
-                localSearchRunnable = null;
+        private boolean isCurrentSearch(long generation) {
+            return generation == searchIndex && !destroyed && searchActive
+                    && parentAlert.currentAccount == currentAccount
+                    && ownerUserId == UserConfig.getInstance(currentAccount).getClientUserId();
+        }
+
+        private boolean isCurrentRequest(long generation, long request) {
+            return isCurrentSearch(generation) && request == requestIndex;
+        }
+
+        private long invalidateSearch() {
+            return invalidateSearch(false);
+        }
+
+        private long invalidateSearch(boolean preserveTips) {
+            final long generation = ++searchIndex;
+            activeSearchQuery = null;
+            activeTipsQueryKey = null;
+            final TipsTask oldTips = preserveTips ? null : tipsTask;
+            if (!preserveTips) tipsTask = null;
+            tipsOwner = null;
+            ++requestIndex;
+            final Runnable local = localSearchRunnable;
+            localSearchRunnable = null;
+            final Runnable global = searchRunnable;
+            searchRunnable = null;
+            final int networkRequest = currentRequestId;
+            currentRequestId = 0;
+            requestPending = false;
+            isLoading = false;
+            cancelResultsAnimation();
+            if (local != null) AndroidUtilities.cancelRunOnUIThread(local);
+            if (global != null) AndroidUtilities.cancelRunOnUIThread(global);
+            if (networkRequest != 0) AccountInstance.getInstance(currentAccount).getConnectionsManager().cancelRequest(networkRequest, true);
+            if (oldTips != null) AccountInstance.getInstance(currentAccount).getMessagesStorage().getStorageQueue().cancelRunnable(oldTips.work);
+            return generation;
+        }
+
+        private long invalidateGlobalSearch() {
+            final long request = ++requestIndex;
+            final Runnable global = searchRunnable;
+            searchRunnable = null;
+            final int networkRequest = currentRequestId;
+            currentRequestId = 0;
+            requestPending = false;
+            isLoading = false;
+            if (global != null) AndroidUtilities.cancelRunOnUIThread(global);
+            if (networkRequest != 0) AccountInstance.getInstance(currentAccount).getConnectionsManager().cancelRequest(networkRequest, true);
+            return request;
+        }
+
+        private void clearGlobalResults() {
+                    messages.clear();
+            messagesById.clear();
+                    sections.clear();
+                    sectionArrays.clear();
+            currentDataQuery = null;
+            currentDataFilterQueryString = null;
+            nextSearchRate = 0;
+            endReached = false;
+        }
+
+        private void cancelResultsAnimation() {
+            final ViewTreeObserver observer = resultsObserver;
+            final ViewTreeObserver.OnPreDrawListener listener = resultsPreDrawListener;
+            resultsObserver = null;
+            resultsPreDrawListener = null;
+            final AnimatorSet results = resultsAnimator;
+            resultsAnimator = null;
+            final Animator progress = progressAnimator;
+            progressAnimator = null;
+            final View progressView = progressAnimationView;
+            final RecyclerView.LayoutManager progressLayoutManager = progressAnimationLayoutManager;
+            final boolean ignored = progressViewIgnored;
+            progressAnimationView = null;
+            progressAnimationLayoutManager = null;
+            progressViewIgnored = false;
+            final boolean unlock = resultsNotificationsLocked;
+            resultsNotificationsLocked = false;
+            final ArrayList<View> views = new ArrayList<>(animatedResultViews);
+            animatedResultViews.clear();
+            if (observer != null && observer.isAlive() && listener != null) observer.removeOnPreDrawListener(listener);
+            if (results != null) {
+                results.removeAllListeners();
+                results.cancel();
             }
+            if (progress != null) {
+                progress.removeAllListeners();
+                progress.cancel();
+            }
+            for (View view : views) view.setAlpha(1f);
+            clearProgressView(progressView, progressLayoutManager, ignored);
+            if (unlock) notificationsLocker.unlock();
+        }
+
+        private void clearProgressView(View view, RecyclerView.LayoutManager manager, boolean ignored) {
+            if (view == null) return;
+            view.setAlpha(1f);
+            if (view.getParent() == listView) {
+                if (ignored && manager == listView.getLayoutManager()) manager.stopIgnoringView(view);
+                listView.removeView(view);
+            }
+        }
+
+        public void search(final String query, boolean reset) {
+            final TipsTask currentTips = tipsTask;
+            final boolean preserveTips = !canSelectOnlyImageFiles && listAdapter.history.isEmpty()
+                    && !TextUtils.isEmpty(query) && TextUtils.equals(query, activeSearchQuery)
+                    && currentTips != null && currentTips.key.equals(activeTipsQueryKey);
+            final long generation = invalidateSearch(preserveTips);
+            if (!isCurrentSearch(generation)) return;
+            activeSearchQuery = query;
             if (TextUtils.isEmpty(query)) {
-                if (!searchResult.isEmpty()) {
                     searchResult.clear();
-                }
+                clearGlobalResults();
+                lastMessagesSearchString = null;
+                currentSearchFilter = null;
+                firstLoading = true;
+                localTipDates.clear();
+                localTipChats.clear();
                 if (listView.getAdapter() != listAdapter) {
                     listView.setAdapter(listAdapter);
+                    if (!isCurrentSearch(generation)) return;
                 }
+                emptyView.showProgress(false);
+                if (!isCurrentSearch(generation)) return;
+                updateFiltersView(false, null, null, true);
+                if (!isCurrentSearch(generation)) return;
                 notifyDataSetChanged();
+                return;
             } else {
                 AndroidUtilities.runOnUIThread(localSearchRunnable = () -> {
+                    if (!isCurrentSearch(generation)) return;
+                    localSearchRunnable = null;
                     final ArrayList<ListItem> copy = new ArrayList<>(listAdapter.items);
                     if (listAdapter.history.isEmpty()) {
                         copy.addAll(0, listAdapter.recentItems);
                     }
                     boolean hasFilters = !currentSearchFilters.isEmpty();
-                    Utilities.searchQueue.postRunnable(() -> {
+                    if (!Utilities.searchQueue.postRunnable(() -> {
+                        if (!isCurrentSearch(generation)) return;
                         String search1 = query.trim().toLowerCase();
                         if (search1.length() == 0) {
-                            updateSearchResults(new ArrayList<>(), query);
+                            updateSearchResults(new ArrayList<>(), generation);
                             return;
                         }
                         String search2 = LocaleController.getInstance().getTranslitString(search1);
@@ -1619,6 +1798,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
                         if (!hasFilters) {
                             for (int a = 0; a < copy.size(); a++) {
+                                if (!isCurrentSearch(generation)) return;
                                 ListItem entry = copy.get(a);
                                 if (entry.file == null || entry.file.isDirectory()) {
                                     continue;
@@ -1638,8 +1818,10 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                             }
                         }
 
-                        updateSearchResults(resultArray, query);
-                    });
+                        updateSearchResults(resultArray, generation);
+                    })) {
+                        updateSearchResults(new ArrayList<>(), generation);
+                    }
                 }, 300);
             }
 
@@ -1661,23 +1843,36 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     }
                 }
 
-                searchGlobal(dialogId, minDate, maxDate, FiltersView.filters[2], query, reset);
+                searchGlobal(dialogId, minDate, maxDate, FiltersView.filters[2], query, reset, generation);
             }
         }
 
         public void loadMore() {
-            if (searchAdapter.isLoading || searchAdapter.endReached || currentSearchFilter == null) {
+            if (!isCurrentSearch(searchIndex) || TextUtils.isEmpty(activeSearchQuery)
+                    || searchAdapter.isLoading || searchAdapter.endReached || currentSearchFilter == null) {
                 return;
             }
-            searchGlobal(currentSearchDialogId, currentSearchMinDate, currentSearchMaxDate, currentSearchFilter, lastMessagesSearchString, false);
+            searchGlobal(currentSearchDialogId, currentSearchMinDate, currentSearchMaxDate, currentSearchFilter, lastMessagesSearchString, false, searchIndex);
         }
 
         public void removeSearchFilter(FiltersView.MediaFilterData filterData) {
+            final long generation = invalidateSearch();
+            if (!isCurrentSearch(generation)) return;
             currentSearchFilters.remove(filterData);
         }
 
         public void clear() {
+            final long generation = invalidateSearch();
+            if (generation != searchIndex) return;
             currentSearchFilters.clear();
+            searchResult.clear();
+            clearGlobalResults();
+            lastMessagesSearchString = null;
+            currentSearchFilter = null;
+            localTipChats.clear();
+            localTipDates.clear();
+            firstLoading = true;
+            if (isCurrentSearch(generation)) updateFiltersView(false, null, null, false);
         }
 
         private void addSearchFilter(FiltersView.MediaFilterData filter) {
@@ -1688,13 +1883,19 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     }
                 }
             }
+            final long generation = invalidateSearch();
+            if (!isCurrentSearch(generation)) return;
             currentSearchFilters.add(filter);
             parentAlert.actionBar.setSearchFilter(filter);
+            if (!isCurrentSearch(generation)) return;
             parentAlert.actionBar.setSearchFieldText("");
+            if (!isCurrentSearch(searchIndex) || !currentSearchFilters.contains(filter)
+                    || !TextUtils.isEmpty(activeSearchQuery)) return;
             updateFiltersView(true, null, null, true);
         }
 
         private void updateFiltersView(boolean showMediaFilters, ArrayList<Object> users, ArrayList<FiltersView.DateData> dates, boolean animated) {
+            if (!isCurrentSearch(searchIndex)) return;
             boolean hasMediaFilter = false;
             boolean hasUserFilter = false;
             boolean hasDataFilter = false;
@@ -1717,19 +1918,21 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                 ArrayList<FiltersView.DateData> finalDates = (dates != null && !dates.isEmpty() && !hasDataFilter) ? dates : null;
                 if (finalUsers != null || finalDates != null) {
                     visible = true;
-                    filtersView.setUsersAndDates(finalUsers, finalDates, false);
+                    filtersView.setUsersAndDates(finalUsers, finalDates, false, currentAccount);
                 }
             }
             if (!visible) {
-                filtersView.setUsersAndDates(null, null, false);
+                filtersView.setUsersAndDates(null, null, false, currentAccount);
             }
             filtersView.setEnabled(visible);
-            if (visible && filtersView.getTag() != null || !visible && filtersView.getTag() == null) {
+            if (animated && (visible && filtersView.getTag() != null || !visible && filtersView.getTag() == null)) {
                 return;
             }
             filtersView.setTag(visible ? 1 : null);
             if (filtersViewAnimator != null) {
-                filtersViewAnimator.cancel();
+                AnimatorSet animator = filtersViewAnimator;
+                filtersViewAnimator = null;
+                animator.cancel();
             }
             if (animated) {
                 if (visible) {
@@ -1744,6 +1947,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                 filtersViewAnimator.addListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
+                        if (filtersViewAnimator != animation || destroyed || !searchActive) return;
                         if (filtersView.getTag() == null) {
                             filtersView.setVisibility(INVISIBLE);
                         }
@@ -1763,65 +1967,155 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             }
         }
 
-        private void searchGlobal(long dialogId, long minDate, long maxDate, FiltersView.MediaFilterData searchFilter, String query, boolean clearOldResults) {
-            String currentSearchFilterQueryString = String.format(Locale.ENGLISH, "%d%d%d%d%s", dialogId, minDate, maxDate, searchFilter.filterType, query);
-            boolean filterAndQueryIsSame = lastSearchFilterQueryString != null && lastSearchFilterQueryString.equals(currentSearchFilterQueryString);
-            boolean forceClear = !filterAndQueryIsSame && clearOldResults;
-            boolean filterIsSame = dialogId == currentSearchDialogId && currentSearchMinDate == minDate && currentSearchMaxDate == maxDate;
+        private boolean isCurrentTipsTask(TipsTask task) {
+            return task == tipsTask && !destroyed && searchActive
+                    && parentAlert.currentAccount == currentAccount
+                    && ownerUserId == UserConfig.getInstance(currentAccount).getClientUserId();
+        }
+
+        private boolean isCurrentTipsOwner(TipsOwner owner) {
+            return owner != null && owner == tipsOwner && owner.task == tipsTask
+                    && isCurrentSearch(owner.generation) && owner.task.key.equals(activeTipsQueryKey);
+        }
+
+        private void searchTips(String key, String query, boolean searchChats, long generation) {
+            if (!isCurrentSearch(generation) || !key.equals(activeTipsQueryKey)) return;
+            TipsTask task = tipsTask;
+            if (task != null && task.key.equals(key)) {
+                if (tipsOwner != null && tipsOwner.task == task && tipsOwner.generation == generation
+                        && isCurrentTipsOwner(tipsOwner)) return;
+                TipsOwner owner = new TipsOwner(task, generation);
+                tipsOwner = owner;
+                if (task.completed) publishTips(owner);
+                return;
+            }
+            final TipsTask previous = task;
+            task = new TipsTask(key, query, searchChats);
+            tipsTask = task;
+            final TipsOwner owner = new TipsOwner(task, generation);
+            tipsOwner = owner;
+            final MessagesStorage storage = AccountInstance.getInstance(currentAccount).getMessagesStorage();
+            if (previous != null) storage.getStorageQueue().cancelRunnable(previous.work);
+            if (!isCurrentTipsOwner(owner)) return;
+            if (!storage.getStorageQueue().postRunnable(task.work)) {
+                if (!isCurrentTipsTask(task)) return;
+                task.chats = new ArrayList<>();
+                task.dates = new ArrayList<>();
+                task.completed = true;
+                final TipsOwner currentOwner = tipsOwner;
+                if (currentOwner != null && currentOwner.task == task) publishTips(currentOwner);
+            }
+        }
+
+        private void loadTips(TipsTask task) {
+            if (!isCurrentTipsTask(task)) return;
+            final ArrayList<Object> chats = new ArrayList<>();
+            final ArrayList<FiltersView.DateData> dates = new ArrayList<>();
+            try {
+                if (task.searchChats) {
+                    AccountInstance.getInstance(currentAccount).getMessagesStorage().localSearch(0, task.query,
+                            chats, new ArrayList<>(), new ArrayList<>(), null, -1);
+                }
+                if (!isCurrentTipsTask(task)) return;
+                FiltersView.fillTipDates(task.query, dates);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            if (!isCurrentTipsTask(task)) return;
+            AndroidUtilities.runOnUIThread(() -> {
+                final TipsOwner owner = tipsOwner;
+                if (owner == null || owner.task != task || !isCurrentTipsOwner(owner)) return;
+                task.chats = chats;
+                task.dates = dates;
+                task.completed = true;
+                publishTips(owner);
+            });
+        }
+
+        private void publishTips(TipsOwner owner) {
+            if (!isCurrentTipsOwner(owner) || !owner.task.completed) return;
+            final TipsTask task = owner.task;
+            MessagesController.getInstance(currentAccount).cacheLocalSearchPeers(task.chats);
+            if (!isCurrentTipsOwner(owner)) return;
+            localTipChats.clear();
+            localTipChats.addAll(task.chats);
+            TLRPC.User self = UserConfig.getInstance(currentAccount).getCurrentUser();
+            if (self != null && task.query.length() >= 3 && (LocaleController.getString(R.string.SavedMessages).toLowerCase().startsWith(task.query) || "saved messages".startsWith(task.query))) {
+                boolean found = false;
+                for (Object chat : localTipChats) {
+                    if (chat instanceof TLRPC.User && self.id == ((TLRPC.User) chat).id) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) localTipChats.add(0, self);
+            }
+            localTipDates.clear();
+            localTipDates.addAll(task.dates);
+            updateFiltersView(false, localTipChats, localTipDates, true);
+        }
+
+        private void searchGlobal(long dialogId, long minDate, long maxDate, FiltersView.MediaFilterData searchFilter, String query, boolean clearOldResults, long generation) {
+            if (!isCurrentSearch(generation)) return;
+            String currentSearchFilterQueryString = String.format(Locale.ENGLISH, "%d:%d:%d:%d:%s", dialogId, minDate, maxDate, searchFilter.filterType, query);
+            final boolean dataIsSame = currentSearchFilterQueryString.equals(currentDataFilterQueryString);
+            boolean forceClear = !dataIsSame && clearOldResults;
+            activeTipsQueryKey = currentSearchFilterQueryString;
+            if (!TextUtils.isEmpty(query) && (dataIsSame || tipsTask != null && tipsTask.key.equals(currentSearchFilterQueryString))) {
+                searchTips(currentSearchFilterQueryString, query, dialogId == 0, generation);
+                if (!isCurrentSearch(generation)) return;
+            }
+            if (clearOldResults && dataIsSame) return;
+            final long requestId = invalidateGlobalSearch();
+            if (!isCurrentRequest(generation, requestId)) return;
             currentSearchFilter = searchFilter;
             this.currentSearchDialogId = dialogId;
             this.currentSearchMinDate = minDate;
             this.currentSearchMaxDate = maxDate;
-            if (searchRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(searchRunnable);
-            }
-            AndroidUtilities.cancelRunOnUIThread(clearCurrentResultsRunnable);
-            if (filterAndQueryIsSame && clearOldResults) {
+
+            if (TextUtils.isEmpty(query)) {
+                clearGlobalResults();
+                localTipDates.clear();
+                localTipChats.clear();
+                updateFiltersView(false, null, null, true);
+                if (isCurrentRequest(generation, requestId)) notifyDataSetChanged();
                 return;
             }
             if (forceClear) {
-                messages.clear();
-                sections.clear();
-                sectionArrays.clear();
-                isLoading = true;
-                emptyView.setVisibility(View.VISIBLE);
-                notifyDataSetChanged();
-                requestIndex++;
+                clearGlobalResults();
                 firstLoading = true;
-                if (listView.getPinnedHeader() != null) {
-                    listView.getPinnedHeader().setAlpha(0);
-                }
                 localTipChats.clear();
                 localTipDates.clear();
             }
             isLoading = true;
+            requestPending = true;
+            if (!dataIsSame && !forceClear) {
+                clearGlobalResults();
+            }
+            if (forceClear) {
+                emptyView.setVisibility(View.VISIBLE);
+                if (!isCurrentRequest(generation, requestId)) return;
+                if (listView.getPinnedHeader() != null) listView.getPinnedHeader().setAlpha(0);
+            }
             notifyDataSetChanged();
-
-            if (!filterAndQueryIsSame) {
-                clearCurrentResultsRunnable.run();
+            if (!isCurrentRequest(generation, requestId)) return;
+            if (!dataIsSame) {
                 emptyView.showProgress(true, !clearOldResults);
+                if (!isCurrentRequest(generation, requestId)) return;
             }
 
-            if (TextUtils.isEmpty(query)) {
-                localTipDates.clear();
-                localTipChats.clear();
-                updateFiltersView(false, null, null, true);
-                return;
-            }
-            requestIndex++;
-            final int requestId = requestIndex;
-
-            AccountInstance accountInstance = AccountInstance.getInstance(UserConfig.selectedAccount);
+            final AccountInstance accountInstance = AccountInstance.getInstance(currentAccount);
 
             AndroidUtilities.runOnUIThread(searchRunnable = () -> {
+                if (!isCurrentRequest(generation, requestId) || !requestPending) return;
+                searchRunnable = null;
                 TLObject request;
 
-                ArrayList<Object> resultArray = null;
                 if (dialogId != 0) {
                     final TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
                     req.q = query;
                     req.limit = 20;
-                    req.filter = currentSearchFilter.filter;
+                    req.filter = searchFilter.filter;
                     req.peer = accountInstance.getMessagesController().getInputPeer(dialogId);
                     if (minDate > 0) {
                         req.min_date = (int) (minDate / 1000);
@@ -1829,7 +2123,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     if (maxDate > 0) {
                         req.max_date = (int) (maxDate / 1000);
                     }
-                    if (filterAndQueryIsSame && query.equals(lastMessagesSearchString) && !messages.isEmpty()) {
+                    if (dataIsSame && query.equals(lastMessagesSearchString) && !messages.isEmpty()) {
                         MessageObject lastMessage = messages.get(messages.size() - 1);
                         req.offset_id = lastMessage.getId();
                     } else {
@@ -1837,24 +2131,18 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     }
                     request = req;
                 } else {
-                    if (!TextUtils.isEmpty(query)) {
-                        resultArray = new ArrayList<>();
-                        ArrayList<CharSequence> resultArrayNames = new ArrayList<>();
-                        ArrayList<TLRPC.User> encUsers = new ArrayList<>();
-                        accountInstance.getMessagesStorage().localSearch(0, query, resultArray, resultArrayNames, encUsers, null, -1);
-                    }
 
                     final TLRPC.TL_messages_searchGlobal req = new TLRPC.TL_messages_searchGlobal();
                     req.limit = 20;
                     req.q = query;
-                    req.filter = currentSearchFilter.filter;
+                    req.filter = searchFilter.filter;
                     if (minDate > 0) {
                         req.min_date = (int) (minDate / 1000);
                     }
                     if (maxDate > 0) {
                         req.max_date = (int) (maxDate / 1000);
                     }
-                    if (filterAndQueryIsSame && query.equals(lastMessagesSearchString) && !messages.isEmpty()) {
+                    if (dataIsSame && query.equals(lastMessagesSearchString) && !messages.isEmpty()) {
                         MessageObject lastMessage = messages.get(messages.size() - 1);
                         req.offset_id = lastMessage.getId();
                         req.offset_rate = nextSearchRate;
@@ -1876,17 +2164,15 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                 }
 
                 lastMessagesSearchString = query;
-                lastSearchFilterQueryString = currentSearchFilterQueryString;
-
-                ArrayList<Object> finalResultArray = resultArray;
-                final ArrayList<FiltersView.DateData> dateData = new ArrayList<>();
-                FiltersView.fillTipDates(lastMessagesSearchString, dateData);
-                accountInstance.getConnectionsManager().sendRequest(request, (response, error) -> {
+                if (!isCurrentRequest(generation, requestId)) return;
+                final int networkRequestId = accountInstance.getConnectionsManager().sendRequest(request, (response, error) -> {
+                    if (!isCurrentRequest(generation, requestId)) return;
                     ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                    if (error == null) {
+                    if (error == null && response instanceof TLRPC.messages_Messages) {
                         TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                         int n = res.messages.size();
                         for (int i = 0; i < n; i++) {
+                            if (!isCurrentRequest(generation, requestId)) return;
                             MessageObject messageObject = new MessageObject(accountInstance.getCurrentAccount(), res.messages.get(i), false, true);
                             messageObject.setQuery(query);
                             messageObjects.add(messageObject);
@@ -1894,33 +2180,37 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     }
 
                     AndroidUtilities.runOnUIThread(() -> {
-                        if (requestId != requestIndex) {
+                        if (!isCurrentRequest(generation, requestId) || !requestPending) {
                             return;
                         }
+                        currentRequestId = 0;
+                        requestPending = false;
+                        if (error != null || !(response instanceof TLRPC.messages_Messages)) {
                         isLoading = false;
-                        if (error != null) {
                             emptyView.title.setText(LocaleController.getString(R.string.SearchEmptyViewTitle2));
+                            if (!isCurrentRequest(generation, requestId)) return;
                             emptyView.subtitle.setVisibility(View.VISIBLE);
+                            if (!isCurrentRequest(generation, requestId)) return;
                             emptyView.subtitle.setText(LocaleController.getString(R.string.SearchEmptyViewFilteredSubtitle2));
+                            if (!isCurrentRequest(generation, requestId)) return;
                             emptyView.showProgress(false, true);
+                            if (isCurrentRequest(generation, requestId)) notifyDataSetChanged();
                             return;
                         }
 
-                        emptyView.showProgress(false);
 
                         TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
-                        nextSearchRate = res.next_rate;
                         accountInstance.getMessagesStorage().putUsersAndChats(res.users, res.chats, true, true);
+                        if (!isCurrentRequest(generation, requestId)) return;
                         accountInstance.getMessagesController().putUsers(res.users, false);
+                        if (!isCurrentRequest(generation, requestId)) return;
                         accountInstance.getMessagesController().putChats(res.chats, false);
-                        if (!filterAndQueryIsSame) {
-                            messages.clear();
-                            messagesById.clear();
-                            sections.clear();
-                            sectionArrays.clear();
-                        }
+                        if (!isCurrentRequest(generation, requestId)) return;
+                        if (!dataIsSame) clearGlobalResults();
+                        nextSearchRate = res.next_rate;
                         int totalCount = res.count;
                         currentDataQuery = query;
+                        currentDataFilterQueryString = currentSearchFilterQueryString;
                         int n = messageObjects.size();
                         for (int i = 0; i < n; i++) {
                             MessageObject messageObject = messageObjects.get(i);
@@ -1939,41 +2229,29 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                         }
                         endReached = messages.size() >= totalCount;
 
+                        firstLoading = false;
+                        isLoading = false;
+                        emptyView.showProgress(false);
+                        if (!isCurrentRequest(generation, requestId)) return;
                         if (messages.isEmpty()) {
                             if (TextUtils.isEmpty(currentDataQuery) && dialogId == 0 && minDate == 0) {
                                 emptyView.title.setText(LocaleController.getString(R.string.SearchEmptyViewTitle));
+                                if (!isCurrentRequest(generation, requestId)) return;
                                 emptyView.subtitle.setVisibility(View.VISIBLE);
+                                if (!isCurrentRequest(generation, requestId)) return;
                                 emptyView.subtitle.setText(LocaleController.getString(R.string.SearchEmptyViewFilteredSubtitleFiles));
                             } else {
                                 emptyView.title.setText(LocaleController.getString(R.string.SearchEmptyViewTitle2));
+                                if (!isCurrentRequest(generation, requestId)) return;
                                 emptyView.subtitle.setVisibility(View.VISIBLE);
+                                if (!isCurrentRequest(generation, requestId)) return;
                                 emptyView.subtitle.setText(LocaleController.getString(R.string.SearchEmptyViewFilteredSubtitle2));
                             }
+                            if (!isCurrentRequest(generation, requestId)) return;
                         }
 
-                        if (!filterAndQueryIsSame) {
-                            localTipChats.clear();
-                            if (finalResultArray != null) {
-                                localTipChats.addAll(finalResultArray);
-                            }
-                            if (query.length() >= 3 && (LocaleController.getString(R.string.SavedMessages).toLowerCase().startsWith(query) || "saved messages".startsWith(query))) {
-                                boolean found = false;
-                                for (int i = 0; i < localTipChats.size(); i++) {
-                                    if (localTipChats.get(i) instanceof TLRPC.User)
-                                        if (UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser().id == ((TLRPC.User) localTipChats.get(i)).id) {
-                                            found = true;
-                                            break;
-                                        }
-                                }
-                                if (!found) {
-                                    localTipChats.add(0, UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser());
-                                }
-                            }
-                            localTipDates.clear();
-                            localTipDates.addAll(dateData);
-                            updateFiltersView(TextUtils.isEmpty(currentDataQuery), localTipChats, localTipDates, true);
-                        }
-                        firstLoading = false;
+                        cancelResultsAnimation();
+                        if (!isCurrentRequest(generation, requestId)) return;
                         View progressView = null;
                         int progressViewPosition = -1;
                         for (int i = 0; i < n; i++) {
@@ -1989,12 +2267,19 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                         }
                         if (loadingView.getVisibility() == View.VISIBLE && listView.getChildCount() <= 1 || progressView != null) {
                             int finalProgressViewPosition = progressViewPosition;
-                            getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+                            final ViewTreeObserver observer = getViewTreeObserver();
+                            resultsObserver = observer;
+                            resultsPreDrawListener = new ViewTreeObserver.OnPreDrawListener() {
                                 @Override
                                 public boolean onPreDraw() {
-                                    getViewTreeObserver().removeOnPreDrawListener(this);
+                                    if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                                    if (resultsPreDrawListener != this) return true;
+                                    resultsPreDrawListener = null;
+                                    resultsObserver = null;
+                                    if (!isCurrentSearch(generation)) return true;
                                     int n = listView.getChildCount();
                                     AnimatorSet animatorSet = new AnimatorSet();
+                                    resultsAnimator = animatorSet;
                                     for (int i = 0; i < n; i++) {
                                         View child = listView.getChildAt(i);
                                         if (finalProgressView != null) {
@@ -2002,6 +2287,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                                                 continue;
                                             }
                                         }
+                                        animatedResultViews.add(child);
                                         child.setAlpha(0);
                                         int s = Math.min(listView.getMeasuredHeight(), Math.max(0, child.getTop()));
                                         int delay = (int) ((s / (float) listView.getMeasuredHeight()) * 100);
@@ -2013,24 +2299,41 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                                     animatorSet.addListener(new AnimatorListenerAdapter() {
                                         @Override
                                         public void onAnimationEnd(Animator animation) {
+                                            if (resultsAnimator != animation) return;
+                                            resultsAnimator = null;
+                                            animatedResultViews.clear();
+                                            if (resultsNotificationsLocked) {
+                                                resultsNotificationsLocked = false;
                                             notificationsLocker.unlock();
                                         }
+                                        }
                                     });
+                                    resultsNotificationsLocked = true;
                                     notificationsLocker.lock();
+                                    if (!isCurrentSearch(generation) || resultsAnimator != animatorSet) return true;
                                     animatorSet.start();
 
+                                    if (!isCurrentSearch(generation)) return true;
                                     if (finalProgressView != null && finalProgressView.getParent() == null) {
-                                        listView.addView(finalProgressView);
                                         RecyclerView.LayoutManager layoutManager = listView.getLayoutManager();
                                         if (layoutManager != null) {
+                                            progressAnimationView = finalProgressView;
+                                            progressAnimationLayoutManager = layoutManager;
+                                            listView.addView(finalProgressView);
+                                            if (!isCurrentSearch(generation) || progressAnimationView != finalProgressView) return true;
                                             layoutManager.ignoreView(finalProgressView);
+                                            progressViewIgnored = true;
                                             Animator animator = ObjectAnimator.ofFloat(finalProgressView, ALPHA, finalProgressView.getAlpha(), 0);
+                                            progressAnimator = animator;
                                             animator.addListener(new AnimatorListenerAdapter() {
                                                 @Override
                                                 public void onAnimationEnd(Animator animation) {
-                                                    finalProgressView.setAlpha(1f);
-                                                    layoutManager.stopIgnoringView(finalProgressView);
-                                                    listView.removeView(finalProgressView);
+                                                    if (progressAnimator != animation) return;
+                                                    progressAnimator = null;
+                                                    progressAnimationView = null;
+                                                    progressAnimationLayoutManager = null;
+                                                    progressViewIgnored = false;
+                                                    clearProgressView(finalProgressView, layoutManager, true);
                                                 }
                                             });
                                             animator.start();
@@ -2038,23 +2341,37 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                                     }
                                     return true;
                                 }
-                            });
+                            };
+                            if (observer.isAlive()) observer.addOnPreDrawListener(resultsPreDrawListener);
                         }
                         notifyDataSetChanged();
                     });
                 });
-            }, (filterAndQueryIsSame && !messages.isEmpty()) ? 0 : 350);
+                if (!isCurrentRequest(generation, requestId) || !requestPending) {
+                    if (networkRequestId != 0) accountInstance.getConnectionsManager().cancelRequest(networkRequestId, true);
+                } else {
+                    currentRequestId = networkRequestId;
+                    if (networkRequestId == 0) {
+                        requestPending = false;
+                        isLoading = false;
+                        emptyView.showProgress(false, true);
+                        if (isCurrentRequest(generation, requestId)) notifyDataSetChanged();
+                    }
+                }
+                searchTips(currentSearchFilterQueryString, query, dialogId == 0, generation);
+            }, (dataIsSame && !messages.isEmpty()) ? 0 : 350);
             loadingView.setViewType(FlickerLoadingView.FILES_TYPE);
         }
 
-        private void updateSearchResults(final ArrayList<ListItem> result, String query) {
+        private void updateSearchResults(final ArrayList<ListItem> result, long generation) {
+            if (!isCurrentSearch(generation)) return;
             AndroidUtilities.runOnUIThread(() -> {
-                if (searching) {
+                if (!isCurrentSearch(generation) || !searching || TextUtils.isEmpty(activeSearchQuery)) return;
+                searchResult = result;
                     if (listView.getAdapter() != searchAdapter) {
                         listView.setAdapter(searchAdapter);
-                    }
+                    if (!isCurrentSearch(generation)) return;
                 }
-                searchResult = result;
                 notifyDataSetChanged();
             });
         }

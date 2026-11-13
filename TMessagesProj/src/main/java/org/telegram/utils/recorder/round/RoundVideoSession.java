@@ -431,6 +431,7 @@ public final class RoundVideoSession {
     private boolean pauseAfterRecordingStarts;
     private boolean cameraStopPending;
     private boolean cleanupStarted;
+    private boolean releaseAfterCompletion;
     private volatile boolean cancelRequested;
     private long recordedDurationMs;
     private long recordingStartedAtRealtimeMs;
@@ -701,6 +702,14 @@ public final class RoundVideoSession {
             if (!cameraStopPending) finishCancellation();
             return;
         }
+        if (state == State.FINISHING) {
+            if (releaseAfterCompletion) return;
+            releaseAfterCompletion = true;
+            diagnostics.log("release deferred: output is still finishing");
+            disableCameraEffects();
+            releasePlayer();
+            return;
+        }
         if (state != State.COMPLETED) {
             cancel();
             return;
@@ -819,7 +828,6 @@ public final class RoundVideoSession {
         notifyCapabilities();
         diagnostics.log("camera configured: facing=" + info.facing
                 + ", mode=" + info.cameraResolution
-                + ", preview=" + info.previewSize
                 + ", recording=" + info.recordingSize
                 + ", fps=" + info.frameRate.getValue()
                 + ", maxZoom=" + maximumZoomRatio
@@ -1194,6 +1202,7 @@ public final class RoundVideoSession {
                         hasAudio,
                         activeFrameRate == null ? FrameRate.FPS_30 : activeFrameRate
                 ));
+                if (releaseAfterCompletion) release();
             });
         });
     }

@@ -3,6 +3,7 @@
 package org.telegram.messenger.utils;
 
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
 import android.os.Looper;
 import android.view.Choreographer;
 import android.view.View;
@@ -11,11 +12,13 @@ import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
 
-import org.telegram.messenger.BuildConfig;
+import java.util.ArrayDeque;
+import java.util.Iterator;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import java.util.function.Consumer;
 import me.vkryl.core.reference.ReferenceList;
 
 public final class Choreographer60FpsContent implements Choreographer.FrameCallback {
@@ -27,18 +30,47 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
 
     private static final long[] FRAME_MASKS = buildFrameMasks();
-    private static Choreographer60FpsContent sInstance;
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+
+    private static final class InstanceHolder {
+        static final Choreographer60FpsContent INSTANCE = new Choreographer60FpsContent();
+    }
 
     public static Choreographer60FpsContent getInstance() {
-        checkMainThread();
-        if (sInstance == null) {
-            sInstance = new Choreographer60FpsContent();
-        }
-        return sInstance;
+        return InstanceHolder.INSTANCE;
     }
 
 
-    private final Choreographer mChoreographer = Choreographer.getInstance();
+    private Choreographer mChoreographer;
+
+    private static final int POST = 0, INVALIDATE_DRAWABLE = 1, INVALIDATE_DRAWABLE_30 = 2,
+            INVALIDATE_VIEW = 3, ADD_ONCE = 4, ADD_RUNNABLE = 5, ADD_CALLBACK = 6,
+            REMOVE_RUNNABLE = 7, REMOVE_ONCE = 8, REMOVE_CALLBACK = 9, RECONCILE = 10;
+    private static final class Command {
+        final int operation;
+        final Object target;
+        final long value;
+
+        Command(int operation, Object target, long value) {
+            this.operation = operation;
+            this.target = target;
+            this.value = value;
+        }
+    }
+    private final ArrayDeque<Command> mCommands = new ArrayDeque<>();
+    private final Runnable mDrainCommands = () -> {
+        synchronized (mCommands) {
+            mDrainPosted = false;
+        }
+        drainCommands();
+    };
+    private boolean mDrainPosted;
+
+    private long mDispatchFrameTimeNs;
+    private final Consumer<FrameCallback> mRunFrameCallback = callback -> callback.doFrame(mDispatchFrameTimeNs);
+    private static final Consumer<Runnable> RUN_CALLBACK = Runnable::run;
+    private static final Consumer<View> INVALIDATE = View::invalidate;
+    private static final Consumer<Drawable> INVALIDATE_SELF = Drawable::invalidateSelf;
 
     private Set<FrameCallback> mOneShot = new LinkedHashSet<>();
     private Set<FrameCallback> mDispatchOneShot = new LinkedHashSet<>();
@@ -56,6 +88,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     private ReferenceList<View> mDispatchViews = new ReferenceList<>();
 
     private boolean mFrameScheduled;
+    private boolean mPreparingFrame;
     private boolean mDispatching;
 
     private long mAccumulatedNs;
@@ -70,7 +103,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void post(FrameCallback callback) {
-        checkMainThread();
+        submit(POST, callback, 0);
+    }
+
+    private void postOnMain(FrameCallback callback) {
         if (callback != null) {
         mOneShot.add(callback);
             scheduleFrame();
@@ -78,7 +114,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void postInvalidateDrawable(Drawable drawable) {
-        checkMainThread();
+        submit(INVALIDATE_DRAWABLE, drawable, 0);
+    }
+
+    private void postInvalidateDrawableOnMain(Drawable drawable) {
         if (drawable != null) {
         mDrawablesToInvalidate.add(drawable);
             scheduleFrame();
@@ -86,7 +125,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void postInvalidateDrawable30fps(Drawable drawable) {
-        checkMainThread();
+        submit(INVALIDATE_DRAWABLE_30, drawable, 0);
+    }
+
+    private void postInvalidateDrawable30fpsOnMain(Drawable drawable) {
         if (drawable != null) {
         mDrawablesToInvalidate30fps.add(drawable);
             scheduleFrame();
@@ -94,7 +136,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void postInvalidateView(View view) {
-        checkMainThread();
+        submit(INVALIDATE_VIEW, view, 0);
+    }
+
+    private void postInvalidateViewOnMain(View view) {
         if (view != null) {
         mViewsToInvalidate.add(view);
             scheduleFrame();
@@ -110,7 +155,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void addFrameCallbackOnce(Runnable callback, int fps) {
-        checkMainThread();
+        submit(ADD_ONCE, callback, fps);
+    }
+
+    private void addFrameCallbackOnceOnMain(Runnable callback, int fps) {
         if (callback == null) {
             return;
         }
@@ -126,7 +174,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
 
     public void addFrameCallback(Runnable callback, int fps) {
-        checkMainThread();
+        submit(ADD_RUNNABLE, callback, fps);
+    }
+
+    private void addRunnableOnMain(Runnable callback, int fps) {
         if (callback == null) {
             return;
         }
@@ -145,7 +196,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void addFrameCallback(FrameCallback callback, int fps) {
-        checkMainThread();
+        submit(ADD_CALLBACK, callback, fps);
+    }
+
+    private void addFrameCallbackOnMain(FrameCallback callback, int fps) {
         if (callback == null) {
             return;
         }
@@ -164,7 +218,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void removeFrameCallback(Runnable callback) {
-        checkMainThread();
+        submit(REMOVE_RUNNABLE, callback, 0);
+    }
+
+    private void removeRunnableOnMain(Runnable callback) {
         if (callback == null) {
             return;
         }
@@ -183,7 +240,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void removeFrameCallbackOnce(Runnable callback) {
-        checkMainThread();
+        submit(REMOVE_ONCE, callback, 0);
+    }
+
+    private void removeFrameCallbackOnceOnMain(Runnable callback) {
         if (callback == null) {
             return;
         }
@@ -204,7 +264,10 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     public void removeFrameCallback(FrameCallback callback) {
-        checkMainThread();
+        submit(REMOVE_CALLBACK, callback, 0);
+    }
+
+    private void removeFrameCallbackOnMain(FrameCallback callback) {
         if (callback == null) {
             return;
         }
@@ -226,6 +289,85 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     private Choreographer60FpsContent() {
     }
 
+    private void submit(int operation, Object target, long value) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            drainCommands();
+            execute(operation, target, value);
+        } else {
+            synchronized (mCommands) {
+                mCommands.addLast(new Command(operation, target, value));
+                if (!mDrainPosted) {
+                    mDrainPosted = true;
+                    if (!MAIN_HANDLER.post(mDrainCommands)) {
+                        mDrainPosted = false;
+                        throw new IllegalStateException("Main looper rejected frame scheduler mutation");
+                    }
+                }
+            }
+        }
+    }
+
+    private void drainCommands() {
+        checkMainThread();
+        final int count;
+        synchronized (mCommands) {
+            count = mCommands.size();
+        }
+        try {
+            for (int i = 0; i < count; i++) {
+                final Command command;
+                synchronized (mCommands) {
+                    command = mCommands.pollFirst();
+                    if (command == null) return;
+                }
+                execute(command.operation, command.target, command.value);
+            }
+        } finally {
+            synchronized (mCommands) {
+                if (!mCommands.isEmpty() && !mDrainPosted) {
+                    mDrainPosted = true;
+                    if (!MAIN_HANDLER.post(mDrainCommands)) {
+                        mDrainPosted = false;
+                        throw new IllegalStateException("Main looper rejected frame scheduler mutation");
+                    }
+                }
+            }
+        }
+    }
+
+    private void execute(int operation, Object target, long value) {
+        checkMainThread();
+        switch (operation) {
+            case POST: postOnMain((FrameCallback) target); break;
+            case INVALIDATE_DRAWABLE: postInvalidateDrawableOnMain((Drawable) target); break;
+            case INVALIDATE_DRAWABLE_30: postInvalidateDrawable30fpsOnMain((Drawable) target); break;
+            case INVALIDATE_VIEW: postInvalidateViewOnMain((View) target); break;
+            case ADD_ONCE: addFrameCallbackOnceOnMain((Runnable) target, (int) value); break;
+            case ADD_RUNNABLE: addRunnableOnMain((Runnable) target, (int) value); break;
+            case ADD_CALLBACK: addFrameCallbackOnMain((FrameCallback) target, (int) value); break;
+            case REMOVE_RUNNABLE: removeRunnableOnMain((Runnable) target); break;
+            case REMOVE_ONCE: removeFrameCallbackOnceOnMain((Runnable) target); break;
+            case REMOVE_CALLBACK: removeFrameCallbackOnMain((FrameCallback) target); break;
+            case RECONCILE: updateScheduling(); break;
+            default: throw new IllegalArgumentException("Unknown frame scheduler operation");
+        }
+    }
+
+    private Choreographer choreographer() {
+        if (mChoreographer == null) mChoreographer = Choreographer.getInstance();
+        return mChoreographer;
+    }
+
+    private static <T> void dispatchAll(ReferenceList<T> list, Consumer<T> action) {
+        final Iterator<T> iterator = list.iterator();
+        boolean exhausted = false;
+        try {
+            while (iterator.hasNext()) action.accept(iterator.next());
+            exhausted = true;
+        } finally {
+            if (!exhausted) while (iterator.hasNext()) iterator.next();
+        }
+    }
     private static boolean hasLiveReferences(ReferenceList<?> list) {
         list.isEmpty();
         boolean live = false;
@@ -239,14 +381,14 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     private void scheduleFrame() {
-        if (!mDispatching && !mFrameScheduled) {
+        if (!mPreparingFrame && !mDispatching && !mFrameScheduled) {
             mFrameScheduled = true;
-        mChoreographer.postFrameCallback(this);
+            choreographer().postFrameCallback(this);
         }
     }
 
     private void updateScheduling() {
-        if (mDispatching) {
+        if (mPreparingFrame || mDispatching) {
             return;
         }
         boolean hasWork = !mOneShot.isEmpty();
@@ -279,7 +421,21 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
 
     @Override
     public void doFrame(long frameTimeNanos) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            doFrameOnMain(frameTimeNanos);
+        } else {
+            submit(RECONCILE, null, 0);
+        }
+    }
+
+    private void doFrameOnMain(long frameTimeNanos) {
+        checkMainThread();
+        if (mPreparingFrame || mDispatching) return;
         mFrameScheduled = false;
+        mPreparingFrame = true;
+        try {
+            drainCommands();
+            mPreparingFrame = false;
         mDispatching = true;
         if (mLastVsyncNs == 0) {
             mLastVsyncNs = frameTimeNanos;
@@ -293,13 +449,18 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
             }
         }
 
+        } finally {
+            mPreparingFrame = false;
         mDispatching = false;
         updateScheduling();
     }
 
+    }
     private void dispatchFrame(long frameTimeNanos) {
+        mDispatchFrameTimeNs = frameTimeNanos;
         final boolean draw30fps = mCounter % 2 == 0;
         final int groupCount = mGroups.size();
+        try {
         for (int i = 0; i < groupCount; i++) {
             CallbackGroup group = mGroups.valueAt(i);
             mDispatchGroups[i] = group;
@@ -311,55 +472,68 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         final long tickMask = 1L << mCounter;
         for (int i = 0; i < groupCount; i++) {
             CallbackGroup group = mDispatchGroups[i];
-            mDispatchGroups[i] = null;
             if ((group.frameMask & tickMask) != 0) {
                 if (group.dispatchOnce != null) {
-                    for (Runnable runnable : group.dispatchOnce) {
-                        runnable.run();
-                    }
+                        try {
+                            dispatchAll(group.dispatchOnce, RUN_CALLBACK);
+                        } finally {
                     group.dispatchOnce.clear();
                     group.dispatchOnce = null;
                 }
 
-                for (FrameCallback cb : group.callbacks) {
-                    cb.doFrame(frameTimeNanos);
-                }
-                for (Runnable runnable : group.runnableCallbacks) {
-                    runnable.run();
-                }
+                    }
+                    dispatchAll(group.callbacks, mRunFrameCallback);
+                    dispatchAll(group.runnableCallbacks, RUN_CALLBACK);
             }
         }
 
         Set<FrameCallback> oneShot = mOneShot;
         mOneShot = mDispatchOneShot;
         mDispatchOneShot = oneShot;
-        for (FrameCallback cb : oneShot) {
-            cb.doFrame(frameTimeNanos);
-        }
+            try {
+                for (FrameCallback cb : oneShot) cb.doFrame(frameTimeNanos);
+            } finally {
 
         oneShot.clear();
+            }
         ReferenceList<View> views = mViewsToInvalidate;
         mViewsToInvalidate = mDispatchViews;
         mDispatchViews = views;
-        for (View view : views) {
-            view.invalidate();
-        }
+            try {
+                dispatchAll(views, INVALIDATE);
+            } finally {
         views.clear();
+            }
         ReferenceList<Drawable> drawables = mDrawablesToInvalidate;
         mDrawablesToInvalidate = mDispatchDrawables;
         mDispatchDrawables = drawables;
-        for (Drawable drawable : drawables) {
-            drawable.invalidateSelf();
-        }
+            try {
+                dispatchAll(drawables, INVALIDATE_SELF);
+            } finally {
         drawables.clear();
+            }
         if (draw30fps) {
             ReferenceList<Drawable> drawables30fps = mDrawablesToInvalidate30fps;
             mDrawablesToInvalidate30fps = mDispatchDrawables30fps;
             mDispatchDrawables30fps = drawables30fps;
-            for (Drawable drawable : drawables30fps) {
-                drawable.invalidateSelf();
-            }
+                try {
+                    dispatchAll(drawables30fps, INVALIDATE_SELF);
+                } finally {
             drawables30fps.clear();
+                }
+            }
+        } finally {
+            for (int i = 0; i < groupCount; i++) {
+                CallbackGroup group = mDispatchGroups[i];
+                mDispatchGroups[i] = null;
+                if (group != null && group.dispatchOnce != null) {
+                    if (group.runnableCallbacksOnce == null) {
+                        group.runnableCallbacksOnce = group.dispatchOnce;
+                    } else {
+                        group.runnableCallbacksOnce.addAll(group.dispatchOnce);
+                    }
+                    group.dispatchOnce = null;
+                }
         }
             for (int i = 0; i < mGroups.size(); i++) {
             CallbackGroup group = mGroups.valueAt(i);
@@ -374,8 +548,7 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
         }
 
         mCounter++;
-        if (mCounter == TARGET_FPS) {
-            mCounter = 0;
+            if (mCounter == TARGET_FPS) mCounter = 0;
         }
     }
 
@@ -464,10 +637,8 @@ public final class Choreographer60FpsContent implements Choreographer.FrameCallb
     }
 
     private static void checkMainThread() {
-        if (BuildConfig.DEBUG_PRIVATE_VERSION || BuildConfig.DEBUG_VERSION) {
             if (Looper.myLooper() != Looper.getMainLooper()) {
-                throw new IllegalStateException("Choreographer60FpsContent must be used on the main thread");
-            }
+            throw new IllegalStateException("Frame scheduler state must be used on the main thread");
         }
     }
 }

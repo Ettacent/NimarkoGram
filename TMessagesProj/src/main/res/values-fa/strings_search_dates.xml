@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">فیلتر بر اساس تاریخ</string>
+    <string name="NM_SearchDatesDay">روز</string>
+    <string name="NM_SearchDatesPeriod">بازه</string>
+    <string name="NM_SearchDatesFrom">از</string>
+    <string name="NM_SearchDatesUntil">تا</string>
+    <string name="NM_SearchDatesAddEnd">افزودن تاریخ پایان</string>
+    <string name="NM_SearchDatesToday">امروز</string>
+    <string name="NM_SearchDatesYesterday">دیروز</string>
+    <string name="NM_SearchDatesLast7">۷ روز گذشته</string>
+    <string name="NM_SearchDatesLast30">۳۰ روز گذشته</string>
+    <string name="NM_SearchDatesApply">اعمال فیلتر</string>
+    <string name="NM_SearchDatesReset">همهٔ تاریخ‌ها</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">فیلتر تاریخ: %1$s</string>
+    <string name="NM_SearchDatesChange">تغییر تاریخ‌ها</string>
+    <string name="NM_SearchDatesClear">حذف فیلتر تاریخ</string>
+    <string name="NM_SearchDatesJump">رفتن به تاریخ</string>
+    <string name="NM_SearchDatesInvalid">تاریخ پایان نباید پیش از شروع باشد.</string>
+    <string name="NM_SearchDatesDayValue">روز: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">ماه: %1$s</string>
+    <string name="NM_SearchDatesYearValue">سال: %1$s</string>
+</resources>

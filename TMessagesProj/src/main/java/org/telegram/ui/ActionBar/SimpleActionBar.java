@@ -475,6 +475,14 @@ public class SimpleActionBar extends FrameLayout implements FactorAnimator.Targe
         return extraHeight;
     }
 
+    private int titleMinSideInset;
+
+    public void setTitleMinSideInset(int value) {
+        if (titleMinSideInset != value) {
+            titleMinSideInset = value;
+            requestLayout();
+        }
+    }
     private int getRowTop() {
         return occupyStatusBar ? AndroidUtilities.statusBarHeight : 0;
     }
@@ -539,9 +547,9 @@ public class SimpleActionBar extends FrameLayout implements FactorAnimator.Targe
         final float menuWidth = menu != null && menu.getVisibility() != GONE
                 ? Math.max(menu.getTargetPillWidth(), menu.getPillWidth()) : 0;
         final float doneSpace = Math.max(getDoneButtonSpace(true), getDoneButtonSpace(false));
-        final int leftInset = hasBackButton() ? dp(64) : dp(18);
-        final int rightInset = menuWidth > 0 || doneSpace > 0
-                ? (int) Math.ceil(menuWidth + doneSpace) + dp(18) : dp(18);
+        final int leftInset = Math.max(titleMinSideInset, hasBackButton() ? dp(64) : dp(18));
+        final int rightInset = Math.max(titleMinSideInset, menuWidth > 0 || doneSpace > 0
+                ? (int) Math.ceil(menuWidth + doneSpace) + dp(18) : dp(18));
         int menuItems = 0;
         if (menu != null && menu.getVisibility() != GONE) {
             for (int i = 0; i < menu.getChildCount(); i++) {

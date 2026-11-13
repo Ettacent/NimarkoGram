@@ -53,7 +53,7 @@ public class DialogOrContactPickerActivity extends BaseFragment {
     private static class ViewPage extends FrameLayout {
         private BaseFragment parentFragment;
         private FrameLayout fragmentView;
-        private ActionBar actionBar;
+        private View header;
         private RecyclerListView listView;
         private RecyclerListView listView2;
         private int selectedType;
@@ -146,7 +146,8 @@ public class DialogOrContactPickerActivity extends BaseFragment {
             @Override
             public void onSearchExpand() {
                 dialogsActivity.getActionBar().openSearchField("", false);
-                contactsActivity.getActionBar().openSearchField("", false);
+                contactsActivity.getSimpleActionBar().openSearchField(false, false);
+                contactsActivity.getSimpleActionBar().setSearchFieldText("");
                 searchItem.getSearchField().requestFocus();
 
             }
@@ -154,13 +155,13 @@ public class DialogOrContactPickerActivity extends BaseFragment {
             @Override
             public void onSearchCollapse() {
                 dialogsActivity.getActionBar().closeSearchField(false);
-                contactsActivity.getActionBar().closeSearchField(false);
+                contactsActivity.getSimpleActionBar().closeSearchField(false);
             }
 
             @Override
             public void onTextChanged(EditText editText) {
                 dialogsActivity.getActionBar().setSearchFieldText(editText.getText().toString());
-                contactsActivity.getActionBar().setSearchFieldText(editText.getText().toString());
+                contactsActivity.getSimpleActionBar().setSearchFieldText(editText.getText().toString());
             }
         });
         searchItem.setSearchFieldHint(LocaleController.getString(R.string.Search));
@@ -508,11 +509,12 @@ public class DialogOrContactPickerActivity extends BaseFragment {
             }
             viewPages[a].listView.setScrollingTouchSlop(RecyclerView.TOUCH_SLOP_PAGING);
             viewPages[a].fragmentView = (FrameLayout) viewPages[a].parentFragment.getFragmentView();
-            viewPages[a].actionBar = viewPages[a].parentFragment.getActionBar();
+            viewPages[a].header = viewPages[a].parentFragment.getSimpleActionBar() != null
+                    ? viewPages[a].parentFragment.getSimpleActionBar() : viewPages[a].parentFragment.getActionBar();
             viewPages[a].addView(viewPages[a].fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-            AndroidUtilities.removeFromParent(viewPages[a].actionBar);
-            viewPages[a].addView(viewPages[a].actionBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            viewPages[a].actionBar.setVisibility(View.GONE);
+            AndroidUtilities.removeFromParent(viewPages[a].header);
+            viewPages[a].addView(viewPages[a].header, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            viewPages[a].header.setVisibility(View.GONE);
 
             for (int i = 0; i < 2; i++) {
                 RecyclerListView listView = i == 0 ? viewPages[a].listView : viewPages[a].listView2;

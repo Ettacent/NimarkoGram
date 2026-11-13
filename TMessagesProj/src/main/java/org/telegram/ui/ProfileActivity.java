@@ -970,8 +970,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private boolean pendingProfileRowsOnlineCount;
     private boolean pendingProfileRowsSelectedMediaText;
     private boolean pendingProfileInfoRowsUpdate;
+    private ProfileChannelContentUpdate pendingProfileChannelContentUpdate;
+    private static final Object PROFILE_CHANNEL_CONTENT_PAYLOAD = new Object();
     private int profileRowsMeasurementDepth;
     private boolean updatingProfileInfoRows;
+    private boolean profileInfoTouchInProgress;
     private boolean initialProfileInfoApplied;
     private RecyclerView.ItemAnimator profileInfoItemAnimator;
     private RecyclerListView profileInfoLayoutView;
@@ -3561,7 +3564,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
                 }
                 profileChannelMessageFetcher.fetch(userInfo);
-                profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
+                subscribeProfileChannelMessages();
             }
             if (userInfo == null) {
                 getMessagesController().loadUserInfo(user, true, classGuid);
@@ -3853,6 +3856,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         pendingProfileRowsOnlineCount = false;
         pendingProfileRowsSelectedMediaText = false;
         pendingProfileInfoRowsUpdate = false;
+        pendingProfileChannelContentUpdate = null;
         updatingProfileInfoRows = false;
         pendingProfileHeaderUpdate = false;
         pendingProfileHeaderReload = false;
@@ -4673,8 +4677,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 if (ev.getActionMasked() == MotionEvent.ACTION_DOWN && !isProfileBackButtonTouch(ev)) {
-                    finishProfileInfoPresentation();
+                    profileInfoTouchInProgress = true;
+                    finishProfileInfoPresentation(false);
                 }
+                try {
                 if (pinchToZoomHelper.isInOverlayMode()) {
                     return pinchToZoomHelper.onTouchEvent(ev);
                 }
@@ -4685,6 +4691,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     return true;
                 }
                 return super.dispatchTouchEvent(ev);
+                } finally {
+                    if (ev.getActionMasked() == MotionEvent.ACTION_UP || ev.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                        profileInfoTouchInProgress = false;
+                        flushPendingProfileRowsUpdate();
+                        profileChannelPreviewState.onPresentationChanged();
+                    }
+                }
             }
 
             private boolean ignoreLayout;
@@ -5408,6 +5421,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             @Override
+            protected void onReorderingChanged() {
+                updateLegacyMediaHeaderSearch();
+            }
+
+            @Override
             protected boolean isSelf() {
                 return myProfile;
             }
@@ -5581,7 +5599,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         MediaController.getInstance().currentSavedMusicList != savedMusicList ||
                         !MediaController.getInstance().isPlayingMessage(savedMusicList.list.get(0))
                     ) {
-                        MediaController.getInstance().cleanup();
+                        MediaController.getInstance().cleanupPlayback();
                     } else {
                         sameList = true;
                     }
@@ -7587,7 +7605,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
-                if (newState != RecyclerView.SCROLL_STATE_IDLE) finishProfileInfoPresentation();
+                if (newState != RecyclerView.SCROLL_STATE_IDLE) finishProfileInfoPresentation(false);
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
                     AndroidUtilities.hideKeyboard(getParentActivity().getCurrentFocus());
                 }
@@ -10470,13 +10488,15 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void updateLegacyMediaHeaderSearch(boolean searchVisible) {
         if (sharedMediaLayout == null) return;
-        final boolean allowed = mediaHeaderVisible && headerAnimatorSet == null && (imageUpdater == null || myProfile);
+        final boolean reordering = sharedMediaLayout.isReordering();
+        final boolean profile = !mediaHeaderVisible && !reordering;
+        final boolean allowed = mediaHeaderVisible && !reordering && headerAnimatorSet == null && (imageUpdater == null || myProfile);
         if (headerAnimatorSet == null && !searchVisible && (imageUpdater == null || myProfile)) {
-            callItem.setVisibility(!mediaHeaderVisible && callItemVisible ? View.VISIBLE : View.GONE);
-            videoCallItem.setVisibility(!mediaHeaderVisible && videoCallItemVisible ? View.VISIBLE : View.GONE);
-            editItem.setVisibility(!mediaHeaderVisible && editItemVisible ? View.VISIBLE : View.GONE);
-            otherItem.setVisibility(!mediaHeaderVisible ? View.VISIBLE : View.GONE);
-            otherItem.setEnabled(!mediaHeaderVisible);
+            callItem.setVisibility(profile && callItemVisible ? View.VISIBLE : View.GONE);
+            videoCallItem.setVisibility(profile && videoCallItemVisible ? View.VISIBLE : View.GONE);
+            editItem.setVisibility(profile && editItemVisible ? View.VISIBLE : View.GONE);
+            otherItem.setVisibility(profile ? View.VISIBLE : View.GONE);
+            otherItem.setEnabled(profile);
         }
         sharedMediaLayout.setLegacyHeaderSearchProgress(imageUpdater == null || myProfile ? mediaHeaderAnimationProgress : 0f);
         sharedMediaLayout.setLegacyHeaderSearchAllowed(allowed);
@@ -12202,7 +12222,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
                     }
                     profileChannelMessageFetcher.fetch(userInfo);
-                        profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
+                    subscribeProfileChannelMessages();
                 }
                 if (!isSettings()) {
                     ProfileBirthdayEffect.BirthdayEffectFetcher oldFetcher = birthdayFetcher;
@@ -13611,7 +13631,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
         }
 
-        SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
+        View targetContent = getProfileTransitionSourceRoot();
         if (targetContent != null) {
             SimpleTextView targetTitle = targetContainer.getTitleTextView();
             if (targetTitle != null && targetTitle.getVisibility() == View.VISIBLE) {
@@ -13637,7 +13657,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return false;
         }
         ChatAvatarContainer targetContainer = previousTransitionFragment.getAvatarContainer();
-        SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
+        View targetContent = getProfileTransitionSourceRoot();
         if (targetContainer == null || targetContent == null) {
             return false;
         }
@@ -13649,8 +13669,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return true;
     }
 
+    private View getProfileTransitionSourceRoot() {
+        if (previousTransitionMainFragment != null && previousTransitionMainFragment.getFragmentView() != null) {
+            return previousTransitionMainFragment.getFragmentView();
+        }
+        return previousTransitionFragment == null ? null : previousTransitionFragment.getContentView();
+    }
     private void updateProfileTransitionHeaderGeometry(ChatAvatarContainer targetContainer,
-                                                       SizeNotifierFrameLayout targetContent) {
+                                                       View targetContent) {
         BackupImageView targetAvatar = targetContainer.getAvatarImageView();
         if (targetAvatar != null && ViewPositionWatcher.computeRectInParent(
                 targetAvatar, targetContent, profileTransitionAvatarRect)) {
@@ -13878,7 +13904,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
                 transitionTitleText = targetTitle;
                 profileTransitionTitleScrollOffset = targetTitle.getScrollingOffset();
-                SizeNotifierFrameLayout targetContent = previousTransitionFragment.getContentView();
+                View targetContent = getProfileTransitionSourceRoot();
                 if (targetContent != null && targetTitle.getVisibility() == View.VISIBLE) {
                     profileTransitionHasTitleRect = ViewPositionWatcher.computeRectInParent(
                             targetTitle, targetContent, profileTransitionTitleRect);
@@ -13985,6 +14011,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             BaseFragment fragment = parentLayout.getFragmentStack().get(parentLayout.getFragmentStack().size() - 2);
             if (fragment instanceof ChatActivityInterface) {
                 previousTransitionFragment = (ChatActivityInterface) fragment;
+            }
+            if (fragment instanceof MainTabsActivity) {
+                fragment = ((MainTabsActivity) fragment).getDialogsActivity();
             }
             if (fragment instanceof DialogsActivity) {
                 DialogsActivity dialogsActivity = (DialogsActivity) fragment;
@@ -14728,8 +14757,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (profileChannelMessageFetcher == null) {
             profileChannelMessageFetcher = new ProfileChannelCell.ChannelMessageFetcher(currentAccount);
         }
-        profileChannelMessageFetcher.fetch(userInfo);
-        profileChannelMessageFetcher.subscribe(this::onProfileChannelMessagesLoaded);
+        profileChannelMessageFetcher.fetch(userInfo, true);
+        subscribeProfileChannelMessages();
         if (birthdayFetcher == null) {
             birthdayFetcher = birthdayAssetsFetcher;
         }
@@ -14751,14 +14780,73 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void onProfileChannelMessagesLoaded() {
-        if (profileLifecycleDestroyed) {
-            return;
-        }
+        if (profileLifecycleDestroyed || profileChannelMessageFetcher == null) return;
+        ProfileChannelContentUpdate update = new ProfileChannelContentUpdate(profileChannelMessageFetcher);
+        if (!update.isCurrent()) return;
+        pendingProfileChannelContentUpdate = update.channelId > 0 ? update : null;
+        if (update.channelId == 0) profileChannelPreviewState.finish();
         if (listAdapter == null || listView == null) {
             updateRowsIds();
             return;
         }
             requestProfileRowsUpdate(false, false);
+    }
+
+    private long currentProfileChannelId() {
+        return userInfo != null && (userInfo.flags2 & 64) != 0 ? userInfo.personal_channel_id : 0;
+    }
+
+    private final class ProfileChannelContentUpdate {
+        final ProfileChannelCell.ChannelMessageFetcher fetcher;
+        final int account = currentAccount;
+        final long profileUser = userId;
+        final long selfId = getUserConfig().getClientUserId();
+        final int loginTime = getUserConfig().loginTime;
+        final int lifecycle = profileLifecycleGeneration;
+        final long channelId = currentProfileChannelId();
+        final int messageHint;
+
+        ProfileChannelContentUpdate(ProfileChannelCell.ChannelMessageFetcher fetcher) {
+            this.fetcher = fetcher;
+            messageHint = fetcher.message_id;
+        }
+
+        boolean isCurrent() {
+            return !profileLifecycleDestroyed && lifecycle == profileLifecycleGeneration
+                    && account == currentAccount && profileUser != 0 && profileUser == userId
+                    && selfId != 0 && selfId == getUserConfig().getClientUserId() && loginTime == getUserConfig().loginTime
+                    && fetcher == profileChannelMessageFetcher && fetcher.currentAccount == account && fetcher.loaded
+                    && channelId == currentProfileChannelId() && fetcher.channel_id == channelId && fetcher.message_id == messageHint;
+        }
+    }
+
+    private void subscribeProfileChannelMessages() {
+        if (profileChannelMessageFetcher == null) return;
+        ProfileChannelContentUpdate subscription = new ProfileChannelContentUpdate(profileChannelMessageFetcher);
+        subscription.fetcher.subscribe(() -> {
+            if (subscription.isCurrent()) onProfileChannelMessagesLoaded();
+        });
+    }
+
+    private void notifyPendingProfileChannelContent() {
+        ProfileChannelContentUpdate update = pendingProfileChannelContentUpdate;
+        if (update == null) return;
+        if (!update.isCurrent()) {
+            if (pendingProfileChannelContentUpdate == update) pendingProfileChannelContentUpdate = null;
+            return;
+        }
+        if (listAdapter == null || listView == null || pendingProfileRowsUpdate
+                || transitionAnimationInProress || openAnimationInProgress || isPaused && fragmentOpened
+                || profileInfoReveal != null || profileInfoLayoutListener != null || profileInfoTouchInProgress
+                || listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE
+                || listView.isComputingLayout() || listView.isInLayout()) return;
+        if (pendingProfileChannelContentUpdate != update) return;
+        pendingProfileChannelContentUpdate = null;
+        if (channelRow < 0 || channelRow >= rowCount) {
+            profileChannelPreviewState.finish();
+            return;
+        }
+        listAdapter.notifyItemChanged(channelRow, PROFILE_CHANNEL_CONTENT_PAYLOAD);
     }
 
     public boolean canSearchMembers() {
@@ -15862,7 +15950,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             return;
         }
         final int newTop = ActionBar.getCurrentActionBarHeight() + (actionBar.getOccupyStatusBar() ? AndroidUtilities.statusBarHeight : 0);
-        actionsView.isOpeningLayout = openAnimationInProgress || updatingProfileInfoRows || profileInfoLayoutListener != null;
+        actionsView.isOpeningLayout = openAnimationInProgress || !fragmentOpened;
+        if (updatingProfileInfoRows || profileInfoLayoutListener != null) actionsView.snapGeometryOnNextDraw();
 
         if (openAnimationInProgress && playProfileAnimation == 2 && avatarContainer != null) {
             float vh = avatarContainer.getHeight() * avatarContainer.getScaleY();
@@ -16014,6 +16103,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (fragment instanceof ChatActivityInterface) {
                 prevFragment = fragment;
             }
+            if (fragment instanceof MainTabsActivity) {
+                fragment = ((MainTabsActivity) fragment).getDialogsActivity();
+            }
             if (fragment instanceof DialogsActivity) {  //
                 DialogsActivity dialogsActivity = (DialogsActivity) fragment;
                 if (dialogsActivity.rightSlidingDialogContainer != null && dialogsActivity.rightSlidingDialogContainer.currentFragment instanceof ChatActivityInterface) {
@@ -16144,10 +16236,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         : LocaleController.formatUserStatusIOS(currentAccount, user, isOnline,
                                 profileStatusMadeShorter)) + tgPremium;
                 hiddenStatusButton = user != null && !isOnline[0] && !getUserConfig().isPremium() && user.status != null && (user.status instanceof TLRPC.TL_userStatusRecently || user.status instanceof TLRPC.TL_userStatusLastMonth || user.status instanceof TLRPC.TL_userStatusLastWeek) && user.status.by_me;
-                if (onlineTextView[1] != null && !mediaHeaderVisible) {
+                if (onlineTextView[1] != null) {
                     int key = isOnline[0] && peerColor == null ? Theme.key_profile_status : Theme.key_actionBarDefaultSubtitle;
                     onlineTextView[1].setTag(key);
-                    if (!isPulledDown) {
+                    if (!mediaHeaderVisible && !isPulledDown) {
                         onlineTextView[1].setTextColor(applyPeerColor(getThemedColor(key), true, isOnline[0]));
                     }
                 }
@@ -16274,7 +16366,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         && nameTextView[a].getRightDrawable() != nimarkoBadgeDrawable[a]) {
                     final SimpleTextView textView = nameTextView[a];
                     nameTextView[a].setRightDrawableOnClick(v -> {
-                        if (user.emoji_status instanceof TLRPC.TL_emojiStatusCollectible) {
+                        if (DialogObject.isEmojiStatusCollectible(user.emoji_status)) {
                             TLRPC.TL_emojiStatusCollectible status = (TLRPC.TL_emojiStatusCollectible) user.emoji_status;
                             if (status != null) {
                                 Browser.openUrl(getContext(), "https://" + getMessagesController().linkPrefix + "/nft/" + status.slug);
@@ -17630,7 +17722,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         onlineTextView[1].setVisibility(View.VISIBLE);
         onlineTextView[3].setVisibility(View.VISIBLE);
 
-        actionBar.onSearchFieldVisibilityChanged(searchTransitionProgress > 0.5f);
+        actionBar.onSearchFieldVisibilityChanged(searchTransitionProgress < 0.5f);
         int itemVisibility = searchTransitionProgress > 0.5f ? View.VISIBLE : View.GONE;
         if (otherItem != null) {
             otherItem.setVisibility(itemVisibility);
@@ -20697,7 +20789,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         pendingProfileRowsUpdate = true;
         pendingProfileRowsOnlineCount |= updateOnlineCount;
         pendingProfileRowsSelectedMediaText |= updateSelectedMediaText;
-        if (listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
+        if (profileInfoTouchInProgress || listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
             return;
         }
         if (transitionAnimationInProress || openAnimationInProgress || isPaused && fragmentOpened
@@ -20747,12 +20839,12 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void flushPendingProfileRowsUpdate() {
         cancelProfileRowsUpdate();
-        if (profileLifecycleDestroyed || !pendingProfileRowsUpdate && !pendingProfileHeaderUpdate
+        if (profileLifecycleDestroyed || !pendingProfileRowsUpdate && !pendingProfileHeaderUpdate && pendingProfileChannelContentUpdate == null
                 || transitionAnimationInProress || openAnimationInProgress || isPaused && fragmentOpened
                 || profileInfoReveal != null) {
             return;
         }
-        if (listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
+        if (profileInfoTouchInProgress || listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
             return;
         }
         if (listView != null && (listView.isComputingLayout() || listView.isInLayout())) {
@@ -20785,6 +20877,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         if (updateSelectedMediaText) {
             updateSelectedMediaTabText();
         }
+        notifyPendingProfileChannelContent();
     }
 
     private void updateProfileRows(boolean updateOnlineCount) {
@@ -20795,7 +20888,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             requestProfileRowsUpdate(updateOnlineCount, false);
             return;
         }
-        if (listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
+        if (profileInfoTouchInProgress || listView != null && (listView.isTouchInteractionActive() || listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE)) {
             pendingProfileRowsUpdate = true;
             pendingProfileRowsOnlineCount |= updateOnlineCount;
             return;
@@ -21210,6 +21303,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         createBirthdayEffect();
         if (refresh) {
             refreshVisibleProfile();
+        }
+        if (hasMainTabs && !fragmentOpened && fragmentView != null) {
+            fragmentOpened = true;
+            invalidateScroll = true;
+            fragmentView.requestLayout();
         }
     }
 
@@ -21764,14 +21862,20 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean canRevealProfileInfo() {
+        return canRevealProfileInfo(false);
+    }
+
+    private boolean canRevealProfileInfo(boolean allowExpandedAvatar) {
         return (userId != 0 || chatId != 0) && !isSettings() && SharedConfig.animationsEnabled()
                 && fragmentOpened && isFragmentOpened && !isPaused && !profileLifecycleDestroyed
                 && !transitionAnimationInProress && !openAnimationInProgress && !profileTransitionInProgress
-                && !profileSlideInProgress && !openingAvatar && !collapsePagerPending && !searchMode && !isPulledDown
+                && !profileSlideInProgress && !openingAvatar && !collapsePagerPending && !searchMode
+                && (allowExpandedAvatar || !isPulledDown)
                 && (expandAnimator == null || !expandAnimator.isRunning())
                 && listView != null && listView.isAttachedToWindow() && listView.isShown()
                 && listView.hasWindowFocus() && listView.getWidth() > 0 && listView.getHeight() > 0
-                && !listView.isTouchInteractionActive() && listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE;
+                && !profileInfoTouchInProgress && !listView.isTouchInteractionActive()
+                && listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE;
     }
 
     private boolean isProfileChannelPreviewPresentationVisible() {
@@ -21781,7 +21885,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 && (expandAnimator == null || !expandAnimator.isRunning())
                 && listView != null && listView.isAttachedToWindow() && listView.isShown()
                 && listView.hasWindowFocus() && listView.getWidth() > 0 && listView.getHeight() > 0
-                && !listView.isTouchInteractionActive() && listView.getScrollState() == RecyclerView.SCROLL_STATE_IDLE
                 && isProfileChannelPreviewBodyExposed();
     }
 
@@ -21855,7 +21958,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private boolean canStartProfileChannelPreviewReveal() {
-        return canRevealProfileInfo() && profileInfoLayoutListener == null
+        return canRevealProfileInfo(true) && profileInfoLayoutListener == null
                 && profileChannelPreviewRowAlpha() >= 1f
                 && (parentLayout == null || !parentLayout.isTransitionAnimationInProgress());
     }
@@ -21876,6 +21979,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void cancelProfileInfoReveal() {
+        cancelProfileInfoReveal(false);
+    }
+
+    private void cancelProfileInfoReveal(boolean settleActions) {
         ProfileInfoReveal reveal = profileInfoReveal;
         profileInfoReveal = null;
         if (reveal != null) {
@@ -21891,25 +21998,37 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 reveal.animator.removeAllUpdateListeners();
                 reveal.animator.cancel();
             }
-            if (actionsView != null) actionsView.snapPositionsOnNextDraw();
+            if (actionsView != null) {
+                if (settleActions) actionsView.snapPositionsOnNextDraw();
+                else actionsView.snapGeometryOnNextDraw();
+            }
             if (fragmentView != null) fragmentView.invalidate();
             if (listView != null) listView.invalidate();
             if (avatarContainer2 != null) avatarContainer2.invalidate();
             if (topView != null) topView.invalidate();
             invalidateProfileChannelPreview();
-            if (!profileLifecycleDestroyed && (pendingProfileRowsUpdate || pendingProfileHeaderUpdate)) postProfileRowsUpdate();
+            if (!profileLifecycleDestroyed && (pendingProfileRowsUpdate || pendingProfileHeaderUpdate || pendingProfileChannelContentUpdate != null)) postProfileRowsUpdate();
         }
     }
 
     private void finishProfileInfoPresentation() {
+        profileInfoTouchInProgress = false;
+        finishProfileInfoPresentation(true);
+    }
+
+    private void finishProfileInfoPresentation(boolean finishChannelPreview) {
         pendingMusicHeaderLayoutAnchor = null;
-        cancelProfileInfoReveal();
+        cancelProfileInfoReveal(finishChannelPreview);
+        if (finishChannelPreview) {
         profileChannelPreviewState.finish();
+            if (actionsView != null) actionsView.snapPositionsOnNextDraw();
+        }
+        else profileChannelPreviewState.onPresentationChanged();
         if (musicView != null) musicView.resetProfileAnimations();
         if (listView == null) return;
         for (int i = 0; i < listView.getChildCount(); i++) {
             View child = listView.getChildAt(i);
-            if (child instanceof ProfileChannelCell) ((ProfileChannelCell) child).finishPreviewReveal();
+            if (finishChannelPreview && child instanceof ProfileChannelCell) ((ProfileChannelCell) child).finishPreviewReveal();
             if (child instanceof AboutLinkCell) ((AboutLinkCell) child).finishProfileTextReplacement();
         }
     }
@@ -22285,8 +22404,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             ((ClippedListView) listView).captureSections(profileInfoReveal);
         }
         if (actionsView != null) {
-            actionsView.isOpeningLayout = true;
-            if (profileInfoReveal == null) actionsView.snapPositionsOnNextDraw();
+            actionsView.isOpeningLayout = openAnimationInProgress || !fragmentOpened;
+            actionsView.snapGeometryOnNextDraw();
         }
         profileInfoLayoutListener = () -> {
             if (listView == view && (view.isComputingLayout() || view.isLayoutRequested()
@@ -22318,9 +22437,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         profileInfoItemAnimator = null;
         profileInfoLayoutView = null;
         wakeProfileStatusCrossfades();
-        if (actionsView != null) actionsView.isOpeningLayout = openAnimationInProgress;
+        if (actionsView != null) actionsView.isOpeningLayout = openAnimationInProgress || !fragmentOpened;
         if (present && profileInfoReveal != null) profileInfoReveal.start();
         if (present) invalidateProfileChannelPreview();
+        if (pendingProfileChannelContentUpdate != null && profileInfoReveal == null) postProfileRowsUpdate();
     }
 
     public boolean isProfileMediaPresentationVisible() {

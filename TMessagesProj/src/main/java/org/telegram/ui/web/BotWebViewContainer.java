@@ -244,6 +244,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     private String currentPaymentSlug;
 
     private AlertDialog currentDialog;
+    private final ArrayList<AlertDialog> webRequestDialogs = new ArrayList<>();
     private int dialogSequentialOpenTimes;
     private long lastDialogClosed;
     private long lastDialogCooldownTime;
@@ -400,7 +401,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         this.currentAccount = currentAccount;
         preserving = false;
         if (bot) {
-            documentGeneration++;
+            invalidateWebRequestContexts();
             restrictBridgeToOrigin = sameOrigin;
             trustedOrigin = sameOrigin ? getOriginHost(url) : null;
         }
@@ -1125,12 +1126,19 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     }
 
     public void reload() {
+        if (bot) {
+            invalidateWebRequestContexts();
+        }
         runWebViewStartWhenReady(currentAccount, () -> {
             if (isSettingsButtonVisible) {
                 isSettingsButtonVisible = false;
                 if (delegate != null) {
                     delegate.onSetSettingsButtonVisible(isSettingsButtonVisible);
                 }
+            }
+
+            if (bot) {
+                invalidateWebRequestContexts();
             }
 
             checkCreateWebView();
@@ -1158,11 +1166,11 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
     public void loadUrl(int currentAccount, String url, boolean sameOrigin) {
         this.currentAccount = currentAccount;
         if (bot) {
-            documentGeneration++;
+            invalidateWebRequestContexts();
         }
         runWebViewStartWhenReady(currentAccount, () -> {
             if (bot) {
-                documentGeneration++;
+                invalidateWebRequestContexts();
                 restrictBridgeToOrigin = sameOrigin;
                 trustedOrigin = sameOrigin ? getOriginHost(url) : null;
                 if (webView != null) {
@@ -1266,7 +1274,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         preserving = true;
         if (bot) {
             notifyEvent("visibility_changed", obj("is_visible", false));
-            documentGeneration++;
+            invalidateWebRequestContexts();
         }
         if (webView != null) {
             webView.setContainers(null, null);
@@ -1289,6 +1297,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         webView = null;
         preserving = false;
 
+        dismissWebRequestDialogs();
         if (mFilePathCallback != null) {
             try {
                 mFilePathCallback.onReceiveValue(null);
@@ -1383,6 +1392,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
         cancelPendingWebViewStart();
         if (browserContentReveal != null) browserContentReveal.clear();
         webView = null;
+        dismissWebRequestDialogs();
     }
 
     public boolean isBackButtonVisible() {
@@ -1491,6 +1501,41 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 || !TextUtils.isEmpty(context.origin)
                 && TextUtils.equals(context.origin, trustedOrigin)
                 && TextUtils.equals(context.origin, getOriginHost()));
+    }
+
+    private static boolean isWebRequestAccountCurrent(int account, long userId) {
+        final UserConfig config = UserConfig.getInstance(account);
+        return userId > 0 && config.isClientActivated() && config.getClientUserId() == userId;
+    }
+
+    private boolean isRequestContextCurrent(WebRequestContext context, int account, long userId, long botId) {
+        return isRequestContextCurrent(context)
+                && currentAccount == account
+                && botUser != null && botUser.id == botId
+                && isWebRequestAccountCurrent(account, userId);
+    }
+
+    private void invalidateWebRequestContexts() {
+        documentGeneration++;
+        dismissWebRequestDialogs();
+    }
+
+    private void dismissWebRequestDialogs() {
+        if (webRequestDialogs.isEmpty()) {
+            return;
+        }
+        final ArrayList<AlertDialog> dialogs = new ArrayList<>(webRequestDialogs);
+        webRequestDialogs.clear();
+        if (dialogs.contains(currentDialog)) {
+            currentDialog = null;
+        }
+        for (AlertDialog dialog : dialogs) {
+            try {
+                dialog.dismiss();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
     }
     private boolean isTrustedDocumentCurrent() {
         if (webView == null) {
@@ -1958,6 +2003,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         PopupButton btn = buttonsList.get(0);
                         builder.setPositiveButton(btn.text, (dialog, which) -> {
                             dialog.dismiss();
+                            if (!isRequestContextCurrent(requestContext)) return;
                             try {
                                 lastClickMs = System.currentTimeMillis();
                                 notifyEvent(requestContext, "popup_closed", new JSONObject().put("button_id", btn.id));
@@ -1972,6 +2018,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         PopupButton btn = buttonsList.get(1);
                         builder.setNegativeButton(btn.text, (dialog, which) -> {
                             dialog.dismiss();
+                            if (!isRequestContextCurrent(requestContext)) return;
                             try {
                                 lastClickMs = System.currentTimeMillis();
                                 notifyEvent(requestContext, "popup_closed", new JSONObject().put("button_id", btn.id));
@@ -1986,6 +2033,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                         PopupButton btn = buttonsList.get(2);
                         builder.setNeutralButton(btn.text, (dialog, which) -> {
                             dialog.dismiss();
+                            if (!isRequestContextCurrent(requestContext)) return;
                             try {
                                 lastClickMs = System.currentTimeMillis();
                                 notifyEvent(requestContext, "popup_closed", new JSONObject().put("button_id", btn.id));
@@ -1995,19 +2043,25 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             }
                         });
                     }
-                    builder.setOnDismissListener(dialog -> {
+                    final AlertDialog popupDialog = builder.create();
+                    popupDialog.setOnDismissListener(dialog -> {
+                        webRequestDialogs.remove(popupDialog);
+                        if (currentDialog == popupDialog) {
+                            currentDialog = null;
+                        }
+                        lastDialogClosed = System.currentTimeMillis();
                         if (!notifiedClose.get()) {
                             notifyEvent(requestContext, "popup_closed", new JSONObject());
                         }
-                        currentDialog = null;
-                        lastDialogClosed = System.currentTimeMillis();
                     });
 
-                    currentDialog = builder.show();
+                    currentDialog = popupDialog;
+                    webRequestDialogs.add(popupDialog);
+                    popupDialog.show();
                     if (buttonsList.size() >= 1) {
                         PopupButton btn = buttonsList.get(0);
                         if (btn.textColorKey >= 0) {
-                            TextView textView = (TextView) currentDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                            TextView textView = (TextView) popupDialog.getButton(AlertDialog.BUTTON_POSITIVE);
                             if (textView != null) {
                                 textView.setTextColor(getColor(btn.textColorKey));
                             }
@@ -2016,7 +2070,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     if (buttonsList.size() >= 2) {
                         PopupButton btn = buttonsList.get(1);
                         if (btn.textColorKey >= 0) {
-                            TextView textView = (TextView) currentDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+                            TextView textView = (TextView) popupDialog.getButton(AlertDialog.BUTTON_NEGATIVE);
                             if (textView != null) {
                                 textView.setTextColor(getColor(btn.textColorKey));
                             }
@@ -2025,7 +2079,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     if (buttonsList.size() == 3) {
                         PopupButton btn = buttonsList.get(2);
                         if (btn.textColorKey >= 0) {
-                            TextView textView = (TextView) currentDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+                            TextView textView = (TextView) popupDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
                             if (textView != null) {
                                 textView.setTextColor(getColor(btn.textColorKey));
                             }
@@ -2347,6 +2401,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 break;
             }
             case "web_app_request_write_access": {
+                if (botUser == null) return;
                 if (ignoreDialog(3)) {
                     try {
                         JSONObject data = new JSONObject();
@@ -2359,10 +2414,16 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 }
 
                 final int account = currentAccount;
+                final long userId = UserConfig.getInstance(account).getClientUserId();
+                final long botId = botUser.id;
+                final TLRPC.InputUser inputBot = MessagesController.getInstance(account).getInputUser(botUser);
                 final MyWebView finalWebView = webView;
                 TL_bots.canSendMessage req = new TL_bots.canSendMessage();
-                req.bot = MessagesController.getInstance(currentAccount).getInputUser(botUser);
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                req.bot = inputBot;
+                ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                    if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                        return;
+                    }
                     if (res instanceof TLRPC.TL_boolTrue) {
                         try {
                             JSONObject data = new JSONObject();
@@ -2378,30 +2439,47 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     }
 
                     final String[] status = new String[] { "cancelled" };
-                    showDialog(3, new AlertDialog.Builder(getContext())
+                    final AlertDialog writeDialog = new AlertDialog.Builder(getContext())
                         .setTitle(getString(R.string.BotWebViewRequestWriteTitle))
                         .setMessage(getString(R.string.BotWebViewRequestWriteMessage))
                         .setPositiveButton(getString(R.string.BotWebViewRequestAllow), (di, w) -> {
+                            if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                                di.dismiss();
+                                return;
+                            }
                             TL_bots.allowSendMessage req2 = new TL_bots.allowSendMessage();
-                            req2.bot = MessagesController.getInstance(currentAccount).getInputUser(botUser);
-                            ConnectionsManager.getInstance(currentAccount).sendRequest(req2, (res2, err2) -> AndroidUtilities.runOnUIThread(() -> {
+                            req2.bot = inputBot;
+                            ConnectionsManager.getInstance(account).sendRequest(req2, (res2, err2) -> {
+                                if (res2 instanceof TLRPC.Updates) {
+                                    Utilities.stageQueue.postRunnable(() -> {
+                                        if (isWebRequestAccountCurrent(account, userId)) {
+                                            MessagesController.getInstance(account).processUpdates((TLRPC.Updates) res2, false);
+                                        }
+                                    });
+                                }
+                                AndroidUtilities.runOnUIThread(() -> {
+                                    if (isRequestContextCurrent(requestContext, account, userId, botId)) {
                                 if (res2 != null) {
                                     status[0] = "allowed";
-                                    if (res2 instanceof TLRPC.Updates) {
-                                        MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) res2, false);
-                                    }
                                 }
                                 if (err2 != null) {
                                     unknownError(err2.text);
                                 }
+                                    }
                                 di.dismiss();
-                            }));
+                                });
+                            });
                         })
                         .setNegativeButton(getString(R.string.BotWebViewRequestDontAllow), (di, w) -> {
                             di.dismiss();
                         })
-                        .create(),
-                        () -> {
+                        .create();
+                    webRequestDialogs.add(writeDialog);
+                    if (!showDialog(3, writeDialog, () -> {
+                        webRequestDialogs.remove(writeDialog);
+                        if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                            return;
+                        }
                             try {
                                 JSONObject data = new JSONObject();
                                 data.put("status", status[0]);
@@ -2409,8 +2487,10 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                             } catch (Exception e) {
                                 FileLog.e(e);
                             }
-                        }
-                    );
+                    })) {
+                        webRequestDialogs.remove(writeDialog);
+                        notifyEvent(requestContext, "write_access_requested", obj("status", "cancelled"));
+                    }
                 }));
                 break;
             }
@@ -3063,9 +3143,15 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     return;
                 }
 
-                if (downloads == null) {
-                    downloads = BotDownloads.get(getContext(), currentAccount, botUser.id);
+                final int account = currentAccount;
+                final long userId = UserConfig.getInstance(account).getClientUserId();
+                final long botId = botUser.id;
+                final String botName = UserObject.getUserName(botUser);
+                final TLRPC.InputUser inputBot = MessagesController.getInstance(account).getInputUser(botUser);
+                if (downloads == null || downloads.currentAccount != account || downloads.botId != botId) {
+                    downloads = BotDownloads.get(getContext(), account, botId);
                 }
+                final BotDownloads requestDownloads = downloads;
                 String url, file_name;
                 try {
                     JSONObject o = new JSONObject(eventData);
@@ -3076,8 +3162,11 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                     notifyEvent(requestContext, "file_download_requested", obj("status", "cancelled"));
                     return;
                 }
-                if (downloads.getCached(url) != null) {
-                    downloads.download(url, file_name);
+                if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                    return;
+                }
+                if (requestDownloads.getCached(url) != null) {
+                    requestDownloads.download(url, file_name);
                     notifyEvent(requestContext, "file_download_requested", obj("status", "downloading"));
                     return;
                 }
@@ -3085,23 +3174,34 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 final String finalUrl = url;
                 final String finalFileName = file_name;
                 final TL_bots.checkDownloadFileParams req = new TL_bots.checkDownloadFileParams();
-                req.bot = MessagesController.getInstance(currentAccount).getInputUser(botUser);
+                req.bot = inputBot;
                 req.file_name = file_name;
                 req.url = url;
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                    if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                        return;
+                    }
                     if (!(res instanceof TLRPC.TL_boolTrue)) {
                         notifyEvent(requestContext, "file_download_requested", obj("status", "cancelled"));
                         return;
                     }
-                    BotDownloads.showAlert(getContext(), finalUrl, finalFileName, UserObject.getUserName(botUser), status -> {
+                    final AlertDialog[] downloadDialog = new AlertDialog[1];
+                    downloadDialog[0] = BotDownloads.showAlert(getContext(), finalUrl, finalFileName, botName, status -> {
+                        webRequestDialogs.remove(downloadDialog[0]);
+                        if (!isRequestContextCurrent(requestContext, account, userId, botId)) {
+                            return;
+                        }
                         if (!status) {
                             notifyEvent(requestContext, "file_download_requested", obj("status", "cancelled"));
                             return;
                         }
 
-                        downloads.download(finalUrl, finalFileName);
+                        requestDownloads.download(finalUrl, finalFileName);
                         notifyEvent(requestContext, "file_download_requested", obj("status", "downloading"));
-                    });
+                    }, 0, "");
+                    if (downloadDialog[0] != null && !downloadDialog[0].isDismissed()) {
+                        webRequestDialogs.add(downloadDialog[0]);
+                    }
                 }));
                 break;
             }
@@ -3709,10 +3809,12 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
             return false;
         }
         dialog.setOnDismissListener(di -> {
+            if (currentDialog == dialog) {
+                currentDialog = null;
+            }
             if (onDismiss != null) {
                 onDismiss.run();
             }
-            currentDialog = null;
         });
         currentDialog = dialog;
         currentDialog.setDismissDialogByButtons(false);
@@ -4643,7 +4745,7 @@ public abstract class BotWebViewContainer extends FrameLayout implements Notific
                 @Override
                 public void onPageStarted(WebView view, String url, Bitmap favicon) {
                     if (bot && botWebViewContainer != null) {
-                        botWebViewContainer.documentGeneration++;
+                        botWebViewContainer.invalidateWebRequestContexts();
                     }
                     if (botWebViewContainer == null || !botWebViewContainer.isVerifyingAge()) {
                         getSettings().setMediaPlaybackRequiresUserGesture(true);

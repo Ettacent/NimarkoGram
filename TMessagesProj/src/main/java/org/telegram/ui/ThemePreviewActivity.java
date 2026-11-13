@@ -297,6 +297,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     private ArrayList<Object> patterns;
     private HashMap<Long, Object> patternsDict = new HashMap<>();
     private TLRPC.TL_wallPaper selectedPattern;
+    private boolean canRestoreInitialPattern = true;
     private TLRPC.TL_wallPaper previousSelectedPattern;
     private TLRPC.TL_wallPaper lastSelectedPattern;
     private int backgroundColor;
@@ -1694,6 +1695,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                             animateMotionChange();
                         } else if (num == 1 && (screenType == SCREEN_TYPE_ACCENT_COLOR || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)) {
                             if (backgroundCheckBoxView[1].isChecked()) {
+                                canRestoreInitialPattern = false;
                                 lastSelectedPattern = selectedPattern;
                                 backgroundImage.setImageDrawable(null);
                                 selectedPattern = null;
@@ -1937,6 +1939,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                                 setBackgroundColor(previousBackgroundGradientColor1, 1, true, true);
                                 setBackgroundColor(previousBackgroundColor, 0, true, true);
                             } else {
+                                canRestoreInitialPattern = false;
                                 selectedPattern = previousSelectedPattern;
                                 if (selectedPattern == null) {
                                     backgroundImage.setImageDrawable(null);
@@ -3041,6 +3044,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         if (wallPaper == null) {
             return;
         }
+        canRestoreInitialPattern = false;
         if (valueAnimator != null) {
             valueAnimator.removeAllListeners();
             valueAnimator.cancel();
@@ -3665,12 +3669,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         patterns.add(wallPaper);
                         patternsDict.put(wallPaper.document.id, wallPaper);
                     }
-                    if (accent != null && accent.patternSlug != null && accent.patternSlug.equals(wallPaper.slug)) {
+                    if (canRestoreInitialPattern && accent != null && accent.patternSlug != null && accent.patternSlug.equals(wallPaper.slug)) {
                         selectedPattern = (TLRPC.TL_wallPaper) wallPaper;
                         added = true;
                         setCurrentImage(false);
                         updateButtonState(false, false);
-                    } else if (accent == null && selectedPattern != null && selectedPattern.slug != null && selectedPattern.slug.equals(wallPaper.slug)) {
+                    } else if (selectedPattern != null && selectedPattern.slug != null && selectedPattern.slug.equals(wallPaper.slug)) {
                         added = true;
                     }
                 }
@@ -3706,12 +3710,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                                 patterns.add(wallPaper);
                                 patternsDict.put(wallPaper.document.id, wallPaper);
                             }
-                            if (accent != null && accent.patternSlug != null && accent.patternSlug.equals(wallPaper.slug)) {
+                            if (canRestoreInitialPattern && accent != null && accent.patternSlug != null && accent.patternSlug.equals(wallPaper.slug)) {
                                 selectedPattern = wallPaper;
                                 added2 = true;
                                 setCurrentImage(false);
                                 updateButtonState(false, false);
-                            } else if (accent == null && selectedPattern != null && selectedPattern.slug != null && selectedPattern.slug.equals(wallPaper.slug)) {
+                            } else if (selectedPattern != null && selectedPattern.slug != null && selectedPattern.slug.equals(wallPaper.slug)) {
                                 added2 = true;
                             }
                         }
@@ -3724,13 +3728,14 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     }
                     MessagesStorage.getInstance(currentAccount).putWallpapers(res.wallpapers, 1);
                 }
-                if (selectedPattern == null && accent != null && !TextUtils.isEmpty(accent.patternSlug)) {
+                if (canRestoreInitialPattern && selectedPattern == null && accent != null && !TextUtils.isEmpty(accent.patternSlug)) {
+                    String patternSlug = accent.patternSlug;
                     TL_account.getWallPaper req2 = new TL_account.getWallPaper();
                     TLRPC.TL_inputWallPaperSlug inputWallPaperSlug = new TLRPC.TL_inputWallPaperSlug();
-                    inputWallPaperSlug.slug = accent.patternSlug;
+                    inputWallPaperSlug.slug = patternSlug;
                     req2.wallpaper = inputWallPaperSlug;
                     int reqId2 = getConnectionsManager().sendRequest(req2, (response1, error1) -> AndroidUtilities.runOnUIThread(() -> {
-                        if (response1 instanceof TLRPC.TL_wallPaper) {
+                        if (canRestoreInitialPattern && selectedPattern == null && TextUtils.equals(accent.patternSlug, patternSlug) && response1 instanceof TLRPC.TL_wallPaper) {
                             TLRPC.TL_wallPaper wallPaper = (TLRPC.TL_wallPaper) response1;
                             if (wallPaper.pattern) {
                                 selectedPattern = wallPaper;

@@ -8,8 +8,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.InstallSourceInfo;
 import android.content.pm.PackageInfo;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Base64;
@@ -66,6 +73,7 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -73,14 +81,20 @@ import java.util.List;
 import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
 public class ConnectionsManager extends BaseController {
 
@@ -156,6 +170,16 @@ public class ConnectionsManager extends BaseController {
 
     private volatile boolean forceTryIpV6;
 
+    private volatile boolean nativeInitialized;
+    private volatile long nativeInitEpoch;
+    private volatile int lastNetworkType;
+    private volatile boolean lastNetworkSlow;
+    private volatile long ipAppliedGeneration = -1;
+    private volatile long ipAppliedInitEpoch = -1;
+    private volatile long ipAppliedRequestEpoch = -1;
+    private volatile boolean ipAppliedOnline;
+    private final AtomicLong connectionUpdateEpoch = new AtomicLong();
+    private static final AtomicLongArray NATIVE_INIT_EPOCHS = new AtomicLongArray(UserConfig.MAX_ACCOUNT_COUNT);
     static {
         ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(CORE_POOL_SIZE, MAXIMUM_POOL_SIZE, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, sPoolWorkQueue, sThreadFactory);
         threadPoolExecutor.allowCoreThreadTimeOut(true);
@@ -163,10 +187,14 @@ public class ConnectionsManager extends BaseController {
     }
 
     public void setForceTryIpV6(boolean forceTryIpV6) {
-        if (this.forceTryIpV6 != forceTryIpV6) {
+        final long initEpoch, requestEpoch;
+        synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+            if (this.forceTryIpV6 == forceTryIpV6) return;
             this.forceTryIpV6 = forceTryIpV6;
-            checkConnection();
+            initEpoch = nativeInitEpoch;
+            requestEpoch = connectionUpdateEpoch.incrementAndGet();
         }
+        IpStrategyCoordinator.request(this, initEpoch, requestEpoch, Looper.myLooper() == Looper.getMainLooper());
     }
 
     public void discardConnection(int dcId, int connectionType) {
@@ -207,16 +235,57 @@ public class ConnectionsManager extends BaseController {
 
     private static int lastClassGuid = 1;
     private static final ConnectionsManager[] Instance = new ConnectionsManager[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final AtomicReferenceArray<ConnectionsManager> INITIALIZED = new AtomicReferenceArray<>(UserConfig.MAX_ACCOUNT_COUNT);
+    private static final AtomicReferenceArray<Runnable> INITIALIZATION_LISTENERS = new AtomicReferenceArray<>(UserConfig.MAX_ACCOUNT_COUNT);
+
+    public static ConnectionsManager getInstanceIfInitialized(int account) {
+        if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) return null;
+        ConnectionsManager manager = INITIALIZED.get(account);
+        return manager != null && manager.nativeInitialized
+                && manager.nativeInitEpoch == NATIVE_INIT_EPOCHS.get(account) ? manager : null;
+    }
+
+    public static void setInitializationListener(int account, Runnable listener) {
+        if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT) return;
+        INITIALIZATION_LISTENERS.set(account, listener);
+    }
+
+    public static void clearInitializationListener(int account, Runnable listener) {
+        if (account >= 0 && account < UserConfig.MAX_ACCOUNT_COUNT) {
+            INITIALIZATION_LISTENERS.compareAndSet(account, listener, null);
+        }
+    }
+
+    public static void dispatchInitializationListener(int account) {
+        if (account < 0 || account >= UserConfig.MAX_ACCOUNT_COUNT || INITIALIZATION_LISTENERS.get(account) == null) return;
+        ConnectionsManager manager = getInstanceIfInitialized(account);
+        if (manager == null) return;
+        try {
+            if (manager.getCurrentTime() <= 0) return;
+        } catch (Throwable ignored) { return; }
+        Runnable listener = INITIALIZATION_LISTENERS.getAndSet(account, null);
+        if (listener != null) {
+            try {
+                if (!Utilities.globalQueue.postRunnable(listener)) INITIALIZATION_LISTENERS.compareAndSet(account, null, listener);
+            } catch (Throwable ignored) {
+                INITIALIZATION_LISTENERS.compareAndSet(account, null, listener);
+            }
+        }
+    }
     public static ConnectionsManager getInstance(int num) {
-        ConnectionsManager localInstance = Instance[num];
+        ConnectionsManager localInstance = INITIALIZED.get(num);
+        boolean created = false;
         if (localInstance == null) {
             synchronized (ConnectionsManager.class) {
                 localInstance = Instance[num];
                 if (localInstance == null) {
                     Instance[num] = localInstance = new ConnectionsManager(num);
                 }
+                INITIALIZED.set(num, localInstance);
+                created = true;
             }
         }
+        if (created) dispatchInitializationListener(num);
         return localInstance;
     }
 
@@ -391,6 +460,9 @@ public class ConnectionsManager extends BaseController {
     }
 
 
+    public interface RequestDelegateWithCancellation extends RequestDelegate {
+        void onCancelled();
+    }
     public int sendRequest(TLObject object, RequestDelegate completionBlock) {
         return sendRequest(object, completionBlock, null, 0);
     }
@@ -417,16 +489,24 @@ public class ConnectionsManager extends BaseController {
 
     public int sendRequestSync(final TLObject object, final RequestDelegate onComplete, final QuickAckDelegate onQuickAck, final WriteToSocketDelegate onWriteToSocket, final int flags, final int datacenterId, final int connectionType, final boolean immediate) {
         final int requestToken = lastRequestToken.getAndIncrement();
-        sendRequestInternal(object, onComplete, null, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
+        final RequestDelegate callback = prepareRequestCallback(onComplete);
+        sendRequestInternal(object, callback, null, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
         return requestToken;
     }
 
     public int sendRequest(final TLObject object, final RequestDelegate onComplete, final RequestDelegateTimestamp onCompleteTimestamp, final QuickAckDelegate onQuickAck, final WriteToSocketDelegate onWriteToSocket, final int flags, final int datacenterId, final int connectionType, final boolean immediate) {
         final int requestToken = lastRequestToken.getAndIncrement();
+        final RequestDelegate callback = prepareRequestCallback(onComplete);
+        try {
         if (!Utilities.stageQueue.postRunnable(() -> {
-            sendRequestInternal(object, onComplete, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
+                sendRequestInternal(object, callback, onCompleteTimestamp, onQuickAck, onWriteToSocket, flags, datacenterId, connectionType, immediate, requestToken);
         })) {
-            cancelManagedRequestCallback(onComplete);
+                cancelManagedRequestCallback(callback);
+            }
+        } catch (RuntimeException e) {
+            RequestCancellation cancellation = requestCancellation(callback);
+            if (cancellation != null) cancellation.cancel();
+            throw e;
         }
         return requestToken;
     }
@@ -448,20 +528,54 @@ public class ConnectionsManager extends BaseController {
                 app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer);
     }
 
+    private static final class RequestCancellation {
+        final RequestDelegateWithCancellation callback;
+        final AtomicBoolean completed = new AtomicBoolean();
+
+        RequestCancellation(RequestDelegateWithCancellation callback) {
+            this.callback = callback;
+        }
+
+        void cancel() {
+            if (!completed.compareAndSet(false, true)) return;
+            try {
+                callback.onCancelled();
+            } catch (Throwable t) {
+                FileLog.e(t);
+            }
+        }
+    }
     private static final class ManagedRequestDelegate implements RequestDelegate {
         final ManagedResponseCallback callback;
         final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner;
 
+        final RequestCancellation cancellation;
         ManagedRequestDelegate(ManagedResponseCallback callback,
-                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner) {
+                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner,
+                RequestCancellation cancellation) {
             this.callback = callback;
             this.owner = owner;
+            this.cancellation = cancellation;
         }
 
         @Override
         public void run(TLObject response, TLRPC.TL_error error) {
             callback.run(response, error, null);
         }
+    }
+
+    private static RequestDelegate prepareRequestCallback(RequestDelegate callback) {
+        if (!(callback instanceof RequestDelegateWithCancellation)) return callback;
+        final RequestCancellation cancellation = new RequestCancellation((RequestDelegateWithCancellation) callback);
+        return new ManagedRequestDelegate((response, error, producer) -> {
+            if (cancellation.completed.compareAndSet(false, true)) {
+                runManagedResponse(callback, response, error, producer);
+            }
+        }, managedRequestOwner(callback), cancellation);
+    }
+
+    private static RequestCancellation requestCancellation(RequestDelegate callback) {
+        return callback instanceof ManagedRequestDelegate ? ((ManagedRequestDelegate) callback).cancellation : null;
     }
 
     private static void runManagedResponse(RequestDelegate callback, TLObject response,
@@ -501,8 +615,11 @@ public class ConnectionsManager extends BaseController {
 
     private static void cancelManagedRequestCallback(RequestDelegate callback) {
         app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner = managedRequestOwner(callback);
-        if (owner != null) {
-            owner.cancel();
+        try {
+            if (owner != null) owner.cancel();
+        } finally {
+            RequestCancellation cancellation = requestCancellation(callback);
+            if (cancellation != null) cancellation.cancel();
         }
     }
 
@@ -527,6 +644,7 @@ public class ConnectionsManager extends BaseController {
         final String finalRequestName = requestName;
         final TLObject object = hookedObject;
         final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner = managedRequestOwner(userOnComplete);
+        final RequestCancellation cancellation = requestCancellation(userOnComplete);
         final ManagedResponseCallback postHookCallback = (userOnComplete == null) ? null : (response, error, producer) -> {
             try {
                 app.nimarkogram.messenger.plugins.hooks.PluginsHooks.PostRequestResult post =
@@ -545,15 +663,15 @@ public class ConnectionsManager extends BaseController {
             runManagedResponse(userOnComplete, response, error, producer);
         };
         final RequestDelegate onComplete = userOnComplete == null ? null
-                : releaseOwner == null ? (response, error) -> postHookCallback.run(response, error, null)
-                : new ManagedRequestDelegate(postHookCallback, releaseOwner);
-        if (BuildVars.LOGS_ENABLED) {
-            FileLog.d("send request " + object + " with token = " + requestToken);
-        }
+                : releaseOwner == null && cancellation == null ? (response, error) -> postHookCallback.run(response, error, null)
+                : new ManagedRequestDelegate(postHookCallback, releaseOwner, cancellation);
         NativeByteBuffer buffer = null;
         boolean submitted = false;
         RequestCallbacks registeredCallbacks = null;
         try {
+            if (BuildVars.LOGS_ENABLED) {
+                FileLog.d("send request " + object + " with token = " + requestToken);
+            }
             buffer = new NativeByteBuffer(object.getObjectSize());
             object.serializeToStream(buffer);
             object.freeResources();
@@ -670,7 +788,7 @@ public class ConnectionsManager extends BaseController {
                     cancelManagedRequestCallback(onComplete);
                     FileLog.e(e);
                 }
-            }, onQuickAck, onWriteToSocket, releaseOwner);
+            }, onQuickAck, onWriteToSocket, releaseOwner, cancellation);
             int downloadSize = 0;
             if ((flags & RequestFlagDownloadByteBudget) != 0 && (connectionType & 0xffff) == ConnectionTypeDownload) {
                 if (object instanceof TLRPC.TL_upload_getFile) {
@@ -704,19 +822,21 @@ public class ConnectionsManager extends BaseController {
         public final QuickAckDelegate onQuickAck;
         public final WriteToSocketDelegate onWriteToSocket;
         public final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner;
+        public final RequestCancellation cancellation;
         public volatile Runnable onCancelled;
         public RequestCallbacks(RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
-                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner) {
+                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner, RequestCancellation cancellation) {
             this.onComplete = onComplete;
             this.onQuickAck = onQuickAck;
             this.onWriteToSocket = onWriteToSocket;
             this.releaseOwner = releaseOwner;
+            this.cancellation = cancellation;
         }
     }
 
     private RequestCallbacks listen(int requestToken, RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
-            app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner) {
-        RequestCallbacks callbacks = new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket, releaseOwner);
+            app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner, RequestCancellation cancellation) {
+        RequestCallbacks callbacks = new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket, releaseOwner, cancellation);
         requestCallbacks.put(requestToken, callbacks);
 //        FileLog.d("{rc} listen(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
         return callbacks;
@@ -742,8 +862,12 @@ public class ConnectionsManager extends BaseController {
                     callbacks.releaseOwner.cancel();
                 }
             } finally {
+                try {
+                    if (callbacks.cancellation != null) callbacks.cancellation.cancel();
+                } finally {
                 if (cancelled && callbacks.onCancelled != null) {
                     callbacks.onCancelled.run();
+                    }
                 }
             }
 //            FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
@@ -840,15 +964,12 @@ public class ConnectionsManager extends BaseController {
     }
 
     public void checkConnection() {
-        byte selectedStrategy = getIpStrategy();
-        if (BuildVars.LOGS_ENABLED) {
-            FileLog.d("selected ip strategy " + selectedStrategy);
+        final long initEpoch, requestEpoch;
+        synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+            initEpoch = nativeInitEpoch;
+            requestEpoch = connectionUpdateEpoch.incrementAndGet();
         }
-        native_setIpStrategy(currentAccount, selectedStrategy);
-        // NimarkoGram: force slow-network mode when the user opts in (uses smaller chunk sizes
-        // and a more conservative retry profile inside tgnet).
-        native_setNetworkAvailable(currentAccount, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(),
-                ApplicationLoader.isConnectionSlow() || app.nimarkogram.messenger.AppConfig.slowNetworkMode);
+        IpStrategyCoordinator.request(this, initEpoch, requestEpoch, Looper.myLooper() == Looper.getMainLooper());
     }
 
     public void setPushConnectionEnabled(boolean value) {
@@ -898,8 +1019,19 @@ public class ConnectionsManager extends BaseController {
             packageId = "";
         }
 
-        native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, ApplicationLoader.isNetworkOnline(), ApplicationLoader.getCurrentNetworkType(), SharedConfig.measureDevicePerformanceClass());
+        synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+            nativeInitialized = false;
+            ipAppliedOnline = false;
+            nativeInitEpoch = NATIVE_INIT_EPOCHS.incrementAndGet(currentAccount);
+        }
+        lastNetworkType = ApplicationLoader.getCurrentNetworkType();
+        native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, false, lastNetworkType, SharedConfig.measureDevicePerformanceClass());
+        synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+            nativeInitialized = nativeInitEpoch == NATIVE_INIT_EPOCHS.get(currentAccount);
+        }
+        WebProxyChecks.onInitChanged(currentAccount);
         checkConnection();
+        dispatchInitializationListener(currentAccount);
     }
 
     public static void setLangCode(String langCode) {
@@ -973,13 +1105,142 @@ public class ConnectionsManager extends BaseController {
             return 0;
         }
         if (settings.getType() == ProxySettings.Type.WEB) {
-            WebProxyConnectionTester.getInstance().checkProxy(settings, requestTimeDelegate, this::checkWebProxyInternal);
+            if (requestTimeDelegate != null) WebProxyChecks.enqueue(this, nativeInitEpoch, settings, requestTimeDelegate);
             return 0;
         }
         return native_checkProxy(currentAccount, settings.getAddress(), settings.getPort(), settings.getUser(), settings.getPassword(), settings.getSecret(), requestTimeDelegate);
     }
-    private void checkWebProxyInternal(ProxySettings settings, int port, RequestTimeDelegate requestTimeDelegate) {
-        native_checkProxy(currentAccount, "127.0.0.1", port, "", "", settings.getSecret(), requestTimeDelegate);
+    private static final class WebProxyChecks {
+        private static final int MAX_PENDING = 64;
+        private static final ArrayDeque<WebCheck> pending = new ArrayDeque<>();
+        private static WebCheck active;
+        private static boolean pumpQueued;
+        private static final Runnable PUMP = () -> { pumpQueued = false; pump(); };
+
+        private static final class WebCheck {
+            final ConnectionsManager manager;
+            final long initEpoch;
+            final ProxySettings settings;
+            final String secret;
+            final RequestTimeDelegate delegate;
+            long networkGeneration;
+            boolean userDone, testerDone;
+            WebCheck(ConnectionsManager manager, long initEpoch, ProxySettings settings, RequestTimeDelegate delegate) {
+                this.manager = manager;
+                this.initEpoch = initEpoch;
+                this.settings = settings;
+                this.secret = settings.getSecret();
+                this.delegate = delegate;
+            }
+            boolean currentInit() {
+                return manager.nativeInitEpoch == initEpoch
+                        && NATIVE_INIT_EPOCHS.get(manager.currentAccount) == initEpoch;
+            }
+        }
+
+        static void enqueue(ConnectionsManager manager, long initEpoch, ProxySettings settings, RequestTimeDelegate delegate) {
+            IpStrategyCoordinator.UI.post(() -> {
+                WebCheck request = new WebCheck(manager, initEpoch, settings, delegate);
+                if (!request.currentInit() || pending.size() + (active == null ? 0 : 1) >= MAX_PENDING) {
+                    request.userDone = true;
+                    delegate.run(-1);
+                    return;
+                }
+                pending.addLast(request);
+                schedulePump();
+            });
+        }
+
+        static void schedulePump() {
+            if (active == null && !pending.isEmpty() && !pumpQueued) {
+                pumpQueued = true;
+                IpStrategyCoordinator.UI.post(PUMP);
+            }
+        }
+
+        static void onInitChanged(int account) {
+            IpStrategyCoordinator.UI.post(() -> {
+                ArrayList<WebCheck> retired = new ArrayList<>();
+                for (java.util.Iterator<WebCheck> it = pending.iterator(); it.hasNext();) {
+                    WebCheck request = it.next();
+                    if (request.manager.currentAccount == account && !request.currentInit()) {
+                        it.remove();
+                        request.userDone = true;
+                        retired.add(request);
+                    }
+                }
+                if (active != null && active.manager.currentAccount == account && !active.currentInit() && !active.userDone) {
+                    active.userDone = true;
+                    retired.add(active);
+                }
+                schedulePump();
+                for (WebCheck request : retired) request.delegate.run(-1);
+            });
+        }
+
+        private static void pump() {
+            if (active != null) return;
+            IpStrategyCoordinator.observeNetwork();
+            ArrayList<WebCheck> retired = new ArrayList<>();
+            for (java.util.Iterator<WebCheck> it = pending.iterator(); it.hasNext();) {
+                WebCheck request = it.next();
+                if (!request.currentInit()) {
+                    it.remove();
+                    request.userDone = true;
+                    retired.add(request);
+                }
+            }
+            if (!retired.isEmpty()) {
+                schedulePump();
+                for (WebCheck request : retired) request.delegate.run(-1);
+                return;
+            }
+            WebCheck selected = null;
+            for (WebCheck request : pending) {
+                if (IpStrategyCoordinator.proxyReady(request.manager, request.initEpoch)) { selected = request; break; }
+            }
+            if (selected == null) return;
+            final WebCheck request = selected;
+            synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+                if (!request.currentInit() || !IpStrategyCoordinator.proxyReadyLocked(request.manager, request.initEpoch)) return;
+                request.networkGeneration = IpStrategyCoordinator.generation.get();
+                pending.remove(request);
+                active = request;
+            }
+            WebProxyConnectionTester.getInstance().checkProxy(request.settings,
+                    time -> complete(request, time),
+                    (settings, port, callback) -> submitPort(request, settings, port, callback));
+        }
+
+        private static void submitPort(WebCheck request, ProxySettings settings, int port, RequestTimeDelegate callback) {
+            IpStrategyCoordinator.observeNetwork();
+            RequestTimeDelegate result = time -> IpStrategyCoordinator.UI.post(() -> {
+                if (active == request && !request.testerDone) {
+                    callback.run(request.userDone || !request.currentInit() ? -1 : time);
+                }
+            });
+            boolean submitted = false;
+            synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
+                if (active == request && !request.userDone && !request.testerDone && settings == request.settings && port > 0
+                        && request.currentInit() && request.networkGeneration == IpStrategyCoordinator.generation.get()
+                        && IpStrategyCoordinator.proxyReadyLocked(request.manager, request.initEpoch)) {
+                    native_checkProxy(request.manager.currentAccount, "127.0.0.1", port, "", "", request.secret, result);
+                    submitted = true;
+                }
+            }
+            if (!submitted) callback.run(-1);
+        }
+
+        private static void complete(WebCheck request, long time) {
+            if (active != request || request.testerDone) return;
+            request.testerDone = true;
+            active = null;
+            boolean deliver = !request.userDone;
+            request.userDone = true;
+            long result = request.currentInit() && request.networkGeneration == IpStrategyCoordinator.generation.get() ? time : -1;
+            schedulePump();
+            if (deliver) request.delegate.run(result);
+        }
     }
 
     public void setAppPaused(final boolean value, final boolean byScreenState) {
@@ -1046,6 +1307,7 @@ public class ConnectionsManager extends BaseController {
     }
 
     public static void onUpdate(final int currentAccount) {
+        dispatchInitializationListener(currentAccount);
         Utilities.stageQueue.postRunnable(() -> AccountInstance.getInstance(currentAccount).getMessagesController().updateTimerProc());
     }
 
@@ -1307,88 +1569,277 @@ public class ConnectionsManager extends BaseController {
         });
     }
 
-    @SuppressLint("NewApi")
-    protected byte getIpStrategy() {
-        if (Build.VERSION.SDK_INT < 19) {
+    private static final class IpFacts {
+        final boolean ipv4, ipv6, clat;
+        IpFacts(boolean ipv4, boolean ipv6, boolean clat) {
+            this.ipv4 = ipv4;
+            this.ipv6 = ipv6;
+            this.clat = clat;
+        }
+        byte strategy(boolean force) {
+            if (ipv6) {
+                if (force) return USE_IPV6_ONLY;
+                if (clat) return USE_IPV4_IPV6_RANDOM;
+                if (!ipv4) return USE_IPV6_ONLY;
+            }
             return USE_IPV4_ONLY;
         }
-        if (BuildVars.LOGS_ENABLED) {
-            try {
-                NetworkInterface networkInterface;
-                Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-                while (networkInterfaces.hasMoreElements()) {
-                    networkInterface = networkInterfaces.nextElement();
-                    if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.getInterfaceAddresses().isEmpty()) {
-                        continue;
-                    }
-                    if (BuildVars.LOGS_ENABLED) {
-                        FileLog.d("valid interface: " + networkInterface);
-                    }
-                    List<InterfaceAddress> interfaceAddresses = networkInterface.getInterfaceAddresses();
-                    for (int a = 0; a < interfaceAddresses.size(); a++) {
-                        InterfaceAddress address = interfaceAddresses.get(a);
-                        InetAddress inetAddress = address.getAddress();
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("address: " + inetAddress.getHostAddress());
-                        }
-                        if (inetAddress.isLinkLocalAddress() || inetAddress.isLoopbackAddress() || inetAddress.isMulticastAddress()) {
-                            continue;
-                        }
-                        if (BuildVars.LOGS_ENABLED) {
-                            FileLog.d("address is good");
-                        }
-                    }
-                }
-            } catch (Throwable e) {
-                FileLog.e(e);
-            }
+    }
+
+    private static final class IpSnapshot {
+        final long generation;
+        final IpFacts facts;
+        final boolean online, fastOnline, slow;
+        final int networkType;
+        IpSnapshot(long generation, IpFacts facts, boolean online, boolean fastOnline, int networkType, boolean slow) {
+            this.generation = generation;
+            this.facts = facts;
+            this.online = online;
+            this.fastOnline = fastOnline;
+            this.networkType = networkType;
+            this.slow = slow;
         }
-        try {
-            NetworkInterface networkInterface;
-            Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-            boolean hasIpv4 = false;
-            boolean hasIpv6 = false;
-            boolean hasStrangeIpv4 = false;
-            while (networkInterfaces.hasMoreElements()) {
-                networkInterface = networkInterfaces.nextElement();
-                if (!networkInterface.isUp() || networkInterface.isLoopback()) {
-                    continue;
-                }
-                List<InterfaceAddress> interfaceAddresses = networkInterface.getInterfaceAddresses();
-                for (int a = 0; a < interfaceAddresses.size(); a++) {
-                    InterfaceAddress address = interfaceAddresses.get(a);
-                    InetAddress inetAddress = address.getAddress();
-                    if (inetAddress.isLinkLocalAddress() || inetAddress.isLoopbackAddress() || inetAddress.isMulticastAddress()) {
-                        continue;
-                    }
-                    if (inetAddress instanceof Inet6Address) {
-                        hasIpv6 = true;
-                    } else if (inetAddress instanceof Inet4Address) {
-                        String addrr = inetAddress.getHostAddress();
-                        if (!addrr.startsWith("192.0.0.")) {
-                            hasIpv4 = true;
-                        } else {
-                            hasStrangeIpv4 = true;
-                        }
-                    }
-                }
-            }
-            if (hasIpv6) {
-                if (forceTryIpV6) {
-                    return USE_IPV6_ONLY;
-                }
-                if (hasStrangeIpv4) {
-                    return USE_IPV4_IPV6_RANDOM;
-                }
-                if (!hasIpv4) {
-                    return USE_IPV6_ONLY;
-                }
-            }
-        } catch (Throwable e) {
-            FileLog.e(e);
+    }
+
+    private static final class IpStrategyCoordinator {
+        private static final Object PUBLICATION_LOCK = new Object();
+        private static final Handler UI = new Handler(Looper.getMainLooper());
+        private static final AtomicLong generation = new AtomicLong();
+        private static final AtomicBoolean invalidationQueued = new AtomicBoolean();
+        private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(1, 1, 60, TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(1), runnable -> new Thread(runnable, "ng-ip-strategy"));
+        private static final ConnectionsManager[] targets = new ConnectionsManager[UserConfig.MAX_ACCOUNT_COUNT];
+        private static final long[] initEpochs = new long[UserConfig.MAX_ACCOUNT_COUNT];
+        private static final long[] requestEpochs = new long[UserConfig.MAX_ACCOUNT_COUNT];
+        private static final boolean[] mainRequests = new boolean[UserConfig.MAX_ACCOUNT_COUNT];
+        private static volatile IpSnapshot snapshot;
+        private static volatile boolean callbackRegistered;
+        private static volatile long registrationRetryAt;
+        private static boolean workOutstanding;
+        private static long workRetryAt;
+        private static final AtomicReference<NetworkInfo> observedInfo = new AtomicReference<>(ApplicationLoader.currentNetworkInfo);
+        private static final Runnable RETRY = () -> ensureWork();
+        private static final Runnable INVALIDATE = () -> {
+            invalidationQueued.set(false);
+            observeNetwork();
+            reconcile();
+            ensureWork();
+        };
+        private static final ConnectivityManager.NetworkCallback CALLBACK = new ConnectivityManager.NetworkCallback() {
+            @Override public void onAvailable(Network network) { invalidate(); }
+            @Override public void onLost(Network network) { invalidate(); }
+            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) { invalidate(); }
+            @Override public void onLinkPropertiesChanged(Network network, LinkProperties properties) { invalidate(); }
+        };
+
+        static {
+            WORKER.allowCoreThreadTimeOut(true);
         }
 
-        return USE_IPV4_ONLY;
+        private static void invalidate() {
+            synchronized (PUBLICATION_LOCK) {
+                generation.incrementAndGet();
+            }
+            queueInvalidation();
+        }
+
+        private static void queueInvalidation() {
+            if (invalidationQueued.compareAndSet(false, true)) UI.post(INVALIDATE);
+        }
+
+        private static void observeNetwork() {
+            boolean changed = false;
+            synchronized (PUBLICATION_LOCK) {
+                NetworkInfo current = ApplicationLoader.currentNetworkInfo;
+                if (current != observedInfo.get()) {
+                    observedInfo.set(current);
+                    generation.incrementAndGet();
+                    changed = true;
+                }
+            }
+            if (changed) queueInvalidation();
+        }
+
+        static void request(ConnectionsManager manager, long initEpoch, long requestEpoch, boolean fromMain) {
+            observeNetwork();
+            Runnable update = () -> {
+                int account = manager.currentAccount;
+                if (!manager.nativeInitialized || manager.nativeInitEpoch != initEpoch
+                        || NATIVE_INIT_EPOCHS.get(account) != initEpoch
+                        || manager.connectionUpdateEpoch.get() != requestEpoch) return;
+                targets[account] = manager;
+                initEpochs[account] = initEpoch;
+                requestEpochs[account] = requestEpoch;
+                mainRequests[account] = fromMain;
+                observeNetwork();
+                if (!callbackRegistered && !workOutstanding && snapshot != null
+                        && SystemClock.elapsedRealtime() >= registrationRetryAt) {
+                    synchronized (PUBLICATION_LOCK) { generation.incrementAndGet(); }
+                }
+                reconcile();
+                ensureWork();
+            };
+            if (Looper.myLooper() == Looper.getMainLooper() && !Thread.holdsLock(ConnectionsManager.class)) update.run();
+            else UI.post(update);
+        }
+
+        private static boolean current(int account, ConnectionsManager target) {
+            return target != null && targets[account] == target && target.nativeInitialized
+                    && target.nativeInitEpoch == initEpochs[account]
+                    && NATIVE_INIT_EPOCHS.get(account) == initEpochs[account];
+        }
+
+        private static boolean proxyReadyLocked(ConnectionsManager manager, long initEpoch) {
+            int account = manager.currentAccount;
+            return manager.nativeInitialized && manager.nativeInitEpoch == initEpoch
+                    && NATIVE_INIT_EPOCHS.get(account) == initEpoch
+                    && manager.ipAppliedInitEpoch == initEpoch && manager.ipAppliedOnline
+                    && manager.ipAppliedGeneration == generation.get()
+                    && manager.ipAppliedRequestEpoch == manager.connectionUpdateEpoch.get();
+        }
+
+        private static boolean proxyReady(ConnectionsManager manager, long initEpoch) {
+            synchronized (PUBLICATION_LOCK) { return proxyReadyLocked(manager, initEpoch); }
+        }
+
+        private static void reconcile() {
+            IpSnapshot ready;
+            synchronized (PUBLICATION_LOCK) {
+                ready = snapshot;
+                if (ready != null && ready.generation != generation.get()) snapshot = ready = null;
+            }
+            for (int account = 0; account < targets.length; account++) {
+                ConnectionsManager target = targets[account];
+                if (!current(account, target)) continue;
+                if (ready == null) {
+                    boolean slow = target.lastNetworkSlow || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
+                    synchronized (PUBLICATION_LOCK) {
+                        if (!current(account, target)) continue;
+                        target.ipAppliedOnline = false;
+                        native_setNetworkAvailable(account, false, target.lastNetworkType, slow);
+                    }
+                    continue;
+                }
+                boolean force = target.forceTryIpV6;
+                byte selected = target.getIpStrategy();
+                boolean slow = ready.slow || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
+                boolean online = mainRequests[account] ? ready.fastOnline : ready.online;
+                if (BuildVars.LOGS_ENABLED) FileLog.d("selected ip strategy " + selected);
+                synchronized (PUBLICATION_LOCK) {
+                    if (snapshot != ready || ready.generation != generation.get()
+                            || !current(account, target) || target.forceTryIpV6 != force
+                            || target.connectionUpdateEpoch.get() != requestEpochs[account]) continue;
+                    native_setIpStrategy(account, selected);
+                    native_setNetworkAvailable(account, online, ready.networkType, slow);
+                    target.lastNetworkType = ready.networkType;
+                    target.lastNetworkSlow = ready.slow;
+                    target.ipAppliedGeneration = ready.generation;
+                    target.ipAppliedInitEpoch = initEpochs[account];
+                    target.ipAppliedRequestEpoch = requestEpochs[account];
+                    target.ipAppliedOnline = online;
+                }
+            }
+            WebProxyChecks.schedulePump();
+        }
+
+        private static void retryWork() {
+            workRetryAt = SystemClock.elapsedRealtime() + 1000;
+            UI.removeCallbacks(RETRY);
+            UI.postDelayed(RETRY, 1000);
+        }
+
+        private static void ensureWork() {
+            if (workOutstanding || snapshot != null || SystemClock.elapsedRealtime() < workRetryAt) return;
+            boolean needed = false;
+            for (int account = 0; account < targets.length; account++) {
+                if (current(account, targets[account])) { needed = true; break; }
+            }
+            if (!needed) return;
+            final long requestedGeneration = generation.get();
+            workOutstanding = true;
+            try {
+                WORKER.execute(() -> {
+                    IpSnapshot result = null;
+                    try {
+                        registerCallback();
+                        IpFacts facts = scanInterfaces();
+                        boolean fastOnline = ApplicationLoader.isNetworkOnlineFast();
+                        result = new IpSnapshot(requestedGeneration, facts, ApplicationLoader.isNetworkOnlineRealtime(),
+                                fastOnline, ApplicationLoader.getCurrentNetworkType(), ApplicationLoader.isConnectionSlow());
+                    } finally {
+                        final IpSnapshot completed = result;
+                        UI.post(() -> {
+                            workOutstanding = false;
+                            observeNetwork();
+                            boolean retry = false;
+                            synchronized (PUBLICATION_LOCK) {
+                                if (requestedGeneration == generation.get()) {
+                                    snapshot = completed;
+                                    retry = completed == null;
+                                }
+                            }
+                            if (retry) retryWork();
+                            reconcile();
+                            ensureWork();
+                        });
+                    }
+                });
+            } catch (Throwable ignored) {
+                workOutstanding = false;
+                retryWork();
+            }
+        }
+
+        private static void registerCallback() {
+            if (callbackRegistered || SystemClock.elapsedRealtime() < registrationRetryAt) return;
+            ConnectivityManager manager = null;
+            try {
+                Context context = ApplicationLoader.applicationContext;
+                if (context == null) return;
+                manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (manager == null) return;
+                manager.registerDefaultNetworkCallback(CALLBACK);
+                callbackRegistered = true;
+            } catch (Throwable ignored) {
+                if (manager != null) {
+                    try { manager.unregisterNetworkCallback(CALLBACK); } catch (Throwable ignoredAgain) {}
+                }
+            } finally {
+                if (!callbackRegistered) registrationRetryAt = SystemClock.elapsedRealtime() + 30_000;
+            }
+        }
+
+        private static IpFacts scanInterfaces() {
+            boolean ipv4 = false, ipv6 = false, clat = false;
+            try {
+                Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                while (interfaces != null && interfaces.hasMoreElements()) {
+                    NetworkInterface networkInterface = interfaces.nextElement();
+                    if (!networkInterface.isUp() || networkInterface.isLoopback()) continue;
+                    if (BuildVars.LOGS_ENABLED) FileLog.d("valid interface: " + networkInterface);
+                    List<InterfaceAddress> addresses = networkInterface.getInterfaceAddresses();
+                    for (InterfaceAddress address : addresses) {
+                        InetAddress inetAddress = address.getAddress();
+                        if (BuildVars.LOGS_ENABLED) FileLog.d("address: " + inetAddress.getHostAddress());
+                        if (inetAddress.isLinkLocalAddress() || inetAddress.isLoopbackAddress() || inetAddress.isMulticastAddress()) continue;
+                        if (inetAddress instanceof Inet6Address) ipv6 = true;
+                        else if (inetAddress instanceof Inet4Address) {
+                            if (inetAddress.getHostAddress().startsWith("192.0.0.")) clat = true;
+                            else ipv4 = true;
+                        }
+                    }
+                }
+            } catch (Throwable error) {
+                FileLog.e(error);
+                return new IpFacts(false, false, false);
+            }
+            return new IpFacts(ipv4, ipv6, clat);
+        }
+    }
+    protected byte getIpStrategy() {
+        IpSnapshot ready = IpStrategyCoordinator.snapshot;
+        return ready != null && ready.generation == IpStrategyCoordinator.generation.get()
+                ? ready.facts.strategy(forceTryIpV6) : USE_IPV4_ONLY;
     }
 
     private static class ResolveHostByNameTask extends AsyncTask<Void, Void, ResolvedDomain> {

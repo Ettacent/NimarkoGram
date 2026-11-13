@@ -52,6 +52,7 @@ final class TextDocumentSelection {
     private ActionMode mode;
     private ActionMode.Callback2 modeCallback;
     private boolean changing;
+    private long selectionVersion;
     private Handle dragging;
     private int dragPointer = -1;
     private float grabX, grabY;
@@ -59,10 +60,11 @@ final class TextDocumentSelection {
     private final ViewTreeObserver.OnPreDrawListener preDraw = this::onPreDraw;
 
     private boolean onPreDraw() {
-        if (active != null && !valid()) cancel();
-        if (active != null) {
+        final long version = selectionVersion;
+        if (active != null && !valid()) cancelIfCurrent(version);
+        if (active != null && selectionVersion == version) {
             placeHandle(startHandle, rangeStart());
-            placeHandle(endHandle, rangeEnd());
+            if (active != null && selectionVersion == version) placeHandle(endHandle, rangeEnd());
         }
         return true;
     }
@@ -96,6 +98,7 @@ final class TextDocumentSelection {
     }
 
     void cancel() {
+        final long version = ++selectionVersion;
         BlockTextView oldView = active;
         Spannable oldText = activeText;
         active = null;
@@ -103,50 +106,97 @@ final class TextDocumentSelection {
         modeCallback = null;
         ActionMode oldMode = mode;
         mode = null;
-        endDrag();
         startHandle.setVisibility(View.GONE);
         endHandle.setVisibility(View.GONE);
         if (observed != null && observed.isAlive()) observed.removeOnPreDrawListener(preDraw);
         observed = null;
-        if (oldText != null) Selection.removeSelection(oldText);
+        final boolean wasChanging = changing;
+        changing = true;
+        try {
+            endDrag();
+            if (oldText != null && (selectionVersion == version || activeText != oldText)) {
+                Selection.removeSelection(oldText);
+            }
         if (oldView != null) oldView.invalidate();
         if (oldMode != null) oldMode.finish();
+        } finally {
+            changing = wasChanging;
+        }
     }
 
     private boolean usable(BlockTextView view) {
-        return host.allowCopy(view) && view.isEnabled() && view.isTextSelectable()
+        return view != null && host.allowCopy(view) && view.isEnabled() && view.isTextSelectable()
                 && view.isAttachedToWindow() && view.isShown() && view.getWindowVisibility() == View.VISIBLE
                 && overlay.isAttachedToWindow() && overlay.isShown() && view.getLayout() != null
                 && view.getText() instanceof Spannable;
     }
 
     private boolean valid() {
-        return active != null && usable(active) && active.binding == activeBinding
-                && active.getText() == activeText && active.getSelectionStart() >= 0
-                && active.getSelectionEnd() >= 0 && active.getSelectionEnd() != active.getSelectionStart();
+        final BlockTextView view = active;
+        final Spannable text = activeText;
+        final long binding = activeBinding, version = selectionVersion;
+        return ownsSelection(view, text, binding, version) && view.getSelectionStart() >= 0
+                && view.getSelectionEnd() >= 0 && view.getSelectionStart() <= text.length()
+                && view.getSelectionEnd() <= text.length()
+                && view.getSelectionEnd() != view.getSelectionStart();
+    }
+
+    private boolean ownsSelection(BlockTextView view, Spannable text, long binding, long version) {
+        return text != null && usable(view) && selectionVersion == version
+                && active == view && activeText == text && activeBinding == binding
+                && view.binding == binding && view.getText() == text;
+    }
+
+    private void cancelIfCurrent(long version) {
+        if (selectionVersion == version) cancel();
     }
 
     private boolean select(BlockTextView view, int start, int end) {
-        if (!usable(view) || start < 0 || end < 0 || start == end
-                || start > view.length() || end > view.length()) return false;
-        if (active != view || activeText != view.getText() || activeBinding != view.binding) {
+        long version = ++selectionVersion;
+        final CharSequence value = view == null ? null : view.getText();
+        final long binding = view == null ? -1 : view.binding;
+        if (!(value instanceof Spannable) || !usable(view) || start < 0 || end < 0 || start == end
+                || start > value.length() || end > value.length() || selectionVersion != version
+                || view.binding != binding || view.getText() != value) return false;
+        final Spannable text = (Spannable) value;
+        if (active != view || activeText != text || activeBinding != binding) {
             cancel();
+            if (selectionVersion != version + 1) return false;
+            version = selectionVersion;
+            if (!usable(view) || selectionVersion != version || view.binding != binding
+                    || view.getText() != text) return false;
             active = view;
-            activeText = (Spannable) view.getText();
-            activeBinding = view.binding;
+            activeText = text;
+            activeBinding = binding;
         }
-        host.stopScroll();
-        view.requestFocus();
+        final long requestVersion = version;
+        final boolean wasChanging = changing;
         changing = true;
         try {
-            Selection.setSelection(activeText, start, end);
+            host.stopScroll();
+            if (!ownsSelection(view, text, binding, requestVersion)) {
+                cancelIfCurrent(requestVersion);
+                return false;
+            }
+            view.requestFocus();
+            if (!ownsSelection(view, text, binding, requestVersion)
+                    || start > text.length() || end > text.length()) {
+                cancelIfCurrent(requestVersion);
+                return false;
+            }
+            Selection.setSelection(text, start, end);
         } finally {
-            changing = false;
+            changing = wasChanging;
+        }
+        if (!ownsSelection(view, text, binding, requestVersion) || !valid()) {
+            cancelIfCurrent(requestVersion);
+            return false;
         }
         if (mode == null) {
             final ActionMode.Callback2 callback = new ActionMode.Callback2() {
                 private boolean current() {
-                    return modeCallback == this && valid();
+                    return modeCallback == this && valid() && modeCallback == this && active == view
+                            && activeText == text && activeBinding == binding;
                 }
 
                 @Override public boolean onCreateActionMode(ActionMode action, Menu menu) {
@@ -167,11 +217,11 @@ final class TextDocumentSelection {
 
                 @Override public boolean onActionItemClicked(ActionMode action, MenuItem item) {
                     if (!current()) return false;
-                    return contextItem(active, item.getItemId());
+                    return contextItem(view, item.getItemId());
                 }
 
                 @Override public void onDestroyActionMode(ActionMode action) {
-                    if (modeCallback == this) cancel();
+                    if (modeCallback == this && (mode == null || mode == action)) cancel();
                 }
 
                 @Override public void onGetContentRect(ActionMode action, View origin, Rect rect) {
@@ -189,9 +239,9 @@ final class TextDocumentSelection {
             };
             modeCallback = callback;
             ActionMode started = view.startActionMode(callback, ActionMode.TYPE_FLOATING);
-            if (modeCallback != callback || !valid()) {
+            if (modeCallback != callback || selectionVersion != requestVersion || !valid()) {
                 if (started != null) started.finish();
-                if (modeCallback == callback) cancel();
+                if (modeCallback == callback) cancelIfCurrent(requestVersion);
                 return false;
             }
             mode = started;
@@ -202,10 +252,13 @@ final class TextDocumentSelection {
             observed = overlay.getViewTreeObserver();
             observed.addOnPreDrawListener(preDraw);
         }
-        mode.invalidate();
-        mode.invalidateContentRect();
+        final ActionMode currentMode = mode;
+        currentMode.invalidate();
+        if (selectionVersion != requestVersion || mode != currentMode || !valid()) return false;
+        currentMode.invalidateContentRect();
+        if (selectionVersion != requestVersion || mode != currentMode || !valid()) return false;
         preDraw.onPreDraw();
-        return valid();
+        return selectionVersion == requestVersion && ownsSelection(view, text, binding, requestVersion) && valid();
     }
 
     private boolean selectWord(BlockTextView view, float x, float y) {
@@ -234,27 +287,31 @@ final class TextDocumentSelection {
         }
         if (id == android.R.id.selectAll) return view.length() > 0 && select(view, 0, view.length());
         if (id == android.R.id.copy && active == view && valid()) {
+            final long version = selectionVersion;
             boolean copied = view.nativeCopy();
-            cancel();
+            cancelIfCurrent(version);
             return copied;
         }
         return false;
     }
 
     private void placeHandle(Handle handle, int offset) {
-        Layout layout = active.getLayout();
+        final BlockTextView view = active;
+        final long version = selectionVersion;
+        Layout layout = view.getLayout();
         int line = layout.getLineForOffset(offset);
-        point[0] = layout.getPrimaryHorizontal(offset) + active.getTotalPaddingLeft() - active.getScrollX();
-        point[1] = layout.getLineBottom(line) + active.getTotalPaddingTop() - active.getScrollY();
-        boolean visible = host.textToOverlay(active, point) && finite(point)
+        point[0] = layout.getPrimaryHorizontal(offset) + view.getTotalPaddingLeft() - view.getScrollX();
+        point[1] = layout.getLineBottom(line) + view.getTotalPaddingTop() - view.getScrollY();
+        boolean visible = host.textToOverlay(view, point) && finite(point)
                 && point[0] >= 0 && point[0] <= overlay.getWidth()
                 && point[1] >= 0 && point[1] <= overlay.getHeight();
+        if (selectionVersion != version || active != view) return;
         handle.tipX = point[0];
         handle.tipY = point[1];
         handle.setTranslationX(point[0] - dp(24));
         handle.setTranslationY(point[1] - dp(8));
         handle.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
-        int color = active.getCurrentTextColor();
+        int color = view.getCurrentTextColor();
         if (handle.inkColor != color) {
             handle.inkColor = color;
             handle.invalidate();
@@ -266,7 +323,11 @@ final class TextDocumentSelection {
             cancel();
             return false;
         }
+        final BlockTextView view = active;
+        final Spannable text = activeText;
+        final long binding = activeBinding, version = selectionVersion;
         host.stopScroll();
+        if (!ownsSelection(view, text, binding, version) || !valid()) return false;
         dragging = handle;
         dragPointer = pointer;
         Layout layout = active.getLayout();
@@ -275,10 +336,11 @@ final class TextDocumentSelection {
         point[0] = layout.getPrimaryHorizontal(offset) + active.getTotalPaddingLeft() - active.getScrollX();
         point[1] = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f
                 + active.getTotalPaddingTop() - active.getScrollY();
-        if (!host.textToOverlay(active, point) || !finite(point)) {
-            cancel();
+        if (!host.textToOverlay(view, point) || !finite(point)) {
+            cancelIfCurrent(version);
             return false;
         }
+        if (!ownsSelection(view, text, binding, version) || !valid()) return false;
         grabX = point[0] - x;
         grabY = point[1] - y;
         overlay.getParent().requestDisallowInterceptTouchEvent(true);
@@ -290,20 +352,25 @@ final class TextDocumentSelection {
             cancel();
             return false;
         }
+        final BlockTextView view = active;
+        final Spannable text = activeText;
+        final long binding = activeBinding, version = selectionVersion;
+        final boolean startHandle = dragging.start;
         point[0] = x + grabX;
         point[1] = y + grabY;
-        if (!host.overlayToText(active, point) || !finite(point)) {
-            cancel();
+        if (!host.overlayToText(view, point) || !finite(point)) {
+            cancelIfCurrent(version);
             return false;
         }
-        int offset = active.getOffsetForPosition(point[0], point[1]);
+        if (!ownsSelection(view, text, binding, version) || !valid() || dragging == null) return false;
+        int offset = view.getOffsetForPosition(point[0], point[1]);
         int start = rangeStart(), end = rangeEnd();
-        if (offset < 0 || offset > activeText.length()) return false;
-        if (dragging.start && offset >= end || !dragging.start && offset <= start) return true;
-        if (dragging.start) start = offset;
+        if (offset < 0 || offset > text.length()) return false;
+        if (startHandle && offset >= end || !startHandle && offset <= start) return true;
+        if (startHandle) start = offset;
         else end = offset;
-        boolean selected = select(active, start, end);
-        if (selected) revealOffset(dragging.start ? start : end);
+        boolean selected = select(view, start, end);
+        if (selected) revealOffset(startHandle ? start : end);
         return selected;
     }
 
@@ -325,12 +392,13 @@ final class TextDocumentSelection {
     }
 
     private void endDrag() {
+        final ActionMode currentMode = mode;
         dragging = null;
         dragPointer = -1;
         ViewParent parent = overlay.getParent();
         if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-        if (mode != null) {
-            mode.invalidateContentRect();
+        if (currentMode != null && mode == currentMode) {
+            currentMode.invalidateContentRect();
         }
     }
 
@@ -522,27 +590,43 @@ final class TextDocumentSelection {
 
         private boolean nativeCopy() { return super.onTextContextMenuItem(android.R.id.copy); }
 
+        private boolean accessibilitySelectionTarget(CharSequence text, long binding, long version) {
+            return text instanceof Spannable && this.binding == binding && getText() == text
+                    && bridge.selectionVersion == version && bridge.usable(this)
+                    && this.binding == binding && getText() == text && bridge.selectionVersion == version;
+        }
         @Override public boolean performAccessibilityAction(int action, Bundle arguments) {
+            final CharSequence text = getText();
+            final long binding = this.binding;
+            long version = bridge.selectionVersion;
             if (!bridge.host.allowCopy(this)
                     && (isSelectionAction(action, arguments) || !isReadingAction(action))) return false;
             if (action == AccessibilityNodeInfo.ACTION_COPY) return bridge.contextItem(this, android.R.id.copy);
             if (action == AccessibilityNodeInfo.ACTION_CUT) return false;
             if (action == AccessibilityNodeInfo.ACTION_SET_SELECTION) {
-                if (!bridge.usable(this)) return false;
+                if (!accessibilitySelectionTarget(text, binding, version)) return false;
                 int start = arguments == null ? -1 : arguments.getInt(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, -1);
                 int end = arguments == null ? -1 : arguments.getInt(
                         AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, -1);
-                if (start == -1 && end == -1) {
-                    if (bridge.active == this) bridge.cancel();
-                    Selection.removeSelection((Spannable) getText());
-                    return true;
-                }
-                if (start < 0 || end < start || end > length()) return false;
-                if (start == end) {
-                    if (bridge.active == this) bridge.cancel();
-                    Selection.setSelection((Spannable) getText(), start);
-                    return true;
+                final boolean clear = start == -1 && end == -1;
+                if (!clear && (start < 0 || end < start || end > text.length())) return false;
+                if (clear || start == end) {
+                    final boolean wasChanging = bridge.changing;
+                    bridge.changing = true;
+                    try {
+                        if (bridge.active == this) {
+                            bridge.cancel();
+                            ++version;
+                        }
+                        if (!accessibilitySelectionTarget(text, binding, version)
+                                || !clear && start > text.length()) return false;
+                        if (clear) Selection.removeSelection((Spannable) text);
+                        else Selection.setSelection((Spannable) text, start);
+                        return accessibilitySelectionTarget(text, binding, version);
+                    } finally {
+                        bridge.changing = wasChanging;
+                    }
                 }
                 return bridge.select(this, start, end);
             }

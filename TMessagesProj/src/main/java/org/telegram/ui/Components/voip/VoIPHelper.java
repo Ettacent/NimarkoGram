@@ -40,6 +40,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.voip.Instance;
+import org.telegram.messenger.voip.VoIPPreNotificationService;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
@@ -215,29 +216,42 @@ public class VoIPHelper {
 					newName = chat.title;
 				}
 
+				final Intent ongoingOwner = VoIPPreNotificationService.bindOwner(new Intent(), voIPService);
+				if (!VoIPPreNotificationService.isCurrentServiceAction(voIPService, ongoingOwner)) return;
+				final int requestAccount = accountInstance.getCurrentAccount();
+				final long requestUser = accountInstance.getUserConfig().getClientUserId();
+				final long requestSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(requestAccount);
+				final java.util.function.BooleanSupplier requestCurrent = () -> !activity.isFinishing() && !activity.isDestroyed()
+						&& app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(requestAccount, requestUser, requestSession);
+				final Runnable startNextCall = () -> {
+					if (!requestCurrent.getAsBoolean() || VoIPService.getSharedInstance() != null
+							|| VoIPPreNotificationService.hasPendingIncomingCall()) return;
+					lastCallTime = 0;
+					doInitiateCall(user, chat, hash, null, false, videoCall, canVideoCall, createCall, activity, fragment, accountInstance, true, true);
+				};
 				new AlertDialog.Builder(activity)
 						.setTitle(callerId < 0 ? LocaleController.getString(R.string.VoipOngoingChatAlertTitle) : LocaleController.getString(R.string.VoipOngoingAlertTitle))
 						.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(key2, oldName, newName)))
 						.setPositiveButton(LocaleController.getString(R.string.OK), (dialog, which) -> {
-							if (VoIPService.getSharedInstance() != null) {
-								VoIPService.getSharedInstance().hangUp(() -> {
-									lastCallTime = 0;
-									doInitiateCall(user, chat, hash, null, false, videoCall, canVideoCall, createCall, activity, fragment, accountInstance, true, true);
-								});
-							} else {
-								doInitiateCall(user, chat, hash, null, false, videoCall, canVideoCall, createCall, activity, fragment, accountInstance, true, true);
+							if (!requestCurrent.getAsBoolean()) return;
+							if (VoIPService.getSharedInstance() == null) {
+								startNextCall.run();
+							} else if (VoIPPreNotificationService.isCurrentServiceAction(voIPService, ongoingOwner)) {
+								voIPService.hangUp(startNextCall);
 							}
 						})
 						.setNegativeButton(LocaleController.getString(R.string.Cancel), null)
 						.show();
 			} else {
 				if (user != null || !(activity instanceof LaunchActivity)) {
-					activity.startActivity(new Intent(activity, LaunchActivity.class).setAction(user != null ? "voip" : "voip_chat"));
+					Intent action = VoIPPreNotificationService.bindOwner(new Intent(activity, LaunchActivity.class)
+							.setAction(user != null ? "voip" : "voip_chat"), voIPService);
+					if (action != null) activity.startActivity(action);
 				} else {
 					if (!TextUtils.isEmpty(hash)) {
 						voIPService.setGroupCallHash(hash);
 					}
-					GroupCallActivity.create((LaunchActivity) activity, AccountInstance.getInstance(UserConfig.selectedAccount), null, null, false, null);
+					GroupCallActivity.create((LaunchActivity) activity, accountInstance, null, null, false, null);
 				}
 			}
 		} else if (VoIPService.callIShouldHavePutIntoIntent == null) {

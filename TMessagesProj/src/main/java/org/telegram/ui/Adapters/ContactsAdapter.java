@@ -128,6 +128,7 @@ public class ContactsAdapter extends RecyclerListView.SectionsAdapter {
             }
             sortOnlineContacts();
         } else {
+            onlineContacts = null;
             notifyDataSetChanged();
         }
     }

@@ -123,6 +123,7 @@ final class RoundVideoGlProcessor {
     private long glStartedNs;
 
     private volatile boolean started;
+    private volatile int displayRotation;
     private volatile boolean recordingStarted;
     private volatile Runnable firstFrameListener;
     private Runnable dualSwitchFrameListener;
@@ -440,6 +441,14 @@ final class RoundVideoGlProcessor {
         }
     }
 
+    public void setDisplayRotation(int degrees) {
+        displayRotation = degrees;
+        Handler currentHandler = handler;
+        if (!started || currentHandler == null) return;
+        currentHandler.post(() -> {
+            if (overlayRenderer != null) overlayRenderer.setDisplayRotation(degrees);
+        });
+    }
     public void configureSecondaryInput(
             @NonNull Size size,
             int cropSize,
@@ -568,6 +577,7 @@ final class RoundVideoGlProcessor {
                 sourceCropSize,
                 compositionEnabled
         );
+        overlayRenderer.setDisplayRotation(displayRotation);
         GLES20.glViewport(0, 0, outputSize, outputSize);
     }
 

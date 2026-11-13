@@ -62,20 +62,50 @@ public class StoriesViewPager extends ViewPager {
 
     private final ArrayList<PeerStoriesView> cachedViews = new ArrayList<>();
 
-    public void onDestroy() {
+    private final ArrayList<PeerStoriesView> ownedViews = new ArrayList<>();
+    private final int ownerAccount, ownerGeneration;
+    private final long ownerUserId;
+    private boolean retired, destroyed;
+
+    boolean isOwnerCurrent() {
+        return storyViewer != null && !retired && isAccountOwner()
+                && storyViewer.isPagerOwner(this, ownerGeneration, ownerAccount, ownerUserId);
+    }
+
+    boolean isAccountOwner() {
+        return currentAccount == ownerAccount && ownerUserId == UserConfig.getInstance(ownerAccount).getClientUserId();
+    }
+
+    public void retire() {
+        if (retired) return;
+        retired = true;
+        doOnNextIdle = null;
+        AndroidUtilities.cancelRunOnUIThread(lockTouchRunnable);
         for (int i = 0; i < getChildCount(); i++) {
             final View child = getChildAt(i);
-            if (child instanceof PageLayout && ((PageLayout) child).peerStoryView != null) {
-                ((PageLayout) child).peerStoryView.onDestroy();
-            }
+            if (child instanceof PageLayout) ((PageLayout) child).cancelPreload();
         }
-        for (int i = 0; i < cachedViews.size(); i++) {
-            cachedViews.get(i).onDestroy();
+        for (int i = 0; i < ownedViews.size(); i++) {
+            ownedViews.get(i).retire();
         }
+    }
+
+    public void onDestroy() {
+        if (destroyed) return;
+        retire();
+        destroyed = true;
+        for (int i = 0; i < ownedViews.size(); i++) {
+            ownedViews.get(i).onDestroy();
+        }
+        ownedViews.clear();
+        cachedViews.clear();
     }
     public StoriesViewPager(int account, @NonNull Context context, StoryViewer storyViewer, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.currentAccount = account;
+        ownerAccount = account;
+        ownerGeneration = storyViewer.getViewerGeneration();
+        ownerUserId = UserConfig.getInstance(account).getClientUserId();
         resources = new PeerStoriesView.SharedResources(context);
         this.storyViewer = storyViewer;
         setAdapter(pagerAdapter = new PagerAdapter() {
@@ -88,10 +118,28 @@ public class StoriesViewPager extends ViewPager {
             }
 
 
+            @Override
+            public int getItemPosition(@NonNull Object object) {
+                if (days == null) return POSITION_UNCHANGED;
+                PageLayout page = (PageLayout) object;
+                for (int i = 0; i < days.size(); i++) {
+                    if (eq(page.day, days.get(i))) {
+                        int position = storyViewer.reversed ? days.size() - 1 - i : i;
+                        page.setTag(position);
+                        return position;
+                    }
+                }
+                return POSITION_NONE;
+            }
             @NonNull
             @Override
             public Object instantiateItem(@NonNull ViewGroup container, int position) {
                 PageLayout pageLayout = new PageLayout(context);
+                if (!isOwnerCurrent()) {
+                    pageLayout.setTag(position);
+                    container.addView(pageLayout);
+                    return pageLayout;
+                }
                 PeerStoriesView view;
                 if (!cachedViews.isEmpty()) {
                     view = cachedViews.remove(0);
@@ -100,12 +148,14 @@ public class StoriesViewPager extends ViewPager {
                     view = new HwPeerStoriesView(context, storyViewer, resources, resourcesProvider) {
                         @Override
                         public boolean isSelectedPeer() {
-                            if (getParent() == null) {
+                            if (!isOwnerCurrent() || getParent() == null) {
                                 return false;
                             }
                             return ((Integer) ((View) getParent()).getTag()) == getCurrentItem();
                         }
                     };
+                    view.setOwner(StoriesViewPager.this);
+                    ownedViews.add(view);
                 }
                 pageLayout.peerStoryView = view;
                 view.setAccount(currentAccount);
@@ -135,9 +185,11 @@ public class StoriesViewPager extends ViewPager {
                 PageLayout child = (PageLayout) object;
                 child.cancelPreload();
                 container.removeView(child);
-                PeerStoriesView peerStoriesView = (PeerStoriesView) child.getChildAt(0);
+                PeerStoriesView peerStoriesView = child.peerStoryView;
+                if (peerStoriesView == null) return;
                 AndroidUtilities.removeFromParent(peerStoriesView);
-                cachedViews.add(peerStoriesView);
+                if (retired) peerStoriesView.onDestroy();
+                else cachedViews.add(peerStoriesView);
             }
 
             @Override
@@ -146,6 +198,7 @@ public class StoriesViewPager extends ViewPager {
             }
         });
         setPageTransformer(false, (page, position) -> {
+            if (!isOwnerCurrent()) return;
             PageLayout pageLayout = (PageLayout) page;
             if (Math.abs(position) >= 1f) {
                 pageLayout.setVisible(false);
@@ -172,6 +225,7 @@ public class StoriesViewPager extends ViewPager {
 
             @Override
             public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+                if (!isOwnerCurrent()) return;
                 selectedPosition = position;
                 toPosition = positionOffsetPixels > 0 ? selectedPosition + 1 : selectedPosition - 1;
                 progress = positionOffset;
@@ -189,6 +243,7 @@ public class StoriesViewPager extends ViewPager {
 
             @Override
             public void onPageSelected(int position) {
+                if (!isOwnerCurrent()) return;
                 final PeerStoriesView peerStoriesView = getCurrentPeerView();
                 if (peerStoriesView == null) {
                     return;
@@ -206,6 +261,7 @@ public class StoriesViewPager extends ViewPager {
 
             @Override
             public void onPageScrollStateChanged(int state) {
+                if (!isOwnerCurrent()) return;
                 delegate.setAllowTouchesByViewPager(state != SCROLL_STATE_IDLE);
                 if (doOnNextIdle != null && state == SCROLL_STATE_IDLE) {
                     doOnNextIdle.run();
@@ -219,6 +275,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     private void updateActiveStory() {
+        if (!isOwnerCurrent()) return;
         for (int i = 0; i < getChildCount(); i++) {
             PeerStoriesView peerStoriesView = ((PeerStoriesView) ((FrameLayout) getChildAt(i)).getChildAt(0));
             peerStoriesView.setActive((Integer) getChildAt(i).getTag() == getCurrentItem() && !peerStoriesView.editOpened);
@@ -226,6 +283,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void checkAllowScreenshots() {
+        if (!isOwnerCurrent()) return;
         boolean allowScreenshots = true;
         for (int i = 0; i < getChildCount(); i++) {
             PageLayout layout = (PageLayout) getChildAt(i);
@@ -253,6 +311,7 @@ public class StoriesViewPager extends ViewPager {
 
     @Nullable
     public PeerStoriesView getCurrentPeerView() {
+        if (!isOwnerCurrent()) return null;
         for (int i = 0; i < getChildCount(); i++) {
             if ((Integer) getChildAt(i).getTag() == getCurrentItem()) {
                 return (PeerStoriesView) ((FrameLayout) getChildAt(i)).getChildAt(0);
@@ -262,6 +321,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void setPeerIds(ArrayList<Long> peerIds, int currentAccount, int position) {
+        if (!isOwnerCurrent() || currentAccount != ownerAccount) return;
         this.dialogs = new ArrayList<>(peerIds);
         this.days = null;
         this.currentAccount = currentAccount;
@@ -272,6 +332,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void setDays(long dialogId, ArrayList<ArrayList<Integer>> days, int currentAccount) {
+        if (!isOwnerCurrent() || currentAccount != ownerAccount) return;
         if (this.daysDialogId == dialogId && eqA(this.days, days) && this.currentAccount == currentAccount) {
             return;
         }
@@ -340,6 +401,7 @@ public class StoriesViewPager extends ViewPager {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         super.onLayout(changed, l, t, r, b);
+        if (!isOwnerCurrent()) return;
         if (updateDelegate) {
             updateDelegate = false;
             final PeerStoriesView peerStoriesView = getCurrentPeerView();
@@ -352,6 +414,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void checkPageVisibility() {
+        if (!isOwnerCurrent()) return;
         if (updateVisibleItemPosition >= 0) {
             for (int i = 0; i < getChildCount(); i++) {
                 if ((Integer) getChildAt(i).getTag() == getCurrentItem() && getCurrentItem() == updateVisibleItemPosition) {
@@ -379,6 +442,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public boolean switchToNext(boolean forward) {
+        if (!isOwnerCurrent()) return false;
         if (forward && getCurrentItem() < (days != null ? days : dialogs).size() - 1) {
             setCurrentItem(getCurrentItem() + 1, !useSurfaceInViewPagerWorkAround());
             return true;
@@ -392,7 +456,7 @@ public class StoriesViewPager extends ViewPager {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        if (!touchEnabled || touchLocked) {
+        if (!isOwnerCurrent() || !touchEnabled || touchLocked) {
             return false;
         }
         try {
@@ -405,6 +469,7 @@ public class StoriesViewPager extends ViewPager {
 
     @Override
     public boolean onTouchEvent(MotionEvent ev) {
+        if (!isOwnerCurrent()) return false;
         if (!touchEnabled || touchLocked) {
             if (touchLocked && (ev.getAction() == MotionEvent.ACTION_DOWN || ev.getAction() == MotionEvent.ACTION_MOVE)) {
                 return true;
@@ -435,6 +500,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void onNextIdle(Runnable runnable) {
+        if (!isOwnerCurrent()) return;
         this.doOnNextIdle = runnable;
     }
 
@@ -505,6 +571,7 @@ public class StoriesViewPager extends ViewPager {
         }
 
         public void setVisible(boolean visible) {
+            if (!isOwnerCurrent()) return;
             if (visible) {
                 cancelPreload();
             }
@@ -518,7 +585,7 @@ public class StoriesViewPager extends ViewPager {
         }
 
         void schedulePreload() {
-            if (preloadRunnable != null || isVisible || peerStoryView == null
+            if (!isOwnerCurrent() || preloadRunnable != null || isVisible || peerStoryView == null
                     || (preloadedDialogId == dialogId && preloadedDay == day)) {
                 return;
             }
@@ -526,7 +593,7 @@ public class StoriesViewPager extends ViewPager {
             final ArrayList<Integer> expectedDay = day;
             AndroidUtilities.runOnUIThread(preloadRunnable = () -> {
                 preloadRunnable = null;
-                if (isVisible || getParent() == null || peerStoryView == null
+                if (!isOwnerCurrent() || isVisible || getParent() == null || peerStoryView == null
                         || dialogId != expectedDialogId || day != expectedDay) {
                     return;
                 }
@@ -548,6 +615,7 @@ public class StoriesViewPager extends ViewPager {
     }
 
     public void setCurrentDate(long day, int storyId) {
+        if (!isOwnerCurrent()) return;
         for (int i = 0; i < days.size(); i++) {
             long currentDay = StoriesController.StoriesList.day(storyViewer.storiesList.findMessageObject(days.get(i).get(0)));
             if (day == currentDay) {

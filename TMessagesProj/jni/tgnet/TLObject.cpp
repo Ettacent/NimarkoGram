@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -31,6 +33,13 @@ uint32_t TLObject::getObjectSize() {
     sizeCalculatorBuffer->clearCapacity();
     serializeToStream(sizeCalculatorBuffer);
     return sizeCalculatorBuffer->capacity();
+}
+
+bool TLObject::getObjectSizeChecked(uint32_t &size) {
+    NativeByteBuffer calculator(true);
+    serializeToStream(&calculator);
+    size = calculator.capacity();
+    return !calculator.hasWriteError() && size <= INT32_MAX;
 }
 
 bool TLObject::isNeedLayer() {

@@ -60,7 +60,7 @@ public class TextCheckCell2 extends FrameLayout {
             ThemeBind.textColor(animatedTextView, Theme.key_windowBackgroundWhiteBlackText);
             animatedTextView.setTypeface(AndroidUtilities.bold());
             animatedTextView.setAnimationProperties(.4f, 0, 320, CubicBezierInterpolator.EASE_OUT_QUINT);
-            collapseViewContainer.addView(animatedTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT,20));
+            collapseViewContainer.addView(animatedTextView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 20, Gravity.CENTER_VERTICAL));
 
             collapsedArrow = new View(getContext());
             Drawable drawable = getContext().getResources().getDrawable(R.drawable.arrow_more).mutate();
@@ -75,21 +75,28 @@ public class TextCheckCell2 extends FrameLayout {
                 @Override
                 protected void onDraw(Canvas canvas) {
                     super.onDraw(canvas);
-                    canvas.drawLine(0, dp(14), 2, getMeasuredHeight()- dp(14), Theme.dividerPaint);
+                    final int x = LocaleController.isRTL ? getMeasuredWidth() - 1 : 0;
+                    canvas.drawLine(x, dp(14), x, getMeasuredHeight() - dp(14), Theme.dividerPaint);
                 }
             };
             checkBoxClickArea.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 2));
             addView(checkBoxClickArea, LayoutHelper.createFrame(76, LayoutHelper.MATCH_PARENT, LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT));
         }
+        collapseViewContainer.setVisibility(VISIBLE);
+        checkBoxClickArea.setVisibility(VISIBLE);
         animatedTextView.setText(text);
         collapsedArrow.animate().cancel();
         collapsedArrow.animate().rotation(collapsed ? 0 : 180).setDuration(340).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).start();
         checkBoxClickArea.setOnClickListener(v -> onCheckClick.run());
+        requestLayout();
     }
 
     public void hideCollapseArrow() {
         if (collapseViewContainer != null) {
             collapseViewContainer.setVisibility(View.GONE);
+            checkBoxClickArea.setVisibility(View.GONE);
+            checkBoxClickArea.setOnClickListener(null);
+            requestLayout();
         }
     }
 
@@ -135,17 +142,31 @@ public class TextCheckCell2 extends FrameLayout {
         } else {
             super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(valueTextView.getVisibility() == VISIBLE ? 64 : 50) + (needDivider ? 1 : 0), MeasureSpec.EXACTLY));
         }
+        if (collapseViewContainer != null && collapseViewContainer.getVisibility() == VISIBLE) {
+            final LayoutParams textParams = (LayoutParams) textView.getLayoutParams();
+            final int leadingMargin = LocaleController.isRTL ? textParams.rightMargin : textParams.leftMargin;
+            final int availableWidth = Math.max(0, getMeasuredWidth() - getPaddingLeft() - getPaddingRight()
+                    - leadingMargin - checkBoxClickArea.getMeasuredWidth() - dp(16));
+            animatedTextView.setMaxWidth(Math.max(1, availableWidth - collapsedArrow.getLayoutParams().width));
+            collapseViewContainer.measure(MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.AT_MOST));
+            textView.measure(MeasureSpec.makeMeasureSpec(Math.max(0, availableWidth - collapseViewContainer.getMeasuredWidth()), MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(textView.getMeasuredHeight(), MeasureSpec.EXACTLY));
+        }
     }
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
-        if (collapseViewContainer != null) {
-            if (LocaleController.isRTL) {
-                collapseViewContainer.setTranslationX(textView.getLeft() - collapseViewContainer.getMeasuredWidth() - dp(8));
-            } else {
-                collapseViewContainer.setTranslationX(textView.getRight() + dp(8));
-            }
+        if (collapseViewContainer != null && collapseViewContainer.getVisibility() == VISIBLE) {
+            final int width = collapseViewContainer.getMeasuredWidth();
+            final int height = collapseViewContainer.getMeasuredHeight();
+            final int x = LocaleController.isRTL
+                    ? Math.max(textView.getLeft() - width - dp(8), checkBoxClickArea.getRight() + dp(8))
+                    : Math.min(textView.getRight() + dp(8), checkBoxClickArea.getLeft() - width - dp(8));
+            final int y = (getMeasuredHeight() - height) / 2;
+            collapseViewContainer.setTranslationX(0);
+            collapseViewContainer.layout(x, y, x + width, y + height);
         }
     }
 

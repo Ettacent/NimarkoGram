@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">날짜로 필터링</string>
+    <string name="NM_SearchDatesDay">날짜</string>
+    <string name="NM_SearchDatesPeriod">기간</string>
+    <string name="NM_SearchDatesFrom">시작</string>
+    <string name="NM_SearchDatesUntil">종료</string>
+    <string name="NM_SearchDatesAddEnd">종료일 추가</string>
+    <string name="NM_SearchDatesToday">오늘</string>
+    <string name="NM_SearchDatesYesterday">어제</string>
+    <string name="NM_SearchDatesLast7">최근 7일</string>
+    <string name="NM_SearchDatesLast30">최근 30일</string>
+    <string name="NM_SearchDatesApply">필터 적용</string>
+    <string name="NM_SearchDatesReset">모든 날짜</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">날짜 필터: %1$s</string>
+    <string name="NM_SearchDatesChange">날짜 변경</string>
+    <string name="NM_SearchDatesClear">날짜 필터 해제</string>
+    <string name="NM_SearchDatesJump">날짜로 이동</string>
+    <string name="NM_SearchDatesInvalid">종료일은 시작일보다 빠를 수 없습니다.</string>
+    <string name="NM_SearchDatesDayValue">일: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">월: %1$s</string>
+    <string name="NM_SearchDatesYearValue">연도: %1$s</string>
+</resources>

@@ -181,12 +181,10 @@ public final class WidgetUpdateWorker extends ListenableWorker {
             final int owner = account;
             final long ownerUid = uid;
             AccountInstance.getInstance(owner).getMessagesStorage().getWidgetDialogCountAsync(widgetId, type,
+                    () -> isBindingCurrent(type, owner, ownerUid),
                     count -> {
                         try {
-                            if (!current() || providerType() != type
-                                    || preferences.getInt("account" + widgetId, -1) != owner
-                                    || preferences.getBoolean("deleted" + widgetId, false)
-                                    || UserConfig.getInstance(owner).getClientUserId() != ownerUid) {
+                            if (!isBindingCurrent(type, owner, ownerUid)) {
                                 complete(Result.success());
                             } else if (count < 0) {
                                 complete(Result.retry());
@@ -200,6 +198,13 @@ public final class WidgetUpdateWorker extends ListenableWorker {
         } catch (Exception e) {
             fail(e);
         }
+    }
+
+    private boolean isBindingCurrent(int type, int owner, long uid) {
+        return current() && providerType() == type
+                && preferences.getInt("account" + widgetId, -1) == owner
+                && !preferences.getBoolean("deleted" + widgetId, false)
+                && UserConfig.getInstance(owner).getClientUserId() == uid;
     }
 
     private void apply(int type, int account, long uid, boolean deleted, int count) {

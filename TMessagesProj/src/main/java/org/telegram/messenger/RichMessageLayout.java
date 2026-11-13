@@ -272,6 +272,12 @@ public class RichMessageLayout {
         );
     }
 
+    public boolean isSameWidget(RichMessageLayout other) {
+        if (other == null || blocks.size() != 1 || other.blocks.size() != 1) return false;
+        final RichBlock a = blocks.get(0), b = other.blocks.get(0);
+        return a instanceof RichWidgetBlock && b instanceof RichWidgetBlock
+            && TextUtils.equals(((RichWidgetBlock) a).embed.url, ((RichWidgetBlock) b).embed.url);
+    }
     public boolean needsUpdate(TL_iv.RichMessage newRichMessage, int maxWidth) {
         return (
             richMessage != newRichMessage ||
@@ -8329,6 +8335,7 @@ public class RichMessageLayout {
         private void applyImage(boolean allowMedia) {
             if (photo != null && sizeFull != null) {
                 final ImageLocation thumbLoc = strippedSize != null ? ImageLocation.getForPhoto(strippedSize, photo) : null;
+                imageReceiver.setStrippedLocation(ImageLocation.getForPhoto(sizeFull, photo));
                 if (allowMedia) {
                     imageReceiver.setImage(
                         null, null,
@@ -8347,6 +8354,7 @@ public class RichMessageLayout {
             } else if (document != null) {
                 final ImageLocation thumbLoc = strippedThumb != null ? ImageLocation.getForDocument(strippedThumb, document) : null;
                 final ImageLocation imageLoc = previewThumb != null ? ImageLocation.getForDocument(previewThumb, document) : null;
+                imageReceiver.setStrippedLocation(ImageLocation.getForDocument(document));
                 if (allowMedia && isVideo && (allowAutoplay() || mediaForced)) {
                     imageReceiver.setAllowStartAnimation(true);
                     imageReceiver.setAutoRepeat(1);

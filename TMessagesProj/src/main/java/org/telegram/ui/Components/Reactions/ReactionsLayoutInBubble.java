@@ -167,14 +167,16 @@ public class ReactionsLayoutInBubble {
     }
 
     public void setMessage(MessageObject messageObject, boolean isSmall, boolean isTag, Theme.ResourcesProvider resourcesProvider) {
-        if (messageObject != null && currentAccount != messageObject.currentAccount) {
-            resetForAccount(messageObject.currentAccount);
-        }
         final boolean sameMessage = this.messageObject != null && messageObject != null
                 && this.messageObject.currentAccount == messageObject.currentAccount
                 && this.messageObject.getDialogId() == messageObject.getDialogId()
                 && (this.messageObject == messageObject || this.messageObject.getId() != 0
                     && this.messageObject.getId() == messageObject.getId());
+        if (!sameMessage) {
+            resetForAccount(messageObject == null ? currentAccount : messageObject.currentAccount);
+        } else if (this.isSmall != isSmall || this.tags != isTag) {
+            cancelPress();
+        }
         this.resourcesProvider = resourcesProvider;
         this.isSmall = isSmall;
         this.tags = isTag;
@@ -348,16 +350,26 @@ public class ReactionsLayoutInBubble {
             oldButtons.get(i).detach();
         }
         isEmpty = reactionButtons.isEmpty();
+        if (lastSelectedButton != null) {
+            ReactionButton replacement = null;
+            for (ReactionButton button : reactionButtons) {
+                if (TextUtils.equals(button.key, lastSelectedButton.key)) {
+                    replacement = button;
+                    break;
+                }
+            }
+            if (replacement == null) {
+                cancelPress();
+            } else if (replacement != lastSelectedButton) {
+                lastSelectedButton.bounce.setPressed(false);
+                lastSelectedButton = replacement;
+                replacement.bounce.setPressed(pressed);
+            }
+        }
     }
 
     private void resetForAccount(int account) {
-        if (longPressRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-            longPressRunnable = null;
-        }
-        if (lastSelectedButton != null) lastSelectedButton.bounce.setPressed(false);
-        lastSelectedButton = null;
-        pressed = false;
+        cancelPress();
         HashSet<ReactionButton> retired = new HashSet<>(reactionButtons);
         retired.addAll(outButtons);
         retired.addAll(lastDrawingReactionButtons.values());
@@ -426,7 +438,7 @@ public class ReactionsLayoutInBubble {
                 button.height = dp(26);
             }
 
-            if (currentX + button.width > availableWidth) {
+            if (currentX > 0 && currentX + button.width > availableWidth) {
                 reactionLineWidths.add(currentX);
                 currentX = 0;
                 currentY += button.height + dp(4);
@@ -451,6 +463,7 @@ public class ReactionsLayoutInBubble {
                         reactionButtons.get(k).x += thisLineOffset;
                     }
                     fromP = i;
+                    startY = reactionButtons.get(i).y;
                 }
             }
             int last = reactionButtons.size() - 1;
@@ -818,7 +831,7 @@ public class ReactionsLayoutInBubble {
 
         @Override
         protected boolean isPlaying() {
-            return ReactionsEffectOverlay.isPlaying(messageObject.getId(), messageObject.getGroupId(), visibleReaction);
+            return ReactionsEffectOverlay.isPlaying(messageObject, visibleReaction);
         }
 
         @Override
@@ -1313,8 +1326,9 @@ public class ReactionsLayoutInBubble {
                 tx = textDrawable.getCurrentWidth() + dp(4) * textDrawable.isNotEmpty();
             }
             if (scrimProgress > 0.0f && !isTag && scrimPreviewCounterDrawable != null && avatarsDrawable == null) {
+                final float counterOffset = Math.max(0, (dp(12) - scrimPreviewCounterDrawable.getCurrentWidth()) / 2f);
                 canvas.save();
-                canvas.translate(x + dp(hasName && !drawTagDot() ? 10 : (hasName ? 9 : 8)) + dp(20) + dp(animatedEmojiDrawable != null ? 5 : 2), y - dp(1));
+                canvas.translate(x + dp(hasName && !drawTagDot() ? 10 : (hasName ? 9 : 8)) + dp(20) + dp(animatedEmojiDrawable != null ? 5 : 2) + counterOffset, y - dp(1));
                 scrimPreviewCounterDrawable.setBounds(0, 0, width, height);
                 scrimPreviewCounterDrawable.draw(canvas);
                 scrimPreviewCounterDrawable.setAlpha((int) (0xFF * alpha));
@@ -1650,8 +1664,21 @@ public class ReactionsLayoutInBubble {
     boolean pressed;
     Runnable longPressRunnable;
 
+    private long pressGeneration;
+
+    private void cancelPress() {
+        pressGeneration++;
+        Runnable pending = longPressRunnable;
+        longPressRunnable = null;
+        if (pending != null) AndroidUtilities.cancelRunOnUIThread(pending);
+        ReactionButton selected = lastSelectedButton;
+        lastSelectedButton = null;
+        pressed = false;
+        if (selected != null) selected.bounce.setPressed(false);
+    }
     public boolean checkTouchEvent(MotionEvent event) {
         if (isEmpty || isSmall || messageObject == null || messageObject.messageOwner == null || messageObject.messageOwner.reactions == null) {
+            cancelPress();
             return false;
         }
         float eventX = event.getX();
@@ -1665,25 +1692,23 @@ public class ReactionsLayoutInBubble {
         float x = eventX - this.x;
         float y = eventY - this.y;
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            cancelPress();
             for (int i = 0, n = reactionButtons.size(); i < n; i++) {
                 if (x > reactionButtons.get(i).x && x < reactionButtons.get(i).x + reactionButtons.get(i).width &&
                     y > reactionButtons.get(i).y && y < reactionButtons.get(i).y + reactionButtons.get(i).height) {
                     lastX = event.getX();
                     lastY = eventY;
                     lastSelectedButton = reactionButtons.get(i);
-                    if (longPressRunnable != null) {
-                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                        longPressRunnable = null;
-                    }
                     lastSelectedButton.bounce.setPressed(true);
 
-                    final ReactionButton selectedButtonFinal = lastSelectedButton;
+                    final String selectedKey = lastSelectedButton.key;
+                    final long owner = pressGeneration;
                     AndroidUtilities.runOnUIThread(longPressRunnable = () -> {
-                        didPressReaction(selectedButtonFinal.reactionCount, true, 0, 0);
-                        selectedButtonFinal.bounce.setPressed(false);
-                        lastSelectedButton = null;
-                        pressed = false;
-                        longPressRunnable = null;
+                        if (owner != pressGeneration || !pressed || !attached || lastSelectedButton == null
+                                || !TextUtils.equals(selectedKey, lastSelectedButton.key)) return;
+                        ReactionButton selected = lastSelectedButton;
+                        cancelPress();
+                        didPressReaction(selected.reactionCount, true, 0, 0);
 
                     }, ViewConfiguration.getLongPressTimeout());
                     pressed = true;
@@ -1691,30 +1716,14 @@ public class ReactionsLayoutInBubble {
                 }
             }
         } else if (event.getAction() == MotionEvent.ACTION_MOVE) {
-            if (pressed && Math.abs(event.getX() - lastX) > touchSlop || Math.abs(eventY - lastY) > touchSlop) {
-                pressed = false;
-                if (lastSelectedButton != null) {
-                    lastSelectedButton.bounce.setPressed(false);
-                }
-                lastSelectedButton = null;
-                if (longPressRunnable != null) {
-                    AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                    longPressRunnable = null;
-                }
+            if (pressed && (Math.abs(event.getX() - lastX) > touchSlop || Math.abs(eventY - lastY) > touchSlop)) {
+                cancelPress();
             }
         } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
-            if (longPressRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
-                longPressRunnable = null;
-            }
-            if (pressed && lastSelectedButton != null && event.getAction() == MotionEvent.ACTION_UP) {
-                didPressReaction(lastSelectedButton.reactionCount, false, event.getX(), eventY);
-            }
-            pressed = false;
-            if (lastSelectedButton != null) {
-                lastSelectedButton.bounce.setPressed(false);
-            }
-            lastSelectedButton = null;
+            ReactionButton selected = lastSelectedButton;
+            boolean click = pressed && selected != null && event.getAction() == MotionEvent.ACTION_UP;
+            cancelPress();
+            if (click) didPressReaction(selected.reactionCount, false, event.getX(), eventY);
         }
         return pressed;
     }
@@ -1783,6 +1792,7 @@ public class ReactionsLayoutInBubble {
     }
 
     public void onDetachFromWindow() {
+        cancelPress();
         attached = false;
         for (int i = 0; i < reactionButtons.size(); i++) {
             reactionButtons.get(i).detach();

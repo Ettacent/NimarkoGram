@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger.video;
 
 import android.graphics.Bitmap;
@@ -95,8 +97,8 @@ public class WebmEncoder {
                     params.callback.didWriteData(Math.min(maxFileSize, params.cacheFile.length()), (float) frame / framesCount);
                 }
 
-                if (frame % 3 == 0 && params.callback != null) {
-                    params.callback.checkConversionCanceled();
+                if (frame % 3 == 0 && params.callback != null && params.callback.checkConversionCanceled()) {
+                    return true;
                 }
             }
         } catch (Exception e) {

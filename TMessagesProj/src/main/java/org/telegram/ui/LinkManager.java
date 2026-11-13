@@ -415,12 +415,14 @@ public class LinkManager {
             }
         }
         if ("login_email".equalsIgnoreCase(first)) {
+            final java.util.function.BooleanSupplier emailNavigationCurrent = activity.captureLoginEmailRequest(currentAccount);
+            final java.util.function.BooleanSupplier emailRequestCurrent = () -> !tonConnectCancelled && emailNavigationCurrent.getAsBoolean();
             init();
             setRequestId(getConnectionsManager().sendRequest(new TL_account.getPassword(), (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 done();
-                if (response != null) {
+                if (response != null && emailRequestCurrent.getAsBoolean()) {
                     final TL_account.Password password = (TL_account.Password) response;
-                    activity.openEmailSettings(password);
+                    activity.openEmailSettings(currentAccount, password, emailRequestCurrent);
                 }
             }), ConnectionsManager.RequestFlagFailOnServerErrors | ConnectionsManager.RequestFlagWithoutLogin));
             return true;

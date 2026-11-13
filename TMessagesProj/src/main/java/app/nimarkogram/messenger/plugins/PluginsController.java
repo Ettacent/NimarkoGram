@@ -23,6 +23,10 @@ import app.nimarkogram.messenger.plugins.hooks.MenuItemRecord;
 import app.nimarkogram.messenger.plugins.hooks.PluginsHooks;
 import app.nimarkogram.messenger.plugins.hooks.XposedHookRecord;
 import app.nimarkogram.messenger.plugins.models.SettingItem;
+import app.nimarkogram.messenger.plugins.models.EditTextSetting;
+import app.nimarkogram.messenger.plugins.models.InputSetting;
+import app.nimarkogram.messenger.plugins.models.SelectorSetting;
+import app.nimarkogram.messenger.plugins.models.SwitchSetting;
 import app.nimarkogram.messenger.plugins.ui.PluginsActivity;
 import app.nimarkogram.messenger.plugins.ui.components.InstallPluginBottomSheet;
 import app.nimarkogram.messenger.plugins.ui.components.SafeModeBottomSheet;
@@ -37,10 +41,12 @@ import java.io.File;
 import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +58,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import java.util.function.Supplier;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.DispatchQueue;
@@ -119,6 +126,10 @@ public class PluginsController implements PluginsHooks {
     public final ConcurrentHashMap<String, Plugin> plugins = new ConcurrentHashMap<>();
     public final ConcurrentHashMap<String, List<SettingItem>> settings = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, PluginRuntimeToken> settingsRuntimeTokens =
+            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, AtomicLong> settingsUiRevisions =
+            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> settingsUiCompletedResets =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, MenuItemRecord> menuItemsById = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<MenuItemRecord>> menuItemsByMenuType = new ConcurrentHashMap<>();
@@ -238,6 +249,8 @@ public class PluginsController implements PluginsHooks {
     private final ConcurrentHashMap<String, RuntimeSlot> currentRuntimeByPlugin =
             new ConcurrentHashMap<>();
 
+    private final ConcurrentHashMap<String, PluginRuntimeToken> lastPreparedRuntimeByPlugin =
+            new ConcurrentHashMap<>();
     private final ConcurrentHashMap<PluginRuntimeToken, RuntimeSlot> runtimeSlotsByToken =
             new ConcurrentHashMap<>();
     private static final int MAX_RETAINED_RUNTIME_SCOPE_DEPTH = 32;
@@ -255,6 +268,7 @@ public class PluginsController implements PluginsHooks {
     private final ThreadLocal<RuntimeScopeStack> runtimeScopes =
             ThreadLocal.withInitial(RuntimeScopeStack::new);
 
+    private final ThreadLocal<PluginRuntimeToken> pluginWorkerRuntime = new ThreadLocal<>();
     public static final class PluginInitializationToken {
         final String pluginId;
         final int generation;
@@ -540,6 +554,7 @@ public class PluginsController implements PluginsHooks {
             RuntimeSlot slot = new RuntimeSlot(token);
             currentRuntimeByPlugin.put(pluginId, slot);
             runtimeSlotsByToken.put(token, slot);
+            lastPreparedRuntimeByPlugin.put(pluginId, token);
             return token;
         } } catch (Throwable cleanupFailure2) {
             cleanupBodyFailure2 = cleanupFailure2;
@@ -570,6 +585,29 @@ public class PluginsController implements PluginsHooks {
             return null;
         }
         return slot.token;
+    }
+
+    public PluginRuntimeToken pushPluginWorkerRuntime(PluginRuntimeToken token) {
+        if (token == null) throw new IllegalArgumentException("Missing plugin worker runtime");
+        PluginRuntimeToken previous = pluginWorkerRuntime.get();
+        pluginWorkerRuntime.set(token);
+        return previous;
+    }
+
+    public void restorePluginWorkerRuntime(
+            PluginRuntimeToken token, PluginRuntimeToken previous) {
+        if (token == null || !token.equals(pluginWorkerRuntime.get())) {
+            pluginWorkerRuntime.remove();
+            throw new IllegalStateException("Mismatched plugin worker runtime");
+        }
+        if (previous == null) pluginWorkerRuntime.remove();
+        else pluginWorkerRuntime.set(previous);
+    }
+
+    private PluginRuntimeToken captureBadgePluginRuntime() {
+        PluginRuntimeToken token = captureCurrentPluginRuntime();
+        if (token != null || initializationPermit.get() != null) return token;
+        return pluginWorkerRuntime.get();
     }
 
     public boolean enterPluginRuntime(PluginRuntimeToken token) {
@@ -868,6 +906,33 @@ public class PluginsController implements PluginsHooks {
 
     public boolean isPluginRuntimeCallbackAllowed(PluginRuntimeToken token) {
         return getPluginRuntimeTaskDecision(token) == RUNTIME_TASK_RUN;
+    }
+
+    public boolean canPluginMutateSettings(PluginRuntimeToken token) {
+        if (token == null) return false;
+        synchronized (generationLock(token.pluginId)) {
+            PluginRuntimeToken scoped = runtimeScopes.get().peek();
+            if (scoped != null && !scoped.equals(token)) return false;
+            RuntimeSlot slot = currentRuntimeByPlugin.get(token.pluginId);
+            if (token.equals(pluginUnloadPermit.get())) {
+                RuntimeSlot unloading = runtimeSlotsByToken.get(token);
+                return token.equals(scoped) && unloading != null && unloading.activeCalls > 0
+                        && token.equals(lastPreparedRuntimeByPlugin.get(token.pluginId))
+                        && (slot == null || slot == unloading);
+            }
+            if (AppConfig.pluginsSafeMode || slot == null || !slot.token.equals(token)
+                    || slot.state == RuntimeState.REVOKED || runtimeSlotsByToken.get(token) != slot
+                    || toggleGenerations.getOrDefault(token.pluginId, 0) != token.generation) {
+                return false;
+            }
+            if (slot.state == RuntimeState.PREPARING) {
+                PluginInitializationToken permit = initializationPermit.get();
+                return permit != null && permit.generation == token.generation
+                        && Objects.equals(permit.pluginId, token.pluginId)
+                        && isPluginEnableRequestedLocked(token.pluginId, token.generation);
+            }
+            return slot.state == RuntimeState.ACTIVE && isPluginActive(token.pluginId);
+        }
     }
 
     public void beginPluginUnload(PluginRuntimeToken token) {
@@ -1394,6 +1459,9 @@ public class PluginsController implements PluginsHooks {
             setPluginEnabled(str, z, callback);
         }
         void setPluginSetting(String str, String str2, Object obj);
+        default boolean setPluginSettingChecked(String str, String str2, Object obj) {
+            return false;
+        }
         void sharePlugin(String str);
         void showInstallDialog(BaseFragment baseFragment, InstallPluginBottomSheet.PluginInstallParams pluginInstallParams);
         void shutdown(Runnable runnable);
@@ -3029,6 +3097,396 @@ public class PluginsController implements PluginsHooks {
         pluginEngine.showInstallDialog(baseFragment, pluginInstallParams);
     }
 
+    public enum PluginSettingsUiResult {
+        APPLIED,
+        STALE,
+        FAILED
+    }
+
+    public static final class PluginSettingsUiSource implements PluginUiRegistry.RuntimeOwnedUi {
+        private final PluginsController controller;
+        private final String pluginId;
+        private final PluginRuntimeToken runtimeToken;
+        private final boolean root;
+        private volatile Supplier<List<SettingItem>> refresher;
+        private volatile List<SettingItem> definitions;
+        private volatile Set<SettingItem> rootDefinitions;
+        private volatile boolean cleared;
+
+        private PluginSettingsUiSource(PluginsController controller, String pluginId,
+                PluginRuntimeToken runtimeToken, List<SettingItem> definitions,
+                Supplier<List<SettingItem>> refresher) {
+            this.controller = controller;
+            this.pluginId = pluginId;
+            this.runtimeToken = runtimeToken;
+            List<SettingItem> registered = TextUtils.isEmpty(pluginId)
+                    ? null : controller.settings.get(pluginId);
+            Set<SettingItem> registeredDefinitions = Collections.newSetFromMap(new IdentityHashMap<>());
+            if (refresher == null && definitions != null && registered != null) {
+                for (SettingItem item : definitions) {
+                    if (pluginSettingsUiKey(item) == null) continue;
+                    for (SettingItem candidate : registered) {
+                        if (candidate == item) { registeredDefinitions.add(item); break; }
+                    }
+                }
+            }
+            root = refresher == null && definitions == null;
+            rootDefinitions = registeredDefinitions;
+            this.definitions = root ? null : definitions;
+            this.refresher = root ? null : refresher;
+        }
+
+        private boolean isCurrent() {
+            return !cleared && runtimeToken != null
+                    && Objects.equals(pluginId, runtimeToken.getPluginId())
+                    && controller.getPluginRuntimeTaskDecision(runtimeToken) == RUNTIME_TASK_RUN;
+        }
+
+        public List<SettingItem> getDefinitions() {
+            if (!isCurrent()) return Collections.emptyList();
+            List<SettingItem> registered = runtimeToken.equals(controller.settingsRuntimeTokens.get(pluginId))
+                    ? controller.settings.get(pluginId) : null;
+            if (root) return registered;
+            List<SettingItem> current = definitions;
+            Set<SettingItem> fromRoot = rootDefinitions;
+            if (current == null || fromRoot.isEmpty()) return current;
+            ArrayList<SettingItem> result = new ArrayList<>(current.size());
+            for (SettingItem item : current) {
+                if (!fromRoot.contains(item)) {
+                    result.add(item);
+                } else {
+                    SettingItem replacement = findPluginSettingsUiDefinition(registered, runtimeToken,
+                            pluginSettingsUiKey(item), item.type, pluginSettingsUiClass(item));
+                    if (replacement != null) result.add(replacement);
+                }
+            }
+            return result;
+        }
+
+        private boolean publish(List<SettingItem> next) {
+            boolean rejected;
+            synchronized (this) {
+                rejected = cleared || root;
+                if (!rejected) definitions = next;
+            }
+            if (rejected) { clearOwnedDefinitions(next); return false; }
+            return true;
+        }
+
+        private synchronized void discard() {
+            cleared = true;
+            definitions = null;
+            refresher = null;
+            rootDefinitions = Collections.emptySet();
+        }
+
+        private void clearOwnedDefinitions(List<SettingItem> items) {
+            if (items == null) return;
+            for (SettingItem item : items) {
+                if (item != null && Objects.equals(runtimeToken, item.runtimeToken)) {
+                    try {
+                        item.clearPythonReferences();
+                    } catch (Throwable failure) {
+                        FileLog.e("Unable to clear plugin settings UI definition", failure);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public void clearPluginUiReferences(PluginRuntimeToken ownerToken) {
+            List<SettingItem> previous;
+            synchronized (this) {
+                if (!Objects.equals(runtimeToken, ownerToken) || cleared) return;
+                cleared = true;
+                previous = definitions;
+                definitions = null;
+                refresher = null;
+                rootDefinitions = Collections.emptySet();
+            }
+            clearOwnedDefinitions(previous);
+        }
+    }
+
+    public static final class PluginSettingsUiEdit {
+        private final PluginSettingsUiSource source;
+        private final long revision;
+        private final String key;
+        private final String type;
+        private final Class<?> definitionClass;
+        private final String[] selectorItems;
+
+        private PluginSettingsUiEdit(PluginSettingsUiSource source, long revision, SettingItem item) {
+            this.source = source;
+            this.revision = revision;
+            key = pluginSettingsUiKey(item);
+            type = item.type;
+            definitionClass = pluginSettingsUiClass(item);
+            selectorItems = item instanceof SelectorSetting && ((SelectorSetting) item).items != null
+                    ? ((SelectorSetting) item).items.clone() : null;
+        }
+
+        public long getRevision() {
+            return revision;
+        }
+
+        public String[] getSelectorItems() {
+            return selectorItems == null ? null : selectorItems.clone();
+        }
+    }
+
+    private static String pluginSettingsUiKey(SettingItem item) {
+        if (item instanceof EditTextSetting) return ((EditTextSetting) item).key;
+        if (item instanceof InputSetting) return ((InputSetting) item).key;
+        if (item instanceof SelectorSetting) return ((SelectorSetting) item).key;
+        if (item instanceof SwitchSetting) return ((SwitchSetting) item).key;
+        return null;
+    }
+
+    private static Class<?> pluginSettingsUiClass(SettingItem item) {
+        if (item instanceof EditTextSetting) return EditTextSetting.class;
+        if (item instanceof InputSetting) return InputSetting.class;
+        if (item instanceof SelectorSetting) return SelectorSetting.class;
+        if (item instanceof SwitchSetting) return SwitchSetting.class;
+        return null;
+    }
+
+    private PluginRuntimeToken pluginSettingsUiCaller() {
+        PluginRuntimeToken caller = captureCurrentPluginRuntime();
+        return caller != null ? caller : pluginWorkerRuntime.get();
+    }
+
+    private boolean isPluginSettingsUiCaller(PluginSettingsUiSource source) {
+        PluginRuntimeToken caller = pluginSettingsUiCaller();
+        return source != null && source.controller == this
+                && (caller == null || caller.equals(source.runtimeToken));
+    }
+
+    public PluginSettingsUiSource createPluginSettingsUiSource(String pluginId,
+            PluginRuntimeToken runtimeToken, List<SettingItem> definitions,
+            Supplier<List<SettingItem>> refresher) {
+        PluginSettingsUiSource source = new PluginSettingsUiSource(
+                this, pluginId, runtimeToken, definitions, refresher);
+        if (!isPluginSettingsUiCaller(source) || runtimeToken == null
+                || !Objects.equals(pluginId, runtimeToken.getPluginId())) {
+            source.discard();
+        } else if (!source.isCurrent()) {
+            source.clearPluginUiReferences(runtimeToken);
+        } else {
+            PluginUiRegistry.trackRuntimeOwnedUi(runtimeToken, source);
+        }
+        return source;
+    }
+
+    public long getPluginSettingsUiRevision(String pluginId) {
+        if (TextUtils.isEmpty(pluginId)) return -1;
+        return settingsUiRevisions.computeIfAbsent(pluginId, ignored -> new AtomicLong()).get();
+    }
+
+    public long getCompletedPluginSettingsUiResetRevision(String pluginId) {
+        return TextUtils.isEmpty(pluginId) ? -1 : settingsUiCompletedResets.getOrDefault(pluginId, 0L);
+    }
+
+    public PluginSettingsUiEdit capturePluginSettingsUiEdit(
+            PluginSettingsUiSource source, SettingItem item) {
+        if (!isPluginSettingsUiCaller(source) || !source.isCurrent() || item == null
+                || !source.runtimeToken.equals(item.runtimeToken)
+                || TextUtils.isEmpty(item.type) || TextUtils.isEmpty(pluginSettingsUiKey(item))) return null;
+        return new PluginSettingsUiEdit(source, getPluginSettingsUiRevision(source.pluginId), item);
+    }
+
+    public boolean isPluginSettingsUiEditCurrent(PluginSettingsUiEdit edit) {
+        return edit != null && edit.source.controller == this && edit.source.isCurrent()
+                && edit.revision == getPluginSettingsUiRevision(edit.source.pluginId);
+    }
+
+    public boolean refreshPluginSettingsUiSource(PluginSettingsUiSource source) {
+        if (!isPluginSettingsUiCaller(source) || !source.isCurrent()) return false;
+        Supplier<List<SettingItem>> refresher = source.refresher;
+        if (refresher == null) return true;
+        if (!enterPluginRuntime(source.runtimeToken)) return false;
+        boolean started = false;
+        try {
+            watchdog.onPluginExecutionStarted(source.pluginId);
+            started = true;
+            List<SettingItem> next = refresher.get();
+            if (!source.isCurrent()) {
+                source.clearOwnedDefinitions(next);
+                return false;
+            }
+            return next == null ? source.getDefinitions() != null : source.publish(next);
+        } catch (RuntimeException | Error failure) {
+            watchdog.onPluginExecutionFailed(source.pluginId, failure);
+            throw failure;
+        } finally {
+            try {
+                if (started) watchdog.onPluginExecutionFinished(source.pluginId);
+            } finally {
+                exitPluginRuntime(source.runtimeToken);
+            }
+        }
+    }
+
+    private SettingItem resolvePluginSettingsUiEdit(PluginSettingsUiEdit edit) {
+        return findPluginSettingsUiDefinition(edit.source.getDefinitions(), edit.source.runtimeToken,
+                edit.key, edit.type, edit.definitionClass);
+    }
+
+    private static SettingItem findPluginSettingsUiDefinition(List<SettingItem> definitions,
+            PluginRuntimeToken runtimeToken, String key, String type, Class<?> definitionClass) {
+        if (definitions == null || definitionClass == null) return null;
+        SettingItem found = null;
+        for (SettingItem item : definitions) {
+            if (item != null && definitionClass.isInstance(item)
+                    && Objects.equals(runtimeToken, item.runtimeToken)
+                    && Objects.equals(type, item.type)
+                    && Objects.equals(key, pluginSettingsUiKey(item))) {
+                if (found != null) return null;
+                found = item;
+            }
+        }
+        return found;
+    }
+
+    private void completePluginSettingsUiAction(Utilities.Callback<PluginSettingsUiResult> callback,
+            PluginSettingsUiResult result, PluginRuntimeToken caller) {
+        if (callback == null) return;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (caller != null && (getPluginRuntimeTaskDecision(caller) != RUNTIME_TASK_RUN
+                    || !enterPluginRuntime(caller))) return;
+            try {
+                callback.run(result);
+            } finally {
+                if (caller != null) exitPluginRuntime(caller);
+            }
+        });
+    }
+
+    private boolean postPluginSettingsUiTask(Runnable task) {
+        try {
+            return Utilities.pluginsQueue.postRunnable(task);
+        } catch (RuntimeException failure) {
+            FileLog.e("Unable to queue plugin settings UI operation", failure);
+            return false;
+        }
+    }
+
+    public void applyPluginSettingsUiEdit(PluginSettingsUiEdit edit, Object value,
+            Utilities.Callback<PluginSettingsUiResult> callback) {
+        PluginRuntimeToken caller = pluginSettingsUiCaller();
+        if (edit == null || !isPluginSettingsUiCaller(edit.source)) {
+            completePluginSettingsUiAction(callback, PluginSettingsUiResult.STALE, caller);
+            return;
+        }
+        boolean posted = postPluginSettingsUiTask(() -> {
+            PluginSettingsUiResult result = PluginSettingsUiResult.STALE;
+            PluginSettingsUiSource source = edit.source;
+            boolean entered = false;
+            boolean started = false;
+            try {
+                if (!isPluginSettingsUiEditCurrent(edit) || !refreshPluginSettingsUiSource(source)
+                        || !isPluginSettingsUiEditCurrent(edit)) return;
+                entered = enterPluginRuntime(source.runtimeToken);
+                if (!entered) return;
+                watchdog.onPluginExecutionStarted(source.pluginId);
+                started = true;
+                SettingItem item = resolvePluginSettingsUiEdit(edit);
+                if (item == null) return;
+                PyObject onChange;
+                Object savedValue = value;
+                if (item instanceof SelectorSetting) {
+                    SelectorSetting selector = (SelectorSetting) item;
+                    if (!(value instanceof Integer) || selector.items == null
+                            || !Arrays.equals(edit.selectorItems, selector.items)
+                            || (Integer) value < 0 || (Integer) value >= selector.items.length) return;
+                    onChange = selector.onChangeCallback;
+                } else if (item instanceof EditTextSetting) {
+                    if (!(value instanceof String)) return;
+                    EditTextSetting text = (EditTextSetting) item;
+                    if (text.maxLength > 0 && ((String) value).length() > text.maxLength) {
+                        String stringValue = (String) value;
+                        int end = text.maxLength;
+                        if (end > 0 && Character.isHighSurrogate(stringValue.charAt(end - 1))
+                                && Character.isLowSurrogate(stringValue.charAt(end))) end--;
+                        savedValue = stringValue.substring(0, end);
+                    }
+                    onChange = text.onChangeCallback;
+                } else if (item instanceof InputSetting) {
+                    if (!(value instanceof String)) return;
+                    onChange = ((InputSetting) item).onChangeCallback;
+                } else if (item instanceof SwitchSetting) {
+                    if (!(value instanceof Boolean)) return;
+                    onChange = ((SwitchSetting) item).onChangeCallback;
+                } else return;
+                PluginsEngine engine = getPluginEngine(source.pluginId);
+                if (engine == null || getPluginRuntimeTaskDecision(source.runtimeToken) != RUNTIME_TASK_RUN) return;
+                if (!engine.setPluginSettingChecked(source.pluginId, edit.key, savedValue)) {
+                    result = PluginSettingsUiResult.FAILED;
+                    return;
+                }
+                loadPluginSettings(source.pluginId, source.runtimeToken.getGeneration());
+                if (getPluginRuntimeTaskDecision(source.runtimeToken) != RUNTIME_TASK_RUN) return;
+                if (onChange != null) onChange.call(savedValue);
+                result = PluginSettingsUiResult.APPLIED;
+            } catch (Throwable failure) {
+                result = PluginSettingsUiResult.FAILED;
+                if (started) watchdog.onPluginExecutionFailed(source.pluginId, failure);
+                FileLog.e("Plugin settings UI change failed: " + source.pluginId + "/" + edit.key, failure);
+                if (failure instanceof VirtualMachineError) throw (VirtualMachineError) failure;
+                if (failure instanceof ThreadDeath) throw (ThreadDeath) failure;
+                if (failure instanceof LinkageError) throw (LinkageError) failure;
+            } finally {
+                try {
+                    if (started) watchdog.onPluginExecutionFinished(source.pluginId);
+                } finally {
+                    if (entered) exitPluginRuntime(source.runtimeToken);
+                }
+                completePluginSettingsUiAction(callback, result, caller);
+            }
+        });
+        if (!posted) completePluginSettingsUiAction(callback, PluginSettingsUiResult.FAILED, caller);
+    }
+
+    public long resetPluginSettingsUi(PluginSettingsUiSource source,
+            Utilities.Callback<PluginSettingsUiResult> callback) {
+        PluginRuntimeToken caller = pluginSettingsUiCaller();
+        if (!isPluginSettingsUiCaller(source) || !source.isCurrent()) {
+            completePluginSettingsUiAction(callback, PluginSettingsUiResult.STALE, caller);
+            return -1;
+        }
+        long revision = settingsUiRevisions.computeIfAbsent(source.pluginId,
+                ignored -> new AtomicLong()).incrementAndGet();
+        boolean posted = postPluginSettingsUiTask(() -> {
+            PluginSettingsUiResult result = PluginSettingsUiResult.STALE;
+            boolean entered = false;
+            try {
+                if (!source.isCurrent() || revision != getPluginSettingsUiRevision(source.pluginId)) return;
+                entered = enterPluginRuntime(source.runtimeToken);
+                if (!entered) return;
+                if (!clearPluginSettingsPreferences(source.pluginId, false)) {
+                    result = PluginSettingsUiResult.FAILED;
+                    return;
+                }
+                pluginSettingsLoadTask(source.pluginId, source.runtimeToken.getGeneration()).run();
+                result = PluginSettingsUiResult.APPLIED;
+            } catch (Throwable failure) {
+                result = PluginSettingsUiResult.FAILED;
+                FileLog.e("Plugin settings UI reset failed: " + source.pluginId, failure);
+                if (failure instanceof VirtualMachineError) throw (VirtualMachineError) failure;
+                if (failure instanceof ThreadDeath) throw (ThreadDeath) failure;
+                if (failure instanceof LinkageError) throw (LinkageError) failure;
+            } finally {
+                if (entered) exitPluginRuntime(source.runtimeToken);
+                settingsUiCompletedResets.merge(source.pluginId, revision, Math::max);
+                completePluginSettingsUiAction(callback, result, caller);
+            }
+        });
+        if (!posted) {
+            settingsUiCompletedResets.merge(source.pluginId, revision, Math::max);
+            completePluginSettingsUiAction(callback, PluginSettingsUiResult.FAILED, caller);
+        }
+        return revision;
+    }
     public void loadPluginSettings() {
         loadPluginSettings(null);
     }
@@ -3050,7 +3508,11 @@ public class PluginsController implements PluginsHooks {
 
     public void loadPluginSettings(final String str, final int generation) {
         if (TextUtils.isEmpty(str)) return;
-        Utilities.pluginsQueue.postRunnable(() -> {
+        Utilities.pluginsQueue.postRunnable(pluginSettingsLoadTask(str, generation));
+    }
+
+    private Runnable pluginSettingsLoadTask(final String str, final int generation) {
+        return () -> {
             try {
                 PluginsEngine pluginEngine = getPluginEngine(str);
                 if (pluginEngine == null) {
@@ -3103,7 +3565,7 @@ public class PluginsController implements PluginsHooks {
                 FileLog.e(th);
                 invalidatePluginSettings(str, generation);
             }
-        });
+        };
     }
 
     public boolean hasPluginSettings(String str) {
@@ -3912,7 +4374,7 @@ public class PluginsController implements PluginsHooks {
             app.nimarkogram.messenger.badges.BadgePluginOwners.install(
                     new app.nimarkogram.messenger.badges.BadgePluginOwners.Resolver() {
                         @Override public app.nimarkogram.messenger.badges.BadgePluginOwners.Owner capture() {
-                            PluginRuntimeToken token = INSTANCE.captureCurrentPluginRuntime();
+                            PluginRuntimeToken token = INSTANCE.captureBadgePluginRuntime();
                             if (token == null) return null;
                             RuntimeSlot slot = INSTANCE.currentRuntimeByPlugin.get(token.pluginId);
                             if (slot == null || slot.state == RuntimeState.REVOKED || !slot.token.equals(token)

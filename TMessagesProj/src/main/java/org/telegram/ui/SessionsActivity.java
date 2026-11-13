@@ -145,6 +145,8 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
 
     private int repeatLoad = 0;
 
+    private int sessionsLoadGeneration;
+    private Runnable repeatLoadRunnable;
     private boolean highlightLinkDesktopDevice;
     private boolean fragmentOpened;
     private Delegate delegate;
@@ -179,6 +181,12 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
 
     @Override
     public void onFragmentDestroy() {
+        sessionsLoadGeneration++;
+        loading = false;
+        if (repeatLoadRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(repeatLoadRunnable);
+            repeatLoadRunnable = null;
+        }
         super.onFragmentDestroy();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.newSessionReceived);
     }
@@ -468,6 +476,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                     final TLRPC.TL_authorization authorization;
                     boolean isCurrentSession = false;
                     if (position == currentSessionRow) {
+                        if (currentSession == null) return;
                         authorization = currentSession;
                         isCurrentSession = true;
                     } else if (position >= otherSessionsStartRow && position < otherSessionsEndRow) {
@@ -478,6 +487,12 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                     showSessionBottomSheet(authorization, isCurrentSession);
                     return;
                 }
+                final TLRPC.TL_webAuthorization selectedAuthorization = (TLRPC.TL_webAuthorization) sessions.get(position - otherSessionsStartRow);
+                final long selectedHash = selectedAuthorization.hash;
+                final long selectedBotId = selectedAuthorization.bot_id;
+                final int selectedAccount = currentAccount;
+                final long selectedUserId = getUserConfig().getClientUserId();
+                final long selectedLoginSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(selectedAccount);
                 AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                 final boolean[] param = new boolean[1];
                 String buttonText;
@@ -486,15 +501,13 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                     builder.setTitle(getString(R.string.AreYouSureSessionTitle));
                     buttonText = getString(R.string.Terminate);
                 } else {
-                    final TLRPC.TL_webAuthorization authorization = (TLRPC.TL_webAuthorization) sessions.get(position - otherSessionsStartRow);
-
-                    builder.setMessage(LocaleController.formatString("TerminateWebSessionText", R.string.TerminateWebSessionText, authorization.domain));
+                    builder.setMessage(LocaleController.formatString("TerminateWebSessionText", R.string.TerminateWebSessionText, selectedAuthorization.domain));
                     builder.setTitle(getString(R.string.TerminateWebSessionTitle));
                     buttonText = getString(R.string.Disconnect);
 
                     FrameLayout frameLayout1 = new FrameLayout(getParentActivity());
 
-                    TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(authorization.bot_id);
+                    TLRPC.User user = MessagesController.getInstance(selectedAccount).getUser(selectedBotId);
                     String name;
                     if (user != null) {
                         name = UserObject.getFirstName(user);
@@ -519,7 +532,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                     builder.setView(frameLayout1);
                 }
                 builder.setPositiveButton(buttonText, (dialogInterface, option) -> {
-                    if (getParentActivity() == null) {
+                    if (getParentActivity() == null || !isSessionUiCurrent(selectedAccount, selectedUserId, selectedLoginSession)) {
                         return;
                     }
                     final AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
@@ -551,17 +564,23 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                             }
                         }));
                     } else {
-                        final TLRPC.TL_webAuthorization authorization = (TLRPC.TL_webAuthorization) sessions.get(position - otherSessionsStartRow);
                         TL_account.resetWebAuthorization req = new TL_account.resetWebAuthorization();
-                        req.hash = authorization.hash;
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                        req.hash = selectedHash;
+                        ConnectionsManager.getInstance(selectedAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                             try {
                                 progressDialog.dismiss();
                             } catch (Exception e) {
                                 FileLog.e(e);
                             }
-                            if (error == null) {
-                                sessions.remove(authorization);
+                            if (error == null && isSessionUiCurrent(selectedAccount, selectedUserId, selectedLoginSession)) {
+                                loading = false;
+                                loadSessions(true);
+                                for (int index = sessions.size() - 1; index >= 0; index--) {
+                                    TLObject session = sessions.get(index);
+                                    if (session instanceof TLRPC.TL_webAuthorization && ((TLRPC.TL_webAuthorization) session).hash == selectedHash) {
+                                        sessions.remove(index);
+                                    }
+                                }
                                 updateRows();
                                 if (listAdapter != null) {
                                     listAdapter.notifyDataSetChanged();
@@ -569,7 +588,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                             }
                         }));
                         if (param[0]) {
-                            MessagesController.getInstance(currentAccount).blockPeer(authorization.bot_id);
+                            MessagesController.getInstance(selectedAccount).blockPeer(selectedBotId);
                         }
                     }
                 });
@@ -677,15 +696,28 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
         if (loading) {
             return;
         }
+        final int account = currentAccount;
+        final long userId = getUserConfig().getClientUserId();
+        final long loginSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        if (!isSessionUiCurrent(account, userId, loginSession)) {
+            return;
+        }
+        if (repeatLoadRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(repeatLoadRunnable);
+            repeatLoadRunnable = null;
+        }
+        final int generation = ++sessionsLoadGeneration;
         if (!silent) {
             loading = true;
         }
         if (currentType == 0) {
             TL_account.getAuthorizations req = new TL_account.getAuthorizations();
-            int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            int reqId = ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!isSessionLoadCurrent(generation, account, userId, loginSession)) {
+                    return;
+                }
                 loading = false;
-                int oldItemsCount = listAdapter != null ? listAdapter.getItemCount() : 0;
-                if (error == null) {
+                if (error == null && response instanceof TL_account.authorizations) {
                     sessions.clear();
                     passwordSessions.clear();
                     TL_account.authorizations res = (TL_account.authorizations) response;
@@ -700,56 +732,66 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                         }
                     }
                     ttlDays = res.authorization_ttl_days;
+                }
+                finishSessionLoad(generation, account, userId, loginSession, silent);
+            }));
+            ConnectionsManager.getInstance(account).bindRequestToGuid(reqId, classGuid);
+        } else {
+            TL_account.getWebAuthorizations req = new TL_account.getWebAuthorizations();
+            int reqId = ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!isSessionLoadCurrent(generation, account, userId, loginSession)) {
+                    return;
+                }
+                loading = false;
+                if (error == null && response instanceof TL_account.webAuthorizations) {
+                    sessions.clear();
+                    TL_account.webAuthorizations res = (TL_account.webAuthorizations) response;
+                    MessagesController.getInstance(account).putUsers(res.users, false);
+                    sessions.addAll(res.authorizations);
+                }
+                finishSessionLoad(generation, account, userId, loginSession, silent);
+            }));
+            ConnectionsManager.getInstance(account).bindRequestToGuid(reqId, classGuid);
+        }
+    }
+
+    private boolean isSessionUiCurrent(int account, long userId, long loginSession) {
+        return !isFinished && !finishing && !isRemovingFromStack() && currentAccount == account
+                && app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, loginSession);
+    }
+
+    private boolean isSessionLoadCurrent(int generation, int account, long userId, long loginSession) {
+        return generation == sessionsLoadGeneration && isSessionUiCurrent(account, userId, loginSession);
+    }
+
+    private void finishSessionLoad(int generation, int account, long userId, long loginSession, boolean silent) {
                     updateRows();
+        if (listAdapter != null) {
+            listAdapter.notifyDataSetChanged();
+        }
+        if (!isSessionLoadCurrent(generation, account, userId, loginSession)) {
+            return;
+        }
                     if (delegate != null) {
                         delegate.sessionsLoaded();
                     }
-                }
-//                itemsEnterAnimator.showItemsAnimated(oldItemsCount + 1);
-                if (listAdapter != null) {
-                    listAdapter.notifyDataSetChanged();
-                }
-
-                if (delegate != null) {
-                    delegate.sessionsLoaded();
-                }
-
-                if (repeatLoad > 0) {
-                    repeatLoad--;
-                    if (repeatLoad > 0) {
-                        AndroidUtilities.runOnUIThread(() -> loadSessions(silent), 2500);
+        if (!isSessionLoadCurrent(generation, account, userId, loginSession)) {
+            return;
+        }
+        if (repeatLoad > 0 && --repeatLoad > 0) {
+            repeatLoadRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    if (repeatLoadRunnable != this) {
+                        return;
+                    }
+                    repeatLoadRunnable = null;
+                    if (isSessionLoadCurrent(generation, account, userId, loginSession)) {
+                        loadSessions(silent);
                     }
                 }
-            }));
-            ConnectionsManager.getInstance(currentAccount).bindRequestToGuid(reqId, classGuid);
-        } else {
-            TL_account.getWebAuthorizations req = new TL_account.getWebAuthorizations();
-            int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                loading = false;
-                if (error == null) {
-                    sessions.clear();
-                    TL_account.webAuthorizations res = (TL_account.webAuthorizations) response;
-                    MessagesController.getInstance(currentAccount).putUsers(res.users, false);
-                    sessions.addAll(res.authorizations);
-                    updateRows();
-                }
-//                itemsEnterAnimator.showItemsAnimated(0);
-                if (listAdapter != null) {
-                    listAdapter.notifyDataSetChanged();
-                }
-
-                if (delegate != null) {
-                    delegate.sessionsLoaded();
-                }
-
-                if (repeatLoad > 0) {
-                    repeatLoad--;
-                    if (repeatLoad > 0) {
-                        AndroidUtilities.runOnUIThread(() -> loadSessions(silent), 2500);
-                    }
-                }
-            }));
-            ConnectionsManager.getInstance(currentAccount).bindRequestToGuid(reqId, classGuid);
+            };
+            AndroidUtilities.runOnUIThread(repeatLoadRunnable, 2500);
         }
     }
 
@@ -813,7 +855,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
             }
             return;
         }
-        if (currentSession != null) {
+        if (currentType == TYPE_DEVICES || currentSession != null) {
             currentSessionSectionRow = rowCount++;
             currentSessionRow = rowCount++;
         }
@@ -884,7 +926,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
-            return position == terminateAllSessionsRow || position >= otherSessionsStartRow && position < otherSessionsEndRow || position >= botSessionsStartRow && position < botSessionsEndRow || position >= passwordSessionsStartRow && position < passwordSessionsEndRow || position == currentSessionRow || position == ttlRow;
+            return position == terminateAllSessionsRow || position >= otherSessionsStartRow && position < otherSessionsEndRow || position >= botSessionsStartRow && position < botSessionsEndRow || position >= passwordSessionsStartRow && position < passwordSessionsEndRow || position == currentSessionRow && currentSession != null || position == ttlRow;
         }
 
         @Override
@@ -997,6 +1039,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 case VIEW_TYPE_SESSION:
                 default:
                     SessionCell sessionCell = (SessionCell) holder.itemView;
+                    sessionCell.setEnabled(isEnabled(holder));
                     if (position == currentSessionRow) {
                         sessionCell.setSession(currentSession != null ? currentSession : createLocalSession(), !sessions.isEmpty() || !passwordSessions.isEmpty() || qrCodeRow != -1);
                     } else if (position >= otherSessionsStartRow && position < otherSessionsEndRow) {

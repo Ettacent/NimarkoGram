@@ -821,6 +821,9 @@ public final class WidgetMedia {
         return url;
     }
 
+    public static TL_iv.RichMessage previewRichMessage(int account, TLRPC.BotInlineResult result) {
+        return layout(null, previewUrl(account, result));
+    }
     public static boolean isPreview(String url) {
         Entry entry = isWidgetUrl(url) ? currentEntry(url) : null;
         return entry != null && entry.preview;
@@ -1127,6 +1130,13 @@ public final class WidgetMedia {
         @Override
         public void onFailure(WidgetSandboxMessage message, String error) {
             FileLog.e("widget " + message.file + ": " + error);
+        }
+
+        @Override
+        public void onEngineDied(WidgetSandboxMessage message, boolean restart) {
+            Entry entry = entryOf(message);
+            FileLog.d("widget " + message.file + ": engine process died" + (restart ? ", restarting" : ""));
+            if (restart && entry != null && entry.owner != null) entry.owner.restartWidget();
         }
 
         @Override

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -86,23 +88,34 @@ void ConnectionSession::addMessageToConfirm(int64_t messageId) {
 }
 
 NetworkMessage *ConnectionSession::generateConfirmationRequest() {
-    NetworkMessage *networkMessage = nullptr;
-
-    if (!messagesIdsForConfirmation.empty()) {
-        TL_msgs_ack *msgAck = new TL_msgs_ack();
-        msgAck->msg_ids.insert(msgAck->msg_ids.begin(), messagesIdsForConfirmation.begin(), messagesIdsForConfirmation.end());
-        NativeByteBuffer *os = new NativeByteBuffer(true);
-        msgAck->serializeToStream(os);
-        networkMessage = new NetworkMessage();
-        networkMessage->message = std::unique_ptr<TL_message>(new TL_message);
-        networkMessage->message->msg_id = ConnectionsManager::getInstance(instanceNum).generateMessageId();
-        networkMessage->message->seqno = generateMessageSeqNo(false);
-        networkMessage->message->bytes = os->capacity();
-        networkMessage->message->body = std::unique_ptr<TLObject>(msgAck);
-        messagesIdsForConfirmation.clear();
+    if (messagesIdsForConfirmation.empty()) {
+        return nullptr;
     }
 
-    return networkMessage;
+    const size_t count = std::min(messagesIdsForConfirmation.size(),
+            static_cast<size_t>((INT32_MAX - 56 - 255 - 24 - 12) / 8));
+    auto msgAck = std::make_unique<TL_msgs_ack>();
+    msgAck->msg_ids.assign(messagesIdsForConfirmation.begin(), messagesIdsForConfirmation.begin() + count);
+    auto networkMessage = std::make_unique<NetworkMessage>();
+    networkMessage->message = std::make_unique<TL_message>();
+    networkMessage->message->msg_id = ConnectionsManager::getInstance(instanceNum).generateMessageId();
+    networkMessage->message->seqno = generateMessageSeqNo(false);
+    networkMessage->message->bytes = static_cast<int32_t>(12 + count * 8);
+    networkMessage->message->body = std::move(msgAck);
+    networkMessage->sessionId = getSessionId();
+    return networkMessage.release();
+}
+
+void ConnectionSession::commitConfirmationRequest(const std::vector<int64_t> &ids, int64_t ownerSessionId) {
+    if (ownerSessionId != sessionId) return;
+    if (ids.size() <= messagesIdsForConfirmation.size()
+            && std::equal(ids.begin(), ids.end(), messagesIdsForConfirmation.begin())) {
+        messagesIdsForConfirmation.erase(messagesIdsForConfirmation.begin(), messagesIdsForConfirmation.begin() + ids.size());
+        return;
+    }
+    auto end = std::remove_if(messagesIdsForConfirmation.begin(), messagesIdsForConfirmation.end(),
+            [&](int64_t id) { return std::find(ids.begin(), ids.end(), id) != ids.end(); });
+    messagesIdsForConfirmation.erase(end, messagesIdsForConfirmation.end());
 }
 
 bool ConnectionSession::isSessionProcessed(int64_t sessionId) {

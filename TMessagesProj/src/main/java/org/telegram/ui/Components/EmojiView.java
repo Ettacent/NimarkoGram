@@ -2095,16 +2095,18 @@ public class EmojiView extends FrameLayout implements
                     public void getItemOffsets(@NonNull android.graphics.Rect outRect, @NonNull View view, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
                         int position = parent.getChildAdapterPosition(view);
 
-                        if (gifGridView.getAdapter() == gifAdapter && position == gifAdapter.trendingSectionItem) {
+                        final GifAdapter adapter = (GifAdapter) parent.getAdapter();
+
+                        if (adapter == null || position == RecyclerView.NO_POSITION || position == adapter.trendingSectionItem) {
                             outRect.set(0, 0, 0, 0);
                             return;
                         }
 
-                        if (position != 0 || !gifAdapter.addSearch) {
+                        if (position != 0 || !adapter.addSearch) {
                             outRect.left = 0;
                             outRect.bottom = 0;
                             outRect.top = AndroidUtilities.dp(2);
-                            outRect.right = gifLayoutManager.isLastInRow(position - (gifAdapter.addSearch ? 1 : 0)) ? 0 : AndroidUtilities.dp(2);
+                            outRect.right = gifLayoutManager.isLastInRow(position - (adapter.addSearch ? 1 : 0)) ? 0 : AndroidUtilities.dp(2);
                         } else {
                             outRect.set(0, 0, 0, 0);
                         }
@@ -5152,7 +5154,7 @@ public class EmojiView extends FrameLayout implements
                 if (gridView == stickersGridView) {
                     gridView.setPadding(0, AndroidUtilities.dp(36), 0, AndroidUtilities.dp(44) + bottomInset);
                 } else if (gridView == gifGridView) {
-                    gridView.setPadding(0, AndroidUtilities.dp(36 + 4), 0, AndroidUtilities.dp(44) + bottomInset);
+                    gridView.setPadding(0, searchFieldHeight, 0, AndroidUtilities.dp(44) + bottomInset);
                 } else if (gridView == emojiGridView) {
                     gridView.setPadding(AndroidUtilities.dp(5), AndroidUtilities.dp(36), AndroidUtilities.dp(5), AndroidUtilities.dp(44) + bottomInset);
                 }
@@ -6376,6 +6378,12 @@ public class EmojiView extends FrameLayout implements
         if (stickersSearchGridAdapter != null && !TextUtils.isEmpty(stickersSearchGridAdapter.searchQuery)) {
             stickersSearchGridAdapter.search(stickersSearchGridAdapter.searchQuery, false);
         }
+        if (gifAdapter != null) {
+            gifAdapter.resumeSearch();
+        }
+        if (gifSearchAdapter != null) {
+            gifSearchAdapter.resumeSearch();
+        }
     }
 
     @Override
@@ -6428,7 +6436,7 @@ public class EmojiView extends FrameLayout implements
     }
 
     public void onDestroy() {
-        cancelSearches();
+        cancelSearches(false);
         if (pager != null) pager.finishPageTransition();
         startStopVisibleGifs(false);
         if (observersGroup != null) {
@@ -6449,14 +6457,14 @@ public class EmojiView extends FrameLayout implements
             observersGroup.removeAllObservers();
             observersGroup = null;
         }
-        cancelSearches();
+        cancelSearches(true);
         startStopVisibleGifs(false);
         if (colorPickerView != null && colorPickerView.isShowing()) {
             colorPickerView.dismiss();
         }
         ContentPreviewViewer.getInstance().clearDelegate(contentPreviewViewerDelegate);
     }
-    private void cancelSearches() {
+    private void cancelSearches(boolean resumeGifSearch) {
         if (emojiSearchAdapter != null) {
             emojiSearchAdapter.cancelSearch();
             if (emojiSearchField != null) {
@@ -6468,6 +6476,12 @@ public class EmojiView extends FrameLayout implements
             if (stickersSearchField != null) {
                 stickersSearchField.showProgress(false);
             }
+        }
+        if (gifAdapter != null) {
+            gifAdapter.cancelSearch(resumeGifSearch);
+        }
+        if (gifSearchAdapter != null) {
+            gifSearchAdapter.cancelSearch(resumeGifSearch);
         }
     }
 
@@ -8954,6 +8968,28 @@ public class EmojiView extends FrameLayout implements
         private Runnable searchRunnable;
         private boolean searchingUser;
 
+        private boolean botSearchFailed;
+        private GifSearchRequest delayedSearch;
+        private GifSearchRequest botSearch;
+        private GifSearchRequest resultSearch;
+        private GifSearchRequest pausedSearch;
+
+        private class GifSearchRequest {
+            final int account = currentAccount;
+            final String query;
+            final String offset;
+            final boolean isEmoji;
+            final boolean cache;
+            boolean waitingForPreload;
+            int requestId;
+
+            GifSearchRequest(String query, String offset, boolean isEmoji, boolean cache) {
+                this.query = query;
+                this.offset = offset;
+                this.isEmoji = isEmoji;
+                this.cache = cache;
+            }
+        }
         private int itemsCount;
         private int recentItemsCount;
         private int trendingSectionItem = -1;
@@ -9142,26 +9178,105 @@ public class EmojiView extends FrameLayout implements
             search("", "", true, true, true);
         }
 
-        private void searchBotUser() {
+        private void cancelDelayedSearch() {
+            delayedSearch = null;
+            if (searchRunnable != null) {
+                AndroidUtilities.cancelRunOnUIThread(searchRunnable);
+                searchRunnable = null;
+            }
+        }
+
+        private void cancelBotSearch() {
+            final GifSearchRequest search = botSearch;
+            botSearch = null;
+            searchingUser = false;
+            if (search != null) {
+                botSearchFailed = true;
+                if (search.requestId != 0) {
+                    ConnectionsManager.getInstance(search.account).cancelRequest(search.requestId, true);
+                }
+            }
+        }
+
+        private void cancelResultSearch() {
+            final GifSearchRequest search = resultSearch;
+            resultSearch = null;
+            final int requestId = reqId;
+            reqId = 0;
+            if (requestId > 0) {
+                ConnectionsManager.getInstance(search == null ? currentAccount : search.account).cancelRequest(requestId, true);
+            }
+        }
+
+        private void cancelSearch(boolean resume) {
+            final boolean pending = delayedSearch != null || botSearch != null || resultSearch != null;
+            if (!resume) {
+                pausedSearch = null;
+            } else if (pending) {
+                pausedSearch = delayedSearch != null ? delayedSearch : botSearch != null ? botSearch : resultSearch;
+            }
+            cancelDelayedSearch();
+            cancelBotSearch();
+            cancelResultSearch();
+            if (!withRecent && (!resume || pending)) {
+                gifSearchField.showProgress(false);
+            }
+        }
+
+        private void resumeSearch() {
+            final GifSearchRequest search = pausedSearch;
+            pausedSearch = null;
+            if (search != null && search.account == currentAccount) {
+                search(search.query, search.offset, true, search.isEmoji, search.cache);
+            }
+        }
+
+        private void searchBotUser(String query, String offset, boolean isEmoji, boolean cache) {
             if (searchingUser) {
                 return;
             }
+            final GifSearchRequest search = new GifSearchRequest(query, offset, isEmoji, cache);
+            botSearch = search;
             searchingUser = true;
             TLRPC.TL_contacts_resolveUsername req = new TLRPC.TL_contacts_resolveUsername();
-            req.username = MessagesController.getInstance(currentAccount).gifSearchBot;
-            ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-                if (response != null) {
-                    AndroidUtilities.runOnUIThread(() -> {
-                        TLRPC.TL_contacts_resolvedPeer res = (TLRPC.TL_contacts_resolvedPeer) response;
-                        MessagesController.getInstance(currentAccount).putUsers(res.users, false);
-                        MessagesController.getInstance(currentAccount).putChats(res.chats, false);
-                        MessagesStorage.getInstance(currentAccount).putUsersAndChats(res.users, res.chats, true, true);
-                        String str = lastSearchImageString;
-                        lastSearchImageString = null;
-                        search(str, "", false);
-                    });
+            req.username = MessagesController.getInstance(search.account).gifSearchBot;
+            search.requestId = ConnectionsManager.getInstance(search.account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (botSearch != search) {
+                    return;
                 }
-            });
+                search.requestId = 0;
+                if (search.account != currentAccount || !TextUtils.equals(search.query, lastSearchImageString) || search.isEmoji != lastSearchIsEmoji) {
+                    cancelBotSearch();
+                    return;
+                }
+                final MessagesController controller = MessagesController.getInstance(search.account);
+                if (error == null && response instanceof TLRPC.TL_contacts_resolvedPeer) {
+                        TLRPC.TL_contacts_resolvedPeer res = (TLRPC.TL_contacts_resolvedPeer) response;
+                    controller.putUsers(res.users, false);
+                    controller.putChats(res.chats, false);
+                    MessagesStorage.getInstance(search.account).putUsersAndChats(res.users, res.chats, true, true);
+                    if (botSearch != search) {
+                        return;
+                    }
+                    if (search.account != currentAccount) {
+                        cancelBotSearch();
+                        return;
+                    }
+                    if (controller.getUserOrChat(controller.gifSearchBot) instanceof TLRPC.User) {
+                        botSearch = null;
+                        searchingUser = false;
+                        search(search.query, search.offset, false, search.isEmoji, search.cache);
+                        return;
+                    }
+                }
+                botSearch = null;
+                searchingUser = false;
+                botSearchFailed = true;
+                setEmptyLoadingState(false);
+                if (!withRecent) {
+                    gifSearchField.showProgress(false);
+                }
+            }));
         }
 
         public void search(String text) {
@@ -9172,17 +9287,12 @@ public class EmojiView extends FrameLayout implements
             if (withRecent) {
                 return;
             }
-            if (reqId != 0) {
-                if (reqId >= 0) {
-                    ConnectionsManager.getInstance(currentAccount).cancelRequest(reqId, true);
-                }
-                reqId = 0;
-            }
+            pausedSearch = null;
+            cancelDelayedSearch();
+            cancelBotSearch();
+            cancelResultSearch();
             lastSearchIsEmoji = false;
             setEmptyLoadingState(false);
-            if (searchRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(searchRunnable);
-            }
             if (TextUtils.isEmpty(text)) {
                 lastSearchImageString = null;
                 if (showTrendingWhenSearchEmpty) {
@@ -9202,14 +9312,26 @@ public class EmojiView extends FrameLayout implements
                 lastSearchImageString = text.toLowerCase();
             }
             if (!TextUtils.isEmpty(lastSearchImageString)) {
+                final GifSearchRequest search = new GifSearchRequest(text, "", false, false);
+                delayedSearch = search;
                 AndroidUtilities.runOnUIThread(searchRunnable = () -> {
-                    search(text, "", true);
+                    if (delayedSearch != search) {
+                        return;
+                    }
+                    delayedSearch = null;
+                    searchRunnable = null;
+                    if (search.account != currentAccount) {
+                        return;
+                    }
+                    search(search.query, search.offset, true, search.isEmoji, search.cache);
                 }, delay ? 300 : 0);
             }
         }
 
         public void searchEmoji(String emoji) {
-            if (lastSearchIsEmoji && TextUtils.equals(lastSearchImageString, emoji)) {
+            pausedSearch = null;
+            cancelDelayedSearch();
+            if (lastSearchIsEmoji && TextUtils.equals(lastSearchImageString, emoji) && !botSearchFailed) {
                 gifLayoutManager.scrollToPositionWithOffset(0, 0);
                 return;
             }
@@ -9221,12 +9343,10 @@ public class EmojiView extends FrameLayout implements
         }
 
         protected void search(final String query, final String offset, boolean searchUser, boolean isEmoji, boolean cache) {
-            if (reqId != 0) {
-                if (reqId >= 0) {
-                    ConnectionsManager.getInstance(currentAccount).cancelRequest(reqId, true);
-                }
-                reqId = 0;
-            }
+            pausedSearch = null;
+            cancelBotSearch();
+            botSearchFailed = false;
+            cancelResultSearch();
 
             lastSearchImageString = query;
             lastSearchIsEmoji = isEmoji;
@@ -9236,10 +9356,10 @@ public class EmojiView extends FrameLayout implements
             TLObject object = MessagesController.getInstance(currentAccount).getUserOrChat(MessagesController.getInstance(currentAccount).gifSearchBot);
             if (!(object instanceof TLRPC.User)) {
                 if (searchUser) {
-                    searchBotUser();
                     if (!withRecent) {
                         gifSearchField.showProgress(true);
                     }
+                    searchBotUser(query, offset, isEmoji, cache);
                 }
                 return;
             }
@@ -9248,8 +9368,10 @@ public class EmojiView extends FrameLayout implements
             }
 
             bot = (TLRPC.User) object;
+            final GifSearchRequest search = new GifSearchRequest(query, offset, isEmoji, cache);
+            resultSearch = search;
             final String key = "gif_search_" + query + "_" + offset;
-            final RequestDelegate requestDelegate = (response, error) -> AndroidUtilities.runOnUIThread(() -> processResponse(query, offset, searchUser, isEmoji, cache, key, response));
+            final RequestDelegate requestDelegate = (response, error) -> AndroidUtilities.runOnUIThread(() -> processResponse(search, searchUser, cache, key, response));
 
             if (!cache && !withRecent && isEmoji && TextUtils.isEmpty(offset)) {
                 results.clear();
@@ -9262,38 +9384,46 @@ public class EmojiView extends FrameLayout implements
             }
 
             if (cache && gifCache.containsKey(key)) {
-                processResponse(query, offset, searchUser, isEmoji, true, key, gifCache.get(key));
+                processResponse(search, searchUser, true, key, gifCache.get(key));
                 return;
             }
 
             if (gifSearchPreloader.isLoading(key)) {
+                search.waitingForPreload = true;
+                reqId = -1;
                 return;
             }
 
             if (cache) {
                 reqId = -1;
-                MessagesStorage.getInstance(currentAccount).getBotCache(key, requestDelegate);
+                MessagesStorage.getInstance(search.account).getBotCache(key, requestDelegate);
             } else {
                 TLRPC.TL_messages_getInlineBotResults req = new TLRPC.TL_messages_getInlineBotResults();
                 req.query = query == null ? "" : query;
-                req.bot = MessagesController.getInstance(currentAccount).getInputUser(bot);
+                req.bot = MessagesController.getInstance(search.account).getInputUser(bot);
                 req.offset = offset;
                 req.peer = new TLRPC.TL_inputPeerEmpty();
-                reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, requestDelegate);
+                reqId = ConnectionsManager.getInstance(search.account).sendRequest(req, requestDelegate);
             }
         }
 
         @MainThread
-        private void processResponse(final String query, final String offset, boolean searchUser, boolean isEmoji, boolean cache, String key, TLObject response) {
-            if (query == null || !query.equals(lastSearchImageString)) {
+        private void processResponse(final GifSearchRequest search, boolean searchUser, boolean cache, String key, TLObject response) {
+            if (resultSearch != search || search.account != currentAccount || !TextUtils.equals(search.query, lastSearchImageString) || search.isEmoji != lastSearchIsEmoji) {
                 return;
             }
+            resultSearch = null;
             reqId = 0;
+            final String query = search.query;
+            final String offset = search.offset;
+            final boolean isEmoji = search.isEmoji;
             if (cache && (!(response instanceof TLRPC.messages_BotResults) || ((TLRPC.messages_BotResults) response).results.isEmpty())) {
                 search(query, offset, searchUser, isEmoji, false);
                 return;
             }
 
+            botSearchFailed = !(response instanceof TLRPC.messages_BotResults);
+            setEmptyLoadingState(false);
             if (!withRecent) {
                 if (TextUtils.isEmpty(offset)) {
                     results.clear();
@@ -9310,7 +9440,7 @@ public class EmojiView extends FrameLayout implements
                     gifCache.put(key, res);
                 }
                 if (!cache && res.cache_time != 0) {
-                    MessagesStorage.getInstance(currentAccount).saveBotCache(key, res);
+                    MessagesStorage.getInstance(search.account).saveBotCache(key, res);
                 }
                 nextSearchOffset = res.next_offset;
                 for (int a = 0; a < res.results.size(); a++) {
@@ -9325,21 +9455,11 @@ public class EmojiView extends FrameLayout implements
                 }
                 searchEndReached = oldCount == results.size() || TextUtils.isEmpty(nextSearchOffset);
                 if (addedCount != 0) {
-                    if (!isEmoji || oldCount != 0) {
+                    if (oldCount != 0) {
                         updateItems();
-                        if (withRecent) {
-                            if (oldCount != 0) {
-                                notifyItemChanged(recentItemsCount + (gifAdapter.addSearch ? 1 : 0) + oldCount);
-                                notifyItemRangeInserted(recentItemsCount + (gifAdapter.addSearch ? 1 : 0) + oldCount + 1, addedCount);
-                            } else {
-                                notifyItemRangeInserted(recentItemsCount + (gifAdapter.addSearch ? 1 : 0), addedCount + 1);
-                            }
-                        } else {
-                            if (oldCount != 0) {
-                                notifyItemChanged(oldCount);
-                            }
-                            notifyItemRangeInserted(oldCount + (gifAdapter.addSearch ? 1 : 0), addedCount);
-                        }
+                        final int firstAddedItem = firstResultItem + oldCount;
+                        notifyItemChanged(firstAddedItem - 1);
+                        notifyItemRangeInserted(firstAddedItem, addedCount);
                     } else {
                         notifyDataSetChanged();
                     }
@@ -9404,8 +9524,9 @@ public class EmojiView extends FrameLayout implements
         private void processResponse(final String query, final String offset, boolean cache, String key, TLObject response) {
             loadingKeys.remove(key);
 
-            if (gifSearchAdapter.lastSearchIsEmoji && gifSearchAdapter.lastSearchImageString.equals(query)) {
-                gifSearchAdapter.processResponse(query, offset, false, true, cache, key, response);
+            final GifAdapter.GifSearchRequest search = gifSearchAdapter.resultSearch;
+            if (search != null && search.waitingForPreload && search.account == currentAccount && TextUtils.equals(search.query, query) && TextUtils.equals(search.offset, offset)) {
+                gifSearchAdapter.processResponse(search, false, cache, key, response);
             } else {
                 if (cache && (!(response instanceof TLRPC.messages_BotResults) || ((TLRPC.messages_BotResults) response).results.isEmpty())) {
                     preload(query, offset, false);
@@ -9425,21 +9546,26 @@ public class EmojiView extends FrameLayout implements
             setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
                 @Override
                 public int getSpanSize(int position) {
-                    if (position == 0 && gifAdapter.addSearch || gifGridView.getAdapter() == gifSearchAdapter && gifSearchAdapter.results.isEmpty()) {
+                    final GifAdapter adapter = (GifAdapter) gifGridView.getAdapter();
+                    if (adapter.getItemViewType(position) != 0) {
                         return getSpanCount();
                     }
-                    return getSpanSizeForItem(position - (gifAdapter.addSearch ? 1 : 0));
+                    return getSpanSizeForItem(position - (adapter.addSearch ? 1 : 0));
                 }
             });
         }
 
         @Override
         protected Size getSizeForItem(int i) {
+            final GifAdapter adapter = (GifAdapter) gifGridView.getAdapter();
+            final int position = i + (adapter.addSearch ? 1 : 0);
+            if (adapter.getItemViewType(position) != 0) {
+                return null;
+            }
             TLRPC.Document document;
             ArrayList<TLRPC.DocumentAttribute> attributes;
-            if (gifGridView.getAdapter() == gifAdapter) {
-                if (i > gifAdapter.recentItemsCount) {
-                    TLRPC.BotInlineResult result = gifAdapter.results.get(i - gifAdapter.recentItemsCount - 1);
+            if (adapter.firstResultItem >= 0 && position >= adapter.firstResultItem) {
+                TLRPC.BotInlineResult result = adapter.results.get(position - adapter.firstResultItem);
                     document = result.document;
                     if (document != null) {
                         attributes = document.attributes;
@@ -9450,37 +9576,20 @@ public class EmojiView extends FrameLayout implements
                     } else {
                         attributes = null;
                     }
-                } else if (i == gifAdapter.recentItemsCount) {
-                    return null;
-                } else {
-                    document = recentGifs.get(i);
-                    attributes = document.attributes;
-                }
-            } else if (!gifSearchAdapter.results.isEmpty()) {
-                TLRPC.BotInlineResult result = gifSearchAdapter.results.get(i);
-                document = result.document;
-                if (document != null) {
-                    attributes = document.attributes;
-                } else if (result.content != null) {
-                    attributes = result.content.attributes;
-                } else if (result.thumb != null) {
-                    attributes = result.thumb.attributes;
-                } else {
-                    attributes = null;
-                }
             } else {
-                document = null;
-                attributes = null;
-            }
+                document = recentGifs.get(position - (adapter.addSearch ? 1 : 0));
+                    attributes = document.attributes;
+                }
             return getSizeForItem(document, attributes);
         }
 
         @Override
         protected int getFlowItemCount() {
-            if (gifGridView.getAdapter() == gifSearchAdapter && gifSearchAdapter.results.isEmpty()) {
+            final GifAdapter adapter = (GifAdapter) gifGridView.getAdapter();
+            if (adapter == null || !adapter.withRecent && adapter.results.isEmpty()) {
                 return 0;
             }
-            return getItemCount() - 1;
+            return adapter.getItemCount() - (adapter.addSearch ? 1 : 0);
         }
 
         public Size getSizeForItem(TLRPC.Document document) {

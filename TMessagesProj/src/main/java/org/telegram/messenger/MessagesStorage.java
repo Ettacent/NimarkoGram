@@ -18,6 +18,7 @@ import static org.telegram.messenger.MessagesController.LOAD_FROM_UNREAD;
 
 import android.appwidget.AppWidgetManager;
 import android.content.SharedPreferences;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
@@ -39,6 +40,7 @@ import org.telegram.messenger.support.LongSparseIntArray;
 import org.telegram.messenger.utils.EphemeralMessagesHelper;
 import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.RequestDelegate;
+import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.Vector;
@@ -75,6 +77,7 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import me.vkryl.core.BitwiseUtils;
@@ -2225,11 +2228,19 @@ public class MessagesStorage extends BaseController {
                     database.executeFast(String.format(Locale.ENGLISH, "DELETE FROM messages_topics WHERE uid = %d AND topic_id = %d", dialogId, topicId)).stepThis().dispose();
                     database.executeFast(String.format(Locale.ENGLISH, "DELETE FROM media_topics WHERE uid = %d AND topic_id = %d", dialogId, topicId)).stepThis().dispose();
 
-                    SQLitePreparedStatement state_holes = database.executeFast("REPLACE INTO messages_holes_topics VALUES(?, ?, ?, ?)");
-                    SQLitePreparedStatement state_media_holes = database.executeFast("REPLACE INTO media_holes_topics VALUES(?, ?, ?, ?, ?)");
+                    SQLitePreparedStatement state_holes = null;
+                    SQLitePreparedStatement state_media_holes = null;
+                    try {
+                        state_holes = database.executeFast("REPLACE INTO messages_holes_topics VALUES(?, ?, ?, ?)");
+                        state_media_holes = database.executeFast("REPLACE INTO media_holes_topics VALUES(?, ?, ?, ?, ?)");
                     createFirstHoles(dialogId, state_holes, state_media_holes, topic.top_message, topicId);
-                    state_holes.dispose();
-                    state_holes.dispose();
+                    } finally {
+                        try {
+                            if (state_holes != null) state_holes.dispose();
+                        } finally {
+                            if (state_media_holes != null) state_media_holes.dispose();
+                        }
+                    }
                 }
             }
             resetAllUnreadCounters(false);
@@ -10865,12 +10876,40 @@ public class MessagesStorage extends BaseController {
     }
 
     public void getWidgetDialogCountAsync(int widgetId, int type, IntCallback callback) {
+        getWidgetDialogCountAsync(widgetId, type, null, callback);
+    }
+
+    void getWidgetDialogCountAsync(int widgetId, int type, BooleanSupplier bindingCurrent, IntCallback callback) {
         if (!storageQueue.postRunnable(() -> {
+            int count = -1;
+            try {
+                if (bindingCurrent == null || bindingCurrent.getAsBoolean()) {
+                    if (bindingCurrent != null) {
+                        ensureDefaultWidgetSubscription(widgetId);
+                    }
             ArrayList<Long> dids = new ArrayList<>();
-            int count = readWidgetDialogIds(widgetId, type, dids, null, null, false) ? dids.size() : -1;
-            AndroidUtilities.runOnUIThread(() -> callback.run(count));
+                    count = readWidgetDialogIds(widgetId, type, dids, null, null, false) ? dids.size() : -1;
+                }
+            } catch (Exception e) {
+                checkSQLException(e);
+            }
+            int result = count;
+            AndroidUtilities.runOnUIThread(() -> callback.run(result));
         })) {
             AndroidUtilities.runOnUIThread(() -> callback.run(-1));
+        }
+    }
+
+    private void ensureDefaultWidgetSubscription(int widgetId) throws Exception {
+        SQLitePreparedStatement statement = database.executeFast(
+                "INSERT OR IGNORE INTO shortcut_widget(id, did, ord) SELECT ?, -1, 0 " +
+                        "WHERE NOT EXISTS (SELECT 1 FROM shortcut_widget WHERE id = ?)");
+        try {
+            statement.bindInteger(1, widgetId);
+            statement.bindInteger(2, widgetId);
+            statement.step();
+        } finally {
+            statement.dispose();
         }
     }
 
@@ -12069,6 +12108,353 @@ public class MessagesStorage extends BaseController {
         return -1;
     }
 
+    public final class ArticleMessageRef {
+        private final MessagesStorage storage = MessagesStorage.this;
+        private final long userId;
+        private final long session;
+        private final long dialogId;
+        private final int messageId;
+        private final long pageId;
+        private final int hash;
+        private final String url;
+        private final boolean viewsKnown;
+        private final int views;
+        private final CleanupRequest cleanupRequest = currentCleanup.get();
+        private final int cleanupAttempt;
+
+        private ArticleMessageRef(long userId, long session, long dialogId, int messageId, TLRPC.WebPage page) {
+            this.userId = userId;
+            this.session = session;
+            this.dialogId = dialogId;
+            this.messageId = messageId;
+            pageId = page.id;
+            hash = page.hash;
+            url = page.url;
+            viewsKnown = (page.cached_page.flags & 8) != 0;
+            views = page.cached_page.views;
+            if (cleanupRequest == null) {
+                cleanupAttempt = 0;
+            } else {
+                synchronized (cleanupRequest) {
+                    cleanupAttempt = cleanupRequest.attempt;
+                }
+            }
+        }
+
+        private boolean isCurrent() {
+            if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, session)
+                    || cleanupRequest != currentCleanup.get()) return false;
+            if (cleanupRequest == null) return true;
+            synchronized (cleanupRequest) {
+                return cleanupRequest == currentCleanup.get() && cleanupAttempt == cleanupRequest.attempt
+                        && !cleanupRequest.running
+                        && (cleanupRequest.login ? cleanupRequest.loginFinished : cleanupRequest.succeeded);
+            }
+        }
+
+        private boolean matches(TLRPC.WebPage page) {
+            return page instanceof TLRPC.TL_webPage && page.id == pageId && page.hash == hash && Objects.equals(page.url, url);
+        }
+
+        private boolean matchesViews(TLRPC.WebPage page) {
+            return page.cached_page != null && viewsKnown == ((page.cached_page.flags & 8) != 0)
+                    && views == page.cached_page.views;
+        }
+    }
+
+    public ArticleMessageRef captureArticleMessageRef(long userId, long session, long dialogId, int messageId, TLRPC.WebPage page) {
+        if (dialogId == 0 || messageId == 0 || !(page instanceof TLRPC.TL_webPage)
+                || page.id == 0 || page.cached_page == null) return null;
+        ArticleMessageRef ref = new ArticleMessageRef(userId, session, dialogId, messageId, page);
+        return ref.isCurrent() ? ref : null;
+    }
+
+    public static final class ArticleMetadataPatch {
+        private final byte[] pageBytes;
+        private final long pageId;
+        private final int views;
+
+        private ArticleMetadataPatch(byte[] pageBytes, long pageId, int views) {
+            this.pageBytes = pageBytes;
+            this.pageId = pageId;
+            this.views = views;
+        }
+
+        public static ArticleMetadataPatch full(TLRPC.WebPage page) {
+            if (Looper.getMainLooper() != null && Looper.myLooper() == Looper.getMainLooper()) return null;
+            if (!(page instanceof TLRPC.TL_webPage) || page.id == 0 || page.cached_page == null) return null;
+            SerializedData output = new SerializedData();
+            try {
+                page.serializeToStream(output);
+                return new ArticleMetadataPatch(output.toByteArray(), page.id, 0);
+            } catch (Exception failure) {
+                FileLog.e(failure);
+                return null;
+            } finally {
+                output.cleanup();
+            }
+        }
+
+        public static ArticleMetadataPatch views(int views) {
+            return new ArticleMetadataPatch(null, 0, views);
+        }
+
+        public TLRPC.WebPage copyFullPage() {
+            if (pageBytes == null || Looper.getMainLooper() != null && Looper.myLooper() == Looper.getMainLooper()) return null;
+            try {
+                return readFullPage();
+            } catch (Exception failure) {
+                FileLog.e(failure);
+                return null;
+            }
+        }
+
+        private TLRPC.WebPage readFullPage() throws Exception {
+            NativeByteBuffer input = new NativeByteBuffer(pageBytes.length);
+            try {
+                input.writeBytes(pageBytes);
+                input.rewind();
+                TLRPC.WebPage page = TLRPC.WebPage.TLdeserialize(input, input.readInt32(true), true);
+                if (!(page instanceof TLRPC.TL_webPage) || page.id != pageId || page.cached_page == null
+                        || input.remaining() != 0) throw new IllegalArgumentException("Invalid article metadata snapshot");
+                return page;
+            } finally {
+                input.reuse();
+            }
+        }
+    }
+
+    private static final class ArticleMetadataRow {
+        private final int table;
+        private final long topicId;
+        private final int mediaType;
+        private final byte[] data;
+
+        private ArticleMetadataRow(int table, long topicId, int mediaType, byte[] data) {
+            this.table = table;
+            this.topicId = topicId;
+            this.mediaType = mediaType;
+            this.data = data;
+        }
+    }
+
+    public void updateArticleMessageMetadata(ArticleMessageRef ref, ArticleMetadataPatch patch) {
+        if (ref == null || patch == null || ref.storage != this) return;
+        try {
+            if (!storageQueue.postRunnable(() -> applyArticleMessageMetadata(ref, patch))) {
+                FileLog.e(new IllegalStateException("Storage queue rejected article metadata"));
+            }
+        } catch (RuntimeException failure) {
+            FileLog.e(failure);
+        }
+    }
+
+    private byte[] articleMetadataMessageData(NativeByteBuffer input, ArticleMessageRef ref, ArticleMetadataPatch patch) throws Exception {
+        TLRPC.Message message = TLRPC.Message.TLdeserialize(input, input.readInt32(true), true);
+        if (message == null || !(message.media instanceof TLRPC.TL_messageMediaWebPage)
+                || !ref.matches(message.media.webpage)) return null;
+        if (message.media.webpage.cached_page != null && !ref.matchesViews(message.media.webpage)) return null;
+        byte[] suffix = input.readData(input.remaining(), true);
+        if (patch.pageBytes != null) {
+            message.media.webpage = patch.readFullPage();
+        } else {
+            if (message.media.webpage.cached_page == null) return null;
+            message.media.webpage.cached_page.views = patch.views;
+            message.media.webpage.cached_page.flags |= 8;
+        }
+        byte[] serialized;
+        SerializedData output = new SerializedData();
+        try {
+            message.serializeToStream(output);
+            serialized = output.toByteArray();
+        } finally {
+            output.cleanup();
+        }
+        NativeByteBuffer probe = new NativeByteBuffer(serialized.length);
+        try {
+            probe.writeBytes(serialized);
+            probe.rewind();
+            if (TLRPC.Message.TLdeserialize(probe, probe.readInt32(true), true) == null) return null;
+            int bodyLength = probe.position();
+            if (bodyLength > Integer.MAX_VALUE - suffix.length) throw new IllegalArgumentException("Article metadata size overflow");
+            byte[] result = new byte[bodyLength + suffix.length];
+            System.arraycopy(serialized, 0, result, 0, bodyLength);
+            System.arraycopy(suffix, 0, result, bodyLength, suffix.length);
+            return result;
+        } finally {
+            probe.reuse();
+        }
+    }
+
+    private ArrayList<ArticleMetadataRow> collectArticleMetadataRows(SQLiteDatabase db, ArticleMessageRef ref, ArticleMetadataPatch patch) throws Exception {
+        final String[] queries = {
+                "SELECT data FROM messages_v2 WHERE mid = ? AND uid = ?",
+                "SELECT topic_id, data FROM messages_topics WHERE mid = ? AND uid = ?",
+                "SELECT type, data FROM media_v4 WHERE mid = ? AND uid = ?",
+                "SELECT topic_id, type, data FROM media_topics WHERE mid = ? AND uid = ?"
+        };
+        ArrayList<ArticleMetadataRow> rows = new ArrayList<>();
+        for (int table = 0; table < queries.length; table++) {
+            SQLiteCursor cursor = null;
+            boolean canonical = false;
+            try {
+                cursor = db.queryFinalized(queries[table], ref.messageId, ref.dialogId);
+                while (cursor.next()) {
+                    int dataColumn = table == 0 ? 0 : table == 3 ? 2 : 1;
+                    NativeByteBuffer input = cursor.byteBufferValue(dataColumn);
+                    if (input == null) continue;
+                    try {
+                        byte[] updated = articleMetadataMessageData(input, ref, patch);
+                        if (updated == null) continue;
+                        long topicId = table == 1 || table == 3 ? cursor.longValue(0) : 0;
+                        int mediaType = table == 2 ? cursor.intValue(0) : table == 3 ? cursor.intValue(1) : 0;
+                        rows.add(new ArticleMetadataRow(table, topicId, mediaType, updated));
+                        if (table == 0) canonical = true;
+                    } finally {
+                        input.reuse();
+                    }
+                }
+            } finally {
+                if (cursor != null) cursor.dispose();
+            }
+            if (table == 0 && !canonical) return null;
+        }
+        return rows;
+    }
+
+    private boolean canTransferArticlePageId(SQLiteDatabase db, ArticleMessageRef ref, long pageId) throws Exception {
+        SQLiteCursor cursor = null;
+        boolean source = false;
+        try {
+            cursor = db.queryFinalized("SELECT id FROM webpage_pending_v2 WHERE mid = ? AND uid = ?", ref.messageId, ref.dialogId);
+            while (cursor.next()) {
+                long id = cursor.longValue(0);
+                if (id == ref.pageId) source = true;
+                else if (id != pageId) return false;
+            }
+            return source;
+        } finally {
+            if (cursor != null) cursor.dispose();
+        }
+    }
+
+    private static void executeArticleMetadataControl(SQLiteDatabase db, String sql) throws Exception {
+        SQLitePreparedStatement state = null;
+        try {
+            state = db.executeFast(sql);
+            state.step();
+        } finally {
+            if (state != null) state.dispose();
+        }
+    }
+
+    private void writeArticleMetadataRow(SQLiteDatabase db, ArticleMessageRef ref, ArticleMetadataRow row) throws Exception {
+        final String[] updates = {
+                "UPDATE messages_v2 SET data = ? WHERE mid = ? AND uid = ?",
+                "UPDATE messages_topics SET data = ? WHERE mid = ? AND uid = ? AND topic_id = ?",
+                "UPDATE media_v4 SET data = ? WHERE mid = ? AND uid = ? AND type = ?",
+                "UPDATE media_topics SET data = ? WHERE mid = ? AND uid = ? AND topic_id = ? AND type = ?"
+        };
+        SQLitePreparedStatement state = null;
+        NativeByteBuffer data = null;
+        try {
+            data = new NativeByteBuffer(row.data.length);
+            data.writeBytes(row.data);
+            state = db.executeFast(updates[row.table]);
+            state.bindByteBuffer(1, data);
+            state.bindInteger(2, ref.messageId);
+            state.bindLong(3, ref.dialogId);
+            if (row.table == 1 || row.table == 3) state.bindLong(4, row.topicId);
+            if (row.table == 2) state.bindInteger(4, row.mediaType);
+            if (row.table == 3) state.bindInteger(5, row.mediaType);
+            state.step();
+            if (!Integer.valueOf(1).equals(db.executeInt("SELECT changes()"))) {
+                throw new IllegalStateException("Article metadata row changed during update");
+            }
+        } finally {
+            try {
+                if (state != null) state.dispose();
+            } finally {
+                if (data != null) data.reuse();
+            }
+        }
+    }
+
+    private void transferArticlePageId(SQLiteDatabase db, ArticleMessageRef ref, long pageId) throws Exception {
+        SQLitePreparedStatement state = null;
+        try {
+            state = db.executeFast("UPDATE OR IGNORE webpage_pending_v2 SET id = ? WHERE id = ? AND mid = ? AND uid = ?");
+            state.bindLong(1, pageId);
+            state.bindLong(2, ref.pageId);
+            state.bindInteger(3, ref.messageId);
+            state.bindLong(4, ref.dialogId);
+            state.step();
+        } finally {
+            if (state != null) state.dispose();
+        }
+        state = null;
+        try {
+            state = db.executeFast("DELETE FROM webpage_pending_v2 WHERE id = ? AND mid = ? AND uid = ?");
+            state.bindLong(1, ref.pageId);
+            state.bindInteger(2, ref.messageId);
+            state.bindLong(3, ref.dialogId);
+            state.step();
+        } finally {
+            if (state != null) state.dispose();
+        }
+        if (!Integer.valueOf(1).equals(db.executeInt("SELECT COUNT(*) FROM webpage_pending_v2 WHERE id = ? AND mid = ? AND uid = ?", pageId, ref.messageId, ref.dialogId))) {
+            throw new IllegalStateException("Article metadata association changed during update");
+        }
+    }
+
+    private void applyArticleMessageMetadata(ArticleMessageRef ref, ArticleMetadataPatch patch) {
+        if (ref.storage != this || !ref.isCurrent() || database == null || databaseOpenError != null) return;
+        final SQLiteDatabase db = database;
+        boolean savepoint = false;
+        Exception failure = null;
+        try {
+            executeArticleMetadataControl(db, "SAVEPOINT article_message_metadata");
+            savepoint = true;
+            ArrayList<ArticleMetadataRow> rows = collectArticleMetadataRows(db, ref, patch);
+            if (rows == null || !ref.isCurrent() || database != db) return;
+            boolean transferId = patch.pageBytes != null && patch.pageId != ref.pageId;
+            if (transferId && !canTransferArticlePageId(db, ref, patch.pageId)) return;
+            for (ArticleMetadataRow row : rows) {
+                if (!ref.isCurrent() || database != db) return;
+                writeArticleMetadataRow(db, ref, row);
+            }
+            if (!ref.isCurrent() || database != db) return;
+            if (transferId) transferArticlePageId(db, ref, patch.pageId);
+            if (!ref.isCurrent() || database != db) return;
+            executeArticleMetadataControl(db, "RELEASE SAVEPOINT article_message_metadata");
+            savepoint = false;
+        } catch (Exception error) {
+            failure = error;
+        } finally {
+            if (savepoint) {
+                boolean rolledBack = false;
+                try {
+                    executeArticleMetadataControl(db, "ROLLBACK TO SAVEPOINT article_message_metadata");
+                    rolledBack = true;
+                } catch (Exception error) {
+                    if (failure == null) failure = error;
+                    else failure.addSuppressed(error);
+                }
+                if (rolledBack) {
+                    try {
+                        executeArticleMetadataControl(db, "RELEASE SAVEPOINT article_message_metadata");
+                    } catch (Exception error) {
+                        if (failure == null) failure = error;
+                        else failure.addSuppressed(error);
+                    }
+                }
+            }
+            if (failure != null) {
+                if (database == db && ref.isCurrent()) checkSQLException(failure);
+                else FileLog.e(failure);
+            }
+        }
+    }
     public void putWebPages(LongSparseArray<TLRPC.WebPage> webPages) {
         if (isEmpty(webPages)) {
             return;
@@ -12109,7 +12495,8 @@ public class MessagesStorage extends BaseController {
                                 TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                                 message.readAttachPath(data, getUserConfig().clientUserId);
                                 data.reuse();
-                                if (message.media instanceof TLRPC.TL_messageMediaWebPage) {
+                                if (message.media instanceof TLRPC.TL_messageMediaWebPage && message.media.webpage != null
+                                        && message.media.webpage.id == webPages.keyAt(a)) {
                                     message.id = mid;
                                     message.media.webpage = webPages.valueAt(a);
                                     messages.add(message);

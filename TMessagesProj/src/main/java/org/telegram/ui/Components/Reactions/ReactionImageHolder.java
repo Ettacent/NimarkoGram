@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
 import android.graphics.Canvas;
@@ -43,6 +45,7 @@ public class ReactionImageHolder {
     public ReactionImageHolder(View parent) {
         this.parent = parent;
         imageReceiver = new ImageReceiver(parent);
+        imageReceiver.setCurrentAccount(currentAccount);
         imageReceiver.setAllowLoadingOnAttachedOnly(true);
     }
 
@@ -74,7 +77,7 @@ public class ReactionImageHolder {
             if (isStatic) {
                 type = AnimatedEmojiDrawable.CACHE_TYPE_ALERT_PREVIEW_STATIC;
             }
-            animatedEmojiDrawable = new AnimatedEmojiDrawable(type, UserConfig.selectedAccount, currentReaction.documentId);
+            animatedEmojiDrawable = new AnimatedEmojiDrawable(type, currentAccount, currentReaction.documentId);
             if (attached) {
                 animatedEmojiDrawable.addView(parent);
             }
@@ -160,12 +163,14 @@ public class ReactionImageHolder {
         if (this.parent == parentView) {
             return;
         }
-        if (attached) {
+        boolean wasAttached = attached;
+        if (wasAttached) {
             onAttachedToWindow(false);
+        }
             this.parent = parentView;
+        imageReceiver.setParentView(parentView);
+        if (wasAttached) {
             onAttachedToWindow(true);
-        } else {
-            this.parent = parentView;
         }
 
     }

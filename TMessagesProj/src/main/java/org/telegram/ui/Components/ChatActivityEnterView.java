@@ -739,6 +739,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private BusinessLinkPresetMessage lastSavedBusinessLinkMessage;
 
+    private long businessLinkBindingGeneration;
+    private Object businessLinkSaveRequest;
     private TLRPC.ChatFull info;
 
     private boolean hasRecordVideo;
@@ -5913,7 +5915,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                             @Override
                             public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
-                                sendMessageInternal(notify, scheduleDate, 0, 0, true);
+                                sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true);
                             }
                         }, resourcesProvider);
                     });
@@ -7818,7 +7820,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (audioVideoSendButton != null) {
             audioVideoSendButton.setState(ChatActivityEnterViewAnimatedIconView.State.VOICE, false);
         }
+        calledRecordRunnable = true;
         recordingAudioVideo = true;
+        if (delegate != null) {
+            delegate.needStartRecordAudio(1);
+        }
         updateRecordInterface(RECORD_STATE_ENTER, true);
         if (once) {
             voiceOnce = true;
@@ -8297,6 +8303,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        retireBusinessLinkSave();
         hideMediaSendChoice(false);
         saveVoiceDraftRegion();
         cancelVoiceDraftRestore();
@@ -8542,6 +8549,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void setDialogId(long id, int account) {
         if (dialog_id != id || currentAccount != account) {
+            retireBusinessLinkSave();
             hideMediaSendChoice(false);
             mediaSendChoiceDraft = null;
             nimarkoMediaSendChoice = 0;
@@ -9225,7 +9233,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             dismissSendPreviewSent = true;
             if (videoToSendMessageObject != null) {
-                delegate.needStartRecordVideo(4, notify, scheduleDate, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, payStars);
+                delegate.needStartRecordVideo(4, notify, scheduleDate, scheduleRepeatPeriod, voiceOnce ? 0x7FFFFFFF : 0, effectId, payStars);
                 sendButton.setEffect(effectId = 0);
                 hideRecordedAudioPanel(true);
                 checkSendButton(true);
@@ -9624,8 +9632,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         return false;
     }
 
+    private void retireBusinessLinkSave() {
+        businessLinkBindingGeneration++;
+        if (businessLinkSaveRequest != null) {
+            businessLinkSaveRequest = null;
+            showEditDoneProgress(false, false);
+        }
+    }
     private void saveBusinessLink() {
-        if (!isEditingBusinessLink()) {
+        if (destroyed || !isEditingBusinessLink() || businessLinkSaveRequest != null) {
             return;
         }
 
@@ -9640,11 +9655,42 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
 
-        BusinessLinkPresetMessage message = calculateBusinessLinkPresetMessage();
+        final int account = currentAccount;
+        final long userId = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, session)) return;
+        final long dialogId = dialog_id;
+        final long generation = businessLinkBindingGeneration;
+        final TL_account.TL_businessChatLink link = editingBusinessLink;
+        final EditTextCaption editor = messageEditText;
+        final ChatActivity host = parentFragment;
+        final View hostView = host == null ? null : host.getFragmentView();
+        final BusinessLinkPresetMessage message = calculateBusinessLinkPresetMessage();
+        final Object request = new Object();
+        businessLinkSaveRequest = request;
+        try {
+            showEditDoneProgress(true, false);
+            BusinessLinksController.getInstance(account).editLinkMessageForEditor(link.link, message.text, message.entities, success -> {
+                if (businessLinkSaveRequest != request) return;
+                businessLinkSaveRequest = null;
+                if (!destroyed) showEditDoneProgress(false, false);
+                if (destroyed || businessLinkBindingGeneration != generation || currentAccount != account
+                        || dialog_id != dialogId || editingBusinessLink != link || messageEditText != editor
+                        || parentFragment != host
+                        || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, userId, session) || !success) return;
         lastSavedBusinessLinkMessage = message;
-        BusinessLinksController.getInstance(currentAccount).editLinkMessage(editingBusinessLink.link, message.text, message.entities, () -> {
-            BulletinFactory.of(parentFragment).createSuccessBulletin(getString(R.string.BusinessLinkSaved)).show();
+                if (!isPaused && isAttachedToWindow() && isShown() && host != null && !host.isFinished
+                        && !host.isPaused() && host.getFragmentView() == hostView && host.getChatActivityEnterView() == this) {
+                    BulletinFactory.of(host).createSuccessBulletin(getString(R.string.BusinessLinkSaved)).show();
+                }
         });
+        } catch (Exception e) {
+            FileLog.e(e);
+            if (businessLinkSaveRequest == request) {
+                businessLinkSaveRequest = null;
+                if (!destroyed) showEditDoneProgress(false, false);
+            }
+        }
     }
 
     public void doneEditingMessage() {
@@ -9790,13 +9836,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             text = AndroidUtilities.getTrimmedString(text);
         }
         boolean supportsNewEntities = supportsSendingNewEntities();
-        int maxLength = accountInstance.getMessagesController().getMaxMessageLength();
+        int maxLength = Math.max(1, accountInstance.getMessagesController().getMaxMessageLength());
         if (text.length() != 0) {
-            if (delegate != null && parentFragment != null && (scheduleDate != 0) == parentFragment.isInScheduleMode()) {
-                delegate.prepareMessageSending();
-            }
             int end;
             int start = 0;
+            boolean sent = false;
             do {
                 int whitespaceIndex = -1;
                 int dotIndex = -1;
@@ -9833,12 +9877,27 @@ public class ChatActivityEnterView extends FrameLayout implements
                     end = whitespaceIndex;
                 }
 
+                if (end < text.length() && end > start
+                        && Character.isHighSurrogate(text.charAt(end - 1))
+                        && Character.isLowSurrogate(text.charAt(end))) {
+                    end += end == start + 1 ? 1 : -1;
+                }
                 CharSequence part = text.subSequence(start, end);
+                start = end;
+                if (start < text.length() && Character.isWhitespace(text.charAt(start))) {
+                    start++;
+                }
+                final CharSequence trimmedPart = AndroidUtilities.getTrimmedString(part);
+                if (TextUtils.isEmpty(trimmedPart)) continue;
                 if (!hasOnlyEmoji) {
-                    part = AndroidUtilities.getTrimmedString(part);
+                    part = trimmedPart;
                 }
                 CharSequence[] message = new CharSequence[]{ part };
                 ArrayList<TLRPC.MessageEntity> entities = MediaDataController.getInstance(currentAccount).getEntities(message, supportsNewEntities);
+                if (TextUtils.isEmpty(AndroidUtilities.getTrimmedString(message[0]))) continue;
+                if (!sent && delegate != null && parentFragment != null && (scheduleDate != 0) == parentFragment.isInScheduleMode()) {
+                    delegate.prepareMessageSending();
+                }
                 MessageObject.SendAnimationData sendAnimationData = null;
 
                 if (!delegate.hasForwardingMessages()) {
@@ -9896,9 +9955,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     parentFragment.fallbackFieldPanel();
                 }
                 SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
-                start = end + 1;
-            } while (end != text.length());
-            return true;
+                sent = true;
+            } while (start < text.length());
+            return sent;
         }
         return false;
     }
@@ -10146,7 +10205,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             boolean captionNearAttach = isCaptionNearAttach();
             final boolean recordShown = recordInterfaceState != 0 || audioToSend != null || videoToSendMessageObject != null;
-            final boolean attachInSideControl = !keepAttachInsideComposerWhenTyping && captionNearAttach && !recordShown;
+            final boolean attachInSideControl = !keepAttachInComposerWhenTyping() && captionNearAttach && !recordShown;
             final boolean attachInInput = !attachInSideControl && !recordShown;
 
             if (color != sendButtonBackgroundColor) {
@@ -10177,8 +10236,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                             attachButtonAnimator.cancel();
                             attachButtonAnimator = null;
                         }
-                        if (sideButtons != null) {
-                            sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
+                        if (sideButtons != null || separatedComposerLayout) {
+                            if (sideButtons != null) sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
                             if (attachButton != null) {
                                 animators.add(ObjectAnimator.ofFloat(attachButton, View.ALPHA, attachButtonAlpha = attachInInput ? 1.0f : 0.0f));
                                 animators.add(ObjectAnimator.ofFloat(attachButton, View.SCALE_X, attachInInput ? 1.0f : 0.5f));
@@ -10343,8 +10402,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                             delegate.onAttachButtonHidden();
                         }
 
-                        if (sideButtons != null) {
-                            sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
+                        if (sideButtons != null || separatedComposerLayout) {
+                            if (sideButtons != null) sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
                             if (attachButton != null) {
                                 attachButton.setAlpha(attachButtonAlpha = attachInInput ? 1.0f : 0.0f);
                                 attachButton.setScaleX(attachInInput ? 1.0f : 0.5f);
@@ -10370,8 +10429,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                 }
             } else {
-                if (sideButtons != null) {
-                    sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
+                if (sideButtons != null || separatedComposerLayout) {
+                    if (sideButtons != null) sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, attachInSideControl, true);
                     if (attachButton != null) {
                         if (attachButtonAnimator != null) {
                             attachButtonAnimator.cancel();
@@ -12143,6 +12202,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void setEditingBusinessLink(TL_account.TL_businessChatLink businessLink) {
+        retireBusinessLinkSave();
         editingBusinessLink = businessLink;
         updateFieldHint(false);
         if (editingBusinessLink != null) {
@@ -16057,6 +16117,42 @@ public class ChatActivityEnterView extends FrameLayout implements
         return parentFragment != null && parentFragment.getThreadMessage() != null ? parentFragment.getThreadMessage().getId() : 0;
     }
 
+    private boolean ownsRecordingEvent(int account, Object[] args) {
+        return account == currentAccount && args.length != 0 && args[0] instanceof Integer && (Integer) args[0] == recordingGuid;
+    }
+
+    private void loadRecordingPreviewWaveform(TLRPC.TL_document document, TLRPC.DocumentAttribute attribute,
+                                              String path, RecordedAudioPlayerView timeline) {
+        if (TextUtils.isEmpty(path)) return;
+        final int account = currentAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final long generation = nimarkoMediaDraftGeneration;
+        Utilities.globalQueue.postRunnable(() -> {
+            final byte[] decoded;
+            try {
+                decoded = MediaController.getWaveform(path);
+            } catch (Exception e) {
+                FileLog.e(e);
+                return;
+            }
+            if (decoded == null || decoded.length == 0) return;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (destroyed || currentAccount != account || nimarkoMediaDraftGeneration != generation
+                        || audioToSend != document || audioTimelineView != timeline || !TextUtils.equals(audioToSendPath, path)
+                        || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, owner, session)) return;
+                if (attribute.waveform != null && attribute.waveform.length != 0) {
+                    timeline.updateWaveform(attribute.waveform);
+                } else {
+                    if (!VoiceSendPreparation.isPending(account, path) && !VoiceSendPreparation.wasSubmitted(account, path)) {
+                        attribute.waveform = decoded;
+                        attribute.flags |= 4;
+                    }
+                    timeline.updateWaveform(decoded);
+                }
+            });
+        });
+    }
     @SuppressWarnings("unchecked")
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
@@ -16149,10 +16245,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 recordDot.enterAnimation = false;
             }
         } else if (id == NotificationCenter.recordPaused) {
+            if (!ownsRecordingEvent(account, args)) return;
             recordingAudioVideo = false;
             audioToSend = null;
             videoToSendMessageObject = null;
         } else if (id == NotificationCenter.recordResumed) {
+            if (!ownsRecordingEvent(account, args)) return;
             cancelVoiceSend();
             audioToSend = null;
             videoToSendMessageObject = null;
@@ -16163,10 +16261,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordingAudioVideo = true;
             updateRecordInterface(RECORD_STATE_ENTER, true);
         } else if (id == NotificationCenter.audioDidSent) {
-            int guid = (Integer) args[0];
-            if (guid != recordingGuid) {
-                return;
-            }
+            if (!ownsRecordingEvent(account, args)) return;
             detachVoiceSend();
             millisecondsRecorded = 0;
             Object audio = args[1];
@@ -16219,7 +16314,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     message.media.flags |= 3;
                     message.media.document = audioToSend;
                     message.flags |= TLRPC.MESSAGE_FLAG_HAS_MEDIA | TLRPC.MESSAGE_FLAG_HAS_FROM_ID;
-                    audioToSendMessageObject = new MessageObject(UserConfig.selectedAccount, message, false, true);
+                    audioToSendMessageObject = new MessageObject(account, message, false, true);
 
                     recordedAudioPanel.setAlpha(1.0f);
                     recordedAudioPanel.setVisibility(VISIBLE);
@@ -16237,13 +16332,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
 
                     byte[] waveform = null;
+                    TLRPC.DocumentAttribute missingWaveform = null;
                     for (int a = 0; a < audioToSend.attributes.size(); a++) {
                         TLRPC.DocumentAttribute attribute = audioToSend.attributes.get(a);
                         if (attribute instanceof TLRPC.TL_documentAttributeAudio) {
-                            if (attribute.waveform == null || attribute.waveform.length == 0) {
-                                attribute.waveform = MediaController.getWaveform(audioToSendPath);
-                            }
                             waveform = attribute.waveform;
+                            if (waveform == null || waveform.length == 0) missingWaveform = attribute;
                             break;
                         }
                     }
@@ -16254,6 +16348,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     millisecondsRecorded = (long) (duration * 1000L);
                     audioTimelineView.init(audioToSendPath, duration, waveform, left, right);
+                    if (missingWaveform != null) {
+                        loadRecordingPreviewWaveform(audioToSend, missingWaveform, audioToSendPath, audioTimelineView);
+                    }
                     checkSendButton(false);
                     if (fromDraft) {
                         createRecordCircle();
@@ -18897,6 +18994,9 @@ public class ChatActivityEnterView extends FrameLayout implements
      * center pill. Story replies and embedded composers keep Telegram's native
      * layout by never enabling this mode.
      */
+    private boolean keepAttachInComposerWhenTyping() {
+        return separatedComposerLayout || keepAttachInsideComposerWhenTyping;
+    }
     public void setSeparatedComposerLayout(boolean enabled) {
         enabled = enabled && isChat && attachButton != null;
         if (separatedComposerLayout == enabled) {
@@ -19079,8 +19179,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
         final boolean recordShown = recordInterfaceState != 0 || audioToSend != null || videoToSendMessageObject != null;
-        final boolean captionNearAttach = sideButtons != null && !keepInsideComposerWhenTyping && isCaptionNearAttach() && !recordShown;
-        final boolean inInput = (sideButtons != null || keepInsideComposerWhenTyping) && !captionNearAttach && !recordShown;
+        final boolean captionNearAttach = sideButtons != null && !keepAttachInComposerWhenTyping() && isCaptionNearAttach() && !recordShown;
+        final boolean inInput = (sideButtons != null || keepAttachInComposerWhenTyping()) && !captionNearAttach && !recordShown;
         if (sideButtons != null) {
             sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, captionNearAttach, true);
         }

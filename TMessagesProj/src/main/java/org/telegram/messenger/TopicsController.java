@@ -1294,6 +1294,8 @@ public class TopicsController extends BaseController {
             }
             if ((flags & TOPIC_FLAG_ICON) != 0) {
                 topic.icon_emoji_id = forumTopic.icon_emoji_id;
+                if (topic.icon_emoji_id != 0) topic.flags |= 1;
+                else topic.flags &= ~1;
             }
             if ((flags & TOPIC_FLAG_CLOSE) != 0) {
                 topic.closed = forumTopic.closed;

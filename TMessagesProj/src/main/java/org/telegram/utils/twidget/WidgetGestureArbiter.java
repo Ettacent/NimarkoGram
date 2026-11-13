@@ -12,7 +12,7 @@ public final class WidgetGestureArbiter {
     private long handle;
 
     private long handle() {
-        if (handle == 0) handle = WidgetSandboxNative.arbiterCreate();
+        if (handle == 0) handle = WidgetClientNative.arbiterCreate();
         return handle;
     }
 
@@ -21,32 +21,32 @@ public final class WidgetGestureArbiter {
     }
 
     public int down(double t, double x, double y, boolean claimX, boolean claimY, boolean hold, boolean mouse, int button) {
-        return WidgetSandboxNative.arbiterDown(handle(), t, x, y, claimX, claimY, hold, mouse, button);
+        return WidgetClientNative.arbiterDown(handle(), t, x, y, claimX, claimY, hold, mouse, button);
     }
 
     public int move(double t, double x, double y) {
-        return handle == 0 ? NONE : WidgetSandboxNative.arbiterMove(handle, t, x, y);
+        return handle == 0 ? NONE : WidgetClientNative.arbiterMove(handle, t, x, y);
     }
 
     public int tick(double t) {
-        return handle == 0 ? NONE : WidgetSandboxNative.arbiterTick(handle, t);
+        return handle == 0 ? NONE : WidgetClientNative.arbiterTick(handle, t);
     }
 
     public int up(double t, double x, double y) {
-        return handle == 0 ? NONE : WidgetSandboxNative.arbiterUp(handle, t, x, y);
+        return handle == 0 ? NONE : WidgetClientNative.arbiterUp(handle, t, x, y);
     }
 
     public void cancel() {
-        if (handle != 0) WidgetSandboxNative.arbiterCancel(handle);
+        if (handle != 0) WidgetClientNative.arbiterCancel(handle);
     }
 
     public double holdDeadline() {
-        return handle == 0 ? -1 : WidgetSandboxNative.arbiterHoldDeadline(handle);
+        return handle == 0 ? -1 : WidgetClientNative.arbiterHoldDeadline(handle);
     }
 
     public void release() {
         if (handle == 0) return;
-        WidgetSandboxNative.arbiterDestroy(handle);
+        WidgetClientNative.arbiterDestroy(handle);
         handle = 0;
     }
 

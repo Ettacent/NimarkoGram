@@ -49,6 +49,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -68,6 +69,7 @@ import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Forum.ForumUtilities;
+import org.telegram.ui.Components.MessagePreviewCrossfade;
 import org.telegram.ui.Components.PhotoBubbleClip;
 import org.telegram.ui.Components.Premium.PremiumGradient;
 import org.telegram.ui.Components.RecyclerListView;
@@ -146,6 +148,11 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
     private int statusLeft;
     private StaticLayout statusLayout;
+    private CharSequence statusContent;
+    private final MessagePreviewCrossfade statusCrossfade = new MessagePreviewCrossfade(this);
+    private boolean statusPresented;
+    private boolean updatingColors;
+    private float presentedStatusProgress = 1f;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable botVerificationDrawable;
     private AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
     private boolean statusBound;
@@ -241,6 +248,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
                 || object instanceof TLRPC.Chat && chat != null && ((TLRPC.Chat) object).id == chat.id;
         final boolean sameEncryptedChat = encryptedChat == null ? ec == null : ec != null && encryptedChat.id == ec.id;
         if (!samePeer || !sameEncryptedChat || savedMessages != saved) {
+            resetStatusTransition();
             statusBound = false;
             statusDrawable.set((Drawable) null, false);
             statusDrawable.resetAnimation();
@@ -371,6 +379,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
     @Override
     protected void onDetachedFromWindow() {
+        resetStatusTransition();
         super.onDetachedFromWindow();
         avatarImage.onDetachedFromWindow();
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
@@ -461,6 +470,10 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
     }
 
     public void buildLayout() {
+        final StaticLayout previousStatusLayout = statusLayout;
+        final int previousStatusLeft = statusLeft + sublabelOffsetX;
+        final int previousStatusTop = dp(callCellStyle ? 35 : 33) + sublabelOffsetY;
+        final CharSequence previousStatus = statusContent;
         CharSequence nameString = null;
         TextPaint currentNamePaint;
 
@@ -759,7 +772,7 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
         if (!TextUtils.isEmpty(statusString)) {
             CharSequence statusStringFinal = TextUtils.ellipsize(statusString, currentStatusPaint, statusWidth - dp(12), TextUtils.TruncateAt.END);
-            statusLayout = new StaticLayout(statusStringFinal, currentStatusPaint, statusWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+            statusLayout = new StaticLayout(statusStringFinal, new TextPaint(currentStatusPaint), statusWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
             nameTop = dp(9);
             nameLockTop -= dp(10);
         } else {
@@ -825,6 +838,52 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             nameLeft += dp(1);
             nameTop += dp(1);
         }
+        updateStatusTransition(previousStatusLayout, previousStatusLeft, previousStatusTop, previousStatus, statusString);
+    }
+
+    private void updateStatusTransition(StaticLayout previousStatusLayout, int previousStatusLeft,
+            int previousStatusTop, CharSequence previousStatus, CharSequence nextStatus) {
+        statusContent = nextStatus == null ? "" : TextUtils.stringOrSpannedString(nextStatus);
+        final boolean statusChanged = !TextUtils.equals(previousStatus, statusContent)
+                || previousStatusLayout != null && statusLayout != null
+                && previousStatusLayout.getPaint().getColor() != statusLayout.getPaint().getColor();
+        if (statusChanged && !updatingColors && statusPresented && isStatusPresentationVisible()
+                && SharedConfig.animationsEnabled()) {
+            statusCrossfade.capture(canvas -> {
+                if (previousStatusLayout == null) return;
+                final int save = canvas.save();
+                canvas.translate(previousStatusLeft, previousStatusTop);
+                previousStatusLayout.draw(canvas);
+                canvas.restoreToCount(save);
+            }, true, presentedStatusProgress);
+            presentedStatusProgress = statusCrossfade.getProgress();
+        } else if (statusChanged || updatingColors || !SharedConfig.animationsEnabled()) {
+            resetStatusTransition();
+        }
+    }
+
+    private boolean isStatusPresentationVisible() {
+        if (!isAttachedToWindow() || !isLaidOut() || !hasWindowFocus()
+                || app.nimarkogram.messenger.utils.UiAnimationClock.isPaused()) return false;
+        for (android.view.View view = this; view != null;
+                view = view.getParent() instanceof android.view.View ? (android.view.View) view.getParent() : null) {
+            if (view.getVisibility() != VISIBLE || view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    private void resetStatusTransition() {
+        statusCrossfade.finish();
+        statusPresented = false;
+        presentedStatusProgress = 1f;
+    }
+
+    private void drawStatusText(Canvas canvas) {
+        if (statusLayout == null) return;
+        final int save = canvas.save();
+        canvas.translate(statusLeft + sublabelOffsetX, dp(callCellStyle ? 35 : 33) + sublabelOffsetY);
+        statusLayout.draw(canvas);
+        canvas.restoreToCount(save);
     }
 
     public void updateStatus(boolean verified, TLRPC.User user, TLRPC.Chat chat, boolean animated) {
@@ -1102,11 +1161,10 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
             canvas.restore();
         }
 
-        if (statusLayout != null) {
-            canvas.save();
-            canvas.translate(statusLeft + sublabelOffsetX, dp(callCellStyle ? 35 : 33) + sublabelOffsetY);
-            statusLayout.draw(canvas);
-            canvas.restore();
+        statusCrossfade.draw(canvas, this::drawStatusText);
+        if (canvas.isHardwareAccelerated() && isStatusPresentationVisible()) {
+            statusPresented = true;
+            presentedStatusProgress = statusCrossfade.getProgress();
         }
 
         if (countLayout != null) {
@@ -1310,6 +1368,8 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
 
     @Override
     public void updateColors() {
+        updatingColors = true;
+        try {
         if (colorsGeneration != ThemeBind.generation()) {
             colorsGeneration = ThemeBind.generation();
             try {
@@ -1321,6 +1381,9 @@ public class ProfileSearchCell extends BaseCell implements NotificationCenter.No
         }
         if (nameLayout != null && getMeasuredWidth() > 0) {
             buildLayout();
+            }
+        } finally {
+            updatingColors = false;
         }
     }
     private int colorsGeneration = ThemeBind.generation();

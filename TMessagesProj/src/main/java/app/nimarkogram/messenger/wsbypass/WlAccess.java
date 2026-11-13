@@ -32,6 +32,7 @@ import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Locale;
@@ -42,6 +43,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import java.util.concurrent.locks.ReentrantLock;
 import app.nimarkogram.messenger.banners.BannerConfig;
 import app.nimarkogram.messenger.utils.InlineAuth;
 import okhttp3.MediaType;
@@ -72,23 +74,70 @@ public final class WlAccess {
     private static final ConcurrentHashMap<Long, ServerClock> CLOCKS = new ConcurrentHashMap<>();
     private static final AtomicBoolean WARMING = new AtomicBoolean();
     private static final AtomicBoolean FOREGROUND_REQUESTED = new AtomicBoolean();
+    private static final ArrayList<ForegroundRefresh> FOREGROUND_REFRESHES = new ArrayList<>();
     private static final ThreadLocal<Boolean> BACKGROUND_WARM = new ThreadLocal<>();
+    private static final ThreadLocal<AtomicBoolean> DEFERRED_GRANT_REMOVAL = new ThreadLocal<>();
     private static final CopyOnWriteArraySet<Runnable> LISTENERS = new CopyOnWriteArraySet<>();
     private static final AtomicBoolean NOTIFY_PENDING = new AtomicBoolean();
     private static final long REQUEST_TIMEOUT_MS = 30_000;
     private static final ThreadLocal<DeadlineTask> REQUEST = new ThreadLocal<>();
     private static volatile long lastWarm;
+    private static int nextRefreshAccount;
     private static final ThreadPoolExecutor WORK = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(12), task -> {
                 Thread thread = new Thread(task, "wl-access");
                 thread.setDaemon(true);
                 return thread;
             });
-    private static final OkHttpClient HTTP = new OkHttpClient.Builder()
+    private static final class HttpClientHolder {
+        static final ReentrantLock LOCK = new ReentrantLock();
+        static volatile OkHttpClient client;
+    }
+
+    private static long remainingHttpMillis(long deadline) throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new IOException("request_cancelled");
+        long remaining = deadline - SystemClock.elapsedRealtime();
+        if (remaining <= 0) throw new IOException("request_timeout");
+        return remaining;
+    }
+
+    private static OkHttpClient httpClient() throws IOException {
+        long remaining = remainingRequestMillis();
+        DeadlineTask task = REQUEST.get();
+        OkHttpClient client = httpClient(task == null
+                ? SystemClock.elapsedRealtime() + remaining : task.deadline);
+        remainingRequestMillis();
+        return client;
+    }
+
+    private static OkHttpClient httpClient(long deadline) throws IOException {
+        remainingHttpMillis(deadline);
+        OkHttpClient client = HttpClientHolder.client;
+        if (client == null) {
+            boolean locked = false;
+            try {
+                locked = HttpClientHolder.LOCK.tryLock(remainingHttpMillis(deadline), TimeUnit.MILLISECONDS);
+                if (!locked) throw new IOException("request_timeout");
+                remainingHttpMillis(deadline);
+                client = HttpClientHolder.client;
+                if (client == null) {
+                    client = new OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
             .writeTimeout(45, TimeUnit.SECONDS).callTimeout(60, TimeUnit.SECONDS)
             .followRedirects(false).followSslRedirects(false).build();
 
+                    HttpClientHolder.client = client;
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IOException("request_cancelled", error);
+            } finally {
+                if (locked) HttpClientHolder.LOCK.unlock();
+            }
+        }
+        remainingHttpMillis(deadline);
+        return client;
+    }
     public interface Callback { void done(String status); }
 
     public interface CheckoutCallback { void done(String status, Checkout checkout); }
@@ -160,6 +209,7 @@ public final class WlAccess {
         final String token;
         final PrivateKey key;
         final String alias, keyId;
+        private volatile boolean retired;
         Grant(long uid, long expires, String token, PrivateKey key) {
             this(uid, expires, token, key, 0);
         }
@@ -258,7 +308,7 @@ public final class WlAccess {
     private static Grant accountGrant(int account) {
         long owner = uid(account);
         Grant grant = GRANTS.get(owner);
-        return grant != null && Math.min(grant.expires, grant.paidUntil) > currentTime(account) + 60L
+        return grant != null && !grant.retired && Math.min(grant.expires, grant.paidUntil) > currentTime(account) + 60L
                 && uid(account) == owner ? grant : null;
     }
     public static boolean hasAccountGrant(int account) { return accountGrant(account) != null; }
@@ -380,10 +430,25 @@ public final class WlAccess {
         return account >= 0 && accountGrant(account) == grant;
     }
 
+    static boolean admitTransport(Grant grant, Runnable admission) {
+        synchronized (LOCK) {
+            if (!enabled() || !isCurrent(grant)) return false;
+            admission.run();
+            return true;
+        }
+    }
+
+    private static Grant removeGrantLocked(long owner) {
+        Grant grant = GRANTS.remove(owner);
+        if (grant != null) grant.retired = true;
+        return grant;
+    }
     public static void setEnabled(boolean value) {
+        synchronized (LOCK) {
         if (value && cached() == null) return;
         if (enabled() == value) return;
         prefs().edit().putBoolean("enabled", value).apply();
+        }
         WsBypassController controller = WsBypassController.getInstance();
         controller.stop();
         if (value) WsBypassConfig.setEnabled(true);
@@ -391,26 +456,94 @@ public final class WlAccess {
     }
 
     private static void onGrantRemoved() {
+        AtomicBoolean deferred = DEFERRED_GRANT_REMOVAL.get();
+        if (deferred != null) {
+            deferred.set(true);
+            return;
+        }
         AndroidUtilities.runOnUIThread(() -> {
-            if (enabled()) {
-                if (cached() == null) {
-                    setEnabled(false);
-                } else {
+            boolean stop = false;
+            synchronized (LOCK) {
+                if (transferGrantRemovalLocked()) return;
+                if (enabled() && cached() == null) {
+                    prefs().edit().putBoolean("enabled", false).apply();
+                    stop = true;
+                }
+            }
+            if (stop) {
                     WsBypassController controller = WsBypassController.getInstance();
                     controller.stop();
                     controller.ensureStarted();
                 }
-            }
             notifyChanged();
         });
     }
-    private static void queue(Runnable job, Callback callback) {
-        try { execute(job, () -> finish(callback, "error")); }
-        catch (RejectedExecutionException e) { finish(callback, "busy"); }
+    private static void finishGrantRefresh(AtomicBoolean deferred) {
+        synchronized (LOCK) {
+            if (!deferred.getAndSet(false) || transferGrantRemovalLocked()) return;
+        }
+        onGrantRemoved();
+    }
+
+    private static boolean transferGrantRemovalLocked() {
+        for (ForegroundRefresh refresh : FOREGROUND_REFRESHES) {
+            if (refresh.admitted && !refresh.finished && refresh.task.active()
+                    && current(refresh.account, refresh.owner, refresh.epoch)) {
+                refresh.deferred.set(true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final class ForegroundRefresh {
+        final int account;
+        final long owner, epoch;
+        final AtomicBoolean deferred = new AtomicBoolean();
+        DeadlineTask task;
+        boolean admitted, finished;
+
+        ForegroundRefresh(int account, long owner, long epoch) {
+            this.account = account; this.owner = owner; this.epoch = epoch;
+        }
+    }
+
+    private static void finishForegroundRefresh(ForegroundRefresh refresh) {
+        synchronized (LOCK) {
+            refresh.finished = true;
+            refresh.admitted = false;
+            FOREGROUND_REFRESHES.remove(refresh);
+            FOREGROUND_REQUESTED.set(!FOREGROUND_REFRESHES.isEmpty());
+        }
+        finishGrantRefresh(refresh.deferred);
+    }
+
+    private static void queue(ForegroundRefresh refresh, Runnable job, Callback callback) {
+        refresh.task = new DeadlineTask(() -> {
+            synchronized (LOCK) {
+                if (refresh.finished) return;
+            }
+            job.run();
+        }, () -> {
+            finishForegroundRefresh(refresh);
+            finish(callback, "error");
+        });
+        synchronized (LOCK) {
+            FOREGROUND_REFRESHES.add(refresh);
+            FOREGROUND_REQUESTED.set(true);
+            try {
+                execute(refresh.task);
+                refresh.admitted = true;
+            } catch (RejectedExecutionException error) {
+                finishForegroundRefresh(refresh);
+                finish(callback, "busy");
+            }
+        }
     }
 
     private static final class DeadlineTask implements Runnable {
         final long deadline;
+        final DeadlineTask parent;
         final Runnable job, expired;
         final AtomicBoolean completed = new AtomicBoolean();
         final Runnable timeout;
@@ -420,7 +553,13 @@ public final class WlAccess {
         }
 
         DeadlineTask(Runnable job, Runnable expired, long budget) {
-            this.deadline = SystemClock.elapsedRealtime() + budget;
+            this(job, expired, budget, null);
+        }
+
+        DeadlineTask(Runnable job, Runnable expired, long budget, DeadlineTask parent) {
+            this.parent = parent;
+            this.deadline = Math.min(SystemClock.elapsedRealtime() + budget,
+                    parent == null ? Long.MAX_VALUE : parent.deadline);
             this.job = job;
             this.expired = expired;
             this.timeout = () -> {
@@ -432,7 +571,8 @@ public final class WlAccess {
         }
 
         boolean active() {
-            return !completed.get() && SystemClock.elapsedRealtime() < deadline;
+            return !completed.get() && SystemClock.elapsedRealtime() < deadline
+                    && (parent == null || parent.active());
         }
 
         @Override public void run() {
@@ -451,7 +591,10 @@ public final class WlAccess {
     }
 
     private static void execute(Runnable job, Runnable expired) {
-        DeadlineTask task = new DeadlineTask(job, expired);
+        execute(new DeadlineTask(job, expired));
+    }
+
+    private static void execute(DeadlineTask task) {
         AndroidUtilities.runOnUIThread(task.timeout, REQUEST_TIMEOUT_MS);
         try { WORK.execute(task); }
         catch (RejectedExecutionException error) {
@@ -481,7 +624,8 @@ public final class WlAccess {
                 if (owner <= 0 || GRANTS.containsKey(owner)) continue;
                 try {
                     String alias = prefs().getString("key_" + owner, "");
-                    JSONObject stored = new JSONObject(prefs().getString("grant_" + owner, ""));
+                    String storedGrant = prefs().getString("grant_" + owner, "");
+                    JSONObject stored = new JSONObject(storedGrant);
                     if (alias.isEmpty() || stored.getLong("uid") != owner
                             || Math.min(stored.getLong("expires"), stored.optLong("paid_expires_at", 0))
                             <= currentTime(account) + 60L) continue;
@@ -493,6 +637,7 @@ public final class WlAccess {
                             stored.getLong("paid_expires_at"), alias, binding.keyId);
                     synchronized (LOCK) {
                         requireBinding(account, owner, epoch, binding);
+                        requireGrantReuseCurrent(owner, null, storedGrant);
                         if (GRANTS.putIfAbsent(owner, grant) == null) changed = true;
                     }
                 } catch (Exception ignored) { }
@@ -505,23 +650,24 @@ public final class WlAccess {
         if (!enabled() || lastWarm != 0 && SystemClock.elapsedRealtime() - lastWarm < 30_000
                 || !WARMING.compareAndSet(false, true)) return;
         lastWarm = SystemClock.elapsedRealtime();
+        AtomicBoolean deferred = new AtomicBoolean();
         try {
             execute(() -> {
                 BACKGROUND_WARM.set(true);
+                DEFERRED_GRANT_REMOVAL.set(deferred);
                 try {
                     restoreGrants();
-                    for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
-                        if (FOREGROUND_REQUESTED.get()) break;
-                        long owner = uid(i);
-                        if (owner <= 0 || !enabled()) continue;
-                        try { refreshNow(i, owner, EPOCHS.getOrDefault(owner, 0L), null); }
-                        catch (Exception ignored) { }
-                    }
+                    refreshAccounts(-1, 0, 0, null);
                 } finally {
+                    DEFERRED_GRANT_REMOVAL.remove();
                     BACKGROUND_WARM.remove();
                     WARMING.set(false);
+                    finishGrantRefresh(deferred);
                 }
-            }, () -> WARMING.set(false));
+            }, () -> {
+                finishGrantRefresh(deferred);
+                WARMING.set(false);
+            });
         } catch (RejectedExecutionException e) { WARMING.set(false); }
     }
 
@@ -532,36 +678,110 @@ public final class WlAccess {
     public static void refreshWithSubscription(int account, Callback subscriptionCallback, Callback resultCallback) {
         final long owner = uid(account), epoch = EPOCHS.getOrDefault(owner, 0L);
         AtomicBoolean delivered = new AtomicBoolean();
+        ForegroundRefresh refresh = new ForegroundRefresh(account, owner, epoch);
         Callback callback = status -> {
-            FOREGROUND_REQUESTED.set(false);
+            finishForegroundRefresh(refresh);
             if (resultCallback != null && delivered.compareAndSet(false, true))
                 resultCallback.done(current(account, owner, epoch) ? status : "account_changed");
         };
-        FOREGROUND_REQUESTED.set(true);
-        queue(() -> {
-            restoreGrants();
+        queue(refresh, () -> {
+            DEFERRED_GRANT_REMOVAL.set(refresh.deferred);
             String status = "error";
-            try { status = refreshNow(account, owner, epoch, subscriptionCallback); }
-            catch (Exception e) { status = errorStatus(e); }
-            Grant available = cached();
-            int checkedOther = -1;
-            if (current(account, owner, epoch) && available != null && available.uid != owner) {
-                int other = accountFor(available.uid);
-                checkedOther = other;
-                try { refreshNow(other, available.uid, EPOCHS.getOrDefault(available.uid, 0L), null); }
-                catch (Exception ignored) { }
+            try {
+            restoreGrants();
+                status = refreshAccounts(account, owner, epoch, subscriptionCallback);
             }
-            if (current(account, owner, epoch) && cached() == null) {
-                for (int other = 0; other < UserConfig.MAX_ACCOUNT_COUNT; other++) {
-                    long otherOwner = uid(other);
-                    if (other == account || other == checkedOther || otherOwner <= 0) continue;
-                    try { refreshNow(other, otherOwner, EPOCHS.getOrDefault(otherOwner, 0L), null); }
-                    catch (Exception ignored) { }
-                    if (cached() != null || !current(account, owner, epoch)) break;
-                }
+            catch (Exception e) { status = errorStatus(e); }
+            finally {
+                DEFERRED_GRANT_REMOVAL.remove();
+                finishForegroundRefresh(refresh);
             }
             finish(callback, current(account, owner, epoch) ? status : "account_changed");
         }, callback);
+    }
+
+    private static final class AccountRefresh {
+        final int account;
+        final long owner, epoch;
+        final boolean bound;
+        String status;
+        LegacyRecovery legacy;
+
+        AccountRefresh(int account, long owner, long epoch) {
+            this.account = account; this.owner = owner; this.epoch = epoch;
+            bound = owner > 0 && !prefs().getString("key_" + owner, "").isEmpty();
+        }
+    }
+
+    private static final class LegacyRecovery {
+        final DeviceBinding binding;
+        final ApiError error;
+
+        LegacyRecovery(DeviceBinding binding, ApiError error) {
+            this.binding = binding; this.error = error;
+        }
+    }
+
+    private static boolean refreshAllowed(AccountRefresh selected) {
+        DeadlineTask task = REQUEST.get();
+        return (task == null || task.active())
+                && (selected == null || current(selected.account, selected.owner, selected.epoch))
+                && (!Boolean.TRUE.equals(BACKGROUND_WARM.get()) || enabled() && !FOREGROUND_REQUESTED.get());
+    }
+
+    private static String refreshAccounts(int account, long owner, long epoch, Callback subscriptionCallback) {
+        ArrayList<AccountRefresh> accounts = new ArrayList<>();
+        AccountRefresh selected = account < 0 ? null : new AccountRefresh(account, owner, epoch);
+        if (selected != null) accounts.add(selected);
+        int first = nextRefreshAccount;
+        nextRefreshAccount = (first + 1) % UserConfig.MAX_ACCOUNT_COUNT;
+        for (int i = 0; i < UserConfig.MAX_ACCOUNT_COUNT; i++) {
+            int other = (first + i) % UserConfig.MAX_ACCOUNT_COUNT;
+            long otherOwner = uid(other);
+            if (other != account && otherOwner > 0)
+                accounts.add(new AccountRefresh(other, otherOwner, EPOCHS.getOrDefault(otherOwner, 0L)));
+        }
+        for (AccountRefresh candidate : accounts) {
+            if (!candidate.bound) continue;
+            if (!refreshAllowed(selected)) break;
+            int pending = 0;
+            for (AccountRefresh other : accounts) if (other.status == null) pending++;
+            try {
+                candidate.status = refreshAttempt(candidate, candidate == selected ? subscriptionCallback : null,
+                        true, pending);
+            } catch (Exception error) { candidate.status = errorStatus(error); }
+            if (candidate == selected && candidate.status != null && accountGrant(account) != null)
+                return candidate.status;
+        }
+        for (AccountRefresh candidate : accounts) {
+            boolean hasGrant = cached() != null;
+            if (candidate.status != null || candidate != selected && hasGrant) continue;
+            if (!refreshAllowed(selected)) break;
+            int pending = 0;
+            for (AccountRefresh other : accounts)
+                if (other.status == null && (other == selected || !hasGrant)) pending++;
+            try {
+                candidate.status = refreshAttempt(candidate, candidate == selected ? subscriptionCallback : null,
+                        false, pending);
+            } catch (Exception error) { candidate.status = errorStatus(error); }
+        }
+        return selected == null || selected.status == null ? "error" : selected.status;
+    }
+
+    private static String refreshAttempt(AccountRefresh candidate, Callback subscriptionCallback,
+                                         boolean recoveryOnly, int pending) throws Exception {
+        DeadlineTask parent = REQUEST.get();
+        long remaining = remainingRequestMillis();
+        long reserved = Math.max(0, pending - 1) * 3000L + (recoveryOnly ? 0 : 2000L);
+        long budget = Math.max(1, Math.min(pending > 1 ? REQUEST_TIMEOUT_MS / 2 : remaining, remaining - reserved));
+        DeadlineTask scope = new DeadlineTask(() -> { }, () -> { }, budget, parent);
+        REQUEST.set(scope);
+        try {
+            return refreshNow(candidate, subscriptionCallback, recoveryOnly);
+        } finally {
+            scope.completed.set(true);
+            if (parent == null) REQUEST.remove(); else REQUEST.set(parent);
+        }
     }
 
     private static String bannerToken(int account, long owner, long epoch) throws Exception {
@@ -606,11 +826,12 @@ public final class WlAccess {
         return token;
     }
 
-    private static String refreshNow(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
+    private static String refreshNow(AccountRefresh candidate, Callback subscriptionCallback,
+                                     boolean recoveryOnly) throws Exception {
         try {
-            return refreshAccount(account, owner, epoch, subscriptionCallback);
+            return refreshAccount(candidate, subscriptionCallback, recoveryOnly);
         } catch (ApiError error) {
-            return accessErrorStatus(account, owner, epoch, error);
+            return accessErrorStatus(candidate.account, candidate.owner, candidate.epoch, error);
         }
     }
 
@@ -689,20 +910,37 @@ public final class WlAccess {
                 && grant.alias.equals(binding.alias) && grant.keyId.equals(binding.keyId);
     }
 
+    private static void requireGrantReuseCurrent(long owner, Grant source, String storedGrant) throws IOException {
+        if (source != null && (source.retired || GRANTS.get(owner) != source)
+                || storedGrant != null && !storedGrant.equals(prefs().getString("grant_" + owner, ""))) {
+            throw new IOException("authentication_required");
+        }
+    }
     private static void installGrant(int account, long owner, long epoch, DeviceBinding binding, Grant next) throws Exception {
+        installGrant(account, owner, epoch, binding, next, null, null);
+    }
+
+    private static void installGrant(int account, long owner, long epoch, DeviceBinding binding, Grant next,
+                                     Grant source, String storedGrant) throws Exception {
         if (!WlRecoveryProof.token(next.token) || next.expires <= 0 || next.paidUntil <= 0
                 || next.expires > next.paidUntil) throw new IOException("invalid_grant");
         boolean changed;
+        Grant retired;
         synchronized (LOCK) {
             requireBinding(account, owner, epoch, binding);
+            requireGrantReuseCurrent(owner, source, storedGrant);
+            if (next.retired) throw new IOException("authentication_required");
             Grant previous = GRANTS.get(owner);
             if (sameGrant(previous, binding, next)) next = previous;
             JSONObject stored = new JSONObject().put("uid", owner).put("expires", next.expires)
                     .put("token", next.token).put("paid_expires_at", next.paidUntil).put("key_id", binding.keyId);
             remainingRequestMillis();
             prefs().edit().putString("grant_" + owner, stored.toString()).apply();
-            changed = GRANTS.put(owner, next) != next;
+            retired = GRANTS.put(owner, next);
+            changed = retired != next;
+            if (changed && retired != null) retired.retired = true;
         }
+        if (changed) WsBypassCore.closeWlTransports(retired);
         if (changed) notifyChanged();
     }
 
@@ -717,11 +955,14 @@ public final class WlAccess {
         }
         if (!"approved".equals(subscription.status)) {
             boolean changed;
+            Grant retired;
             synchronized (LOCK) {
                 requireBinding(account, owner, epoch, binding);
-                changed = GRANTS.remove(owner) != null;
+                retired = removeGrantLocked(owner);
+                changed = retired != null;
                 prefs().edit().remove("grant_" + owner).apply();
             }
+            WsBypassCore.closeWlTransports(retired);
             if (changed || enabled() && cached() == null) onGrantRemoved();
             else notifyChanged();
             return subscription.status;
@@ -732,11 +973,21 @@ public final class WlAccess {
         subscriptionReady(account, owner, epoch, callback, subscription.status);
         return subscription.status;
     }
-    private static String refreshAccount(int account, long owner, long epoch, Callback subscriptionCallback) throws Exception {
+    private static String refreshAccount(AccountRefresh candidate, Callback subscriptionCallback,
+                                         boolean recoveryOnly) throws Exception {
+        int account = candidate.account;
+        long owner = candidate.owner, epoch = candidate.epoch;
+        LegacyRecovery legacy = candidate.legacy;
+        candidate.legacy = null;
         remainingRequestMillis();
         if (!current(account, owner, epoch)) throw new IOException("account_changed");
         DeviceBinding existing = existingBinding(account, owner, epoch);
-        if (existing != null) {
+        boolean legacyReady = !recoveryOnly && legacy != null && legacyRecoveryFallback(legacy.error)
+                && existing != null && existing.owner == legacy.binding.owner
+                && existing.alias.equals(legacy.binding.alias) && existing.keyId.equals(legacy.binding.keyId)
+                && existing.publicKey.equals(legacy.binding.publicKey);
+        if (legacyReady) requireBinding(account, owner, epoch, legacy.binding);
+        if (existing != null && !legacyReady) {
             try {
                 JSONObject result = recover(existing, "recover", priorToken(existing),
                         () -> requireBinding(account, owner, epoch, existing), account, epoch);
@@ -744,8 +995,10 @@ public final class WlAccess {
             } catch (ApiError error) {
                 requireBinding(account, owner, epoch, existing);
                 if (!legacyRecoveryFallback(error)) throw error;
+                if (recoveryOnly) candidate.legacy = new LegacyRecovery(existing, error);
             }
         }
+        if (recoveryOnly) return null;
         String auth = bannerToken(account, owner, epoch);
         if (existing != null) requireBinding(account, owner, epoch, existing);
         JSONObject state;
@@ -775,16 +1028,20 @@ public final class WlAccess {
         if ("blocked".equals(status)) return recordBlocked(account, owner, epoch);
         if (!"approved".equals(status)) {
             boolean changed = false;
+            Grant retired;
             synchronized (LOCK) {
                 if (!current(account, owner, epoch)) throw new IOException("account_changed");
-                changed = GRANTS.remove(owner) != null;
+                retired = removeGrantLocked(owner);
+                changed = retired != null;
                 prefs().edit().remove("grant_" + owner).apply();
             }
+            WsBypassCore.closeWlTransports(retired);
             if (changed || enabled() && cached() == null) onGrantRemoved();
             else notifyChanged();
             return status;
         }
         DeadlineTask task = REQUEST.get();
+        final boolean backgroundWarm = Boolean.TRUE.equals(BACKGROUND_WARM.get());
         subscriptionReady(account, owner, epoch, subscriptionCallback, status);
         KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
         String alias = prefs().getString("key_" + owner, "");
@@ -813,12 +1070,17 @@ public final class WlAccess {
         PrivateKey key = binding.key;
         Grant grant = newKey ? null : GRANTS.get(owner);
         if (grant != null && (!binding.alias.equals(grant.alias) || !binding.keyId.equals(grant.keyId))) grant = null;
+        Grant reusedGrant = grant;
+        String reusedStoredGrant = null;
         if (grant == null && !newKey) {
             try {
-                JSONObject old = new JSONObject(prefs().getString("grant_" + owner, ""));
+                String storedGrant = prefs().getString("grant_" + owner, "");
+                JSONObject old = new JSONObject(storedGrant);
                 if (old.getLong("uid") == owner && old.optLong("paid_expires_at", 0) > now
-                        && (!old.has("key_id") || binding.keyId.equals(old.getString("key_id"))))
+                        && (!old.has("key_id") || binding.keyId.equals(old.getString("key_id")))) {
                     grant = new Grant(owner, old.getLong("expires"), old.getString("token"), key, paidExpires, alias, binding.keyId);
+                    reusedStoredGrant = storedGrant;
+                }
             } catch (Exception ignored) { }
         }
         if (grant == null || grant.expires < now + 86400) {
@@ -831,6 +1093,7 @@ public final class WlAccess {
                     .put("signature", sign(key, ("nimarko-wl-enroll-v1\n" + code + "\n" + secret).getBytes(StandardCharsets.US_ASCII)));
             InlineAuth.sendInlineVerification(account, "NimarkoBanner_Bot", code,
                     () -> (task == null || task.active()) && current(account, owner, epoch)
+                            && (!backgroundWarm || !FOREGROUND_REQUESTED.get())
                             && binding.alias.equals(prefs().getString("key_" + owner, "")) && binding.matchesKey());
             JSONObject issued = null;
             for (int attempt = 0; attempt < 15; attempt++) {
@@ -847,11 +1110,13 @@ public final class WlAccess {
                 throw new IOException("authentication_required");
             issued.put("paid_expires_at", paidExpires);
             grant = new Grant(owner, issued.getLong("expires"), issued.getString("token"), key, paidExpires, alias, binding.keyId);
+            reusedGrant = null;
+            reusedStoredGrant = null;
         }
         if (grant.paidUntil != paidExpires || !grant.alias.equals(alias) || !grant.keyId.equals(binding.keyId)) {
             grant = new Grant(owner, grant.expires, grant.token, key, paidExpires, alias, binding.keyId);
         }
-        installGrant(account, owner, epoch, binding, grant);
+        installGrant(account, owner, epoch, binding, grant, reusedGrant, reusedStoredGrant);
         return "approved";
     }
 
@@ -881,11 +1146,18 @@ public final class WlAccess {
     }
 
     public static void rejected(Grant grant) {
+        boolean removed;
         synchronized (LOCK) {
-            if (grant == null || !GRANTS.remove(grant.uid, grant)) return;
+            if (grant == null) return;
+            removed = GRANTS.remove(grant.uid, grant);
+            grant.retired = true;
+            if (removed) {
             prefs().edit().remove("grant_" + grant.uid).apply();
             lastWarm = 0;
         }
+        }
+        WsBypassCore.closeWlTransports(grant);
+        if (!removed) return;
         notifyChanged();
         warm();
     }
@@ -893,16 +1165,18 @@ public final class WlAccess {
     public static void onAccountLoggedOut(int account, long owner) {
         final String oldAlias, oldGrant;
         final ServerClock oldClock;
+        final Grant retired;
         if (owner <= 0) return;
         synchronized (LOCK) {
             oldAlias = prefs().getString("key_" + owner, "");
             oldGrant = prefs().getString("grant_" + owner, "");
             EPOCHS.merge(owner, 1L, Long::sum);
-            GRANTS.remove(owner);
+            retired = removeGrantLocked(owner);
             SUBSCRIPTIONS.remove(owner);
             oldClock = CLOCKS.remove(owner);
             prefs().edit().remove("grant_" + owner).remove("key_" + owner).apply();
         }
+        WsBypassCore.closeWlTransports(retired);
         notifyChanged();
         Runnable cleanup = () -> {
             DeadlineTask previous = REQUEST.get();
@@ -935,7 +1209,7 @@ public final class WlAccess {
                                 "POST", PREFIX + "/forget", EMPTY);
                     Request.Builder request = new Request.Builder().url(ORIGIN + PREFIX + "/forget").post(RequestBody.create(JSON, EMPTY));
                     for (Map.Entry<String, String> header : proof.entrySet()) request.header(header.getKey(), header.getValue());
-                    okhttp3.Call call = HTTP.newCall(request.build());
+                    okhttp3.Call call = httpClient().newCall(request.build());
                     call.timeout().timeout(remainingRequestMillis(), TimeUnit.MILLISECONDS);
                     try (Response response = call.execute()) { }
                     }
@@ -955,10 +1229,6 @@ public final class WlAccess {
         catch (RejectedExecutionException e) {
             Utilities.globalQueue.postRunnable(cleanup);
         }
-        if (enabled()) AndroidUtilities.runOnUIThread(() -> {
-            WsBypassController.getInstance().stop();
-            WsBypassController.getInstance().ensureStarted();
-        });
     }
 
     private static boolean ownedAlias(long owner, String alias) {
@@ -969,14 +1239,17 @@ public final class WlAccess {
 
     private static String recordBlocked(int account, long owner, long epoch) {
         boolean changed;
+        Grant retired;
         synchronized (LOCK) {
             if (!current(account, owner, epoch)) return "account_changed";
             Subscription previous = SUBSCRIPTIONS.get(owner);
             SUBSCRIPTIONS.put(owner, new Subscription("blocked", previous == null ? 0 : previous.expiresAt,
                     previous == null ? -1 : previous.priceCents, previous == null ? "" : previous.priceVersion));
-            changed = GRANTS.remove(owner) != null;
+            retired = removeGrantLocked(owner);
+            changed = retired != null;
             prefs().edit().remove("grant_" + owner).apply();
         }
+        WsBypassCore.closeWlTransports(retired);
         if (changed || enabled() && cached() == null) onGrantRemoved();
         else notifyChanged();
         return "blocked";
@@ -986,14 +1259,17 @@ public final class WlAccess {
         String status = errorStatus(error);
         if ("expired".equals(status) || "payment_required".equals(status) || "revoked".equals(status)) {
             boolean changed;
+            Grant retired;
             synchronized (LOCK) {
                 if (!current(account, owner, epoch)) return "account_changed";
                 Subscription previous = SUBSCRIPTIONS.get(owner);
                 SUBSCRIPTIONS.put(owner, new Subscription(status, previous == null ? 0 : previous.expiresAt,
                         previous == null ? -1 : previous.priceCents, previous == null ? "" : previous.priceVersion));
-                changed = GRANTS.remove(owner) != null;
+                retired = removeGrantLocked(owner);
+                changed = retired != null;
                 prefs().edit().remove("grant_" + owner).apply();
             }
+            WsBypassCore.closeWlTransports(retired);
             if (changed || enabled() && cached() == null) onGrantRemoved(); else notifyChanged();
             return status;
         }
@@ -1029,7 +1305,7 @@ public final class WlAccess {
         }
         final java.util.concurrent.atomic.AtomicReference<java.net.InetAddress> peer =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        OkHttpClient client = HTTP.newBuilder()
+        OkHttpClient client = httpClient(deadline).newBuilder()
                 .proxy(java.net.Proxy.NO_PROXY)
                 .dns(hostname -> {
                     if (!HOST.equalsIgnoreCase(hostname)) throw new java.net.UnknownHostException("untrusted_host");
@@ -1074,12 +1350,12 @@ public final class WlAccess {
     }
 
     private static JSONObject call(String path, String method, String auth, byte[] body) throws Exception {
-        long remaining = remainingRequestMillis();
+        remainingRequestMillis();
         Request.Builder builder = new Request.Builder().url(ORIGIN + path);
         if (auth != null) builder.header("X-Auth-Token", auth);
         if (method.equals("POST")) builder.post(RequestBody.create(JSON, body == null ? EMPTY : body));
-        okhttp3.Call call = HTTP.newCall(builder.build());
-        call.timeout().timeout(remaining, TimeUnit.MILLISECONDS);
+        okhttp3.Call call = httpClient().newCall(builder.build());
+        call.timeout().timeout(remainingRequestMillis(), TimeUnit.MILLISECONDS);
         try (Response response = call.execute()) {
             if (response.handshake() == null) throw new IOException("untrusted_response");
             JSONObject result = read(response);
@@ -1095,7 +1371,7 @@ public final class WlAccess {
         byte[] payload = bytes(body);
         if (payload.length > 8192) throw new IOException("request_too_large");
         Request request = new Request.Builder().url(ORIGIN + path).post(RequestBody.create(JSON, payload)).build();
-        okhttp3.Call call = HTTP.newCall(request);
+        okhttp3.Call call = httpClient().newCall(request);
         call.timeout().timeout(remainingRequestMillis(), TimeUnit.MILLISECONDS);
         try (Response response = call.execute()) {
             if (response.handshake() == null || response.body() == null) throw new IOException("untrusted_response");

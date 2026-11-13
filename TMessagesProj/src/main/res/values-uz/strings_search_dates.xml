@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Sana bo‘yicha filtr</string>
+    <string name="NM_SearchDatesDay">Kun</string>
+    <string name="NM_SearchDatesPeriod">Oraliq</string>
+    <string name="NM_SearchDatesFrom">Boshlanish</string>
+    <string name="NM_SearchDatesUntil">Tugash</string>
+    <string name="NM_SearchDatesAddEnd">Tugash sanasini qo‘shish</string>
+    <string name="NM_SearchDatesToday">Bugun</string>
+    <string name="NM_SearchDatesYesterday">Kecha</string>
+    <string name="NM_SearchDatesLast7">Oxirgi 7 kun</string>
+    <string name="NM_SearchDatesLast30">Oxirgi 30 kun</string>
+    <string name="NM_SearchDatesApply">Filtrni qo‘llash</string>
+    <string name="NM_SearchDatesReset">Barcha sanalar</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Sana filtri: %1$s</string>
+    <string name="NM_SearchDatesChange">Sanalarni o‘zgartirish</string>
+    <string name="NM_SearchDatesClear">Sana filtrini olib tashlash</string>
+    <string name="NM_SearchDatesJump">Sanaga o‘tish</string>
+    <string name="NM_SearchDatesInvalid">Tugash sanasi boshlanishdan oldin bo‘la olmaydi.</string>
+    <string name="NM_SearchDatesDayValue">Kun: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Oy: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Yil: %1$s</string>
+</resources>

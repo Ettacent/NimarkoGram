@@ -1052,8 +1052,7 @@ public final class TextDocumentView extends FrameLayout {
             highlightAnimator = null;
             previous.cancel();
         }
-        boolean animate = !closed && isAttachedToWindow() && isShown() && SharedConfig.animationsEnabled()
-                && (android.os.Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled());
+        final boolean animate = animationsEnabled();
         for (int i = 0; i < list.getChildCount(); i++) {
             View child = list.getChildAt(i);
             if (child instanceof TextView) applyHighlights((TextView) child, list.getChildAdapterPosition(child), animate);
@@ -1064,12 +1063,12 @@ public final class TextDocumentView extends FrameLayout {
         highlightAnimator.setDuration(160);
         highlightAnimator.setInterpolator(new DecelerateInterpolator());
         highlightAnimator.addUpdateListener(animation -> {
-            highlightProgress = (float) animation.getAnimatedValue();
-            if (!SharedConfig.animationsEnabled()
-                    || android.os.Build.VERSION.SDK_INT >= 26 && !ValueAnimator.areAnimatorsEnabled()) {
+            if (highlightAnimator != animation) return;
+            if (!animationsEnabled()) {
                 finishHighlightAnimation();
                 return;
             }
+            highlightProgress = (float) animation.getAnimatedValue();
             for (int i = 0; i < list.getChildCount(); i++) list.getChildAt(i).invalidate();
         });
         highlightAnimator.addListener(new AnimatorListenerAdapter() {

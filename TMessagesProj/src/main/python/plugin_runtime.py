@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 """Runtime ownership helpers for NimarkoGram plugins.
 
 Every imported plugin module receives an immutable Java PluginRuntimeToken.
@@ -10,8 +12,8 @@ changes.
 import functools
 import sys
 
-_MODULE_TOKEN_KEY = "__nimarko_runtime_token__"
 
+_MODULE_TOKEN_KEY = "__nimarko_runtime_token__"
 _UNSET = globals().get("_UNSET", object())
 _THREAD_PATCHED = globals().get("_THREAD_PATCHED", False)
 _TIMER_PATCHED = globals().get("_TIMER_PATCHED", False)
@@ -19,10 +21,12 @@ _EXECUTOR_PATCHED = globals().get("_EXECUTOR_PATCHED", False)
 _LOW_LEVEL_THREAD_PATCHED = globals().get(
     "_LOW_LEVEL_THREAD_PATCHED", False)
 
+
 def _token_from_globals(namespace):
     if isinstance(namespace, dict):
         return namespace.get(_MODULE_TOKEN_KEY)
     return None
+
 
 def _token_from_object(value):
     if value is None:
@@ -35,6 +39,7 @@ def _token_from_object(value):
         if token is not None:
             return token
     return None
+
 
 def capture_callback_owner(callback=None):
     """Return the immutable runtime token which owns *callback* or this call."""
@@ -70,7 +75,6 @@ def capture_callback_owner(callback=None):
                 token = None
             if token is not None:
                 return token
-            
             candidate = (
                 getattr(candidate, "func", None)
                 or getattr(candidate, "__wrapped__", None)
@@ -89,7 +93,6 @@ def capture_callback_owner(callback=None):
     except Exception:
         pass
     finally:
-        
         del frame
 
     try:
@@ -107,6 +110,7 @@ def capture_callback_owner(callback=None):
     except Exception:
         return None
 
+
 def is_callback_allowed(token):
     if token is None:
         return False
@@ -115,6 +119,21 @@ def is_callback_allowed(token):
         return bool(PluginsController.getInstance().isPluginRuntimeCallbackAllowed(token))
     except Exception:
         return False
+
+
+def is_settings_mutation_allowed(token):
+    if token is None:
+        return False
+    try:
+        from app.nimarkogram.messenger.plugins import PluginsController
+        controller = PluginsController.getInstance()
+        admission = getattr(controller, "canPluginMutateSettings", None)
+        if callable(admission):
+            return bool(admission(token))
+        return bool(controller.isPluginRuntimeCallbackAllowed(token))
+    except Exception:
+        return False
+
 
 def _await_worker_runtime(token):
     """Wait until a newly loaded plugin runtime is published or revoked.
@@ -138,14 +157,12 @@ def _await_worker_runtime(token):
         decision_for = getattr(
             controller, "getPluginRuntimeTaskDecision", None)
         if not callable(decision_for):
-            
             return bool(
                 controller.isPluginRuntimeCallbackAllowed(token))
         run = int(getattr(
             PluginsController, "RUNTIME_TASK_RUN", 2))
         wait = int(getattr(
             PluginsController, "RUNTIME_TASK_WAIT", 1))
-        
         deadline = time.monotonic() + 31.0
         while True:
             decision = int(decision_for(token))
@@ -153,15 +170,16 @@ def _await_worker_runtime(token):
                 return True
             if decision != wait or time.monotonic() >= deadline:
                 return False
-            
             time.sleep(0.002)
     except Exception:
         return False
+
 
 def run_owned_callback(token, callback, *args, default=None, **kwargs):
     """Invoke a direct listener/network callback inside its exact runtime."""
     return _run_owned_callback(
         token, callback, args, kwargs, default)
+
 
 def _propagated_throwable(failure):
     """Return the exact Java Throwable which will leave this callback.
@@ -187,8 +205,8 @@ def _propagated_throwable(failure):
         except BaseException:
             return propagated
     except BaseException:
-        
         return failure
+
 
 def _run_owned_callback(token, callback, args, kwargs, default):
     """Internal form which doesn't reserve callback keyword argument names."""
@@ -211,7 +229,6 @@ def _run_owned_callback(token, callback, args, kwargs, default):
             watchdog = controller.getWatchdog()
             if not plugin_id or watchdog is None:
                 return default
-            
             watchdog.onPluginExecutionStarted(plugin_id)
         except Exception:
             return default
@@ -223,7 +240,6 @@ def _run_owned_callback(token, callback, args, kwargs, default):
                 watchdog.onPluginExecutionFailed(
                     plugin_id, propagated)
             except BaseException:
-                
                 pass
             if propagated is failure:
                 raise
@@ -232,14 +248,13 @@ def _run_owned_callback(token, callback, args, kwargs, default):
             try:
                 watchdog.onPluginExecutionFinished(plugin_id)
             except BaseException:
-                
                 pass
     finally:
         try:
             controller.exitPluginRuntime(token)
         except Exception:
-            
             pass
+
 
 def guard_proxy_callback(callback, owner=_UNSET, default=None):
     """Bind a proxy method to the exact runtime which created its class.
@@ -264,6 +279,7 @@ def guard_proxy_callback(callback, owner=_UNSET, default=None):
     guarded._nimarko_runtime_token = owner
     return guarded
 
+
 def run_owned_worker(token, callback, *args, default=None, **kwargs):
     """Run long-lived plugin work without holding Java callback quiescence.
 
@@ -278,20 +294,34 @@ def run_owned_worker(token, callback, *args, default=None, **kwargs):
         return default
     if not _await_worker_runtime(token):
         return default
-    import threading
-    current = threading.current_thread()
-    previous = getattr(current, "_nimarko_runtime_token", _UNSET)
-    current._nimarko_runtime_token = token
     try:
-        return callback(*args, **kwargs)
+        from app.nimarkogram.messenger.plugins import PluginsController
+        controller = PluginsController.getInstance()
+        push = getattr(controller, "pushPluginWorkerRuntime", None)
+        restore = getattr(controller, "restorePluginWorkerRuntime", None)
+        if not callable(push) or not callable(restore):
+            return default
+        previous_java = push(token)
+    except Exception:
+        return default
+    try:
+        import threading
+        current = threading.current_thread()
+        previous = getattr(current, "_nimarko_runtime_token", _UNSET)
+        current._nimarko_runtime_token = token
+        try:
+            return callback(*args, **kwargs)
+        finally:
+            if previous is _UNSET:
+                try:
+                    del current._nimarko_runtime_token
+                except AttributeError:
+                    pass
+            else:
+                current._nimarko_runtime_token = previous
     finally:
-        if previous is _UNSET:
-            try:
-                del current._nimarko_runtime_token
-            except AttributeError:
-                pass
-        else:
-            current._nimarko_runtime_token = previous
+        restore(token, previous_java)
+
 
 def make_runnable(callback, owner=_UNSET):
     """Create the Java one-shot Runnable while preserving plugin ownership."""
@@ -302,6 +332,7 @@ def make_runnable(callback, owner=_UNSET):
             "Plugin Runnable requires an exact runtime owner")
     from app.nimarkogram.messenger.plugins.utils import PythonRunnable
     return PythonRunnable(callback, owner)
+
 
 def make_interface_proxy(target, interfaces, owner=_UNSET):
     """Create a Java-owned proxy for one or more callback interfaces.
@@ -326,7 +357,6 @@ def make_interface_proxy(target, interfaces, owner=_UNSET):
     for interface in interfaces:
         java_class = getattr(interface, "class_", None)
         if java_class is None:
-            
             try:
                 if bool(interface.isInterface()):
                     java_class = interface
@@ -339,6 +369,7 @@ def make_interface_proxy(target, interfaces, owner=_UNSET):
 
     classes = jarray(jclass("java.lang.Class"))(resolved)
     return PythonInterfaceProxy.create(target, owner, classes)
+
 
 def _install_thread_propagation():
     """Propagate runtime identity through Thread/Timer and executor tasks."""
@@ -366,14 +397,11 @@ def _install_thread_propagation():
                 token = getattr(self, "_nimarko_runtime_token", None)
                 original_run = None
                 if token is not None:
-                    
                     original_run = self.run
 
                     @functools.wraps(original_run)
                     def guarded_run():
-                        if _await_worker_runtime(token):
-                            return original_run()
-                        return None
+                        return run_owned_worker(token, original_run)
 
                     self.run = guarded_run
                 try:
@@ -482,5 +510,6 @@ def _install_thread_propagation():
             _EXECUTOR_PATCHED = True
     except Exception:
         pass
+
 
 _install_thread_propagation()

@@ -100,6 +100,7 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -172,6 +173,7 @@ import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.LanguageDetector;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.LocationController;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.SendMessageChatArguments;
@@ -205,6 +207,7 @@ import org.telegram.messenger.utils.RectFMergeBounding;
 import org.telegram.messenger.utils.ViewOutlineProviderImpl;
 import org.telegram.messenger.utils.tlutils.TLKeyboardHelper;
 import org.telegram.messenger.utils.tlutils.TlUtils;
+import org.telegram.messenger.voip.VoIPPreNotificationService;
 import org.telegram.messenger.voip.VoIPService;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
@@ -242,6 +245,9 @@ import org.telegram.ui.ActionBar.ThemeBind;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.ActionBar.theme.ThemeKey;
 import org.telegram.ui.Adapters.FiltersView;
+import org.telegram.ui.Components.MessageSearchDateSheet;
+
+import app.nimarkogram.messenger.search.MessageSearchDateRange;
 import org.telegram.ui.Adapters.MentionsAdapter;
 import org.telegram.ui.Adapters.MessagesSearchAdapter;
 import org.telegram.ui.Business.BusinessBotButton;
@@ -689,6 +695,19 @@ public class ChatActivity extends BaseFragment implements
     private boolean searchingForUser;
     private TLRPC.User searchingUserMessages;
     private TLRPC.Chat searchingChatMessages;
+    private MessageSearchDateRange searchDates = MessageSearchDateRange.ALL;
+    private java.util.TimeZone searchDatesTimeZone = java.util.TimeZone.getDefault();
+    private MessageSearchDateSheet searchDateSheet;
+    private SearchDateHintLayout searchDateHintLayout;
+    private MessageSearchDateRange searchDateHintDates;
+    private java.util.Locale searchDateHintLocale;
+    private java.util.TimeZone searchDateHintZone;
+    private long searchDateHintYearStart, searchDateHintYearEnd;
+    private String searchDateHintInterval;
+    private MediaDataController messageSearchController;
+    private long searchDateUiEpoch;
+    private boolean updatingSearchCriteriaText;
+    private String queryBeforeUserPicker;
     public static boolean scrolling;
     public ReactionsLayoutInBubble.VisibleReaction searchingReaction;
     public ReactionsLayoutInBubble.VisibleReaction getFilterTag() {
@@ -814,6 +833,11 @@ public class ChatActivity extends BaseFragment implements
     public boolean loadingPinnedMessagesList;
     private boolean pinnedEndReached;
 
+    private static final String RESTORE_PINNED_MESSAGES = "restore_pinned_messages";
+    private int restorePinnedAccount;
+    private long restorePinnedOwnerId;
+    private boolean restorePinnedMessagesLoaded;
+    private java.util.function.BooleanSupplier restorePinnedNavigationCurrent;
     public void reloadPinnedMessages() {
         pinnedMessageIds.clear();
         pinnedMessageObjects.clear();
@@ -1445,6 +1469,7 @@ public class ChatActivity extends BaseFragment implements
     public final static int OPTION_WELCOME_REVERT = 116;
 
     public final static int OPTION_SEND_MONEY = 117;
+    public final static int OPTION_STOP_LIVE_LOCATION = 118;
     private final static int[] allowedNotificationsDuringChatListAnimations = new int[]{
             NotificationCenter.messagePlayingProgressDidChanged,
             NotificationCenter.messagesRead,
@@ -2307,7 +2332,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
 
-            hideFieldPanel(notify, scheduleDate, payStars, true);
+            hideFieldPanel(notify, scheduleDate, scheduleRepeatPeriod, payStars, true);
             if (chatActivityEnterView != null && chatActivityEnterView.getEmojiView() != null) {
                 chatActivityEnterView.getEmojiView().onMessageSend();
             }
@@ -2710,7 +2735,7 @@ public class ChatActivity extends BaseFragment implements
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
                 } else if (state == 1 || state == 3 || state == 4) {
-                    instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
+                    instantCameraView.send(state, notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, stars);
                 } else if (state == 2 || state == 5) {
                     instantCameraView.cancel(state == 2);
                 }
@@ -3092,6 +3117,15 @@ public class ChatActivity extends BaseFragment implements
         dialogFolderId = arguments.getInt("dialog_folder_id", 0);
         dialogFilterId = arguments.getInt("dialog_filter_id", 0);
         chatMode = requestedChatMode;
+        if (chatMode == MODE_PINNED && (pinnedMessageIds.isEmpty() || chatActivityDelegate == null)) {
+            chatMode = 0;
+            arguments.putInt("chatMode", 0);
+            arguments.putBoolean(RESTORE_PINNED_MESSAGES, true);
+        }
+        if (arguments.getBoolean(RESTORE_PINNED_MESSAGES, false)) {
+            restorePinnedAccount = currentAccount;
+            restorePinnedOwnerId = getUserConfig().getClientUserId();
+        }
         quickReplyShortcut = arguments.getString("quick_reply", null);
         welcomeMessagesChatId = arguments.getLong("welcome_messages_chat_id", 0);
         voiceChatHash = arguments.getString("voicechat", null);
@@ -3502,6 +3536,7 @@ public class ChatActivity extends BaseFragment implements
             loadInfo = userInfo == null;
         }
 
+        requestPinnedMessagesForRestore();
         if (forceHistoryEmpty) {
             endReached[0] = endReached[1] = true;
             forwardEndReached[0] = forwardEndReached[1] = true;
@@ -3793,6 +3828,9 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onFragmentDestroy() {
+        retireSearchDateHintLayout();
+        resetSearchDateUi();
+        cancelOwnedMessageSearch();
         releaseLoadingWallpaper();
         restorePeerLoadGeneration++;
         if (glassBackgroundSourceRenderNode != null) {
@@ -3839,6 +3877,9 @@ public class ChatActivity extends BaseFragment implements
         }
         if (chatAttachAlert != null) {
             chatAttachAlert.dismissInternal();
+        }
+        if (instantCameraView != null) {
+            instantCameraView.destroy(true);
         }
         ContentPreviewViewer.getInstance().clearDelegate(contentPreviewViewerDelegate);
         getNotificationCenter().onAnimationFinish(transitionAnimationIndex);
@@ -3982,7 +4023,6 @@ public class ChatActivity extends BaseFragment implements
                 return;
             }
             if (chatActivity != null) {
-                end = Math.min(end, start + chatActivity.getMessagesController().quoteLengthMax);
                 if (messageObject.getGroupId() != 0) {
                     MessageObject.GroupedMessages group = chatActivity.getGroup(messageObject.getGroupId());
                     if (group != null && !group.isDocuments) {
@@ -3992,6 +4032,8 @@ public class ChatActivity extends BaseFragment implements
                 if (messageObject == null) {
                     return;
                 }
+                end = ReplyQuote.getSafeQuoteEnd(messageObject,
+                        (int) Math.min((long) end, (long) start + Math.max(0, chatActivity.getMessagesController().quoteLengthMax)));
                 ReplyQuote quote = ReplyQuote.from(messageObject, start, end);
                 if (quote.getText() == null) {
                     return;
@@ -4060,16 +4102,16 @@ public class ChatActivity extends BaseFragment implements
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                         && SharedConfig.chatBlurEnabled() && LiteMode.isEnabled(LiteMode.FLAG_LIQUID_GLASS)) {
-                    return Theme.multAlpha(getThemedColor(Theme.key_chat_messagePanelBackground),
-                            isDark() ? 0.46f : 0.62f);
+                    return readableBackgroundColor(Theme.multAlpha(getThemedColor(Theme.key_chat_messagePanelBackground),
+                            isDark() ? 0.46f : 0.62f));
                 }
                 final boolean isThemeLight = themeDelegate != null && !themeDelegate.isDark();
                 if (isThemeLight) {
-                    return ColorUtils.setAlphaComponent(super.getBackgroundColor(), 216);
+                    return readableBackgroundColor(ColorUtils.setAlphaComponent(getRawBackgroundColor(), 216));
                 }
                 return super.getBackgroundColor();
             }
-        };
+        }.setReadableTextColors(Theme.key_chat_messagePanelText, Theme.key_chat_messagePanelHint);
         blurredBackgroundColorProvider.setCompactOutlineKey(Theme.key_chat_compact_inputGlassOutline);
         blurredBackgroundButtonsColorProvider = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_chat_messagePanelBackground) {
             @Override
@@ -4086,11 +4128,11 @@ public class ChatActivity extends BaseFragment implements
 
                 final boolean isThemeLight = themeDelegate != null && !themeDelegate.isDark();
                 if (isThemeLight) {
-                    return ColorUtils.setAlphaComponent(super.getBackgroundColor(), 216);
+                    return readableBackgroundColor(ColorUtils.setAlphaComponent(getRawBackgroundColor(), 216));
                 }
                 return super.getBackgroundColor();
             }
-        };
+        }.setReadableTextColors(Theme.key_windowBackgroundWhiteBlackText, Theme.key_windowBackgroundWhiteGrayText2);
 
         if (textSelectionHelper == null) {
             Timer.Task t1 = Timer.start(t, "new ChatActivityTextSelectionHelper");
@@ -6284,6 +6326,7 @@ public class ChatActivity extends BaseFragment implements
                     drawChatForegroundElements(canvas);
                     canvas.restoreToCount(restoreToCount);
                 } else {
+                    drawingChatListViewYoffset = 0;
                     drawChatBackgroundElements(canvas);
                     super.dispatchDraw(canvas);
                     drawChatForegroundElements(canvas);
@@ -7844,7 +7887,7 @@ public class ChatActivity extends BaseFragment implements
         chatActivityFadeView.setResourcesProvider(themeDelegate);
         chatActivityFadeView.setup(navbarContentDrawableFactory);
         chatActivityFadeView.setFadeHeightTop(dp(48));
-        chatActivityFadeView.setFadeHeightBottom(dp(48));
+        chatActivityFadeView.setFadeHeightBottom(dp(48), false);
         contentView.addView(chatActivityFadeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         if (getDialogId() != getUserConfig().getClientUserId() && !app.nimarkogram.messenger.AppConfig.disableReactionsOverlay) {
@@ -8472,11 +8515,12 @@ public class ChatActivity extends BaseFragment implements
                     openMessageInOriginalDialog((MessageObject) obj);
                 }
             } else if (searchingReaction != null) {
-                if (position < 0 || position >= getMediaDataController().searchResultMessages.size())
+                final int controllerPosition = messagesSearchAdapter.getControllerPosition(position);
+                if (controllerPosition < 0 || controllerPosition >= getMediaDataController().searchResultMessages.size())
                     return;
-                MessageObject msg = getMediaDataController().searchResultMessages.get(position);
+                MessageObject msg = getMediaDataController().searchResultMessages.get(controllerPosition);
                 setFilterMessages(searchingFiltered = false, true, false);
-                getMediaDataController().setSearchedPosition(position);
+                getMediaDataController().setSearchedPosition(controllerPosition);
                 updateSearchButtons(getMediaDataController().getMask(), getMediaDataController().getSearchPosition(), getMediaDataController().getSearchCount());
                 AndroidUtilities.runOnUIThread(() -> {
                     scrollToMessageId(msg.getId(), 0, true, 0, true, 0, null, () -> {
@@ -8490,7 +8534,9 @@ public class ChatActivity extends BaseFragment implements
                     }
                 });
             } else {
-                getMediaDataController().jumpToSearchedMessage(classGuid, position);
+                final int controllerPosition = messagesSearchAdapter.getControllerPosition(position);
+                if (controllerPosition < 0) return;
+                getMediaDataController().jumpToSearchedMessage(classGuid, controllerPosition);
                 showMessagesSearchListView(false);
             }
         });
@@ -9911,14 +9957,14 @@ public class ChatActivity extends BaseFragment implements
                     searchingReaction = reaction;
                     searchingFiltered = reaction != null;
                     if (reaction == null) {
-                        getMediaDataController().clearFoundMessageObjects();
+                        cancelOwnedMessageSearch();
                         setFilterMessages(false);
                         updateSearchButtons(0, 0, -1);
                     }
                     updateSearchUpDownButtonVisibility(true);
                     updatePagedownButtonVisibility(true);
                     searchingQuery = searchItem.getSearchField().getText().toString();
-                    getMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, !TextUtils.isEmpty(searchingQuery) || searchingReaction != null, searchingReaction);
+                    getSearchMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, hasSearchCriteria(), searchingReaction, searchDates);
                     AndroidUtilities.hideKeyboard(searchItem.getSearchField());
                     return true;
                 }
@@ -10176,7 +10222,7 @@ public class ChatActivity extends BaseFragment implements
         if (actionBarSearchTags != null) {
             actionBarSearchTags.setChosen(reaction, true);
         }
-        searchItemVisible = searching = !TextUtils.isEmpty(searchingQuery) || searchingReaction != null;
+        searchItemVisible = searching = hasSearchCriteria();
         updateBottomOverlay();
         updateSearchUpDownButtonVisibility(true);
     }
@@ -10188,10 +10234,28 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void hitSearch() {
-        searchWas = true;
+        hitSearch(true);
+    }
+
+    private void hitSearch(boolean jumpToMatch) {
+        final boolean keepSearchOpen = searchItemVisible && searching;
+        searchingQuery = currentSearchQuery();
+        keepConstrainedSearchLocal();
+        updateSearchDateHint();
+        final boolean hasCriteria = hasSearchCriteria();
+        searchWas = hasCriteria;
         updateSearchButtons(0, 0, -1);
-        getMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction);
-        searchItemVisible = searching = !TextUtils.isEmpty(searchingQuery) || searchingReaction != null;
+        if (hasCriteria) {
+            getSearchMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, jumpToMatch && !isMessagesSearchListVisible(), searchingReaction, searchDates);
+        } else {
+            cancelOwnedMessageSearch();
+            if (searchItem != null) searchItem.setShowSearchProgress(false);
+            onSearchLoadingUpdate(false);
+            removeSelectedMessageHighlight();
+            if (messagesSearchAdapter != null) messagesSearchAdapter.notifyDataSetChanged();
+            updateVisibleRows(true);
+        }
+        searchItemVisible = searching = keepSearchOpen || hasCriteria;
         updateBottomOverlay();
         updateSearchUpDownButtonVisibility(true);
     }
@@ -10971,7 +11035,7 @@ public class ChatActivity extends BaseFragment implements
     private int savedSearchMenuPaddingRight, savedSearchRightMargin;
 
     private void updateSavedSearchMenuProgress() {
-        if (!isSavedMessagesSidebar() || actionBar == null) return;
+        if (actionBar == null) return;
         final float progress = Utilities.clamp01(animatorSearchFieldVisibility.getFloatValue());
         actionBar.searchFieldVisibleAlpha = progress;
         actionBar.createMenu().setTranslationX(-lerp((float) dp(10), dp(5), progress));
@@ -11055,10 +11119,7 @@ public class ChatActivity extends BaseFragment implements
 
     private void updateSavedSearchHeaderVisibility() {
         if (!savedSearchHeaderTransition || !isSavedMessagesSidebar() || actionBar != null && actionBar.isActionModeShowed()) return;
-        final boolean composing = chatActivityEnterView != null && chatActivityEnterView.hasText()
-                && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())
-                && (currentChat == null || ChatObject.canSendPlain(currentChat));
-        updateSavedSearchHeaderItem(searchIconItem, showSearchAsIcon && !composing, savedSearchIconAlpha, savedSearchIconEnabled);
+        updateSavedSearchHeaderItem(searchIconItem, showSearchAsIcon, savedSearchIconAlpha, savedSearchIconEnabled);
         final boolean sidebar = isTopicsSidebarEnabled();
         updateSavedSearchHeaderItem(topicsPanelItem, sidebar, savedSidebarAlpha, savedSidebarEnabled);
         updateHeaderItemCollapsed(sidebar);
@@ -12077,7 +12138,9 @@ public class ChatActivity extends BaseFragment implements
                     if (searchFilterButton != null && searchFilterButton.getVisibility() != GONE) {
                         leftMargin += 48;
                     }
-                    ((MarginLayoutParams) child.getLayoutParams()).leftMargin = AndroidUtilities.dp(leftMargin);
+                    MarginLayoutParams params = (MarginLayoutParams) child.getLayoutParams();
+                    if (LocaleController.isRTL) params.rightMargin = AndroidUtilities.dp(leftMargin);
+                    else params.leftMargin = AndroidUtilities.dp(leftMargin);
                 }
                 super.measureChildWithMargins(child, parentWidthMeasureSpec, widthUsed, parentHeightMeasureSpec, heightUsed);
             }
@@ -12093,15 +12156,15 @@ public class ChatActivity extends BaseFragment implements
         searchCountText.setTextSize(dp(15));
         searchCountText.setTypeface(AndroidUtilities.bold());
         ThemeBind.textColor(searchCountText, Theme.key_chat_searchPanelText, getResourceProvider());
-        searchCountText.setGravity(Gravity.LEFT);
-        searchContainer.addView(searchCountText, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 30, Gravity.CENTER_VERTICAL, 0, -1, 97.33f, 0));
+        searchCountText.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+        searchContainer.addView(searchCountText, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 30, Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 97.33f : 0, -1, LocaleController.isRTL ? 0 : 97.33f, 0));
         chatInputBubbleContainer.addView(searchContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, searchContainerHeight, Gravity.BOTTOM, 7, 0, 7, 0));
 
         searchExpandList = new AnimatedTextView(getContext(), true, false, true);
         searchExpandList.setAnimationProperties(0, 0, 420, CubicBezierInterpolator.EASE_OUT_QUINT);
         searchExpandList.setScaleProperty(.7f);
         searchExpandList.setTextSize(dp(15));
-        searchExpandList.setGravity(Gravity.RIGHT);
+        searchExpandList.setGravity(LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
         searchExpandList.setTypeface(AndroidUtilities.bold());
         ThemeBind.textColor(searchExpandList, Theme.key_windowBackgroundWhiteBlueText2, getResourceProvider());
         searchExpandList.setText(LocaleController.getString(isMessagesSearchListVisible() ? R.string.SearchAsChat : R.string.SearchAsList));
@@ -12112,7 +12175,7 @@ public class ChatActivity extends BaseFragment implements
         });
         searchExpandList.setAlpha(0.5f);
         searchExpandList.setClickable(false);
-        searchContainer.addView(searchExpandList, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.RIGHT | Gravity.FILL_VERTICAL));
+        searchContainer.addView(searchExpandList, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.FILL_VERTICAL));
 
         searchOtherButton = new AnimatedTextView(getContext(), true, true, true);
         searchOtherButton.setGravity(Gravity.CENTER);
@@ -12136,6 +12199,19 @@ public class ChatActivity extends BaseFragment implements
             ThemeBind.selectorBackground(searchUserButton, Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarActionModeDefaultSelector), 1), null, ThemeBind.of(Theme.key_actionBarActionModeDefaultSelector), getResourceProvider());
             searchContainer.addView(searchUserButton, LayoutHelper.createFrame(44, 44, Gravity.LEFT | Gravity.TOP, 48, 0, 0, 0));
             searchUserButton.setOnClickListener(view -> {
+                if (!searchingForUser) {
+                    final String query = currentSearchQuery();
+                    queryBeforeUserPicker = searchingUserMessages == null && searchingChatMessages == null
+                            && TextUtils.equals(query, LocaleController.getString(R.string.SearchFrom)) ? "" : query;
+                }
+                searchingForUser = true;
+                cancelOwnedMessageSearch();
+                searchWas = false;
+                updateSearchButtons(0, 0, -1);
+                searchItem.setShowSearchProgress(false);
+                onSearchLoadingUpdate(false);
+                removeSelectedMessageHighlight();
+                updateVisibleRows(true);
                 if (mentionContainer != null) {
                     mentionContainer.setReversed(true);
                     mentionContainer.getAdapter().setSearchingMentions(true);
@@ -12147,9 +12223,6 @@ public class ChatActivity extends BaseFragment implements
                     searchFilterButton.setVisibility(View.GONE);
                 }
 
-                app.nimarkogram.messenger.AppConfig.setMessagesSearchFilter(
-                        app.nimarkogram.messenger.AppConfig.FILTER_NONE);
-                searchingForUser = true;
                 searchingUserMessages = null;
                 searchingChatMessages = null;
                 searchItem.setSearchFieldHint(LocaleController.getString(R.string.SearchMembers));
@@ -12174,22 +12247,40 @@ public class ChatActivity extends BaseFragment implements
                 if (searchItem != null) {
                     AndroidUtilities.hideKeyboard(searchItem.getSearchField());
                 }
-                showDialog(AlertsCreator.createCalendarPickerDialog(getParentActivity(), 1375315200000L, new MessagesStorage.IntCallback() {
-                    @Override
-                    public void run(int param) {
-                        jumpToDate(param);
-                    }
-                }, themeDelegate).create());
+                if (supportsSearchDates()) showSearchDateSheet();
+                else showSearchHistoryDatePicker();
             });
-            searchCalendarButton.setContentDescription(LocaleController.getString(R.string.JumpToDate));
+            searchCalendarButton.setOnLongClickListener(view -> {
+                if (!searchDates.isActive() || searchingForUser || isPaused || isFinished) return false;
+                applySearchDates(MessageSearchDateRange.ALL, searchDatesTimeZone);
+                return true;
+            });
+            searchCalendarButton.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    if (searchDates.isActive()) {
+                        info.addAction(new AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_DISMISS,
+                                LocaleController.getString(R.string.NM_SearchDatesClear)));
+                    }
+                }
+                @Override public boolean performAccessibilityAction(View host, int action, Bundle arguments) {
+                    if (action == AccessibilityNodeInfo.ACTION_DISMISS && searchDates.isActive()
+                            && !searchingForUser && !isPaused && !isFinished) {
+                        applySearchDates(MessageSearchDateRange.ALL, searchDatesTimeZone);
+                        return true;
+                    }
+                    return super.performAccessibilityAction(host, action, arguments);
+                }
+            });
+            searchCalendarButton.setContentDescription(LocaleController.getString(supportsSearchDates() ? R.string.NM_SearchDatesTitle : R.string.JumpToDate));
         }
 
         if (!searchingForUser && chatMode != MODE_SEARCH) {
             searchFilterButton = new ImageView(getContext());
             searchFilterButton.setScaleType(ImageView.ScaleType.CENTER);
             searchFilterButton.setImageResource(R.drawable.msg_customize);
-            searchFilterButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_searchPanelIcons), PorterDuff.Mode.MULTIPLY));
-            searchFilterButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarActionModeDefaultSelector), 1));
+            ThemeBind.colorFilter(searchFilterButton, Theme.key_chat_searchPanelIcons, getResourceProvider(), PorterDuff.Mode.MULTIPLY);
+            ThemeBind.selectorBackground(searchFilterButton, Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarActionModeDefaultSelector), 1), null, ThemeBind.of(Theme.key_actionBarActionModeDefaultSelector), getResourceProvider());
             int leftMargin = currentChat != null && (!ChatObject.isChannel(currentChat) || currentChat.megagroup) ? 92 : 44;
             searchContainer.addView(searchFilterButton, LayoutHelper.createFrame(44, 44, Gravity.LEFT | Gravity.TOP, leftMargin, 0, 0, 0));
             searchFilterButton.setOnClickListener(view -> {
@@ -12200,6 +12291,386 @@ public class ChatActivity extends BaseFragment implements
             });
             searchFilterButton.setContentDescription(LocaleController.getString(R.string.NM_CH_SearchFilter));
         }
+        updateSearchDateControls();
+    }
+
+    private boolean supportsSearchDates() {
+        return currentEncryptedChat == null && (chatMode == 0 || chatMode == MODE_SAVED);
+    }
+
+    private String currentSearchQuery() {
+        return searchItem != null && searchItem.getSearchField() != null
+                ? searchItem.getSearchField().getText().toString() : searchingQuery == null ? "" : searchingQuery;
+    }
+
+    private boolean hasSearchCriteria() {
+        return !TextUtils.isEmpty(searchingQuery) || searchDates.isActive() || searchingUserMessages != null
+                || searchingChatMessages != null || searchingReaction != null
+                || app.nimarkogram.messenger.AppConfig.messagesSearchFilter != app.nimarkogram.messenger.AppConfig.FILTER_NONE;
+    }
+
+    private MediaDataController getSearchMediaDataController() {
+        return messageSearchController = getMediaDataController();
+    }
+
+    private void cancelOwnedMessageSearch() {
+        final MediaDataController controller = messageSearchController;
+        if (controller != null) controller.cancelSearchMessagesInChat(classGuid);
+    }
+
+    private boolean isCurrentSearchNotification(int account, Object[] args, int ownerIndex) {
+        if (searchingForUser) return false;
+        return args.length <= ownerIndex || account == currentAccount && messageSearchController != null
+                && messageSearchController.isCurrentSearchNotification(classGuid, args[ownerIndex]);
+    }
+
+    private boolean hasLocalSearchConstraints() {
+        return searchDates.isActive() || searchingUserMessages != null || searchingChatMessages != null
+                || searchingReaction != null || threadMessageId != 0 || chatMode == MODE_SAVED
+                || app.nimarkogram.messenger.AppConfig.messagesSearchFilter != app.nimarkogram.messenger.AppConfig.FILTER_NONE;
+    }
+
+    private void keepConstrainedSearchLocal() {
+        if (!hasLocalSearchConstraints() || searchingHashtag == null) return;
+        searchingHashtag = null;
+        animatorSearchHashtagHistoryVisibility.setValue(false, SharedConfig.animationsEnabled());
+        if (hashtagSearchTabs != null) {
+            hashtagSearchTabs.show(false);
+            if (hashtagSearchTabs.tabs.getCurrentPosition() != 0) hashtagSearchTabs.tabs.scrollToTab(0, 0);
+        }
+    }
+
+    private void showSearchHistoryDatePicker() {
+        if (getParentActivity() == null) return;
+        final long epoch = searchDateUiEpoch;
+        showDialog(AlertsCreator.createCalendarPickerDialog(getParentActivity(), 1375315200000L, date -> {
+            if (epoch == searchDateUiEpoch && !isFinished && !isPaused && searchItemVisible) jumpToDate(date);
+        }, themeDelegate).create());
+    }
+
+    private void showSearchDateSheet() {
+        if (!supportsSearchDates() || searchingForUser || !searching || !searchItemVisible || isFinished || isPaused
+                || fragmentView == null || getParentActivity() == null) return;
+        if (searchDateSheet != null && !searchDateSheet.isDismissed()) return;
+        final long epoch = ++searchDateUiEpoch;
+        final String query = currentSearchQuery();
+        final TLRPC.User user = searchingUserMessages;
+        final TLRPC.Chat chat = searchingChatMessages;
+        final ReactionsLayoutInBubble.VisibleReaction reaction = searchingReaction;
+        final int mediaFilter = app.nimarkogram.messenger.AppConfig.messagesSearchFilter;
+        final MessageSearchDateRange previous = searchDates;
+        final int ownerAccount = currentAccount;
+        final long ownerDialog = dialog_id, ownerMerge = mergeDialogId, ownerThread = threadMessageId, ownerSaved = getSavedDialogId();
+        final Object ownerActivity = getParentActivity(), ownerView = fragmentView;
+        final ActionBarMenuItem ownerSearchItem = searchItem;
+        final INavigationLayout ownerLayout = getParentLayout();
+        final BaseFragment ownerTop = ownerLayout == null ? null : ownerLayout.getLastFragment();
+        searchDateSheet = new MessageSearchDateSheet(getParentActivity(), getResourceProvider(), searchDates,
+                searchDates.isActive() ? searchDatesTimeZone : java.util.TimeZone.getDefault(), new MessageSearchDateSheet.Delegate() {
+            private boolean current() {
+                return epoch == searchDateUiEpoch && !isFinished && !isPaused && fragmentView != null && getParentActivity() != null
+                        && currentAccount == ownerAccount && dialog_id == ownerDialog && mergeDialogId == ownerMerge
+                        && threadMessageId == ownerThread && getSavedDialogId() == ownerSaved
+                        && getParentActivity() == ownerActivity && fragmentView == ownerView && searchItem == ownerSearchItem
+                        && getParentLayout() == ownerLayout && (ownerLayout == null || ownerLayout.getLastFragment() == ownerTop)
+                        && searching && searchItemVisible && !searchingForUser && searchDates.equals(previous)
+                        && searchingUserMessages == user && searchingChatMessages == chat && searchingReaction == reaction
+                        && mediaFilter == app.nimarkogram.messenger.AppConfig.messagesSearchFilter
+                        && TextUtils.equals(query, currentSearchQuery());
+            }
+            @Override public void onApply(MessageSearchDateRange dates, java.util.TimeZone zone) {
+                if (current()) applySearchDates(dates, zone);
+            }
+            @Override public void onJumpToDay(int date) {
+                if (current()) jumpToDate(date);
+            }
+        });
+        showDialog(searchDateSheet);
+    }
+
+    private void applySearchDates(MessageSearchDateRange dates, java.util.TimeZone timeZone) {
+        if (isFinished || isPaused || searchingForUser || !searchItemVisible || !searching || !supportsSearchDates() || searchDates.equals(dates)) return;
+        ++searchDateUiEpoch;
+        searchDates = dates;
+        searchDatesTimeZone = (java.util.TimeZone) timeZone.clone();
+        updateSearchDateHint();
+        updateSearchDateControls();
+        if (!dates.isActive()) {
+            removeSelectedMessageHighlight();
+            updateVisibleRows(true);
+        }
+        hitSearch(dates.isActive());
+    }
+
+    private void updateSearchDateHint() {
+        if (isFinished || searchItem == null || searchingForUser || searchingHashtag != null) {
+            retireSearchDateHintLayout();
+            return;
+        }
+        if (!searchDates.isActive()) {
+            retireSearchDateHintLayout();
+            CharSequence hint = searchingUserMessages != null || searchingChatMessages != null ? null
+                    : LocaleController.getString(isSupportedTags() ? R.string.SavedTagSearchHint : R.string.Search);
+            searchItem.setSearchFieldHint(hint);
+            return;
+        }
+        EditTextBoldCursor field = searchItem.getSearchField();
+        if (searchDateHintLayout == null || searchDateHintLayout.item != searchItem || searchDateHintLayout.field != field) {
+            retireSearchDateHintLayout();
+            searchDateHintLayout = new SearchDateHintLayout(searchItem, field);
+            searchDateHintLayout.observe();
+        }
+        searchDateHintLayout.refit(compactSearchDateInterval());
+    }
+
+    private void retireSearchDateHintLayout() {
+        SearchDateHintLayout layout = searchDateHintLayout;
+        searchDateHintLayout = null;
+        if (layout != null) layout.retire();
+    }
+
+    private static long searchHintCivilDay(long millis, java.util.TimeZone zone) {
+        java.util.Calendar day = java.util.Calendar.getInstance(zone, java.util.Locale.ROOT);
+        day.setTimeInMillis(millis);
+        java.util.Calendar civil = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"), java.util.Locale.ROOT);
+        civil.clear();
+        civil.set(day.get(java.util.Calendar.YEAR), day.get(java.util.Calendar.MONTH), day.get(java.util.Calendar.DAY_OF_MONTH), 12, 0, 0);
+        return civil.getTimeInMillis();
+    }
+
+    private String compactSearchDateInterval() {
+        java.util.Locale locale = LocaleController.getInstance().getCurrentLocale();
+        long now = System.currentTimeMillis();
+        if (searchDates.equals(searchDateHintDates) && locale.equals(searchDateHintLocale)
+                && searchDatesTimeZone.equals(searchDateHintZone) && now >= searchDateHintYearStart && now < searchDateHintYearEnd) return searchDateHintInterval;
+        java.util.Calendar year = java.util.Calendar.getInstance(searchDatesTimeZone, java.util.Locale.ROOT);
+        year.setTimeInMillis(now);
+        int currentYear = year.get(java.util.Calendar.YEAR);
+        year.clear();
+        year.set(currentYear, java.util.Calendar.JANUARY, 1);
+        searchDateHintYearStart = year.getTimeInMillis();
+        year.add(java.util.Calendar.YEAR, 1);
+        searchDateHintYearEnd = year.getTimeInMillis();
+        java.util.Calendar endpoint = java.util.Calendar.getInstance(searchDatesTimeZone, java.util.Locale.ROOT);
+        endpoint.setTimeInMillis(searchDates.getStartDayMillis());
+        boolean current = endpoint.get(java.util.Calendar.YEAR) == currentYear;
+        endpoint.setTimeInMillis(searchDates.getEndDayMillis());
+        current &= endpoint.get(java.util.Calendar.YEAR) == currentYear;
+        java.util.Locale calendarLocale = new java.util.Locale.Builder().setLocale(locale).setUnicodeLocaleKeyword("ca", "gregory").build();
+        android.icu.text.DateIntervalFormat format = android.icu.text.DateIntervalFormat.getInstance(current ? "MMMd" : "yMMMd", calendarLocale);
+        format.setTimeZone(android.icu.util.TimeZone.getTimeZone("UTC"));
+        searchDateHintInterval = format.format(new android.icu.util.DateInterval(
+                searchHintCivilDay(searchDates.getStartDayMillis(), searchDatesTimeZone),
+                searchHintCivilDay(searchDates.getEndDayMillis(), searchDatesTimeZone)),
+                new StringBuffer(), new java.text.FieldPosition(0)).toString();
+        searchDateHintDates = searchDates;
+        searchDateHintLocale = locale;
+        searchDateHintZone = (java.util.TimeZone) searchDatesTimeZone.clone();
+        return searchDateHintInterval;
+    }
+
+    private static CharSequence fitSearchDateHint(String prefix, String interval, TextPaint paint, int width) {
+        String full = prefix + " · " + interval;
+        if (paint.measureText(full) <= width) return full;
+        if (paint.measureText(interval) <= width) return interval;
+        return TextUtils.ellipsize(interval, paint, Math.max(0, width), TextUtils.TruncateAt.END);
+    }
+
+    private static int searchDateHintLayoutX(View view) {
+        int x = view.getLeft();
+        while (view.getParent() instanceof View) {
+            View parent = (View) view.getParent();
+            x += parent.getLeft() - parent.getScrollX();
+            view = parent;
+        }
+        return x;
+    }
+
+    private static final class SearchDateHintSpan extends android.text.style.ReplacementSpan {
+        final TextPaint paint;
+        final android.text.StaticLayout layout;
+        final boolean rtl;
+        int inset;
+
+        SearchDateHintSpan(String text, TextPaint source, boolean rtl, int inset) {
+            this.paint = new TextPaint(source);
+            this.rtl = rtl;
+            this.inset = inset;
+            int width = Math.max(1, (int) Math.ceil(android.text.Layout.getDesiredWidth(text, paint)));
+            layout = android.text.StaticLayout.Builder.obtain(text, 0, text.length(), paint, width)
+                    .setMaxLines(1).setIncludePad(false).setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL).build();
+        }
+
+        @Override public int getSize(Paint paint, CharSequence text, int start, int end, Paint.FontMetricsInt metrics) {
+            if (metrics != null) paint.getFontMetricsInt(metrics);
+            return (int) Math.ceil(layout.getLineWidth(0));
+        }
+
+        @Override public void draw(Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, Paint source) {
+            paint.setColor(source.getColor());
+            paint.setAlpha(source.getAlpha());
+            int save = canvas.save();
+            try {
+                canvas.translate(x + (rtl ? -inset : inset) - layout.getLineLeft(0), y - layout.getLineBaseline(0));
+                layout.draw(canvas);
+            } finally { canvas.restoreToCount(save); }
+        }
+    }
+
+    private final class SearchDateHintLayout implements ViewTreeObserver.OnGlobalLayoutListener, View.OnAttachStateChangeListener {
+        final ActionBarMenuItem item;
+        final EditTextBoldCursor field;
+        final FrameLayout container;
+        final Rect containerRect = new Rect();
+        ViewTreeObserver observer;
+        SearchDateHintSpan appliedSpan;
+        String appliedText;
+        float size, scale, skew, spacing;
+        int flags;
+        Typeface typeface;
+        android.os.LocaleList textLocales;
+        String fontFeatures;
+        boolean retired;
+
+        SearchDateHintLayout(ActionBarMenuItem item, EditTextBoldCursor field) {
+            this.item = item;
+            this.field = field;
+            container = item.getSearchContainer();
+            field.addOnAttachStateChangeListener(this);
+        }
+
+        boolean current() { return !retired && searchDateHintLayout == this && searchItem == item && !isFinished; }
+
+        void observe() {
+            if (!current() || !field.isAttachedToWindow()) return;
+            ViewTreeObserver next = field.getViewTreeObserver();
+            if (observer == next) return;
+            unobserve();
+            observer = next;
+            observer.addOnGlobalLayoutListener(this);
+        }
+
+        void unobserve() {
+            if (observer != null && observer.isAlive()) observer.removeOnGlobalLayoutListener(this);
+            observer = null;
+        }
+
+        void retire() {
+            retired = true;
+            unobserve();
+            field.removeOnAttachStateChangeListener(this);
+        }
+
+        @Override public void onGlobalLayout() { if (current() && field.isAttachedToWindow()) updateSearchDateHint(); }
+        @Override public void onViewAttachedToWindow(View view) { if (current()) { observe(); updateSearchDateHint(); } }
+        @Override public void onViewDetachedFromWindow(View view) { unobserve(); }
+
+        void refit(String interval) {
+            if (!current()) return;
+            TextPaint paint = field.getPaint();
+            boolean rtl = LocaleController.isRTL;
+            int width = -1, inset = 0;
+            if (container != null && field.getWidth() > 0 && container.getWidth() > 0) {
+                int containerLeft = searchDateHintLayoutX(container);
+                containerRect.set(containerLeft, 0, containerLeft + container.getWidth(), 0);
+                View ancestor = container;
+                while (ancestor.getParent() instanceof View) {
+                    ancestor = (View) ancestor.getParent();
+                    if (ancestor.getWidth() == 0) continue;
+                    int ancestorLeft = searchDateHintLayoutX(ancestor);
+                    containerRect.left = Math.max(containerRect.left, ancestorLeft);
+                    containerRect.right = Math.min(containerRect.right, ancestorLeft + ancestor.getWidth());
+                }
+                int fieldLeft = searchDateHintLayoutX(field);
+                int nativeLeft = fieldLeft + field.getCompoundPaddingLeft();
+                int nativeRight = fieldLeft + field.getWidth() - field.getCompoundPaddingRight();
+                int left = Math.max(nativeLeft, containerRect.left + container.getPaddingLeft());
+                int right = containerRect.right - container.getPaddingRight();
+                if (!rtl) right = Math.min(right, nativeRight);
+                View clear = item.getSearchClearButton();
+                if (clear != null) {
+                    int reserved = clear.getMeasuredWidth();
+                    if (reserved == 0 && clear.getLayoutParams() != null) reserved = Math.max(0, clear.getLayoutParams().width);
+                    right = Math.min(right, containerRect.right - container.getPaddingRight() - reserved);
+                }
+                for (int i = 0; i < container.getChildCount(); i++) {
+                    View sibling = container.getChildAt(i);
+                    if (sibling == field || sibling == clear || sibling.getVisibility() != View.VISIBLE || sibling.getWidth() == 0) continue;
+                    int siblingLeft = searchDateHintLayoutX(sibling);
+                    int gravity = sibling.getLayoutParams() instanceof FrameLayout.LayoutParams
+                            ? Gravity.getAbsoluteGravity(((FrameLayout.LayoutParams) sibling.getLayoutParams()).gravity, container.getLayoutDirection()) & Gravity.HORIZONTAL_GRAVITY_MASK : Gravity.LEFT;
+                    int gap = sibling instanceof TextView ? dp(4) : 0;
+                    if (gravity == Gravity.RIGHT) right = Math.min(right, siblingLeft - gap);
+                    else left = Math.max(left, siblingLeft + sibling.getWidth() + gap);
+                }
+                left += dp(2);
+                right -= dp(2);
+                width = Math.max(0, right - left);
+                inset = Math.max(0, rtl ? nativeRight - right : left - nativeLeft);
+            }
+            String text = (rtl ? "\u200f" : "\u200e") + (width < 0 ? interval
+                    : fitSearchDateHint(LocaleController.getString(R.string.Search), interval, paint, width));
+            boolean samePaint = size == paint.getTextSize() && scale == paint.getTextScaleX() && skew == paint.getTextSkewX()
+                    && spacing == paint.getLetterSpacing() && flags == paint.getFlags() && typeface == paint.getTypeface()
+                    && java.util.Objects.equals(textLocales, paint.getTextLocales())
+                    && java.util.Objects.equals(fontFeatures, paint.getFontFeatureSettings());
+            CharSequence hint = field.getHint();
+            int spanStart = text.length() > 1 ? 1 : 0;
+            if (samePaint && text.equals(appliedText) && appliedSpan != null && appliedSpan.rtl == rtl
+                    && TextUtils.equals(hint, text) && hint instanceof Spanned && ((Spanned) hint).getSpanStart(appliedSpan) == spanStart) {
+                if (appliedSpan.inset != inset) { appliedSpan.inset = inset; field.invalidate(); }
+                return;
+            }
+            size = paint.getTextSize(); scale = paint.getTextScaleX(); skew = paint.getTextSkewX();
+            spacing = paint.getLetterSpacing(); flags = paint.getFlags(); typeface = paint.getTypeface();
+            textLocales = paint.getTextLocales(); fontFeatures = paint.getFontFeatureSettings();
+            appliedText = text;
+            appliedSpan = new SearchDateHintSpan(text, paint, rtl, inset);
+            SpannableString fitted = new SpannableString(text);
+            fitted.setSpan(appliedSpan, spanStart, fitted.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            item.setSearchFieldHint(fitted);
+        }
+    }
+
+    private void updateSearchDateControls() {
+        if (searchCalendarButton != null) {
+            searchCalendarButton.setVisibility(searchingForUser ? View.GONE : View.VISIBLE);
+            searchCalendarButton.setSelected(searchDates.isActive());
+            ThemeBind.colorFilter(searchCalendarButton, searchDates.isActive()
+                    ? Theme.key_windowBackgroundWhiteBlueText2 : Theme.key_chat_searchPanelIcons,
+                    getResourceProvider(), PorterDuff.Mode.MULTIPLY);
+            searchCalendarButton.setContentDescription(searchDates.isActive()
+                    ? LocaleController.formatString(R.string.NM_SearchDatesActive, MessageSearchDateSheet.formatRange(searchDates, searchDatesTimeZone))
+                    : LocaleController.getString(supportsSearchDates() ? R.string.NM_SearchDatesTitle : R.string.JumpToDate));
+        }
+        if (searchUserButton != null) searchUserButton.setVisibility(searchingForUser ? View.GONE : View.VISIBLE);
+        if (searchFilterButton != null) searchFilterButton.setVisibility(searchingForUser ? View.GONE : View.VISIBLE);
+        int offset = 3;
+        for (ImageView button : new ImageView[]{searchCalendarButton, searchUserButton, searchFilterButton}) {
+            if (button == null || button.getVisibility() == View.GONE) continue;
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) button.getLayoutParams();
+            params.gravity = Gravity.TOP | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+            params.leftMargin = LocaleController.isRTL ? 0 : dp(offset);
+            params.rightMargin = LocaleController.isRTL ? dp(offset) : 0;
+            button.setLayoutParams(params);
+            offset += 46;
+        }
+        if (searchContainer != null) searchContainer.requestLayout();
+        updateSearchDateHint();
+    }
+
+    private void dismissSearchDateSheet() {
+        ++searchDateUiEpoch;
+        final MessageSearchDateSheet sheet = searchDateSheet;
+        searchDateSheet = null;
+        if (sheet != null) sheet.dismiss();
+    }
+
+    private void resetSearchDateUi() {
+        dismissSearchDateSheet();
+        searchDates = MessageSearchDateRange.ALL;
+        queryBeforeUserPicker = null;
+        updateSearchDateControls();
     }
 
     private void showSearchShowOther(boolean show) {
@@ -12625,6 +13096,18 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private boolean keyboardWasVisible;
+    public void putReplyToArgs(Bundle args, MessageObject message) {
+        if (currentChat != null && ChatObject.isChannelAndNotMegaGroup(currentChat) && !ChatObject.isMonoForum(currentChat) && currentChat.broadcast_messages_allowed && currentChat.linked_monoforum_id != 0 &&
+            getMessagesController().getChat(currentChat.linked_monoforum_id) != null && !ChatObject.canManageMonoForum(currentAccount, -currentChat.linked_monoforum_id)) {
+            getMessagesController().putMonoForumLinkedChat(currentChat.id, currentChat.linked_monoforum_id);
+            args.putLong("reply_to_channel_direct", -currentChat.linked_monoforum_id);
+            return;
+        }
+        final long author = DialogObject.getPeerDialogId(message.getFromPeer());
+        if (author != 0 && author != getDialogId() && author != getUserConfig().getClientUserId() && author > 0) {
+            args.putLong("reply_to_author", author);
+        }
+    }
     private void openForwardingPreview(int startTab) {
         if (messagePreviewParams == null || forwardingPreviewView != null) {
             return;
@@ -12721,10 +13204,9 @@ public class ChatActivity extends BaseFragment implements
                             showFieldPanelForReplyQuote(replyingMessageObject, replyingQuote);
                         }
                     } else if (replyingQuote != null) {
-                        replyingQuote.outdated = false;
                         replyingQuote.start = messagePreviewParams.quoteStart;
                         replyingQuote.end = messagePreviewParams.quoteEnd;
-                        replyingQuote.update();
+                        replyingQuote.outdated = !replyingQuote.update() || !replyingQuote.isValid();
                         if (fieldPanelShown == 2) {
                             showFieldPanelForReplyQuote(replyingMessageObject, replyingQuote);
                         }
@@ -12787,10 +13269,7 @@ public class ChatActivity extends BaseFragment implements
                     final boolean reply = !forward && messagePreviewParams.replyMessage != null && !messagePreviewParams.replyMessage.messages.isEmpty() && messagePreviewParams.quote == null;
                     args.putBoolean("reply_to", reply);
                     if (reply) {
-                        final long author = DialogObject.getPeerDialogId(messagePreviewParams.replyMessage.messages.get(0).getFromPeer());
-                        if (author != 0 && author != getDialogId() && author != getUserConfig().getClientUserId() && author > 0) {
-                            args.putLong("reply_to_author", author);
-                        }
+                        putReplyToArgs(args, messagePreviewParams.replyMessage.messages.get(0));
                     }
                     args.putInt("hasPoll", hasPoll);
                     args.putBoolean("hasInvoice", hasInvoice);
@@ -12928,6 +13407,8 @@ public class ChatActivity extends BaseFragment implements
         if (name.length() > 10) {
             name = name.substring(0, 10);
         }
+        final String query = queryBeforeUserPicker != null ? queryBeforeUserPicker : currentSearchQuery();
+        queryBeforeUserPicker = null;
         searchingForUser = false;
         String from = LocaleController.getString(R.string.SearchFrom);
         Spannable spannable = new SpannableString(from + " " + name);
@@ -12935,8 +13416,14 @@ public class ChatActivity extends BaseFragment implements
         searchItem.setSearchFieldCaption(spannable);
         mentionContainer.getAdapter().searchUsernameOrHashtag(null, 0, null, false, true);
         searchItem.setSearchFieldHint(null);
-        searchItem.clearSearchText();
-        getMediaDataController().searchMessagesInChat(searchingQuery = "", dialog_id, mergeDialogId, classGuid, 0, threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction);
+        updatingSearchCriteriaText = true;
+        try { searchItem.setSearchFieldText(query, false); }
+        finally { updatingSearchCriteriaText = false; }
+        searchingQuery = query;
+        keepConstrainedSearchLocal();
+        createSearchContainer();
+        updateSearchDateControls();
+        getSearchMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction, searchDates);
     }
 
     private void updateTranslateItemVisibility() {
@@ -13355,9 +13842,71 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    private void openPinnedMessagesList(boolean preview) {
-        if (getParentActivity() == null || parentLayout == null || parentLayout.getLastFragment() != this || pinnedMessageIds.isEmpty()) {
+    private void requestPinnedMessagesForRestore() {
+        if (arguments.getBoolean(RESTORE_PINNED_MESSAGES, false) && !isFinished
+                && currentAccount == restorePinnedAccount && restorePinnedOwnerId != 0
+                && getUserConfig().getClientUserId() == restorePinnedOwnerId && !loadingPinnedMessagesList
+                && (!restorePinnedMessagesLoaded || pinnedMessageIds.isEmpty() && !pinnedEndReached)) {
+            loadingPinnedMessagesList = true;
+            getMediaDataController().loadPinnedMessages(dialog_id, 0, 0);
+        }
+    }
+
+    void capturePinnedMessagesRestoreOwner() {
+        if (arguments.getBoolean(RESTORE_PINNED_MESSAGES, false) && parentLayout != null) {
+            restorePinnedNavigationCurrent = parentLayout.captureNavigationRequest();
+        }
+    }
+
+    private void schedulePinnedMessagesRestore() {
+        if (arguments.getBoolean(RESTORE_PINNED_MESSAGES, false)) {
+            AndroidUtilities.runOnUIThread(this::restorePinnedMessagesIfReady);
+        }
+    }
+
+    private void restorePinnedMessagesIfReady() {
+        if (!arguments.getBoolean(RESTORE_PINNED_MESSAGES, false) || isFinished) {
             return;
+        }
+        if (currentAccount != restorePinnedAccount || restorePinnedOwnerId == 0
+                || getUserConfig().getClientUserId() != restorePinnedOwnerId) {
+            arguments.remove(RESTORE_PINNED_MESSAGES);
+            return;
+        }
+        if (paused || !isFullyVisible || parentLayout == null || parentLayout.getLastFragment() != this
+                || parentLayout.isTransitionAnimationInProgress() || parentLayout.isSwipeInProgress()
+                || ApplicationLoader.mainInterfacePaused || UserConfig.selectedAccount != currentAccount
+                || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
+                || PhotoViewer.hasInstance() && PhotoViewer.getInstance().isVisible()
+                || getLastStoryViewer() != null && getLastStoryViewer().isShown()) {
+            return;
+        }
+        if (restorePinnedNavigationCurrent == null) {
+            restorePinnedNavigationCurrent = parentLayout.captureNavigationRequest();
+        }
+        if (!restorePinnedNavigationCurrent.getAsBoolean()) {
+            arguments.remove(RESTORE_PINNED_MESSAGES);
+            return;
+        }
+        if (pinnedMessageIds.isEmpty()) {
+            if (restorePinnedMessagesLoaded && !loadingPinnedMessagesList && pinnedEndReached && totalPinnedMessagesCount == 0) {
+                arguments.remove(RESTORE_PINNED_MESSAGES);
+            }
+            return;
+        }
+        if (pinnedMessageObjects.get(pinnedMessageIds.get(0)) == null) {
+            return;
+        }
+        arguments.remove(RESTORE_PINNED_MESSAGES);
+        if (!openPinnedMessagesList(false)) {
+            arguments.putBoolean(RESTORE_PINNED_MESSAGES, true);
+            restorePinnedNavigationCurrent = null;
+        }
+    }
+
+    private boolean openPinnedMessagesList(boolean preview) {
+        if (getParentActivity() == null || parentLayout == null || parentLayout.getLastFragment() != this || pinnedMessageIds.isEmpty()) {
+            return false;
         }
         Bundle bundle = new Bundle();
         if (currentChat != null) {
@@ -13460,10 +14009,11 @@ public class ChatActivity extends BaseFragment implements
             }
         };
         if (preview) {
-            presentFragmentAsPreview(fragment);
+            boolean presented = presentFragmentAsPreview(fragment);
             checkShowBlur(true);
+            return presented;
         } else {
-            presentFragment(fragment, false);
+            return presentFragment(fragment, false);
         }
     }
 
@@ -15835,7 +16385,7 @@ public class ChatActivity extends BaseFragment implements
         fillEditingMediaWithCaption(caption, null);
         if (checkSlowModeAlert()) {
             if (!fmessages.isEmpty() && !TextUtils.isEmpty(caption)) {
-                SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(caption, dialog_id, null, null, null, true, captionEntities, null, null, true, 0, 0, null, false);
+                SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(caption, dialog_id, null, null, null, true, captionEntities, null, null, notify, scheduleDate, scheduleRepeatPeriod, null, false);
                 params.sendMessageChatArguments = getMessageChatSendParams();
                 params.invert_media = invertMedia;
                 params.payStars = payStars;
@@ -15844,7 +16394,7 @@ public class ChatActivity extends BaseFragment implements
                 SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
                 caption = null;
             }
-            getSendMessagesHelper().sendMessage(fmessages, dialog_id, false, false, true, 0, 0, null, -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+            getSendMessagesHelper().sendMessage(fmessages, dialog_id, false, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
             SendMessagesHelper.prepareSendingDocuments(getAccountInstance(), files, files, null, caption, captionEntities, null, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, editingMessageObject, notify, scheduleDate, scheduleRepeatPeriod, null, getMessageChatSendParams(), effectId, invertMedia, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
             afterMessageSend();
         }
@@ -16238,6 +16788,10 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
+        forwardMessages(arrayList, fromMyName, hideCaption, notify, scheduleDate, 0, payStars);
+    }
+
+    private void forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars) {
         if (arrayList == null || arrayList.isEmpty()) {
             return;
         }
@@ -16251,7 +16805,7 @@ public class ChatActivity extends BaseFragment implements
                 chatAdapter.checkRemoveBotForumRowsStartThreadRow(true);
             }
         }
-        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, scheduleRepeatPeriod, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         AlertsCreator.showSendMediaAlert(result, this, themeDelegate);
         if (result != 0) {
             AndroidUtilities.runOnUIThread(() -> {
@@ -16372,6 +16926,20 @@ public class ChatActivity extends BaseFragment implements
             return messageObject.messageOwner.message == null ? 0 : messageObject.messageOwner.message.length();
         }
 
+        public static int getSafeQuoteEnd(MessageObject messageObject, int limit) {
+            if (messageObject == null || messageObject.messageOwner == null) return 0;
+            final CharSequence fullText = isRichMessage(messageObject)
+                    ? messageObject.richLayout == null ? null : messageObject.richLayout.joinedText
+                    : messageObject.messageOwner.message;
+            if (fullText == null) return 0;
+            int end = Math.min(Math.max(0, limit), fullText.length());
+            if (end > 0 && end < fullText.length()
+                    && Character.isHighSurrogate(fullText.charAt(end - 1))
+                    && Character.isLowSurrogate(fullText.charAt(end))) {
+                end--;
+            }
+            return end;
+        }
         public int getQuoteOffset() {
             return isRich ? richOffset : start;
         }
@@ -16438,7 +17006,7 @@ public class ChatActivity extends BaseFragment implements
             if (messageObject == null || messageObject.messageOwner == null || messageObject.messageOwner.message == null && !isRichMessage(messageObject)) {
                 return null;
             }
-            return from(messageObject, 0, Math.min(MessagesController.getInstance(messageObject.currentAccount).quoteLengthMax, getFullLength(messageObject)));
+            return from(messageObject, 0, getSafeQuoteEnd(messageObject, MessagesController.getInstance(messageObject.currentAccount).quoteLengthMax));
         }
 
         public static ReplyQuote from(MessageObject messageObject, int start, int end) {
@@ -16466,7 +17034,7 @@ public class ChatActivity extends BaseFragment implements
                 setRich(quote.fragments, quote.offset);
                 return true;
             }
-            if (message == null || message.messageOwner == null || message.messageOwner.message == null) {
+            if (message == null || message.messageOwner == null || !todo && !poll && message.messageOwner.message == null) {
                 FileLog.e("ReplyQuote: message is null");
                 return false;
             }
@@ -16494,6 +17062,14 @@ public class ChatActivity extends BaseFragment implements
                     return false;
                 }
                 final String fulltext = message.messageOwner.message;
+                if (start > 0 && start < fulltext.length()
+                        && Character.isHighSurrogate(fulltext.charAt(start - 1))
+                        && Character.isLowSurrogate(fulltext.charAt(start))
+                        || end > 0 && end < fulltext.length()
+                        && Character.isHighSurrogate(fulltext.charAt(end - 1))
+                        && Character.isLowSurrogate(fulltext.charAt(end))) {
+                    return false;
+                }
                 int realStart = Math.max(0, start);
                 while (realStart < end && Character.isWhitespace(fulltext.charAt(realStart)))
                     realStart++;
@@ -16577,35 +17153,38 @@ public class ChatActivity extends BaseFragment implements
                     return outdated = false;
                 }
                 start = 0;
-                end = Math.min(MessagesController.getInstance(message.currentAccount).quoteLengthMax, getFullLength(message));
+                end = getSafeQuoteEnd(message, MessagesController.getInstance(message.currentAccount).quoteLengthMax);
+                return outdated = true;
+            }
+            if (todo || poll) {
+                if (message == null || message.messageOwner == null) return outdated = true;
+                this.message = message;
+                if (update()) return outdated = false;
+                task = null;
+                answer = null;
                 return outdated = true;
             }
             if (message == null || message.messageOwner == null || message.messageOwner.message == null) {
                 FileLog.e("ReplyQuote.checkEdit: message is null");
                 return outdated = false;
             }
+            this.message = message;
             if (end < start || end > message.messageOwner.message.length() || start > message.messageOwner.message.length() || start < 0 || end < 0) {
                 FileLog.e("ReplyQuote.checkEdit: start/end are invalid (" + start + ", " + end + ", len=" + message.messageOwner.message.length() + ")");
-                return outdated = false;
-            }
+            } else {
             String newText = message.messageOwner.message.substring(start, end);
             if (TextUtils.equals(text, newText)) {
-                this.message = message;
-                update(); // maybe some entities changed
-                return outdated = false;
+                    return outdated = !update() || !isValid();
+                }
             }
-            int newStart = message.messageOwner.message.indexOf(text);
+            int newStart = TextUtils.isEmpty(text) ? -1 : message.messageOwner.message.indexOf(text);
             if (newStart >= 0) {
-                this.message = message;
-                end = end - start + newStart;
+                end = newStart + text.length();
                 start = newStart;
-                update();
-                return outdated = false;
+                return outdated = !update() || !isValid();
             }
-            this.message = message;
             start = 0;
-            end = message.messageOwner.message.length();
-            update();
+            end = getSafeQuoteEnd(message, MessagesController.getInstance(message.currentAccount).quoteLengthMax);
             return outdated = true;
         }
 
@@ -16650,7 +17229,11 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void hideFieldPanel(boolean notify, int scheduleDate, long payStars, boolean animated) {
-        showFieldPanel(false, null, null, null, null, notify, scheduleDate, null, false, payStars, animated);
+        hideFieldPanel(notify, scheduleDate, 0, payStars, animated);
+    }
+
+    public void hideFieldPanel(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars, boolean animated) {
+        showFieldPanel(false, null, null, null, null, notify, scheduleDate, null, false, payStars, null, animated, null, scheduleRepeatPeriod);
     }
 
     public void showFieldPanelForWebPage(boolean show, TLRPC.WebPage webPage, boolean cancel) {
@@ -16818,6 +17401,10 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void showFieldPanel(boolean show, MessageObject messageObjectToReply, MessageObject messageObjectToEdit, ArrayList<MessageObject> messageObjectsToForward, TLRPC.WebPage webPage, boolean notify, int scheduleDate, ReplyQuote quote, boolean cancel, long payStars, MessageSuggestionParams suggestionParams, boolean animated, ForwardOptions forwardOptions) {
+        showFieldPanel(show, messageObjectToReply, messageObjectToEdit, messageObjectsToForward, webPage, notify, scheduleDate, quote, cancel, payStars, suggestionParams, animated, forwardOptions, 0);
+    }
+
+    private void showFieldPanel(boolean show, MessageObject messageObjectToReply, MessageObject messageObjectToEdit, ArrayList<MessageObject> messageObjectsToForward, TLRPC.WebPage webPage, boolean notify, int scheduleDate, ReplyQuote quote, boolean cancel, long payStars, MessageSuggestionParams suggestionParams, boolean animated, ForwardOptions forwardOptions, int scheduleRepeatPeriod) {
         if (chatActivityEnterView == null) {
             return;
         }
@@ -17024,7 +17611,7 @@ public class ChatActivity extends BaseFragment implements
                 if (replyingQuote != null && !replyingQuote.isValid()) {
                     replyingQuote = null;
                 }
-                chatActivityEnterView.setReplyingMessageObject(messageObjectToReply, quote, topicTopMessageObject);
+                chatActivityEnterView.setReplyingMessageObject(messageObjectToReply, replyingQuote, topicTopMessageObject);
                 clearEditingMessageWithoutSendAnimation();
                 forbidForwardingWithDismiss = false;
                 if (messagePreviewParams == null) {
@@ -17604,7 +18191,7 @@ public class ChatActivity extends BaseFragment implements
 
                     ArrayList<MessageObject> messagesToForward = new ArrayList<>();
                     paramsToSend.forwardMessages.getSelectedMessages(messagesToForward);
-                    forwardMessages(messagesToForward, paramsToSend.hideForwardSendersName, paramsToSend.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, payStars);
+                    forwardMessages(messagesToForward, paramsToSend.hideForwardSendersName, paramsToSend.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, scheduleRepeatPeriod, payStars);
 
             }
             if (sendingForward) {
@@ -19540,7 +20127,7 @@ public class ChatActivity extends BaseFragment implements
         private void drawListBackdrop(Canvas blurCanvas, RectF position) {
             final long drawingTime = SystemClock.uptimeMillis();
 
-            if (pullingDownOffset == 0 && chatListView.hasActiveEdgeEffects()) {
+            if (pullingDownOffset == 0 && chatListView.hasActiveEdgeEffects() && chatListView.getOverScrollMode() != View.OVER_SCROLL_NEVER) {
                 chatListView.capture(blurCanvas, position);
             } else {
                 final int save = blurCanvas.save();
@@ -23116,6 +23703,10 @@ public class ChatActivity extends BaseFragment implements
         }
         boolean createUnreadLoading = false;
         boolean showDateAfter = waitingForReplyMessageLoad;
+        ScheduledMessagesScrollAnchor scheduledScrollAnchor = waitingForReplyMessageLoad
+                && chatMode == MODE_SCHEDULED && mode == MODE_SCHEDULED && isCache
+                && (Long) args[0] == dialog_id && !postponedScroll && !fakePostponedScroll
+                ? captureScheduledMessagesScrollAnchor() : null;
         SparseArray<MessageObject> oldMessagesDict = null;
         if (waitingForReplyMessageLoad) {
             if (chatMode != MODE_SCHEDULED && !createUnreadMessageAfterIdLoading) {
@@ -23986,7 +24577,7 @@ public class ChatActivity extends BaseFragment implements
                         }
                         scrollToMessagePosition = -10000;
                         scrollToMessage = null;
-                    } else if (!fakePostponedScroll) {
+                    } else if (!fakePostponedScroll && scheduledScrollAnchor == null) {
                         addSponsoredMessages(!isFirstLoading);
                         moveScrollToLastMessage(true);
                     }
@@ -24045,7 +24636,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
 
-                if (paused) {
+                if (paused && scheduledScrollAnchor == null) {
                     scrollToTopOnResume = true;
                     if (scrollToMessage != null) {
                         scrollToTopUnReadOnResume = true;
@@ -24269,6 +24860,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
+        restoreScheduledMessagesScrollAnchor(scheduledScrollAnchor);
     }
 
     private void didReceivedNotification2(int id, int account, final Object... args) {
@@ -25930,6 +26522,7 @@ public class ChatActivity extends BaseFragment implements
                     if (replaceObjects != null) {
                         loadingPinnedMessagesList = false;
                         if (maxId == 0) {
+                            restorePinnedMessagesLoaded = true;
                             pinnedMessageIds.clear();
                             pinnedMessageObjects.clear();
                         }
@@ -26047,6 +26640,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             updatePinnedTopicStarterMessage();
+            schedulePinnedMessagesRestore();
         }
     }
 
@@ -26061,8 +26655,10 @@ public class ChatActivity extends BaseFragment implements
                     continue;
                 }
                 MessageObject currentMessage = messagesDict[did == dialog_id ? 0 : 1].get(message.id);
-                if (currentMessage != null) {
-                    currentMessage.messageOwner.media = new TLRPC.TL_messageMediaWebPage();
+                if (currentMessage != null && currentMessage.messageOwner.media instanceof TLRPC.TL_messageMediaWebPage
+                        && message.media instanceof TLRPC.TL_messageMediaWebPage && message.media.webpage != null
+                        && currentMessage.messageOwner.media.webpage != null
+                        && currentMessage.messageOwner.media.webpage.id == message.media.webpage.id) {
                     currentMessage.messageOwner.media.webpage = message.media.webpage;
                     currentMessage.generateThumbs(true);
                     updatedMessages.add(currentMessage);
@@ -26188,10 +26784,11 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         } else if (id == NotificationCenter.chatSearchResultsAvailable) {
-            if (classGuid == (Integer) args[0]) {
+            if (classGuid == (Integer) args[0] && isCurrentSearchNotification(account, args, 7)) {
                 updateSearchUpDownButtonVisibility(true);
                 boolean jumpToMessage = (Boolean) args[6];
                 updateSearchButtons((Integer) args[2], (Integer) args[4], (Integer) args[5]);
+                onSearchLoadingUpdate(false);
                 if (jumpToMessage) {
                     int messageId = (Integer) args[1];
                     long did = (Long) args[3];
@@ -26213,7 +26810,6 @@ public class ChatActivity extends BaseFragment implements
                         setFilterMessages(false);
                         updateVisibleRows();
                     }
-                    onSearchLoadingUpdate(false);
                 } else if (searchingReaction != null) {
                     if (chatAdapter.isFiltered) {
                         updateFilteredMessages(true);
@@ -26235,9 +26831,9 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         } else if (id == NotificationCenter.chatSearchResultsLoading) {
-            if (classGuid == (Integer) args[0]) {
+            if (classGuid == (Integer) args[0] && isCurrentSearchNotification(account, args, 1)) {
                 if (searchItem != null) {
-                    searchItem.setShowSearchProgress(!TextUtils.isEmpty(searchingQuery) || searchingReaction != null);
+                    searchItem.setShowSearchProgress(hasSearchCriteria());
                 }
                 onSearchLoadingUpdate(true);
                 if (messagesSearchAdapter != null) {
@@ -26445,6 +27041,7 @@ public class ChatActivity extends BaseFragment implements
                     getMediaDataController().loadPinnedMessages(dialog_id, 0, fallbackId);
                     loadingPinnedMessagesList = true;
                 }
+                schedulePinnedMessagesRestore();
             }
         } else if (id == NotificationCenter.userInfoDidLoad) {
             Long uid = (Long) args[0];
@@ -28717,6 +29314,107 @@ public class ChatActivity extends BaseFragment implements
         return id;
     }
 
+    private static final class ScheduledMessagesScrollAnchor {
+        final int account;
+        final int guid;
+        final long userId;
+        final long dialogId;
+        final long topicId;
+        final RecyclerListView listView;
+        final GridLayoutManagerFixed layoutManager;
+        final ChatActivityAdapter adapter;
+        final ArrayList<int[]> positions = new ArrayList<>();
+
+        ScheduledMessagesScrollAnchor(ChatActivity chat) {
+            account = chat.currentAccount;
+            guid = chat.classGuid;
+            userId = chat.getUserConfig().getClientUserId();
+            dialogId = chat.dialog_id;
+            topicId = chat.getTopicId();
+            listView = chat.chatListView;
+            layoutManager = chat.chatLayoutManager;
+            adapter = chat.chatAdapter;
+        }
+    }
+
+    private boolean isCurrentScheduledMessagesScrollAnchor(ScheduledMessagesScrollAnchor anchor) {
+        return anchor != null && !isFinished && chatMode == MODE_SCHEDULED && !clearOnLoad
+                && currentAccount == anchor.account && classGuid == anchor.guid
+                && anchor.userId != 0 && getUserConfig().getClientUserId() == anchor.userId
+                && dialog_id == anchor.dialogId && getTopicId() == anchor.topicId
+                && chatListView != null && chatListView == anchor.listView && chatListView.isAttachedToWindow()
+                && chatLayoutManager != null && chatLayoutManager == anchor.layoutManager && !chatLayoutManager.hasPendingScrollPosition()
+                && chatScrollHelper != null && chatAdapter != null && chatAdapter == anchor.adapter && !chatAdapter.isFiltered && !chatAdapter.isFrozen
+                && !chatListView.isFastScrollAnimationRunning() && !scrollToTopOnResume && !forceScrollToTop
+                && scrollToMessage == null && startLoadFromMessageId == 0 && startLoadFromDate == 0;
+    }
+
+    private ScheduledMessagesScrollAnchor captureScheduledMessagesScrollAnchor() {
+        if (first || firstLoading || messages.isEmpty()) {
+            return null;
+        }
+        ScheduledMessagesScrollAnchor anchor = new ScheduledMessagesScrollAnchor(this);
+        if (!isCurrentScheduledMessagesScrollAnchor(anchor)
+                || !chatListView.canScrollVertically(1) && chatListView.getScrollState() != RecyclerView.SCROLL_STATE_DRAGGING) {
+            return null;
+        }
+        int largestVisibleHeight = 0;
+        for (int i = 0; i < chatListView.getChildCount(); i++) {
+            View view = chatListView.getChildAt(i);
+            int position = chatListView.getChildAdapterPosition(view);
+            if (position < chatAdapter.messagesStartRow || position >= chatAdapter.messagesEndRow) {
+                continue;
+            }
+            MessageObject message;
+            if (view instanceof ChatMessageCell) {
+                message = ((ChatMessageCell) view).getMessageObject();
+            } else if (view instanceof ChatActionCell) {
+                message = ((ChatActionCell) view).getMessageObject();
+            } else {
+                continue;
+            }
+            int visibleHeight = Math.min(view.getBottom(), chatListView.getHeight() - chatListView.getPaddingBottom())
+                    - Math.max(view.getTop(), chatListView.getPaddingTop());
+            if (visibleHeight <= 0 || message == null || message.getId() == 0 || message.isDateObject
+                    || message.currentAccount != currentAccount || message.getDialogId() != dialog_id
+                    || messagesDict[0].get(message.getId()) != message) {
+                continue;
+            }
+            RecyclerView.LayoutParams params = (RecyclerView.LayoutParams) view.getLayoutParams();
+            int bottom = chatLayoutManager.getDecoratedBottom(view) + params.bottomMargin;
+            int[] offset = {message.getId(), chatListView.getHeight() - chatListView.getPaddingBottom() - bottom};
+            if (visibleHeight > largestVisibleHeight) {
+                largestVisibleHeight = visibleHeight;
+                anchor.positions.add(0, offset);
+            } else {
+                anchor.positions.add(offset);
+            }
+        }
+        return anchor.positions.isEmpty() ? null : anchor;
+    }
+
+    private void restoreScheduledMessagesScrollAnchor(ScheduledMessagesScrollAnchor anchor) {
+        if (!isCurrentScheduledMessagesScrollAnchor(anchor)) {
+            return;
+        }
+        chatAdapter.updateRowsSafe();
+        if (!isCurrentScheduledMessagesScrollAnchor(anchor)) {
+            return;
+        }
+        for (int[] offset : anchor.positions) {
+            MessageObject message = messagesDict[0].get(offset[0]);
+            int index = message == null ? -1 : messages.indexOf(message);
+            int position = chatAdapter.messagesStartRow + index;
+            if (index >= 0 && position >= 0 && position < chatAdapter.messagesEndRow && position < chatAdapter.getItemCount()) {
+                chatLayoutManager.scrollToPositionWithOffset(position, offset[1]);
+                return;
+            }
+        }
+        if (!messages.isEmpty() && chatAdapter.getItemCount() > 0) {
+            chatLayoutManager.scrollToPositionWithOffset(0, 0);
+        }
+    }
+
     private void saveScrollPosition2() {
         int top = 0, bottom = 0;
         int position = RecyclerListView.NO_POSITION;
@@ -29578,16 +30276,20 @@ public class ChatActivity extends BaseFragment implements
     private void updateSearchCountText() {
         if (searchCountText != null) {
             boolean animated = !LocaleController.isRTL;
+            boolean lowerBound = searchDates.isActive() && messageSearchController != null
+                    && !messageSearchController.isSearchCountExact();
             if (searchLastCount < 0) {
                 searchCountText.setText("", animated);
             } else if (searchLastCount == 0) {
-                searchCountText.setText(LocaleController.getString(R.string.NoResult), animated);
+                searchCountText.setText(lowerBound ? "…" : LocaleController.getString(R.string.NoResult), animated);
             } else if (searchingFiltered) {
                 searchCountText.setText(LocaleController.formatPluralString("TaggedMessages", searchLastCount), animated);
             } else if (chatMode == MODE_SEARCH || isMessagesSearchListVisible()) {
-                searchCountText.setText(LocaleController.formatPluralString("SearchMessagesResultCount", searchLastCount, LocaleController.formatNumber(searchLastCount, ' ')), animated);
+                searchCountText.setText(LocaleController.formatPluralString("SearchMessagesResultCount", searchLastCount, LocaleController.formatNumber(searchLastCount, ' '))
+                        + (lowerBound ? "+" : ""), animated);
             } else {
-                searchCountText.setText(LocaleController.formatString(R.string.Of, searchLastIndex + 1, searchLastCount), animated);
+                searchCountText.setText(LocaleController.formatString(R.string.Of, searchLastIndex + 1, searchLastCount)
+                        + (lowerBound ? "+" : ""), animated);
             }
         }
     }
@@ -29630,6 +30332,7 @@ public class ChatActivity extends BaseFragment implements
         suppressUnreadReactionAnimations = false;
         isFullyVisible = true;
         super.onBecomeFullyVisible();
+        schedulePinnedMessagesRestore();
         if (deferSavedMessagesPrefetchUntilVisible && isOwnSavedMessagesChat()) {
             AndroidUtilities.runOnUIThread(() -> {
 
@@ -29924,6 +30627,7 @@ public class ChatActivity extends BaseFragment implements
         if (isOpen) {
             checkShowBlur(false);
             openAnimationEnded = true;
+            schedulePinnedMessagesRestore();
             if (!backward && smoothSavedMessagesInitialOpen) {
                 finishSmoothSavedMessagesTransition();
             } else {
@@ -32494,6 +33198,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
+        updateSearchDateHint();
         final boolean deferResumeUi = wasPaused && !isFullyVisible;
         suppressUnreadReactionAnimations = deferResumeUi;
         LaunchActivity.invalidateNimarkoSecureFlag();
@@ -32628,6 +33333,8 @@ public class ChatActivity extends BaseFragment implements
 
         resumeUnreadMessageWithoutScroll = null;
         paused = false;
+        requestPinnedMessagesForRestore();
+        schedulePinnedMessagesRestore();
         loadingWallpaperExiting = false;
         pausedOnLastMessage = false;
         if (deferResumeUi) {
@@ -32789,6 +33496,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onPause() {
+        dismissSearchDateSheet();
         loadingWallpaperEntering = false;
         loadingWallpaperExiting = true;
         releaseLoadingWallpaper();
@@ -33504,6 +34212,36 @@ public class ChatActivity extends BaseFragment implements
         return createMenu(v, true, false, x, y, true, false, false, true);
     }
 
+    private void keepScrimPopupAboveKeyboard(ActionBarPopupWindow popupWindow) {
+        if (Build.VERSION.SDK_INT < 30 || popupWindow == null || !popupWindow.isShowing()) {
+            return;
+        }
+        final View content = popupWindow.getContentView();
+        final View root = content.getRootView();
+        final boolean[] waitingInsets = new boolean[1];
+        final Runnable fit = () -> {
+            final WindowInsets insets = root.getRootWindowInsets();
+            final int imeBottom = insets == null ? 0 : insets.getInsets(WindowInsets.Type.ime()).bottom;
+            if (imeBottom <= 0 || waitingInsets[0] || popupWindow != scrimPopupWindow || !popupWindow.isShowing() || !content.isLaidOut()) {
+                return;
+            }
+            final int[] location = new int[2];
+            content.getLocationInWindow(location);
+            final int overlap = location[1] + content.getHeight() - (root.getHeight() - imeBottom);
+            final int popupY = Math.max(AndroidUtilities.statusBarHeight, scrimPopupY - (overlap > 0 ? overlap + dp(8) : 0));
+            if (popupY != scrimPopupY) {
+                waitingInsets[0] = true;
+                popupWindow.update(scrimPopupX, scrimPopupY = popupY, -1, -1);
+            }
+        };
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            waitingInsets[0] = false;
+            view.post(fit);
+            return view.onApplyWindowInsets(insets);
+        });
+        root.addOnLayoutChangeListener((view, l, t, r, b, ol, ot, or, ob) -> view.post(fit));
+        root.requestApplyInsets();
+    }
     private CharSequence getMessageCaption(MessageObject messageObject, MessageObject.GroupedMessages group) {
         return getMessageCaption(messageObject, group, null);
     }
@@ -33753,13 +34491,14 @@ public class ChatActivity extends BaseFragment implements
                 }
                 VoIPService sharedInstance = VoIPService.getSharedInstance();
                 if (sharedInstance != null) {
-                    if (sharedInstance.groupCall != null && message.messageOwner.action.call.id == sharedInstance.groupCall.call.id) {
+                    if (sharedInstance.getAccount() == currentAccount && sharedInstance.groupCall != null
+                            && message.messageOwner.action.call != null && message.messageOwner.action.call.id == sharedInstance.groupCall.call.id) {
                         if (getParentActivity() instanceof LaunchActivity) {
                             GroupCallActivity.create((LaunchActivity) getParentActivity(), AccountInstance.getInstance(currentAccount), null, null, false, null);
                         } else {
-                            Intent intent = new Intent(getParentActivity(), LaunchActivity.class).setAction("voip_chat");
-                            intent.putExtra("currentAccount", VoIPService.getSharedInstance().getAccount());
-                            getParentActivity().startActivity(intent);
+                            Intent intent = VoIPPreNotificationService.bindOwner(
+                                    new Intent(getParentActivity(), LaunchActivity.class).setAction("voip_chat"), sharedInstance);
+                            if (intent != null) getParentActivity().startActivity(intent);
                         }
                     } else {
                         createGroupCall = getGroupCall() == null;
@@ -35628,6 +36367,7 @@ public class ChatActivity extends BaseFragment implements
                     popupForShow.dismiss(false);
                     return;
                 }
+                keepScrimPopupAboveKeyboard(scrimPopupWindow);
                 app.nimarkogram.messenger.ui.MessageMenuTweaks.playHaptic(v);
                 if (telegramPlusMessageMenu) {
                     app.nimarkogram.messenger.ui.MessageMenuTelegramPlus.startEntrance(
@@ -37175,10 +37915,7 @@ public class ChatActivity extends BaseFragment implements
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
                     args.putBoolean("quote", true);
                     args.putBoolean("reply_to", true);
-                    final long author = DialogObject.getPeerDialogId(selectedObject.getFromPeer());
-                    if (author != 0 && author != getDialogId() && author != getUserConfig().getClientUserId() && author > 0) {
-                        args.putLong("reply_to_author", author);
-                    }
+                    putReplyToArgs(args, selectedObject);
                     args.putInt("messagesCount", 1);
                     args.putBoolean("canSelectTopics", true);
                     putForwardPickerSource(args);
@@ -37383,6 +38120,26 @@ public class ChatActivity extends BaseFragment implements
                 }
                 preserveDim = true;
                 showPinMessageAlert(mid, true);
+                break;
+            }
+            case OPTION_STOP_LIVE_LOCATION: {
+                AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+                builder.setTitle(getString(R.string.StopLiveLocationAlertToTitle));
+                if (currentChat != null) {
+                    builder.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.StopLiveLocationAlertToGroupText, currentChat.title)));
+                } else if (currentUser != null) {
+                    builder.setMessage(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.StopLiveLocationAlertToUserText, UserObject.getFirstName(currentUser))));
+                } else {
+                    builder.setMessage(getString(R.string.StopLiveLocationAlertAllText));
+                }
+                builder.setPositiveButton(getString(R.string.Stop), (dialogInterface, i) -> getLocationController().removeSharingLocation(dialog_id));
+                builder.setNegativeButton(getString(R.string.Cancel), null);
+                AlertDialog dialog = builder.create();
+                showDialog(dialog);
+                TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+                if (button != null) {
+                    ThemeBind.textColor(button, Theme.key_text_RedBold, themeDelegate);
+                }
                 break;
             }
             case OPTION_UNPIN: {
@@ -38788,7 +39545,7 @@ public class ChatActivity extends BaseFragment implements
         }
         if (!actionBar.isSearchFieldVisible()) {
             beginSavedSearchHeaderTransition(true);
-            animatorSearchFieldVisibility.setValue(true, true);
+            animatorSearchFieldVisibility.setValue(true, SharedConfig.animationsEnabled());
             if (headerItem != null) {
                 headerItem.setVisibility(View.GONE);
             }
@@ -38826,7 +39583,7 @@ public class ChatActivity extends BaseFragment implements
         if (searchItem != null) {
             searchItem.setSearchFieldText(text, false);
         }
-        getMediaDataController().searchMessagesInChat(searchingQuery = (text == null ? "" : text), dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, !TextUtils.isEmpty(text), searchingReaction);
+        getSearchMediaDataController().searchMessagesInChat(searchingQuery = (text == null ? "" : text), dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, !TextUtils.isEmpty(text) || searchDates.isActive(), searchingReaction, searchDates);
         updatePinnedMessageView(true);
     }
 
@@ -38839,6 +39596,17 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
 
+        if (hasLocalSearchConstraints()) {
+            if (searchItemVisible && searchItem != null) {
+                searchItem.setSearchFieldText(hashtag, false);
+                hitSearch();
+            } else {
+                openSearchWithText(hashtag);
+            }
+            return;
+        }
+        resetSearchDateUi();
+        cancelOwnedMessageSearch();
         createSearchHashtagViewsIfNeeded();
         boolean delay = false;
         if (savedMessagesHint != null && savedMessagesHint.shown()) {
@@ -38859,7 +39627,7 @@ public class ChatActivity extends BaseFragment implements
         checkHashtagStories(true);
         if (!actionBar.isSearchFieldVisible()) {
             beginSavedSearchHeaderTransition(true);
-            animatorSearchFieldVisibility.setValue(true, true);
+            animatorSearchFieldVisibility.setValue(true, SharedConfig.animationsEnabled());
             if (headerItem != null) {
                 headerItem.setVisibility(View.GONE);
             }
@@ -38921,7 +39689,7 @@ public class ChatActivity extends BaseFragment implements
             searchItem.setSearchFieldText(hashtag, false);
             searchItem.setSearchFieldHint(LocaleController.getString(R.string.SearchHashtagsHint));
         }
-        getMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, false, searchingReaction);
+        getSearchMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, false, searchingUserMessages, searchingChatMessages, false, searchingReaction, searchDates);
         updatePinnedMessageView(true);
         hashtagSearchEmptyView.showProgress(true);
         showMessagesSearchListView(true);
@@ -38958,7 +39726,7 @@ public class ChatActivity extends BaseFragment implements
         }
         if (!actionBar.isSearchFieldVisible()) {
             beginSavedSearchHeaderTransition(true);
-            animatorSearchFieldVisibility.setValue(true, true);
+            animatorSearchFieldVisibility.setValue(true, SharedConfig.animationsEnabled());
             if (headerItem != null) {
                 headerItem.setVisibility(View.GONE);
             }
@@ -39021,7 +39789,7 @@ public class ChatActivity extends BaseFragment implements
         }
         if (!actionBar.isSearchFieldVisible()) {
             beginSavedSearchHeaderTransition(true);
-            animatorSearchFieldVisibility.setValue(true, true);
+            animatorSearchFieldVisibility.setValue(true, SharedConfig.animationsEnabled());
             if (headerItem != null) {
                 headerItem.setVisibility(View.GONE);
             }
@@ -42255,7 +43023,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public float getSearchTransitionProgress() {
-            return isSavedMessagesSidebar() ? animatorSearchFieldVisibility.getFloatValue() : -1f;
+            return animatorSearchFieldVisibility.getFloatValue();
         }
 
         @Override
@@ -42305,6 +43073,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onSearchCollapse() {
+            resetSearchDateUi();
             searching = false;
             beginSavedSearchHeaderTransition(false);
             updatePagedownButtonVisibility(true);
@@ -42330,7 +43099,7 @@ public class ChatActivity extends BaseFragment implements
             searchingHashtag = null;
 			searchItem.setSearchFieldHint(isSupportedTags() ? LocaleController.getString(R.string.SavedTagSearchHint) : LocaleController.getString(R.string.Search));
             searchItem.setSearchFieldCaption(null);
-            animatorSearchFieldVisibility.setValue(false, true);
+            animatorSearchFieldVisibility.setValue(false, SharedConfig.animationsEnabled());
             animatorSearchHashtagHistoryVisibility.setValue(false, true);
             if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && (currentChat == null || ChatObject.canSendPlain(currentChat)) && !isSidebarAttach()) {
                 if (headerItem != null) {
@@ -42346,7 +43115,7 @@ public class ChatActivity extends BaseFragment implements
                 if (otherIcon != null) {
                     otherIcon.setIconVisible(false);
                 }
-                if (searchIconItem != null && showSearchAsIcon) {
+                if (searchIconItem != null && showSearchAsIcon && !isSavedMessagesSidebar()) {
                     searchIconItem.setVisibility(View.GONE);
                 }
                 if (audioCallIconItem != null && showAudioCallAsIcon) {
@@ -42368,7 +43137,7 @@ public class ChatActivity extends BaseFragment implements
                 if (otherIcon != null) {
                     otherIcon.setIconVisible(false);
                 }
-                if (searchIconItem != null && showSearchAsIcon) {
+                if (searchIconItem != null && showSearchAsIcon && !isSavedMessagesSidebar()) {
                     searchIconItem.setVisibility(View.GONE);
                 }
                 if (audioCallIconItem != null && showAudioCallAsIcon) {
@@ -42414,7 +43183,7 @@ public class ChatActivity extends BaseFragment implements
             searchItemVisible = false;
             updateTopicsPanelItem();
             if (isSavedMessagesSidebar() && actionBar != null) actionBar.checkMenuItemsWidth();
-            getMediaDataController().clearFoundMessageObjects();
+            cancelOwnedMessageSearch();
             if (searchType == SEARCH_CHANNEL_POSTS) {
                 HashtagSearchController.getInstance(currentAccount).clearSearchResults(SEARCH_CHANNEL_POSTS);
             } else {
@@ -42455,10 +43224,11 @@ public class ChatActivity extends BaseFragment implements
             searching = true;
             if (isSavedMessagesSidebar()) {
                 if (!savedSearchHeaderTransition || !savedSearchHeaderOpening) beginSavedSearchHeaderTransition(true);
-                searchItemVisible = true;
-                animatorSearchFieldVisibility.setValue(true, true);
-                updateSavedSearchHeaderVisibility();
             }
+                searchItemVisible = true;
+            updateSearchDateControls();
+            animatorSearchFieldVisibility.setValue(true, SharedConfig.animationsEnabled());
+                updateSavedSearchHeaderVisibility();
             updatePagedownButtonVisibility(true);
             updateSearchUpDownButtonVisibility(true);
             if ((threadMessageId != 0 && chatMode != MODE_SAVED || UserObject.isReplyUser(currentUser)) && !preventReopenSearchWithText) {
@@ -42503,13 +43273,16 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onSearchPressed(EditText editText) {
+            if (searchingForUser) return;
             searchWas = true;
             updateSearchButtons(0, 0, -1);
 
             boolean hashtags = false;
             boolean channelHashtags = false;
             searchingQuery = editText != null ? editText.getText().toString() : searchingQuery;
-            if (!TextUtils.isEmpty(searchingQuery) && (searchingQuery.startsWith("$") || searchingQuery.startsWith("#"))) {
+            if (!hasLocalSearchConstraints() && !TextUtils.isEmpty(searchingQuery) && (searchingQuery.startsWith("$") || searchingQuery.startsWith("#"))) {
+                resetSearchDateUi();
+                cancelOwnedMessageSearch();
                 hashtags = true;
                 createSearchHashtagViewsIfNeeded();
                 if (searchingQuery.contains("@")) {
@@ -42560,18 +43333,19 @@ public class ChatActivity extends BaseFragment implements
                 hashtagSearchTabs.tabs.scrollToTab(defaultSearchPage, defaultSearchPage);
             }
 
-            getMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction);
+            getSearchMediaDataController().searchMessagesInChat(searchingQuery, dialog_id, mergeDialogId, classGuid, 0, threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction, searchDates);
         }
 
         @Override
         public void onTextChanged(EditText editText) {
-            if (searchingHashtag == null) {
+            final boolean keepList = updatingSearchCriteriaText;
+            if (!keepList && searchingHashtag == null) {
                 showMessagesSearchListView(false);
             }
             createSearchContainer();
             if (searchingForUser) {
                 mentionContainer.getAdapter().searchUsernameOrHashtag("@" + editText.getText().toString(), 0, messages, true, true);
-            } else if (searchingUserMessages == null && searchingChatMessages == null && searchUserButton != null && TextUtils.equals(editText.getText(), LocaleController.getString(R.string.SearchFrom))) {
+            } else if (!keepList && searchingUserMessages == null && searchingChatMessages == null && searchUserButton != null && TextUtils.equals(editText.getText(), LocaleController.getString(R.string.SearchFrom))) {
                 searchUserButton.callOnClick();
             }
             if (searchingHashtag != null) {
@@ -42608,7 +43382,11 @@ public class ChatActivity extends BaseFragment implements
                 if (searchingForUser) {
                     mentionContainer.getAdapter().searchUsernameOrHashtag(null, 0, null, false, true);
                     searchingForUser = false;
-                    searchItem.setSearchFieldText("", true);
+                    final String query = queryBeforeUserPicker == null ? "" : queryBeforeUserPicker;
+                    queryBeforeUserPicker = null;
+                    updatingSearchCriteriaText = true;
+                    try { searchItem.setSearchFieldText(query, true); }
+                    finally { updatingSearchCriteriaText = false; }
                 }
 				searchItem.setSearchFieldHint(isSupportedTags() ? LocaleController.getString(R.string.SavedTagSearchHint) : LocaleController.getString(R.string.Search));
                 searchCalendarButton.setVisibility(View.VISIBLE);
@@ -42620,6 +43398,8 @@ public class ChatActivity extends BaseFragment implements
                 }
                 searchingUserMessages = null;
                 searchingChatMessages = null;
+                updateSearchDateControls();
+                hitSearch();
             }
         }
 
@@ -44344,6 +45124,7 @@ public class ChatActivity extends BaseFragment implements
             }
             scrimPopupWindow.showAtLocation(chatListView, Gravity.LEFT | Gravity.TOP, scrimPopupX = popupX, scrimPopupY = popupY);
 
+            keepScrimPopupAboveKeyboard(scrimPopupWindow);
             chatListView.stopScroll();
             chatLayoutManager.setCanScrollVertically(false);
             scrimViewReaction = null;
@@ -49223,6 +50004,7 @@ public class ChatActivity extends BaseFragment implements
             }
             scrimPopupWindow.showAtLocation(chatListView, Gravity.LEFT | Gravity.TOP, scrimPopupX = popupX, scrimPopupY = popupY);
 
+            keepScrimPopupAboveKeyboard(scrimPopupWindow);
             chatListView.stopScroll();
             chatLayoutManager.setCanScrollVertically(false);
             scrimViewTask = null;
@@ -49930,6 +50712,14 @@ public class ChatActivity extends BaseFragment implements
                     options.add(OPTION_PIN);
                     icons.add(R.drawable.msg_pin);
                 }
+                if (chatMode == 0 && selectedObject.isLiveLocation() && selectedObject.isOut()) {
+                    LocationController.SharingLocationInfo sharingInfo = getLocationController().getSharingLocationInfo(dialog_id);
+                    if (sharingInfo != null && sharingInfo.mid == selectedObject.getId()) {
+                        items.add(LocaleController.getString(R.string.StopLiveLocation));
+                        options.add(OPTION_STOP_LIVE_LOCATION);
+                        icons.add(R.drawable.msg_cancel);
+                    }
+                }
                 if (selectedObject != null && !selectedObject.isEphemeral() && selectedObject.contentType == 0 && ((!TextUtils.isEmpty(selectedObject.getMessageTextToTranslate(selectedObjectGroup, null)) && !selectedObject.isAnimatedEmoji() && !selectedObject.isDice()) || (selectedObject.type == MessageObject.TYPE_ARTICLE && selectedObject.messageOwner != null && selectedObject.messageOwner.rich_message != null && !selectedObject.translated))) {
                     items.add(LocaleController.getString(R.string.TranslateMessage));
                     options.add(OPTION_TRANSLATE);
@@ -50271,8 +51061,11 @@ public class ChatActivity extends BaseFragment implements
             parentChatActivity.checkUi_topFade();
         }
 
-        float fadeHeight = actionBar.getMeasuredHeight();
+        float fadeHeight = 0;
+        if (!isInsideContainer) {
+            fadeHeight += actionBar.getMeasuredHeight();
         fadeHeight += dp(7 - 6);
+        }
         fadeHeight += getTopPanelHeightWithPadding(dp(7));
         if (topicsTabs != null) {
             fadeHeight += getTopicTabsSideSize(TopicsTabsView.Position.TOP);
@@ -50447,6 +51240,7 @@ public class ChatActivity extends BaseFragment implements
             glassEngine.invalidate();
         } else if (id == ANIMATOR_ID_SEARCH_FIELD_VISIBILITY) {
             checkUi_avatarContainerVisibility();
+            updateSavedSearchMenuProgress();
             updateSavedSearchHeaderVisibility();
             if (actionBar != null) {
                 actionBar.setSearchFactor(factor);
@@ -50621,7 +51415,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatMode == MODE_SEARCH) {
             HashtagSearchController.getInstance(currentAccount).jumpToMessage(classGuid, hashtagSearchSelectedIndex + (searchUp ? 1 : -1), searchType);
         } else {
-            getMediaDataController().searchMessagesInChat(null, dialog_id, mergeDialogId, classGuid, searchUp ? (reversed ? 2 : 1) : (reversed ? 1 : 2), threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction);
+            getSearchMediaDataController().searchMessagesInChat(null, dialog_id, mergeDialogId, classGuid, searchUp ? (reversed ? 2 : 1) : (reversed ? 1 : 2), threadMessageId, searchingUserMessages, searchingChatMessages, searchingReaction, searchDates);
             showMessagesSearchListView(false);
         }
     }
@@ -51194,6 +51988,7 @@ public class ChatActivity extends BaseFragment implements
             FileLog.e(e);
         }
         updateThemeColorsExtra();
+        updateSearchDateHint();
     }
 
     private ActionBarMenuItem.Item trackRedHeaderItem(ActionBarMenuItem.Item item, boolean global) {

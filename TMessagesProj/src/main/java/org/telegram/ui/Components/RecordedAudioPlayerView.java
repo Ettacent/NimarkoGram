@@ -103,6 +103,12 @@ public class RecordedAudioPlayerView extends View {
         invalidate();
     }
 
+    public void updateWaveform(byte[] waveform) {
+        if (destroyed || waveformData == waveform) return;
+        waveformData = waveform;
+        lastWaveformWidth = 0;
+        invalidate();
+    }
     public boolean isPlaying() {
         return player != null && player.isPlaying();
     }

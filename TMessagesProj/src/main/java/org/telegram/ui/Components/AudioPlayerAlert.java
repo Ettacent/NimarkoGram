@@ -541,8 +541,9 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
                     if (isProfilePlaylist) {
                         actionBar.setVisibility(View.VISIBLE);
-                        actionBar.setTranslationY(Math.max(0, top - backgroundPaddingTop - dp(10) + dp(6) * (1.0f - actionBarSlide) - actionBar.getTop()));
-                        actionBarShadow.setTranslationY(Math.max(0, top - backgroundPaddingTop - dp(10) + dp(6) * (1.0f - actionBarSlide) - actionBar.getTop()));
+                        final float actionBarY = Math.max(0, top - AndroidUtilities.statusBarHeight - backgroundPaddingTop + dp(20) + dp(6) * (1.0f - actionBarSlide) - actionBar.getTop());
+                        actionBar.setTranslationY(actionBarY);
+                        actionBarShadow.setTranslationY(actionBarY);
                     }
                 }
             }
@@ -1823,8 +1824,11 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
     }
 
     private void onSubItemClick(int id) {
-        final MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
-        if (messageObject == null || parentActivity == null) {
+        onSubItemClick(id, MediaController.getInstance().getPlayingMessageObject(), savedMusicList);
+    }
+
+    private void onSubItemClick(int id, MessageObject messageObject, MessagesController.SavedMusicList listOwner) {
+        if (messageObject == null || parentActivity == null || isDismissed() || messageObject.currentAccount != currentAccount) {
             return;
         }
         if (id == 1390) {
@@ -1869,13 +1873,22 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             castItemButton.performClick();
         } else if (id == 7) {
             saveToProfile(messageObject, false, () -> {
-                if (savedMusicList != null) {
-                    savedMusicList.remove(messageObject);
-                    if (savedMusicList.list.isEmpty()) {
-                        MediaController.getInstance().cleanup();
+                if (listOwner != null) {
+                    if (MediaController.getInstance().currentSavedMusicList != listOwner) {
+                        listOwner.list.remove(messageObject);
+                        return;
+                    }
+                    listOwner.remove(messageObject);
+                    if (MediaController.getInstance().currentSavedMusicList != listOwner) {
+                        return;
+                    }
+                    if (listOwner.list.isEmpty()) {
+                        MediaController.getInstance().cleanupPlayback();
+                        if (!isDismissed()) {
                         dismiss();
+                        }
                     } else {
-                        NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.musicListLoaded, savedMusicList);
+                        NotificationCenter.getInstance(listOwner.currentAccount).postNotificationName(NotificationCenter.musicListLoaded, listOwner);
                     }
                 }
             }, false);
@@ -2039,6 +2052,9 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         } else if (id == NotificationCenter.messagePlayingSpeedChanged) {
             updatePlaybackButton(true);
         } else if (id == NotificationCenter.musicDidLoad) {
+            if (!MediaController.getInstance().isCurrentMusicLoad(account, args)) {
+                return;
+            }
             savedMusicList = MediaController.getInstance().currentSavedMusicList;
             playlist = MediaController.getInstance().getPlaylist();
             listAdapter.notifyPlaylistLoaded();
@@ -3105,9 +3121,10 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
     private void showMenuOptions(View v) {
         final MessageObject messageObject = MediaController.getInstance().getPlayingMessageObject();
-        if (messageObject == null) {
+        if (messageObject == null || isDismissed() || messageObject.currentAccount != currentAccount) {
             return;
         }
+        final MessagesController.SavedMusicList listOwner = savedMusicList;
 
         final ItemOptions o = ItemOptions.makeOptions(container, resourcesProvider, v, true);
         ItemOptions o2 = buildSaveOptions(o, messageObject);
@@ -3124,15 +3141,15 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
 
         o.addIf(!noforwards, R.drawable.msg_forward, getString(R.string.Forward), () -> {
             o.dismiss();
-            onSubItemClick(1);
+            onSubItemClick(1, messageObject, listOwner);
         });
         o.addIf(!noforwards, R.drawable.msg_shareout, getString(R.string.ShareFile), () -> {
             o.dismiss();
-            onSubItemClick(2);
+            onSubItemClick(2, messageObject, listOwner);
         });
         o.addIf(messageObject.getId() > 0, R.drawable.msg_message, getString(R.string.ShowInChat), () -> {
             o.dismiss();
-            onSubItemClick(4);
+            onSubItemClick(4, messageObject, listOwner);
         });
         if (castAvailable) {
             castItem = o.add();
@@ -3147,7 +3164,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         }
         o.addIf(isMyList(), R.drawable.msg_delete, getString(R.string.ProfilePlaylistRemoveFromProfile), true, () -> {
             o.dismiss();
-            onSubItemClick(7);
+            onSubItemClick(7, messageObject, listOwner);
         });
         o.setTranslationY(dp(64));
         o.show();

@@ -1665,6 +1665,8 @@ public class MessageEntityView extends EntityView {
         newmsg.media = msg.media;
         newmsg.flags = msg.flags;
         newmsg.flags2 = msg.flags2;
+        newmsg.rich_message = msg.rich_message;
+        newmsg.translatedRichMessage = msg.translatedRichMessage;
         newmsg.mentioned = msg.mentioned;
         newmsg.media_unread = msg.media_unread;
         newmsg.out = msg.out;

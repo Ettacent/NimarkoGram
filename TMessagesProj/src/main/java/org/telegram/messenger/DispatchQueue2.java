@@ -11,7 +11,7 @@ import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 
-public class DispatchQueue2 extends Thread {
+public class DispatchQueue2 extends DispatchQueue {
 
     private static final int THREAD_PRIORITY_DEFAULT = -1000;
 
@@ -33,8 +33,7 @@ public class DispatchQueue2 extends Thread {
         }
     }
 
-    private static int indexPointer = 0;
-    public final int index = indexPointer++;
+    public final int index = super.index;
 
     private volatile Handler handler;
     private final Object lock = new Object();
@@ -53,11 +52,25 @@ public class DispatchQueue2 extends Thread {
     }
 
     public DispatchQueue2(final String threadName, boolean start, int priority) {
+        super(threadName, false);
         this.threadPriority = priority;
-        setName(threadName);
         if (start) {
             start();
         }
+    }
+
+    @Override
+    public synchronized void start(Runnable initialTask) {
+        if (getState() != State.NEW) {
+            throw new IllegalThreadStateException();
+        }
+        if (initialTask != null) {
+            synchronized (lock) {
+                pending.add(new Pending(PENDING_FRONT_RUNNABLE, initialTask, null, 0));
+            }
+            lastTaskTime = SystemClock.elapsedRealtime();
+        }
+        super.start();
     }
 
     public boolean postRunnable(Runnable runnable) {
@@ -175,6 +188,11 @@ public class DispatchQueue2 extends Thread {
 
     public boolean isReady() {
         return handler != null;
+    }
+
+    @Override
+    public Handler getHandler() {
+        return handler;
     }
 
     public Handler getHandlerSync() {

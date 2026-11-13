@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">Фільтр па даце</string>
+    <string name="NM_SearchDatesDay">Дзень</string>
+    <string name="NM_SearchDatesPeriod">Перыяд</string>
+    <string name="NM_SearchDatesFrom">З</string>
+    <string name="NM_SearchDatesUntil">Па</string>
+    <string name="NM_SearchDatesAddEnd">Дадаць канец перыяду</string>
+    <string name="NM_SearchDatesToday">Сёння</string>
+    <string name="NM_SearchDatesYesterday">Учора</string>
+    <string name="NM_SearchDatesLast7">Апошнія 7 дзён</string>
+    <string name="NM_SearchDatesLast30">Апошнія 30 дзён</string>
+    <string name="NM_SearchDatesApply">Ужыць фільтр</string>
+    <string name="NM_SearchDatesReset">Усе даты</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">Фільтр па даце: %1$s</string>
+    <string name="NM_SearchDatesChange">Змяніць даты</string>
+    <string name="NM_SearchDatesClear">Прыбраць фільтр па даце</string>
+    <string name="NM_SearchDatesJump">Перайсці да даты</string>
+    <string name="NM_SearchDatesInvalid">Канец не можа быць раней за пачатак.</string>
+    <string name="NM_SearchDatesDayValue">Дзень: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">Месяц: %1$s</string>
+    <string name="NM_SearchDatesYearValue">Год: %1$s</string>
+</resources>

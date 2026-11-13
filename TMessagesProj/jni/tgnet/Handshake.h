@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -10,6 +12,8 @@
 #define HANDSHAKE_H
 
 #include <stdint.h>
+#include <atomic>
+#include <memory>
 #include "Defines.h"
 #include <openssl/bn.h>
 
@@ -43,6 +47,7 @@ public:
 private:
 
     Datacenter *currentDatacenter;
+    std::shared_ptr<std::atomic<bool>> attemptAlive;
     HandshakeType handshakeType;
     HandshakeDelegate *delegate;
 

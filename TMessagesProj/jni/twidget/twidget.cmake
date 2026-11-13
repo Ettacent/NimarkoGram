@@ -1,3 +1,5 @@
+# Modifications Copyright (C) 2026 Ettacent
+
 set(WIDGET_SANDBOX_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/widget-sandbox")
 set(TWIDGET_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/twidget")
 set(_TWIDGET_BRIDGE_DIR "${CMAKE_CURRENT_LIST_DIR}")
@@ -15,8 +17,8 @@ function(twidget_target_sources target)
     set(bridge_dir "${_TWIDGET_BRIDGE_DIR}")
     set(qjs "${root}/packages/ios/Sources/CQuickJS")
     set(sandbox "${root}/packages/desktop/sandbox")
-    set(core "${TWIDGET_SOURCE_DIR}/Sources/TwidgetCore/src")
-    set(litehtml "${TWIDGET_SOURCE_DIR}/Sources/LiteHTML/litehtml")
+    set(core "${TWIDGET_SOURCE_DIR}/core/src")
+    set(litehtml "${TWIDGET_SOURCE_DIR}/litehtml")
     set(gumbo "${litehtml}/src/gumbo")
     foreach(required "${qjs}/quickjs/quickjs.c" "${sandbox}/src/widget_host.cpp"
                      "${core}/renderer.cpp" "${litehtml}/src/document.cpp")
@@ -82,7 +84,20 @@ function(twidget_target_sources target)
     find_package(Threads REQUIRED)
     set_property(TARGET "${target}" APPEND PROPERTY LINK_LIBRARIES Threads::Threads m)
     if(ANDROID)
-        set_property(TARGET "${target}" APPEND PROPERTY LINK_LIBRARIES android log dl)
+        set_property(TARGET "${target}" APPEND PROPERTY LINK_LIBRARIES android log dl jnigraphics)
     endif()
     set_target_properties("${target}" PROPERTIES TWIDGET_ATTACHED TRUE)
+endfunction()
+
+function(twidget_client_sources target)
+    set(sandbox "${WIDGET_SANDBOX_SOURCE_DIR}/packages/desktop/sandbox")
+    set(core "${TWIDGET_SOURCE_DIR}/core/src")
+    add_library(twidget_client OBJECT
+        "${sandbox}/src/gesture_policy.cpp"
+        "${core}/filters.cpp"
+        "${_TWIDGET_BRIDGE_DIR}/twidget-client.cpp")
+    target_include_directories(twidget_client PRIVATE "${sandbox}/include" "${core}")
+    set_target_properties(twidget_client PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    target_compile_options(twidget_client PRIVATE -O2 -fexceptions -frtti -fno-fast-math -fvisibility=hidden)
+    target_sources("${target}" PRIVATE $<TARGET_OBJECTS:twidget_client>)
 endfunction()

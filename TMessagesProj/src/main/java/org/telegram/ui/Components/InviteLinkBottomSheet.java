@@ -15,6 +15,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -36,6 +37,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -82,6 +85,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class InviteLinkBottomSheet extends BottomSheet {
 
     TLRPC.TL_chatInviteExported invite;
@@ -104,6 +108,8 @@ public class InviteLinkBottomSheet extends BottomSheet {
     int linkActionRow;
     int linkInfoRow;
     int loadingRow;
+    private int usersRetryRow = -1;
+    private boolean usersLoadFailed;
     int emptyView;
     int emptyView2;
     int emptyView3;
@@ -120,6 +126,148 @@ public class InviteLinkBottomSheet extends BottomSheet {
     BaseFragment fragment;
 
     private RecyclerListView listView;
+    private final LoadedBand joinedPresentation = new LoadedBand();
+    private final LoadedBand expiredPresentation = new LoadedBand();
+    private final LoadedBand requestedPresentation = new LoadedBand();
+    private final long presentationUserId;
+    private boolean listPresentationReady;
+    private final int presentationLoginTime;
+    private final Rect presentationVisibleRect = new Rect();
+    private boolean pendingNativeAppearance;
+    private ArrayList<String> publishedRowKeys;
+    private int presentationGeneration;
+
+    private final class LoadedBand {
+        boolean settled;
+
+        void begin(int count) {
+            if (count > 0) settled = true;
+        }
+
+        void complete(int count, boolean owned) {
+            if (settled || count == 0 && !owned) return;
+            settled = true;
+            pendingNativeAppearance |= owned && count > 0 && canAnimateListPresentation();
+        }
+    }
+
+
+
+    private void wakeListPresentation() {
+        if (listView instanceof MemberListView) ((MemberListView) listView).wakePresentation();
+    }
+
+    private boolean canAnimateListPresentation() {
+        if (!(listView instanceof MemberListView) || ((MemberListView) listView).captureDepth != 0
+                || presentationUserId == 0 || presentationUserId != UserConfig.getInstance(currentAccount).getClientUserId()
+                || presentationLoginTime != UserConfig.getInstance(currentAccount).loginTime
+                || isDismissed() || !isShowing() || !listPresentationReady || fragment == null || fragment.isFinished
+                || fragment.getCurrentAccount() != currentAccount || fragment.isPaused() || !fragment.isLastFragment()
+                || UiAnimationClock.isPaused() || !ListContentReveal.isMotionEnabled()) return false;
+        View source = listView;
+        if (source == null || !source.isAttachedToWindow() || !source.isShown() || !source.hasWindowFocus()
+                || source.getWindowVisibility() != View.VISIBLE || source.getWidth() <= 0 || source.getHeight() <= 0
+                || !source.getLocalVisibleRect(presentationVisibleRect)) return false;
+        for (View view = source; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getVisibility() != View.VISIBLE || view.getAlpha() < 1f) return false;
+        }
+        return true;
+    }
+
+    private void configureListAnimator(final RecyclerListView owner) {
+        DefaultItemAnimator animator = new DefaultItemAnimator() {
+            private final long normalAdd = getAddDuration(), normalRemove = getRemoveDuration(),
+                    normalMove = getMoveDuration(), normalChange = getChangeDuration();
+            @Override public void runPendingAnimations() {
+                boolean appearance = owner == listView && pendingNativeAppearance;
+                if (owner == listView) pendingNativeAppearance = false;
+                setAddDuration(appearance ? 180 : normalAdd);
+                setRemoveDuration(appearance ? 180 : normalRemove);
+                setMoveDuration(appearance ? 180 : normalMove);
+                setChangeDuration(appearance ? 180 : normalChange);
+                setDelayAnimations(!appearance);
+                if (owner != listView || !canAnimateListPresentation()) {
+                    endAnimations();
+                    return;
+                }
+                super.runPendingAnimations();
+            }
+            @Override public void endAnimations() {
+                super.endAnimations();
+                if (owner == listView) {
+                    pendingNativeAppearance = false;
+                    owner.invalidate();
+                }
+            }
+            @Override protected void onAllAnimationsDone() {
+                super.onAllAnimationsDone();
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onAddAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onAddAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onRemoveAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onRemoveAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onMoveAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onMoveAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+            @Override protected void onChangeAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onChangeAnimationUpdate(holder);
+                if (owner == listView) owner.invalidate();
+            }
+        };
+
+        owner.setItemAnimator(animator);
+    }
+
+    private class MemberListView extends RecyclerListView {
+        private int captureDepth;
+        private final Runnable presentationWake = this::wakePresentation;
+
+        MemberListView(Context context) { super(context); }
+
+        private void wakePresentation() {
+            if (this != listView || captureDepth != 0) return;
+            if (!canAnimateListPresentation() && getItemAnimator() != null) getItemAnimator().endAnimations();
+            invalidate();
+        }
+
+        @Override protected void dispatchDraw(Canvas canvas) {
+            if (captureDepth == 0 && (!canvas.isHardwareAccelerated() || !canAnimateListPresentation())
+                    && getItemAnimator() != null && getItemAnimator().isRunning()) getItemAnimator().endAnimations();
+            super.dispatchDraw(canvas);
+        }
+
+        @Override public void capture(Canvas canvas, RectF position) {
+            captureDepth++;
+            try { super.capture(canvas, position); } finally { captureDepth--; }
+        }
+
+        @Override protected void captureChildren(Canvas canvas, RectF position, long drawingTime) {
+            captureDepth++;
+            try { super.captureChildren(canvas, position, drawingTime); } finally { captureDepth--; }
+        }
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            UiAnimationClock.setResumeCallback(presentationWake, true);
+            wakePresentation();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            UiAnimationClock.setResumeCallback(presentationWake, false);
+            if (this == listView && getItemAnimator() != null) getItemAnimator().endAnimations();
+            super.onDetachedFromWindow();
+        }
+
+        @Override public void onWindowFocusChanged(boolean focused) { super.onWindowFocusChanged(focused); wakePresentation(); }
+        @Override protected void onWindowVisibilityChanged(int visibility) { super.onWindowVisibilityChanged(visibility); wakePresentation(); }
+        @Override protected void onVisibilityChanged(View changedView, int visibility) { super.onVisibilityChanged(changedView, visibility); wakePresentation(); }
+    }
     private TextView titleTextView;
     private AnimatorSet shadowAnimation;
     private View shadow;
@@ -144,6 +292,8 @@ public class InviteLinkBottomSheet extends BottomSheet {
 
     public InviteLinkBottomSheet(Context context, TLRPC.TL_chatInviteExported invite, TLRPC.ChatFull info, HashMap<Long, TLRPC.User> users, BaseFragment fragment, long chatId, boolean permanent, boolean isChannel) {
         super(context, false);
+        presentationUserId = UserConfig.getInstance(currentAccount).getClientUserId();
+        presentationLoginTime = UserConfig.getInstance(currentAccount).loginTime;
         this.invite = invite;
         this.users = users;
         this.fragment = fragment;
@@ -263,7 +413,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         shadow.setTag(1);
         containerView.addView(shadow, frameLayoutParams);
 
-        listView = new RecyclerListView(context) {
+        listView = new MemberListView(context) {
 
             int lastH;
 
@@ -305,6 +455,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext(), LinearLayoutManager.VERTICAL, false);
         listView.setLayoutManager(layoutManager);
         listView.setAdapter(adapter = new Adapter());
+        configureListAnimator(listView);
         listView.setVerticalScrollBarEnabled(false);
         listView.setClipToPadding(false);
         listView.setNestedScrollingEnabled(true);
@@ -312,7 +463,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
             @Override
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                 updateLayout();
-                if (hasMore && !usersLoading) {
+                if (hasMore && !usersLoading && !usersLoadFailed) {
                     int lastPosition = layoutManager.findLastVisibleItemPosition();
                     if (rowCount - lastPosition < 10) {
                         loadUsers();
@@ -321,6 +472,10 @@ public class InviteLinkBottomSheet extends BottomSheet {
             }
         });
         listView.setOnItemClickListener((view, position) -> {
+            if (position == usersRetryRow) {
+                retryUsers();
+                return;
+            }
             if (position == creatorRow && invite.admin_id == UserConfig.getInstance(currentAccount).clientUserId) {
                 return;
             }
@@ -495,8 +650,24 @@ public class InviteLinkBottomSheet extends BottomSheet {
 
     @Override
     public void show() {
+        if (!isShowing() || isDismissed()) listPresentationReady = false;
         super.show();
         isNeedReopen = false;
+    }
+
+    @Override public void onOpenAnimationEnd() {
+        super.onOpenAnimationEnd();
+        listPresentationReady = true;
+        wakeListPresentation();
+    }
+
+    @Override public void onDismissAnimationStart() {
+        listPresentationReady = false;
+        presentationGeneration++;
+        pendingNativeAppearance = false;
+        if (listView != null && listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
+        if (listView != null) listView.invalidate();
+        super.onDismissAnimationStart();
     }
 
     private void updateColorForView(View view) {
@@ -521,7 +692,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     if (vector.objects.isEmpty()) return;
                     TLRPC.User user = vector.objects.get(0);
                     users.put(invite.admin_id, user);
-                    adapter.notifyDataSetChanged();
+                    notifyCreatorChanged();
                 }
             });
         });
@@ -530,6 +701,14 @@ public class InviteLinkBottomSheet extends BottomSheet {
     @Override
     protected boolean canDismissWithSwipe() {
         return false;
+    }
+
+    private void notifyCreatorChanged() {
+        if (adapter == null || listView == null || isDismissed()
+                || presentationUserId != UserConfig.getInstance(currentAccount).getClientUserId()
+                || presentationLoginTime != UserConfig.getInstance(currentAccount).loginTime
+                || creatorRow < 0 || creatorRow >= rowCount) return;
+        adapter.notifyItemChanged(creatorRow, invite);
     }
 
     private void updateRows() {
@@ -549,6 +728,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         requestedStartRow = -1;
         requestedEndRow = -1;
         loadingRow = -1;
+        usersRetryRow = -1;
         revenueHeaderRow = -1;
         revenueRow = -1;
         expiredHeaderRow = -1;
@@ -567,47 +747,80 @@ public class InviteLinkBottomSheet extends BottomSheet {
         creatorHeaderRow = rowCount++;
         creatorRow = rowCount++;
 
-        boolean needUsers = invite.usage > 0 || invite.usage_limit > 0 || invite.requested > 0 || invite.subscription_expired > 0;
-        boolean needLoadUsers = invite.usage > joinedUsers.size() || invite.subscription_expired > expiredUsers.size() || invite.request_needed && invite.requested > requestedUsers.size();
-        boolean usersLoaded = false;
         if (!joinedUsers.isEmpty()) {
             joinedHeaderRow = rowCount++;
             joinedStartRow = rowCount;
             rowCount += joinedUsers.size();
             joinedEndRow = rowCount;
-            usersLoaded = true;
         }
         if (!expiredUsers.isEmpty()) {
             expiredHeaderRow = rowCount++;
             expiredStartRow = rowCount;
             rowCount += expiredUsers.size();
             expiredEndRow = rowCount;
-            usersLoaded = true;
         }
         if (!requestedUsers.isEmpty()) {
             requestedHeaderRow = rowCount++;
             requestedStartRow = rowCount;
             rowCount += requestedUsers.size();
             requestedEndRow = rowCount;
-            usersLoaded = true;
-        }
-        if (needUsers || needLoadUsers) {
-            if (!usersLoaded) {
-                dividerRow = rowCount++;
-                loadingRow = rowCount++;
-                emptyView2 = rowCount++;
-            }
         }
         if (emptyHintRow == -1) {
         }
 
+        if (usersLoadFailed) usersRetryRow = rowCount++;
+        publishRows(rowKeys());
+    }
+
+    private ArrayList<String> rowKeys() {
+        ArrayList<String> keys = new ArrayList<>(rowCount);
+        for (int position = 0; position < rowCount; position++) {
+            if (position >= joinedStartRow && position < joinedEndRow) keys.add("joined:" + joinedUsers.get(position - joinedStartRow).user_id);
+            else if (position >= expiredStartRow && position < expiredEndRow) keys.add("expired:" + expiredUsers.get(position - expiredStartRow).user_id);
+            else if (position >= requestedStartRow && position < requestedEndRow) keys.add("requested:" + requestedUsers.get(position - requestedStartRow).user_id);
+            else if (position == joinedHeaderRow) keys.add("joined-header");
+            else if (position == expiredHeaderRow) keys.add("expired-header");
+            else if (position == requestedHeaderRow) keys.add("requested-header");
+            else if (position == creatorHeaderRow) keys.add("creator-header");
+            else if (position == creatorRow) keys.add("creator");
+            else if (position == revenueHeaderRow) keys.add("revenue-header");
+            else if (position == revenueRow) keys.add("revenue");
+            else if (position == linkActionRow) keys.add("link-action");
+            else if (position == linkInfoRow) keys.add("link-info");
+            else if (position == divider3Row) keys.add("revenue-divider");
+            else if (position == usersRetryRow) keys.add("users-retry");
+            else keys.add("fixed:" + position);
+        }
+        return keys;
+    }
+
+    private void publishRows(ArrayList<String> next) {
+        final ArrayList<String> previous = publishedRowKeys;
+        publishedRowKeys = next;
+        if (pendingNativeAppearance && previous != null && canAnimateListPresentation()) {
+            DiffUtil.calculateDiff(new DiffUtil.Callback() {
+                @Override public int getOldListSize() { return previous.size(); }
+                @Override public int getNewListSize() { return next.size(); }
+                @Override public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                    return previous.get(oldPosition).equals(next.get(newPosition));
+                }
+                @Override public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                    return areItemsTheSame(oldPosition, newPosition);
+                }
+            }).dispatchUpdatesTo(adapter);
+        } else {
+            pendingNativeAppearance = false;
+            if (listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
         adapter.notifyDataSetChanged();
     }
 
+        listView.invalidate();
+    }
     private class Adapter extends RecyclerListView.SelectionAdapter {
 
         @Override
         public int getItemViewType(int position) {
+            if (position == usersRetryRow) return 11;
             if (position == creatorHeaderRow) {
                 return 10;
             } else if (position == requestedHeaderRow || position == joinedHeaderRow || position == expiredHeaderRow || position == revenueHeaderRow) {
@@ -790,6 +1003,10 @@ public class InviteLinkBottomSheet extends BottomSheet {
                 case 10:
                     view = new HeaderCell(context, resourcesProvider);
                     break;
+                case 11:
+                    view = new TextInfoPrivacyCell(context);
+                    ThemeBind.textColor(((TextInfoPrivacyCell) view).getTextView(), Theme.key_windowBackgroundWhiteBlueText);
+                    break;
             }
             view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             return new RecyclerListView.Holder(view);
@@ -798,6 +1015,10 @@ public class InviteLinkBottomSheet extends BottomSheet {
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             switch (holder.getItemViewType()) {
+                case 11:
+                    ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(R.string.ErrorOccurred)
+                            + System.lineSeparator() + LocaleController.getString(R.string.Retry));
+                    break;
                 case 10:
                     ((HeaderCell) holder.itemView).setText(LocaleController.getString(R.string.LinkCreatedeBy));
                     break;
@@ -988,6 +1209,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
+            if (position == usersRetryRow) return !usersLoading;
             if (position == creatorRow) {
                 if (invite.admin_id == UserConfig.getInstance(currentAccount).clientUserId) {
                     return false;
@@ -1068,6 +1290,23 @@ public class InviteLinkBottomSheet extends BottomSheet {
         }
     }
 
+    private void retryUsers() {
+        if (!usersLoadFailed || usersLoading || isDismissed() || !isShowing()
+                || presentationUserId != UserConfig.getInstance(currentAccount).getClientUserId()
+                || presentationLoginTime != UserConfig.getInstance(currentAccount).loginTime
+                || fragment == null || fragment.isFinished || fragment.getCurrentAccount() != currentAccount) return;
+        loadUsers();
+    }
+
+    private void onUsersLoadFailed(int generation, TLRPC.TL_chatInviteExported expectedInvite, String expectedLink) {
+        if (generation != presentationGeneration || expectedInvite != invite || !TextUtils.equals(expectedLink, invite.link)
+                || isDismissed() || presentationUserId != UserConfig.getInstance(currentAccount).getClientUserId()
+                || presentationLoginTime != UserConfig.getInstance(currentAccount).loginTime
+                || fragment == null || fragment.isFinished || fragment.getCurrentAccount() != currentAccount) return;
+        usersLoadFailed = true;
+        updateRows();
+    }
+
     public void loadUsers() {
         if (usersLoading) {
             return;
@@ -1088,10 +1327,19 @@ public class InviteLinkBottomSheet extends BottomSheet {
             loadRequestedUsers = true;
             loadExpiredUsers = false;
         } else {
+            if (usersLoadFailed) {
+                usersLoadFailed = false;
+                updateRows();
+            }
             return;
         }
 
         final List<TLRPC.TL_chatInviteImporter> importersList = loadRequestedUsers ? requestedUsers : loadExpiredUsers ? expiredUsers : joinedUsers;
+        final LoadedBand presentation = loadRequestedUsers ? requestedPresentation : loadExpiredUsers ? expiredPresentation : joinedPresentation;
+        presentation.begin(importersList.size());
+        final int expectedPresentationGeneration = presentationGeneration;
+        final TLRPC.TL_chatInviteExported expectedPresentationInvite = invite;
+        final String expectedPresentationLink = invite.link;
         TLRPC.TL_messages_getChatInviteImporters req = new TLRPC.TL_messages_getChatInviteImporters();
         req.flags |= 2;
         req.link = invite.link;
@@ -1107,6 +1355,10 @@ public class InviteLinkBottomSheet extends BottomSheet {
         }
 
         usersLoading = true;
+        if (usersLoadFailed) {
+            usersLoadFailed = false;
+            updateRows();
+        }
         ConnectionsManager.getInstance(UserConfig.selectedAccount).sendRequest(req, (response, error) -> {
             AndroidUtilities.runOnUIThread(() -> {
                 if (error == null) {
@@ -1121,7 +1373,14 @@ public class InviteLinkBottomSheet extends BottomSheet {
                             : loadExpiredUsers
                             ? importersList.size() < inviteImporters.count || hasMoreRequestedUsers
                             : importersList.size() < inviteImporters.count || hasMoreRequestedUsers || hasMoreExpiredUsers;
+                    presentation.complete(importersList.size(), expectedPresentationGeneration == presentationGeneration
+                            && expectedPresentationInvite == invite && TextUtils.equals(expectedPresentationLink, invite.link)
+                            && !isDismissed() && presentationUserId == UserConfig.getInstance(currentAccount).getClientUserId()
+                            && fragment != null && !fragment.isFinished);
                     updateRows();
+                } else {
+                    presentation.complete(importersList.size(), false);
+                    onUsersLoadFailed(expectedPresentationGeneration, expectedPresentationInvite, expectedPresentationLink);
                 }
                 usersLoading = false;
             });

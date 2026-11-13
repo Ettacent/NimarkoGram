@@ -67,8 +67,9 @@ import java.util.HashSet;
 public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter implements NotificationCenter.NotificationCenterDelegate {
 
     private final Context mContext;
-    private final HashSet<Integer> messageIds = new HashSet<>();
+    private final HashSet<MessageKey> messageIds = new HashSet<>();
     private final ArrayList<MessageObject> searchResultMessages = new ArrayList<>();
+    private final ArrayList<Integer> searchResultPositions = new ArrayList<>();
     private final BaseFragment fragment;
 
     public boolean containsStories;
@@ -76,7 +77,7 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
     public int loadedCount;
     public int flickerCount;
 
-    private int currentAccount = UserConfig.selectedAccount;
+    private final int currentAccount;
     private final Theme.ResourcesProvider resourcesProvider;
     private int searchType;
 
@@ -86,6 +87,7 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
         this.resourcesProvider = resourcesProvider;
         mContext = context;
         this.fragment = fragment;
+        currentAccount = fragment == null ? UserConfig.selectedAccount : fragment.getCurrentAccount();
         this.searchType = searchType;
         this.isSavedMessages = isSavedMessages;
     }
@@ -159,13 +161,14 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
         containsStories = false;//storiesList != null && storiesList.getCount() > 0;
 
         searchResultMessages.clear();
+        searchResultPositions.clear();
         messageIds.clear();
         ArrayList<MessageObject> searchResults = searchType == 0 ? MediaDataController.getInstance(currentAccount).getFoundMessageObjects() : HashtagSearchController.getInstance(currentAccount).getMessages(searchType);
         for (int i = 0; i < searchResults.size(); ++i) {
             MessageObject m = searchResults.get(i);
-            if ((!m.hasValidGroupId() || m.isPrimaryGroupMessage) && !messageIds.contains(m.getId())) {
+            if ((!m.hasValidGroupId() || m.isPrimaryGroupMessage) && messageIds.add(new MessageKey(m))) {
                 searchResultMessages.add(m);
-                messageIds.add(m.getId());
+                searchResultPositions.add(i);
             }
         }
 
@@ -204,6 +207,36 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
             return null;
         }
         return searchResultMessages.get(i);
+    }
+
+    public int getControllerPosition(int position) {
+        if (containsStories) position--;
+        if (position < 0 || position >= searchResultMessages.size()) return -1;
+        final int index = searchResultPositions.get(position);
+        final ArrayList<MessageObject> current = searchType == 0
+                ? MediaDataController.getInstance(currentAccount).getFoundMessageObjects()
+                : HashtagSearchController.getInstance(currentAccount).getMessages(searchType);
+        if (index < 0 || index >= current.size()) return -1;
+        final MessageObject displayed = searchResultMessages.get(position), target = current.get(index);
+        return displayed.getDialogId() == target.getDialogId() && displayed.getId() == target.getId() ? index : -1;
+    }
+
+    private static final class MessageKey {
+        final long dialogId;
+        final int messageId;
+        MessageKey(MessageObject message) {
+            dialogId = message.getDialogId();
+            messageId = message.getId();
+        }
+        @Override public boolean equals(Object object) {
+            if (this == object) return true;
+            if (!(object instanceof MessageKey)) return false;
+            MessageKey other = (MessageKey) object;
+            return dialogId == other.dialogId && messageId == other.messageId;
+        }
+        @Override public int hashCode() {
+            return 31 * (int) (dialogId ^ (dialogId >>> 32)) + messageId;
+        }
     }
 
     @Override

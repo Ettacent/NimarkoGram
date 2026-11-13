@@ -1,0 +1,55 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+import java.nio.channels.OverlappingFileLockException
+import java.util.concurrent.TimeUnit
+
+def widgetDirectory = new File(settingsDir, 'TMessagesProj/jni/twidget/twidget')
+def widgetPatch = new File(settingsDir, 'patches/twidget-renderer-touch-state.patch')
+def lockFile = new File(settingsDir, '.gradle/twidget-patches.lock')
+lockFile.parentFile.mkdirs()
+
+def git = { List<String> arguments ->
+    def process = new ProcessBuilder(['git', '-C', widgetDirectory.absolutePath] + arguments)
+            .redirectErrorStream(true).start()
+    def output = new StringBuffer()
+    def reader = process.consumeProcessOutputStream(output)
+    if (!process.waitFor(30, TimeUnit.SECONDS)) {
+        process.destroyForcibly()
+        reader.join(1000)
+        throw new GradleException('Timed out applying the twidget source patch')
+    }
+    reader.join(1000)
+    [process.exitValue(), output.toString()]
+}
+
+new RandomAccessFile(lockFile, 'rw').withCloseable { handle ->
+    def channel = handle.channel
+    def lock = null
+    def deadline = System.nanoTime() + 120_000_000_000L
+    while (lock == null) {
+        try {
+            lock = channel.tryLock()
+        } catch (OverlappingFileLockException ignored) {
+        }
+        if (lock == null) {
+            if (System.nanoTime() >= deadline) throw new GradleException('Timed out waiting for the twidget patch lock')
+            Thread.sleep(50)
+        }
+    }
+    try {
+        def head = git(['rev-parse', 'HEAD'])
+        if (head[0] != 0 || head[1].trim() != '4769d72c5c5a9bace3c7bd8b6308cb79bc150bab') {
+            throw new GradleException('twidget requires pinned revision 4769d72c5c5a9bace3c7bd8b6308cb79bc150bab; initialize submodules')
+        }
+        if (!widgetPatch.isFile()) throw new GradleException('Required twidget source patch is missing')
+        if (git(['apply', '--reverse', '--check', widgetPatch.absolutePath])[0] != 0) {
+            def check = git(['apply', '--check', widgetPatch.absolutePath])
+            if (check[0] != 0) throw new GradleException('twidget source patch conflicts with the working tree: ' + check[1])
+            def applied = git(['apply', widgetPatch.absolutePath])
+            if (applied[0] != 0 || git(['apply', '--reverse', '--check', widgetPatch.absolutePath])[0] != 0) {
+                throw new GradleException('twidget source patch did not apply completely: ' + applied[1])
+            }
+        }
+    } finally {
+        lock.release()
+    }
+}

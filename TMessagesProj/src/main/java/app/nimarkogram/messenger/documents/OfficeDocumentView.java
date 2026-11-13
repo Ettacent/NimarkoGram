@@ -445,7 +445,6 @@ public final class OfficeDocumentView extends FrameLayout {
             if (!OsConstants.S_ISREG(stat.st_mode)) throw new OfficeInput.InputException(ERROR_FILE);
             if (!"pdf".equals(format) && stat.st_size > OfficeInput.MAX_COMPRESSED) throw new OfficeInput.InputException(ERROR_TOO_LARGE);
             FileInputStream input = new FileInputStream(fd);
-            fd = null;
             try (FileInputStream owned = input) {
                 if ("pdf".equals(format)) {
                     return PdfWebInput.read(owned, stat.st_size, Runtime.getRuntime().maxMemory(), deadline, () -> {

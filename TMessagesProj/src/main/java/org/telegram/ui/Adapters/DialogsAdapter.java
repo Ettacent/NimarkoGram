@@ -1043,6 +1043,11 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         }
         cell.setChecked(selectedDialogs.contains(dialog.id), false);
         if (position == 1 && parentFragment != null && parentFragment.isReplyTo
+                && parentFragment.replyChannelDirect != 0 && dialog.top_message == 0) {
+            MessagesController.DialogFilter filter = getCurrentFilter();
+            cell.setCustomMessage(filter == null || filter.isDefault()
+                    ? getString(R.string.ReplyDialogChannelDirectHint) : null);
+        } else if (position == 1 && parentFragment != null && parentFragment.isReplyTo
                 && parentFragment.replyMessageAuthor != 0 && dialog.top_message == 0) {
             MessagesController.DialogFilter filter = getCurrentFilter();
             cell.setCustomMessage(filter == null || filter.isDefault()
@@ -1275,7 +1280,7 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
                 GraySectionCell cell = (GraySectionCell) holder.itemView;
                 if (parentFragment != null && parentFragment.isReplyTo) {
                     if (i == 0) {
-                        cell.setText(getString(R.string.ReplyDialogMessageAuthor));
+                        cell.setText(getString(parentFragment.replyChannelDirect != 0 ? R.string.ReplyDialogChannelDirect : R.string.ReplyDialogMessageAuthor));
                     } else {
                         cell.setText(getString(R.string.ReplyDialogYourChats));
                     }
@@ -1856,18 +1861,19 @@ public class DialogsAdapter extends RecyclerListView.SelectionAdapter implements
         }
 
         final MessagesController.DialogFilter filter = getCurrentFilter();
-        if ((filter == null || filter.isDefault()) && parentFragment != null && parentFragment.isReplyTo && parentFragment.replyMessageAuthor != 0) {
+        if ((filter == null || filter.isDefault()) && parentFragment != null && parentFragment.isReplyTo && (parentFragment.replyChannelDirect != 0 || parentFragment.replyMessageAuthor != 0)) {
+            final long pinnedDialogId = parentFragment.replyChannelDirect != 0 ? parentFragment.replyChannelDirect : parentFragment.replyMessageAuthor;
             itemInternals.add(new ItemInternal(VIEW_TYPE_GRAY_SECTION));
             TLRPC.Dialog foundDialog = null;
             for (int i = 0; i < array.size(); ++i) {
-                if (array.get(i).id == parentFragment.replyMessageAuthor) {
+                if (array.get(i).id == pinnedDialogId) {
                     foundDialog = array.get(i);
                     break;
                 }
             }
             if (foundDialog == null) {
                 foundDialog = new TLRPC.TL_dialog();
-                foundDialog.id = parentFragment.replyMessageAuthor;
+                foundDialog.id = pinnedDialogId;
             }
             itemInternals.add(new ItemInternal(VIEW_TYPE_DIALOG, foundDialog));
             itemInternals.add(new ItemInternal(VIEW_TYPE_GRAY_SECTION));

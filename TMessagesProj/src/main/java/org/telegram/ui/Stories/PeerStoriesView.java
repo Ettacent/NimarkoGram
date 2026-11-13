@@ -266,8 +266,12 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     private long currentImageTime;
     private long lastDrawTime;
     private boolean switchEventSent;
+    private int switchEventGeneration;
     private boolean lastNoThumb;
     private boolean attachedToWindow;
+    private StoriesViewPager ownerPager;
+    private boolean retired, notificationsRegistered;
+    private int notificationsAccount;
     private boolean allowDrawSurface = true;
 
     public FrameLayout storyContainer;
@@ -458,7 +462,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             @Override
             protected boolean setImageBitmapByKey(Drawable drawable, String key, int type, boolean memCache, int guid) {
                 boolean r = super.setImageBitmapByKey(drawable, key, type, memCache, guid);
-                if (type == TYPE_THUMB && onImageReceiverThumbLoaded != null) {
+                if (type == TYPE_THUMB && hasCurrentOwner() && onImageReceiverThumbLoaded != null) {
                     onImageReceiverThumbLoaded.run();
                     onImageReceiverThumbLoaded = null;
                 }
@@ -517,6 +521,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             protected void presentFragment(BaseFragment fragment) {
+                if (!hasCurrentOwner()) return;
                 if (storyViewer != null) {
                     storyViewer.presentFragment(fragment);
                 }
@@ -839,9 +844,16 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                     zoomTimeProgress = playerSharedScope.player.currentSeek;
                 }
 
-                if (!switchEventSent && timeProgress == 1f && !(currentStory.isVideo && isCaptionPartVisible) && !isLongPressed) {
+                if (isActive && !switchEventSent && timeProgress == 1f && !(currentStory.isVideo && isCaptionPartVisible) && !isLongPressed) {
                     switchEventSent = true;
+                    final int generation = switchEventGeneration;
                     post(() -> {
+                        if (!hasCurrentOwner() || generation != switchEventGeneration) return;
+                        if (!isActive) {
+                            switchEventSent = false;
+                            storyContainer.invalidate();
+                            return;
+                        }
                         if (delegate != null) {
                             if (isUploading || isEditing || isFailed) {
                                 if (currentStory.isVideo()) {
@@ -1102,7 +1114,8 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                             req.id.access_hash = music.access_hash;
                             req.id.file_reference = music.file_reference != null ? music.file_reference : new byte[0];
                             ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
-                                final boolean canShowBulletin = attachedToWindow && currentAccount == account;
+                                if (!hasCurrentAccount()) return;
+                                final boolean canShowBulletin = attachedToWindow && hasCurrentOwner() && currentAccount == account;
                                 if (err != null || !(res instanceof TLRPC.TL_boolTrue)) {
                                     if (canShowBulletin) {
                                         if (err != null) {
@@ -1148,6 +1161,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                     return;
                 }
                 MessagesController.getInstance(currentAccount).getStoriesController().resolveStoryLink(panel.peerId, panel.storyId, fwdStoryItem -> {
+                    if (!hasCurrentOwner()) return;
                     if (fwdStoryItem != null) {
                         BaseFragment lastFragment = LaunchActivity.getLastFragment();
                         if (lastFragment == null) {
@@ -1157,6 +1171,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                         StoryViewer overlayStoryViewer = lastFragment.createOverlayStoryViewer();
                         overlayStoryViewer.open(getContext(), fwdStoryItem, null);
                         overlayStoryViewer.setOnCloseListener(() -> {
+                            if (!hasCurrentOwner()) return;
                             storyViewer.updatePlayingMode();
                         });
                         storyViewer.updatePlayingMode();
@@ -1630,6 +1645,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     popupMenu.dismiss();
                                 }
                                 Runnable openEdit = () -> {
+                                    if (!hasCurrentOwner()) return;
                                     StoryRecorder editor = StoryRecorder.getInstance(activity, currentAccount);
                                     long time = 0;
                                     if (playerSharedScope != null && playerSharedScope.player != null) {
@@ -1653,10 +1669,15 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     }
                                     editor.openEdit(StoryRecorder.SourceView.fromStoryViewer(storyViewer), entry, time, true);
                                     editor.setOnFullyOpenListener(() -> {
+                                        if (!hasCurrentOwner()) return;
                                         editOpened = true;
                                         setActive(false);
                                     });
                                     editor.setOnPrepareCloseListener((t, close, sent, did) -> {
+                                        if (!hasCurrentOwner()) {
+                                            close.run();
+                                            return;
+                                        }
                                         final long start = System.currentTimeMillis();
                                         if (playerSharedScope.player == null) {
                                             delegate.setPopupIsVisible(false);
@@ -1718,6 +1739,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     popupMenu.dismiss();
                                 }
                                 Runnable openEdit = () -> {
+                                    if (!hasCurrentOwner()) return;
                                     StoryRecorder editor = StoryRecorder.getInstance(activity, currentAccount);
                                     long time = 0;
                                     if (playerSharedScope != null && playerSharedScope.player != null) {
@@ -1733,9 +1755,17 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     entry.editingCoverDocument = currentStory.storyItem.media.document;
                                     final TL_stories.StoryItem finalStoryItem = currentStory.storyItem;
                                     entry.updateDocumentRef = whenDone -> {
+                                        if (!hasCurrentAccount()) {
+                                            whenDone.run(null);
+                                            return;
+                                        }
                                         if (finalStoryItem instanceof StoriesController.BotPreview && ((StoriesController.BotPreview) finalStoryItem).list != null) {
                                             StoriesController.BotPreviewsList list = ((StoriesController.BotPreview) finalStoryItem).list;
                                             list.reload(() -> {
+                                                if (!hasCurrentAccount()) {
+                                                    whenDone.run(null);
+                                                    return;
+                                                }
                                                 for (int i = 0; i < list.messageObjects.size(); ++i) {
                                                     MessageObject msg = list.messageObjects.get(i);
                                                     if (msg == null || msg.storyItem == null || msg.storyItem.media == null) continue;
@@ -1754,6 +1784,10 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(finalStoryItem.dialogId);
                                             req.id.add(finalStoryItem.id);
                                             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                                                if (!hasCurrentAccount()) {
+                                                    whenDone.run(null);
+                                                    return;
+                                                }
                                                 if (res instanceof TL_stories.TL_stories_stories) {
                                                     TL_stories.TL_stories_stories stories = (TL_stories.TL_stories_stories) res;
                                                     MessagesController.getInstance(currentAccount).putUsers(stories.users, false);
@@ -1779,10 +1813,15 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     }
                                     editor.openEdit(StoryRecorder.SourceView.fromStoryViewer(storyViewer), entry, time, true);
                                     editor.setOnFullyOpenListener(() -> {
+                                        if (!hasCurrentOwner()) return;
                                         editOpened = true;
                                         setActive(false);
                                     });
                                     editor.setOnPrepareCloseListener((t, close, sent, did) -> {
+                                        if (!hasCurrentOwner()) {
+                                            close.run();
+                                            return;
+                                        }
                                         final long start = System.currentTimeMillis();
                                         if (playerSharedScope.player == null) {
                                             delegate.setPopupIsVisible(false);
@@ -1946,6 +1985,11 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     .isEdit(false)
                                     .set(storyViewer.livePlayer != null && storyViewer.livePlayer.areMessagesEnabled(), currentStory.allowScreenshots(), currentStory.storyItem != null && currentStory.storyItem.pinned, storyViewer.livePlayer == null ? 0 : (int) storyViewer.livePlayer.getSendPaidMessagesStars());
                                 sheet.whenSelectedRules((privacy, allowComments, allowScreenshots, keepInProfile, isRtmpStream, sendAs, pricePerComment, whenDone, cancelled) -> {
+                                    if (!hasCurrentOwner()) {
+                                        if (whenDone != null) whenDone.run();
+                                        sheet.dismiss();
+                                        return;
+                                    }
                                     if ((currentStory.storyItem != null && currentStory.storyItem.pinned) != keepInProfile) {
                                         MessagesController.getInstance(currentAccount).getStoriesController().updateStoriesPinned(dialogId, storyItems, keepInProfile, null);
                                     }
@@ -1960,6 +2004,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     req.messages_enabled = allowComments;
                                     req.send_paid_messages_stars = (long) pricePerComment;
                                     ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> {
+                                        if (!hasCurrentAccount()) return;
                                         if (res instanceof TLRPC.Updates) {
                                             MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) res, false);
                                         }
@@ -1984,6 +2029,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     .setTitle(getString(R.string.LiveStoryEndAlertTitle))
                                     .setMessage(getString(R.string.LiveStoryEndAlertText))
                                     .setPositiveButton(getString(R.string.LiveStoryEndAlertButton), (di, w) -> {
+                                        if (!hasCurrentOwner()) return;
                                         if (storyViewer.livePlayer != null) {
                                             storyViewer.livePlayer.end();
                                         } else {
@@ -2188,6 +2234,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                     MessagesController.getInstance(currentAccount).getStoriesController().getStoriesStorage().updateStoryItem(currentStory.storyItem.dialogId, currentStory.storyItem);
                                     final long start = System.currentTimeMillis();
                                     final Runnable finishTranslate = () -> {
+                                        if (!hasCurrentOwner()) return;
                                         if (delegate != null) {
                                             delegate.setTranslating(false);
                                         }
@@ -2213,7 +2260,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                                 ActionBarMenuItem.addItem(popupLayout, R.drawable.msg_report, getString(R.string.ReportChat), false, resourcesProvider).setOnClickListener(v -> {
                                     if (storyViewer != null) storyViewer.setOverlayVisible(true);
                                     ReportBottomSheet.openStory(currentAccount, getContext(), currentStory.storyItem, BulletinFactory.of(storyContainer, resourcesProvider), resourcesProvider, status -> {
-                                        if (storyViewer != null) storyViewer.setOverlayVisible(false);
+                                        if (hasCurrentOwner()) storyViewer.setOverlayVisible(false);
                                     });
                                     if (popupMenu != null) {
                                         popupMenu.dismiss();
@@ -2657,6 +2704,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
 
     private void likeStory(ReactionsLayoutInBubble.VisibleReaction visibleReaction) {
+        if (!hasCurrentOwner()) return;
         if (currentStory.storyItem == null) {
             return;
         }
@@ -2988,6 +3036,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             public boolean presentFragment(BaseFragment fragment) {
+                if (!hasCurrentOwner()) return false;
                 if (PeerStoriesView.this.storyViewer != null) {
                     PeerStoriesView.this.storyViewer.presentFragment(fragment);
                 }
@@ -2996,6 +3045,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             public Dialog showDialog(Dialog dialog) {
+                if (!hasCurrentOwner()) return null;
                 if (PeerStoriesView.this.storyViewer != null) {
                     PeerStoriesView.this.storyViewer.showDialog(dialog);
                 } else if (dialog != null) {
@@ -3022,6 +3072,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 storyViewer.setOverlayVisible(true);
             }
             MessagesController.getInstance(currentAccount).getBoostsController().getBoostsStats(dialogId, boostsStatus -> {
+                if (!hasCurrentOwner()) return;
                 if (boostsStatus == null) {
                     if (storyViewer != null) {
                         storyViewer.setOverlayVisible(false);
@@ -3030,6 +3081,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 }
                 this.boostsStatus = boostsStatus;
                 MessagesController.getInstance(currentAccount).getBoostsController().userCanBoostChannel(dialogId, boostsStatus, canApplyBoost -> {
+                    if (!hasCurrentOwner()) return;
                     this.canApplyBoost = canApplyBoost;
                     LimitReachedBottomSheet.openBoostsForRemoveRestrictions(fragmentForLimit(), boostsStatus, canApplyBoost, dialogId, true);
                     if (storyViewer != null) {
@@ -3448,6 +3500,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             public TLRPC.Peer getDefaultSendAs() {
+                if (!hasCurrentOwner()) return null;
                 if (storyViewer != null && storyViewer.livePlayer != null) {
                     if (storyViewer.livePlayer.sendAsDisabled()) {
                         return null;
@@ -3459,6 +3512,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             public boolean setDefaultSendAs(long dialogId, long newPeer) {
+                if (!hasCurrentOwner()) return false;
                 if (currentStory.storyItem != null && currentStory.storyItem.media instanceof TLRPC.TL_messageMediaVideoStream) {
                     final TL_phone.saveDefaultSendAs req = new TL_phone.saveDefaultSendAs();
                     req.call = ((TLRPC.TL_messageMediaVideoStream) currentStory.storyItem.media).call;
@@ -3729,6 +3783,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             @Override
             public void onStickerSelected(TLRPC.TL_document document, String query, Object parent) {
                 AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialogId, 1, payStars -> {
+                    if (!hasCurrentOwner()) return;
                     SendMessagesHelper.getInstance(currentAccount).sendSticker(document, query, dialogId, null, null, currentStory.storyItem, null, null, true, 0, 0, false, parent, null, payStars, chatActivityEnterView.getSendMonoForumPeerId(), chatActivityEnterView.getSendMessageSuggestionParams());
                     chatActivityEnterView.addStickerToRecent(document);
                     chatActivityEnterView.setFieldText("");
@@ -3754,6 +3809,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             @Override
             public void sendBotInlineResult(TLRPC.BotInlineResult result, boolean notify, int scheduleDate) {
                 AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialogId, 1, payStars -> {
+                    if (!hasCurrentOwner()) return;
                     long uid = mentionContainer.getAdapter().getContextBotId();
                     HashMap<String, String> params = new HashMap<>();
                     params.put("id", result.id);
@@ -3771,6 +3827,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private boolean applyMessageToChat(Runnable runnable) {
+        if (!hasCurrentOwner()) return true;
         if (MessagesController.getInstance(currentAccount).isFrozen()) {
             AccountFrozenAlert.show(currentAccount);
             return true;
@@ -3782,6 +3839,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             alertDialog.setTitle(getString(R.string.StealthModeConfirmTitle));
             alertDialog.setMessage(getString(R.string.StealthModeConfirmMessage));
             alertDialog.setPositiveButton(getString(R.string.Proceed), (dialog, which) -> {
+                if (!hasCurrentOwner()) return;
                 runnable.run();
             });
             alertDialog.setNegativeButton(getString(R.string.Cancel), (dialog, which) -> dialog.dismiss());
@@ -3865,7 +3923,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
                 @Override
                 public void didPressedButton(int button, boolean arg, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia, boolean forceDocument, long payStars) {
-                    if (!storyViewer.isShowing) {
+                    if (!hasCurrentOwner() || !storyViewer.isShowing) {
                         return;
                     }
                     TL_stories.StoryItem storyItem = currentStory.storyItem;
@@ -4082,11 +4140,13 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void openRepostStory() {
+        if (!hasCurrentOwner()) return;
         Activity activity = AndroidUtilities.findActivity(getContext());
         if (activity == null) {
             return;
         }
         Runnable openRepost = () -> {
+            if (!hasCurrentOwner()) return;
             StoryRecorder editor = StoryRecorder.getInstance(activity, currentAccount);
             long time = 0;
             if (playerSharedScope != null && playerSharedScope.player != null) {
@@ -4095,10 +4155,15 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             StoryEntry entry = StoryEntry.repostStoryItem(currentStory.getPath(), currentStory.storyItem);
             editor.openForward(StoryRecorder.SourceView.fromStoryViewer(storyViewer), entry, time, true);
             editor.setOnFullyOpenListener(() -> {
+                if (!hasCurrentOwner()) return;
                 editOpened = true;
                 setActive(false);
             });
             editor.setOnPrepareCloseListener((t, close, sent, did) -> {
+                if (!hasCurrentOwner()) {
+                    close.run();
+                    return;
+                }
                 if (sent) {
                     DialogStoriesCell.StoryCell cell = null;
                     DialogStoriesCell storiesCell = null;
@@ -4203,24 +4268,38 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public void setDay(long dialogId, ArrayList<Integer> day, int selectedPosition) {
-        this.dialogId = dialogId;
+        if (!hasCurrentOwner()) return;
         this.day = day;
+        setPeerDialogId(dialogId);
         bindInternal(selectedPosition);
     }
 
     public void setDialogId(long dialogId, int selectedPosition) {
-        if (this.dialogId != dialogId) {
-            dismissPopupMenuImmediately();
-            currentStory.clear();
-        }
-        this.dialogId = dialogId;
+        if (!hasCurrentOwner()) return;
         this.day = null;
+        setPeerDialogId(dialogId);
         bindInternal(selectedPosition);
         if (storyViewer.overrideUserStories != null) {
             storiesController.loadSkippedStories(storyViewer.overrideUserStories, true);
         } else {
             storiesController.loadSkippedStories(dialogId);
         }
+    }
+
+    private void setPeerDialogId(long dialogId) {
+        if (this.dialogId == dialogId) return;
+        if (chatActivityEnterView != null && currentStory.storyItem != null) {
+            CharSequence draft = chatActivityEnterView.getEditField().getText();
+            if (TextUtils.isEmpty(draft)) storyViewer.clearDraft(this.dialogId, currentStory.storyItem);
+            else storyViewer.saveDraft(this.dialogId, currentStory.storyItem, new SpannableStringBuilder(draft));
+        }
+        this.dialogId = dialogId;
+        sendAsPeersObj = null;
+        currentStory.clear();
+        currentStory.editingSourceItem = null;
+        currentStory.isVideo = false;
+        currentStory.isLive = false;
+        dismissPopupMenuImmediately();
     }
 
     private long titleLastDialogId;
@@ -4313,6 +4392,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         }
         currentImageTime = 0;
         switchEventSent = false;
+        switchEventGeneration++;
         boostsStatus = null;
         canApplyBoost = null;
         if (isChannel) {
@@ -4490,10 +4570,11 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
 
     public void preloadMainImage(long dialogId) {
+        if (!hasCurrentOwner()) return;
         if (this.dialogId == dialogId && day == null) {
             return;
         }
-        this.dialogId = dialogId;
+        setPeerDialogId(dialogId);
         updateStoryItems();
         updateSelectedPosition();
         updatePosition(true);
@@ -4677,10 +4758,12 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void deleteStory() {
+        if (!hasCurrentOwner()) return;
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), resourcesProvider);
         builder.setTitle(getString(isBotsPreview() ? R.string.DeleteBotPreviewTitle : R.string.DeleteStoryTitle));
         builder.setMessage(getString(isBotsPreview() ? R.string.DeleteBotPreviewSubtitle : R.string.DeleteStorySubtitle));
         builder.setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
+            if (!hasCurrentOwner()) return;
             if (currentStory.isLive && currentStory.storyItem != null && currentStory.storyItem.media instanceof TLRPC.TL_messageMediaVideoStream) {
                 final TLRPC.InputGroupCall call = ((TLRPC.TL_messageMediaVideoStream) currentStory.storyItem.media).call;
                 if (LivePlayer.recording != null && LivePlayer.recording.equals(call)) {
@@ -4736,6 +4819,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        if (!hasCurrentOwner()) return;
         updateViewOffsets();
         if (isChannel && reactionsCounter != null) {
             reactionsCounter.setBounds(0, 0, getMeasuredWidth(), AndroidUtilities.dp(40));
@@ -4795,6 +4879,10 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attachedToWindow = true;
+        if (!hasCurrentOwner()) {
+            retire();
+            return;
+        }
         imageReceiver.onAttachedToWindow();
         rightPreloadImageReceiver.onAttachedToWindow();
         leftPreloadImageReceiver.onAttachedToWindow();
@@ -4807,20 +4895,12 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             preloadReactionHolders.get(i).onAttachedToWindow(true);
         }
        // sharedResources.muteDrawable.addView(muteIconView);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatInfoDidLoad);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.liveStoryUpdated);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storiesUpdated);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storyQualityUpdate);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storiesListUpdated);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.stealthModeChanged);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.storiesLimitUpdate);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.userIsPremiumBlockedUpadted);
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.didLoadSendAsPeers);
-        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
+        registerNotifications();
     }
 
     @Override
     protected void onDetachedFromWindow() {
+        unregisterNotifications();
         dismissPopupMenuImmediately();
         super.onDetachedFromWindow();
         attachedToWindow = false;
@@ -4844,16 +4924,70 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             preloadReactionHolders.get(i).onAttachedToWindow(false);
         }
         //sharedResources.muteDrawable.removeView(muteIconView);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.chatInfoDidLoad);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.liveStoryUpdated);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.storiesUpdated);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.storyQualityUpdate);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.storiesListUpdated);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.stealthModeChanged);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.storiesLimitUpdate);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.userIsPremiumBlockedUpadted);
-        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didLoadSendAsPeers);
+    }
+
+    private static final int[] PAGE_NOTIFICATIONS = {
+            NotificationCenter.chatInfoDidLoad, NotificationCenter.liveStoryUpdated,
+            NotificationCenter.storiesUpdated, NotificationCenter.storyQualityUpdate,
+            NotificationCenter.storiesListUpdated, NotificationCenter.stealthModeChanged,
+            NotificationCenter.storiesLimitUpdate, NotificationCenter.userIsPremiumBlockedUpadted,
+            NotificationCenter.didLoadSendAsPeers
+    };
+
+    void setOwner(StoriesViewPager pager) {
+        if (ownerPager == null && !retired && !destroyed) ownerPager = pager;
+    }
+
+    private boolean hasCurrentOwner() {
+        return !retired && !destroyed && ownerPager != null
+                && currentAccount == ownerPager.currentAccount && ownerPager.isOwnerCurrent();
+    }
+
+    private boolean hasCurrentAccount() {
+        return ownerPager != null && currentAccount == ownerPager.currentAccount && ownerPager.isAccountOwner();
+    }
+
+    private void registerNotifications() {
+        if (notificationsRegistered || !hasCurrentOwner()) return;
+        notificationsRegistered = true;
+        notificationsAccount = currentAccount;
+        for (int id : PAGE_NOTIFICATIONS) NotificationCenter.getInstance(notificationsAccount).addWeakObserver(this, id);
+        NotificationCenter.getGlobalInstance().addWeakObserver(this, NotificationCenter.emojiLoaded);
+    }
+
+    private void unregisterNotifications() {
+        if (!notificationsRegistered) return;
+        notificationsRegistered = false;
+        for (int id : PAGE_NOTIFICATIONS) NotificationCenter.getInstance(notificationsAccount).removeObserver(this, id);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
+    }
+
+    public void retire() {
+        if (retired) return;
+        retired = true;
+        unregisterNotifications();
+        dismissPopupMenuImmediately();
+        AndroidUtilities.cancelRunOnUIThread(updateStealthModeTimer);
+        if (reactionsTooltipRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(reactionsTooltipRunnable);
+            reactionsTooltipRunnable = null;
+        }
+        AndroidUtilities.cancelRunOnUIThread(showTapToSoundHint);
+        AndroidUtilities.cancelRunOnUIThread(allowDrawSurfaceRunnable);
+        onImageReceiverThumbLoaded = null;
+        cancelWaiting();
+        if (isActive) {
+            activeCount--;
+            isActive = false;
+        }
+        paused = true;
+        if (keyboardAnimator != null) {
+            keyboardAnimator.removeAllUpdateListeners();
+            keyboardAnimator.removeAllListeners();
+            keyboardAnimator.cancel();
+            keyboardAnimator = null;
+            notificationsLocker.unlock();
+        }
     }
 
     @Override
@@ -4904,6 +5038,8 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (!notificationsRegistered || !attachedToWindow || !hasCurrentOwner()
+                || id != NotificationCenter.emojiLoaded && account != notificationsAccount) return;
         if (id == NotificationCenter.storiesUpdated || id == NotificationCenter.storiesListUpdated && storyViewer.storiesList == args[0]) {
             if (delegate != null && delegate.isClosed()) {
                 return;
@@ -4979,7 +5115,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             }
         } else if (id == NotificationCenter.didLoadSendAsPeers) {
             final boolean live_stories = (boolean) args[2];
-            if (live_stories) {
+            if (live_stories && (long) args[0] == dialogId && currentStory.isLive) {
                 loadSendAsPeers(true);
             }
         }
@@ -4988,14 +5124,13 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     private TLRPC.TL_channels_sendAsPeers sendAsPeersObj;
 
     private void loadSendAsPeers(boolean animatedUpdate) {
-        if (sendAsPeersObj != null) {
-            return;
-        }
+        if (!hasCurrentOwner()) return;
         if (storyViewer != null && storyViewer.livePlayer != null && storyViewer.livePlayer.sendAsDisabled()) {
-            return;
-        }
+            sendAsPeersObj = null;
+        } else {
         sendAsPeersObj = MessagesController.getInstance(currentAccount).getSendAsPeers(dialogId, true);
-        if (chatActivityEnterView != null && sendAsPeersObj != null) {
+        }
+        if (chatActivityEnterView != null) {
             chatActivityEnterView.updateSendAsButton(animatedUpdate);
         }
     }
@@ -5003,7 +5138,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     Runnable updateStealthModeTimer = () -> checkStealthMode(true);
 
     private void checkStealthMode(boolean animated) {
-        if (chatActivityEnterView == null || !isVisible || !attachedToWindow) {
+        if (!hasCurrentOwner() || chatActivityEnterView == null || !isVisible || !attachedToWindow) {
             return;
         }
         AndroidUtilities.cancelRunOnUIThread(updateStealthModeTimer);
@@ -5056,6 +5191,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     private int watchersCount;
     private void updatePosition(boolean preload) {
+        if (!hasCurrentOwner()) return;
         if (storyItems.isEmpty() && uploadingStories.isEmpty()) {
             return;
         }
@@ -5230,7 +5366,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             storyViewer.dayStoryId = currentStory.storyItem.id;
         }
 
-        storyViewer.storiesViewPager.checkAllowScreenshots();
+        ownerPager.checkAllowScreenshots();
         imageChanged = true;
         if (isSelf || isChannel) {
             updateUserViews(false);
@@ -5268,6 +5404,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
             currentImageTime = 0;
             switchEventSent = false;
 
+            switchEventGeneration++;
             if (currentStory.uploadingStory != null) {
                 if (headerView.radialProgress != null) {
                     headerView.radialProgress.setProgress(currentStory.uploadingStory.progress, false);
@@ -5748,7 +5885,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
         if (!preload && !isSelf && reactionsTooltipRunnable == null && !SharedConfig.storyReactionsLongPressHint && SharedConfig.storiesIntroShown) {
             AndroidUtilities.runOnUIThread(reactionsTooltipRunnable = () -> {
-                if (!storyViewer.isShown()) {
+                if (!hasCurrentOwner() || !storyViewer.isShown()) {
                     return;
                 }
                 reactionsTooltipRunnable = null;
@@ -5793,11 +5930,13 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private final Runnable showTapToSoundHint = () -> {
+        if (!hasCurrentOwner()) return;
         showNoSoundHint(false);
         MessagesController.getGlobalMainSettings().edit().putInt("taptostorysoundhint", MessagesController.getGlobalMainSettings().getInt("taptostorysoundhint", 0) + 1).apply();
     };
 
     private void onHighlightLiveMessage() {
+        if (!hasCurrentOwner()) return;
         MessagesController.getGlobalMainSettings().edit().putInt("taptostoryhighlighthint", 3).apply();
 
         final TLRPC.TL_textWithEntities text = chatActivityEnterView.getTextWithEntities();
@@ -5806,6 +5945,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         if (sendAsPeer != null)
             send_as = DialogObject.getPeerDialogId(sendAsPeer);
         HighlightMessageSheet.open(getContext(), currentAccount, send_as, DialogObject.getShortName(currentAccount, dialogId), text, getMessageMinPrice(), messageStars, stars -> {
+            if (!hasCurrentOwner()) return;
             messageStars = stars;
             if (chatActivityEnterView != null) {
                 chatActivityEnterView.checkSendButton(true);
@@ -5839,6 +5979,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     ArrayList<TLRPC.Document> documentsToPrepare = new ArrayList<>();
 
     private void updatePreloadImages() {
+        if (!hasCurrentOwner()) return;
         int maxWidth = Math.max(AndroidUtilities.getRealScreenSize().x, AndroidUtilities.getRealScreenSize().y);
         int filterSize = (int) (maxWidth / AndroidUtilities.density);
         String filter = filterSize + "_" + filterSize;
@@ -5991,6 +6132,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void updateUserViews(boolean animated) {
+        if (!hasCurrentOwner()) return;
         TL_stories.StoryItem storyItem = currentStory.storyItem;
         if (storyItem == null) {
             storyItem = currentStory.editingSourceItem;
@@ -6112,6 +6254,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void requestVideoPlayer(long t) {
+        if (!hasCurrentOwner()) return;
         if (isActive) {
             Uri uri = null;
             if (currentStory.isLive()) {
@@ -6242,6 +6385,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public void stopPlaying(boolean stop) {
+        if (!hasCurrentOwner()) return;
         if (stop) {
             imageReceiver.stopAnimation();
             imageReceiver.setAllowStartAnimation(false);
@@ -6260,6 +6404,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public void setPaused(boolean paused) {
+        if (!hasCurrentOwner()) return;
         if (this.paused != paused) {
             this.paused = paused;
             stopPlaying(paused);
@@ -6389,6 +6534,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public void setAccount(int currentAccount) {
+        if (retired || destroyed || ownerPager == null || ownerPager.currentAccount != currentAccount) return;
         this.currentAccount = currentAccount;
         storiesController = MessagesController.getInstance(currentAccount).storiesController;
         emojiAnimationsOverlay.setAccount(currentAccount);
@@ -6409,6 +6555,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     private static int activeCount;
     public void setActive(long t, boolean active) {
+        if (!hasCurrentOwner()) return;
         if (!active) dismissPopupMenuImmediately();
         if (isActive != active) {
             activeCount += active ? 1 : -1;
@@ -6421,6 +6568,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                     AndroidUtilities.runOnUIThread(allowDrawSurfaceRunnable, 100);
                 }
                 requestVideoPlayer(t);
+                if (currentStory.isLive) loadSendAsPeers(false);
                 updatePreloadImages();
                 muteIconView.setAnimation(sharedResources.muteDrawable);
                 isActive = true;
@@ -6460,7 +6608,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     private boolean destroyed;
     public void onDestroy() {
         if (destroyed) return;
-        dismissPopupMenuImmediately();
+        retire();
         destroyed = true;
         if (chatActivityEnterView != null) {
             chatActivityEnterView.onDestroy();
@@ -6494,6 +6642,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (!hasCurrentOwner()) return;
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == 0 || requestCode == 2) {
                 createChatAttachView();
@@ -6647,7 +6796,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     Runnable allowDrawSurfaceRunnable = new Runnable() {
         @Override
         public void run() {
-            if (isActive && allowDrawSurface) {
+            if (hasCurrentOwner() && isActive && allowDrawSurface) {
                 delegate.setIsSwiping(false);
             }
         }
@@ -7313,6 +7462,10 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (!hasCurrentOwner()) {
+            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
+            return;
+        }
         if (storyViewer.ATTACH_TO_FRAGMENT) {
             FrameLayout.LayoutParams layoutParams = (LayoutParams) getLayoutParams();
             layoutParams.topMargin = AndroidUtilities.statusBarHeight;
@@ -7554,6 +7707,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     float progressToReply;
 
     private void updateViewOffsets() {
+        if (!hasCurrentOwner()) return;
         float progressToDismissLocal = delegate.getProgressToDismiss();
         float progressToKeyboardLocal;
         progressToHideInterface.set(isLongPressed ? 1f : 0);
@@ -7958,6 +8112,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 
             @Override
             public void sendMedia(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean forceDocument, long stars) {
+                if (!hasCurrentOwner()) return;
                 if (photoEntry == null) {
                     return;
                 }
@@ -8003,6 +8158,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void afterMessageSend(boolean withBulletin) {
+        if (!hasCurrentOwner()) return;
         if (instantCameraView != null) {
             instantCameraView.resetCameraFile();
             instantCameraView.cancel(false);
@@ -8020,6 +8176,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     private void openChat() {
+        if (!hasCurrentOwner()) return;
         Bundle bundle = new Bundle();
         if (dialogId < 0) {
             bundle.putLong("chat_id", -dialogId);
@@ -8082,6 +8239,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                         return;
                     }
                     AlertsCreator.ensurePaidMessageConfirmation(currentAccount, dialogId, 1, payStars -> {
+                        if (!hasCurrentOwner()) return;
                         ReactionsEffectOverlay effectOverlay;
                         if (longpress && visibleReaction.emojicon != null) {
                             try {
@@ -8327,6 +8485,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
     }
 
     public boolean needEnterText() {
+        if (!hasCurrentOwner()) return false;
         if (chatActivityEnterView == null) {
             return false;
         }
@@ -8465,6 +8624,10 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
 //            .allowSmallChats(false)
             .isEdit(true)
             .whenSelectedRules((privacy, allowComments, a, b, isRtmpStream, sendAs, pricePerComment, whenDone, cancelled) -> {
+                if (!hasCurrentOwner()) {
+                    if (whenDone != null) whenDone.run();
+                    return;
+                }
                 TL_stories.TL_stories_editStory editStory = new TL_stories.TL_stories_editStory();
                 editStory.peer = MessagesController.getInstance(currentAccount).getInputPeer(storyItem.dialogId);
                 editStory.id = storyItem.id;
@@ -8474,6 +8637,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                     if (whenDone != null) {
                         whenDone.run();
                     }
+                    if (!hasCurrentAccount()) return;
                     if (error == null || "STORY_NOT_MODIFIED".equals(error.text)) {
 
                         storyItem.parsedPrivacy = privacy;
@@ -8522,6 +8686,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
                 builder.setMessage(getString(R.string.DiscardVoiceMessageDescription));
             }
             builder.setPositiveButton(getString(R.string.DiscardVoiceMessageAction), (dialog, which) -> {
+                if (!hasCurrentOwner()) return;
                 if (chatActivityEnterView != null) {
                     if (forceCloseOnDiscard) {
                         storyViewer.close(true);

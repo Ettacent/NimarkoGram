@@ -110,6 +110,9 @@ public class MediaActionDrawable extends Drawable {
         private final Matrix progressMatrix = new Matrix();
         private LinearGradient progressGradient;
 
+        private IconResources.PreparedIcon plumpyCancelIcon;
+        private final Path plumpyCancelPath = new Path();
+        private final Paint plumpyCancelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         PackIconRenderer() {
             this(false);
         }
@@ -118,6 +121,19 @@ public class MediaActionDrawable extends Drawable {
             this.useSourceForeground = useSourceForeground;
             colorPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
             morphPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.ADD));
+            plumpyCancelPath.moveTo(6.5f, 6.5f);
+            plumpyCancelPath.lineTo(17.5f, 17.5f);
+            plumpyCancelPath.moveTo(17.5f, 6.5f);
+            plumpyCancelPath.lineTo(6.5f, 17.5f);
+            plumpyCancelPaint.setColor(0xffffffff);
+            plumpyCancelPaint.setStyle(Paint.Style.STROKE);
+            plumpyCancelPaint.setStrokeWidth(3f);
+            plumpyCancelPaint.setStrokeCap(Paint.Cap.ROUND);
+            plumpyCancelPaint.setStrokeJoin(Paint.Join.ROUND);
+        }
+
+        void setPlumpyCancelIcon(IconResources.PreparedIcon icon) {
+            plumpyCancelIcon = icon;
         }
 
         static IconResources.PreparedIcon get(IconResources.NavigationIcons icons, int id) {
@@ -194,7 +210,14 @@ public class MediaActionDrawable extends Drawable {
             canvas.save();
             canvas.translate(cx, cy);
             canvas.rotate(rotation);
+            if (useSourceForeground && icon == plumpyCancelIcon) {
+                plumpyCancelPaint.setAlpha(bitmapPaint.getAlpha());
+                canvas.scale(size * scaleX / 24f, size * scaleY / 24f);
+                canvas.translate(-12f, -12f);
+                canvas.drawPath(plumpyCancelPath, plumpyCancelPaint);
+            } else {
             canvas.drawBitmap(icon.bitmap, null, bitmapBounds, bitmapPaint);
+            }
             canvas.restore();
             if (!preserveColor) {
                 colorPaint.setColor(source.getColor() | 0xff000000);
@@ -642,6 +665,7 @@ public class MediaActionDrawable extends Drawable {
                 ? packStop : packCancel;
         int progressSelection = pack != null && packDownload != null && packCancel != null && packStop != null
                 ? pack.selection : AppConfig.ICON_REPLACE_NONE;
+        packIconRenderer.setPlumpyCancelIcon(progressSelection == AppConfig.ICON_REPLACE_PLUMPY ? packCancel : null);
         IconResources.PreparedIcon packFile = PackIconRenderer.get(pack, R.drawable.msg_sendfile);
         IconResources.PreparedIcon packUpdate = PackIconRenderer.get(pack, R.drawable.msg_retry);
         IconResources.PreparedIcon packCheck = PackIconRenderer.get(pack, R.drawable.ic_ab_done);

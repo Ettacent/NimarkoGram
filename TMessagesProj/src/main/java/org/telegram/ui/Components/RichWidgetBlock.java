@@ -339,6 +339,11 @@ public final class RichWidgetBlock extends RichMessageLayout.RichBlock
         if (message != null) WidgetMedia.onHidden(message);
     }
 
+    public void restartWidget() {
+        if (!running || message == null) return;
+        stop();
+        run();
+    }
     public void demote() {
         if (!running || player == null) return;
         stop();

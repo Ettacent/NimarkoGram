@@ -139,6 +139,7 @@ import org.telegram.ui.Cells.ContextLinkCell;
 import org.telegram.ui.Cells.DialogCell;
 import org.telegram.ui.Cells.GraySectionCell;
 import org.telegram.ui.Cells.LoadingCell;
+import org.telegram.ui.Cells.ManageChatTextCell;
 import org.telegram.ui.Cells.ManageChatUserCell;
 import org.telegram.ui.Cells.ProfileSearchCell;
 import org.telegram.ui.Cells.SharedAudioCell;
@@ -149,6 +150,7 @@ import org.telegram.ui.Cells.SharedPhotoVideoCell;
 import org.telegram.ui.Cells.SharedPhotoVideoCell2;
 import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.GroupCreateFinalActivity;
 import org.telegram.ui.ChatActivityContainer;
 import org.telegram.ui.Components.Forum.ForumUtilities;
 import org.telegram.ui.Components.Premium.LimitReachedBottomSheet;
@@ -2402,7 +2404,8 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             saveItem.setGravity(Gravity.CENTER);
             ThemeBind.selectorBackground(saveItem, Theme.createSelectorDrawable(Theme.multAlpha(getThemedColor(Theme.key_featuredStickers_addButton), .15f), Theme.RIPPLE_MASK_CIRCLE_TO_BOUND_EDGE), null, ThemeBind.multAlpha(Theme.key_featuredStickers_addButton, .15f), resourcesProvider);
             saveItem.setPadding(dp(19), 0, dp(19), 0);
-            actionBar.addView(saveItem, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 56, Gravity.RIGHT | Gravity.BOTTOM));
+            final FrameLayout saveParent = simpleActionBar != null ? simpleActionBar : actionBar;
+            saveParent.addView(saveItem, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 56, Gravity.RIGHT | Gravity.BOTTOM));
             saveItem.setOnClickListener(view -> {
                 if (saveItem.getAlpha() < 0.1f) return;
                 if (giftsContainer != null && giftsContainer.isReordering()) {
@@ -2430,10 +2433,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         .scaleX(reordering ? 1.0f : 0.4f)
                         .scaleY(reordering ? 1.0f : 0.4f)
                         .withEndAction(() -> {
-                            if (!reordering) saveItem.setVisibility(VISIBLE);
+                            if (!reordering) saveItem.setVisibility(GONE);
                         })
                         .start();
                     updateOptionsSearch(true);
+                    onReorderingChanged();
                 }
             };
             updateGiftsPaddingTop();
@@ -2517,10 +2521,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                             .scaleX(reordering ? 1.0f : 0.4f)
                             .scaleY(reordering ? 1.0f : 0.4f)
                             .withEndAction(() -> {
-                                if (!reordering) saveItem.setVisibility(VISIBLE);
+                                if (!reordering) saveItem.setVisibility(GONE);
                             })
                             .start();
                     updateOptionsSearch(true);
+                    onReorderingChanged();
                 }
 
                 @Override
@@ -2708,7 +2713,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             mediaPages[a].itemAnimator.setDurations(280);
             mediaPages[a].itemAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
             mediaPages[a].itemAnimator.setSupportsChangeAnimations(false);
-            mediaPages[a].listView = new SharedMediaListView(context) {
+            mediaPages[a].listView = new SharedMediaListView(context, resourcesProvider) {
 
                 @Override
                 protected boolean canPresentProfileContent() {
@@ -3075,6 +3080,31 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         args.putLong("user_id", user_id);
                         profileActivity.presentFragment(new ProfileActivity(args));
                     }
+                } else if (mediaPage.selectedType == TAB_COMMON_GROUPS && view instanceof ManageChatTextCell) {
+                    Bundle args = new Bundle();
+                    args.putLongArray("result", new long[]{commonGroupsAdapter.getUserId()});
+                    GroupCreateFinalActivity fragment = new GroupCreateFinalActivity(args);
+                    fragment.setDelegate(new GroupCreateFinalActivity.GroupCreateFinalActivityDelegate() {
+                        @Override
+                        public void didStartChatCreation() {
+
+                        }
+
+                        @Override
+                        public void didFinishChatCreation(GroupCreateFinalActivity fragment, long chatId) {
+                            Bundle args2 = new Bundle();
+                            args2.putLong("chat_id", chatId);
+                            args2.putBoolean("just_created_chat", true);
+                            fragment.presentFragment(new ChatActivity(args2), true);
+                            commonGroupsAdapter.reload();
+                        }
+
+                        @Override
+                        public void didFailChatCreation() {
+
+                        }
+                    });
+                    profileActivity.presentFragment(fragment);
                 } else if (mediaPage.selectedType == TAB_COMMON_GROUPS && view instanceof ProfileSearchCell) {
                     TLRPC.Chat chat = ((ProfileSearchCell) view).getChat();
                     Bundle args = new Bundle();
@@ -5001,6 +5031,13 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         applyLegacyHeaderSearchVisibility();
     }
 
+    public boolean isReordering() {
+        return giftsContainer != null && giftsContainer.isReordering() || storiesContainer != null && storiesContainer.isReordering();
+    }
+
+    protected void onReorderingChanged() {
+
+    }
     protected void onSearchStateChanged(boolean expanded) {
 
     }
@@ -5014,6 +5051,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             return;
         }
         destroyed = true;
+        if (documentsSearchAdapter != null) documentsSearchAdapter.retireSearch();
+        if (linksSearchAdapter != null) linksSearchAdapter.retireSearch();
+        if (audioSearchAdapter != null) audioSearchAdapter.retireSearch();
+        if (savedMessagesSearchAdapter != null) savedMessagesSearchAdapter.retireSearch();
+        if (groupUsersSearchAdapter != null) groupUsersSearchAdapter.retireSearch();
         clearLegacyHeaderControlLayoutListener();
         setLegacyHeaderSearchProgress(0f);
         setLegacyHeaderSearchAllowed(false);
@@ -6702,9 +6744,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
     }
     private void fadeFirstProfileContent(RecyclerView.Adapter adapter) {
         if (destroyed || viewType != VIEW_TYPE_PROFILE_ACTIVITY || !SharedConfig.animationsEnabled()) return;
-        boolean parentOwnsFade = profileActivity instanceof ProfileActivity
-                ? ((ProfileActivity) profileActivity).isProfileMediaFadeInProgress()
-                : delegate.isProfileTransitionInProgress();
+        boolean parentOwnsFade = isProfileMediaFadeOwnedByParent();
         for (MediaPage page : mediaPages) {
             if (page != null && page.listView != null && page.listView.getAdapter() == adapter) {
                 page.listView.captureFirstProfileContent(!parentOwnsFade);
@@ -6712,10 +6752,20 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                     page.listView.markProfileContentCoveredByParent();
                 } else {
                     page.listView.profileContentFade.start(page.listView,
-                            this::isProfileMediaPresentationAllowed);
+                            this::isProfileMediaPresentationAllowed, this::isProfileMediaFadeOwnedByParent);
                 }
             }
         }
+    }
+
+    private boolean isProfileMediaFadeOwnedByParent() {
+        if (profileActivity instanceof ProfileActivity) {
+            ProfileActivity profile = (ProfileActivity) profileActivity;
+            return profile.isProfileMediaFadeInProgress()
+                    || profile.isProfileTransitionInProgress() && profile.getParentLayout() != null
+                    && profile.getParentLayout().isTransitionAnimationInProgress();
+        }
+        return delegate.isProfileTransitionInProgress();
     }
     private void prepareFirstProfileContent(RecyclerView.Adapter adapter) {
         if (destroyed || viewType != VIEW_TYPE_PROFILE_ACTIVITY) return;
@@ -7892,7 +7942,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                     mediaPages[a].listView.setAdapter(commonGroupsAdapter);
                     if (viewType == VIEW_TYPE_PROFILE_ACTIVITY
                             && !commonGroupsAdapter.chats.isEmpty()) {
-                        fadeFirstProfileContent(commonGroupsAdapter);
+                        mediaPages[a].listView.markProfileContentCoveredByParent();
                     }
                 }
             } else if (mediaPages[a].selectedType == TAB_GROUPUSERS) {
@@ -9027,6 +9077,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
     public static final int VIEW_TYPE_SEARCH_SAVED_DIALOG = 23;
     public static final int VIEW_TYPE_SEARCH_DOCUMENT = 24;
 
+    public static final int VIEW_TYPE_GROUP_CREATE = 25;
     private class SharedPhotoVideoAdapter extends RecyclerListView.FastScrollAdapter {
 
         protected Context mContext;
@@ -9836,7 +9887,9 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private Runnable searchRunnable;
         protected ArrayList<MessageObject> globalSearch = new ArrayList<>();
         private int reqId = 0;
-        private int lastReqId;
+        private volatile long searchEpoch;
+        private volatile long serverSearchEpoch;
+        private boolean serverSearchPending, localSearchPending;
         private int currentType;
         private int searchesInProgress;
 
@@ -9849,17 +9902,52 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             if (DialogObject.isEncryptedDialog(did)) {
                 return;
             }
-            if (reqId != 0) {
-                profileActivity.getConnectionsManager().cancelRequest(reqId, true);
-                reqId = 0;
-                searchesInProgress--;
-            }
-            if (query == null || query.length() == 0) {
+            final long epoch = retireSearch();
+            if (!isCurrentSearch(epoch)) return;
+            if (TextUtils.isEmpty(query)) {
+                searchResult.clear();
                 globalSearch.clear();
-                lastReqId = 0;
                 notifyDataSetChanged();
                 return;
             }
+            queryServerSearch(query, max_id, did, topicId, epoch);
+        }
+
+        private long retireSearch() {
+            final long epoch = ++searchEpoch;
+            ++serverSearchEpoch;
+            final Runnable pendingSearch = searchRunnable;
+            searchRunnable = null;
+            final int pendingRequest = reqId;
+                reqId = 0;
+            serverSearchPending = localSearchPending = false;
+            searchesInProgress = 0;
+            if (pendingSearch != null) AndroidUtilities.cancelRunOnUIThread(pendingSearch);
+            if (pendingRequest != 0) profileActivity.getConnectionsManager().cancelRequest(pendingRequest, true);
+            return epoch;
+        }
+
+        private boolean isCurrentSearch(long epoch) {
+            return epoch == searchEpoch && !destroyed;
+        }
+
+        private boolean isCurrentServerSearch(long epoch, long serverEpoch) {
+            return isCurrentSearch(epoch) && serverEpoch == serverSearchEpoch;
+        }
+
+        private void updateSearchesInProgress() {
+            searchesInProgress = (serverSearchPending ? 1 : 0) + (localSearchPending ? 1 : 0);
+        }
+
+        private void queryServerSearch(final String query, final int max_id, long did, long topicId, long epoch) {
+            if (!isCurrentSearch(epoch) || DialogObject.isEncryptedDialog(did)) return;
+            final long serverEpoch = ++serverSearchEpoch;
+            final int pendingRequest = reqId;
+            reqId = 0;
+            serverSearchPending = false;
+            updateSearchesInProgress();
+            if (pendingRequest != 0) profileActivity.getConnectionsManager().cancelRequest(pendingRequest, true);
+            if (!isCurrentServerSearch(epoch, serverEpoch)) return;
             TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
             req.limit = 50;
             req.offset_id = max_id;
@@ -9884,98 +9972,92 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             if (req.peer == null) {
                 return;
             }
-            final int currentReqId = ++lastReqId;
-            searchesInProgress++;
-            reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> {
+            final int account = profileActivity.getCurrentAccount();
+            serverSearchPending = true;
+            updateSearchesInProgress();
+            final int requestId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> {
+                if (!isCurrentServerSearch(epoch, serverEpoch)) return;
                 final ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                if (error == null) {
+                if (error == null && response instanceof TLRPC.messages_Messages) {
                     TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                     for (int a = 0; a < res.messages.size(); a++) {
+                        if (!isCurrentServerSearch(epoch, serverEpoch)) return;
                         TLRPC.Message message = res.messages.get(a);
                         if (max_id != 0 && message.id > max_id) {
                             continue;
                         }
                         if (currentType == MediaDataController.MEDIA_URL
                                 && MediaDataController.isLocalEmojiOnlyLinkMessage(message)) continue;
-                        messageObjects.add(new MessageObject(profileActivity.getCurrentAccount(), message, false, true));
+                        messageObjects.add(new MessageObject(account, message, false, true));
                     }
                 }
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (reqId != 0) {
-                        if (currentReqId == lastReqId) {
-                            int oldItemCounts = getItemCount();
+                    if (!isCurrentServerSearch(epoch, serverEpoch) || !serverSearchPending) return;
+                    reqId = 0;
+                    serverSearchPending = false;
+                    updateSearchesInProgress();
+                    final int oldItemCount = getItemCount();
+                    if (!isCurrentServerSearch(epoch, serverEpoch)) return;
                             globalSearch = messageObjects;
-                            searchesInProgress--;
-                            int count = getItemCount();
-                            if (searchesInProgress == 0 || count != 0) {
-                                switchToCurrentSelectedMode(false);
-                            }
-
-                            for (int a = 0; a < mediaPages.length; a++) {
-                                if (mediaPages[a].selectedType == currentType) {
-                                    if (searchesInProgress == 0 && count == 0) {
-                                        mediaPages[a].emptyView.title.setText(LocaleController.formatString("NoResultFoundFor", R.string.NoResultFoundFor, query));
-                                        mediaPages[a].emptyView.button.setVisibility(View.GONE);
-                                        mediaPages[a].emptyView.showProgress(false, true);
-                                    } else if (oldItemCounts == 0) {
-                                        animateItemsEnter(mediaPages[a].listView, 0, null);
-                                    }
-                                }
-                            }
-                            notifyDataSetChanged();
-
-                        }
-                        reqId = 0;
-                    }
+                    notifySearchResults(epoch, oldItemCount, query);
                 });
             }, ConnectionsManager.RequestFlagFailOnServerErrors);
-            profileActivity.getConnectionsManager().bindRequestToGuid(reqId, profileActivity.getClassGuid());
+            if (!isCurrentServerSearch(epoch, serverEpoch) || !serverSearchPending) {
+                if (requestId != 0) profileActivity.getConnectionsManager().cancelRequest(requestId, true);
+                return;
+            }
+            reqId = requestId;
+            if (requestId == 0) {
+                serverSearchPending = false;
+                updateSearchesInProgress();
+                notifySearchResults(epoch, getItemCount(), query);
+                return;
+            }
+            profileActivity.getConnectionsManager().bindRequestToGuid(requestId, profileActivity.getClassGuid());
         }
 
         public void search(final String query, boolean animated) {
-            if (searchRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(searchRunnable);
-                searchRunnable = null;
-            }
+            final long epoch = retireSearch();
+            if (!isCurrentSearch(epoch)) return;
 
             if (!searchResult.isEmpty() || !globalSearch.isEmpty()) {
                 searchResult.clear();
                 globalSearch.clear();
                 notifyDataSetChanged();
+                if (!isCurrentSearch(epoch)) return;
             }
 
             if (TextUtils.isEmpty(query)) {
-                if (!searchResult.isEmpty() || !globalSearch.isEmpty() || searchesInProgress != 0) {
-                    searchResult.clear();
-                    globalSearch.clear();
-                    if (reqId != 0) {
-                        profileActivity.getConnectionsManager().cancelRequest(reqId, true);
-                        reqId = 0;
-                        searchesInProgress--;
-                    }
-                }
+                return;
             } else {
                 for (int a = 0; a < mediaPages.length; a++) {
                     if (mediaPages[a].selectedType == currentType) {
                         mediaPages[a].emptyView.showProgress(true, animated);
+                        if (!isCurrentSearch(epoch)) return;
                     }
                 }
 
 
                 AndroidUtilities.runOnUIThread(searchRunnable = () -> {
+                    if (!isCurrentSearch(epoch)) return;
+                    searchRunnable = null;
+                    final boolean searchLocal = currentType == 1 || currentType == 4;
+                    localSearchPending = searchLocal;
+                    updateSearchesInProgress();
                     if (!sharedMediaData[currentType].messages.isEmpty() && (currentType == 1 || currentType == 4)) {
                         MessageObject messageObject = sharedMediaData[currentType].messages.get(sharedMediaData[currentType].messages.size() - 1);
-                        queryServerSearch(query, messageObject.getId(), messageObject.getDialogId(), dialog_id == profileActivity.getUserConfig().getClientUserId() ? messageObject.getSavedDialogId() : 0);
+                        queryServerSearch(query, messageObject.getId(), messageObject.getDialogId(), dialog_id == profileActivity.getUserConfig().getClientUserId() ? messageObject.getSavedDialogId() : 0, epoch);
                     } else if (currentType == 3) {
-                        queryServerSearch(query, 0, dialog_id, topicId);
+                        queryServerSearch(query, 0, dialog_id, topicId, epoch);
                     }
-                    if (currentType == 1 || currentType == 4) {
+                    if (!isCurrentSearch(epoch)) return;
+                    if (searchLocal) {
                         final ArrayList<MessageObject> copy = new ArrayList<>(sharedMediaData[currentType].messages);
-                        searchesInProgress++;
-                        Utilities.searchQueue.postRunnable(() -> {
+                        if (!Utilities.searchQueue.postRunnable(() -> {
+                            if (!isCurrentSearch(epoch)) return;
                             String search1 = query.trim().toLowerCase();
                             if (search1.length() == 0) {
-                                updateSearchResults(new ArrayList<>());
+                                updateSearchResults(new ArrayList<>(), epoch);
                                 return;
                             }
                             String search2 = LocaleController.getInstance().getTranslitString(search1);
@@ -9991,6 +10073,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                             ArrayList<MessageObject> resultArray = new ArrayList<>();
 
                             for (int a = 0; a < copy.size(); a++) {
+                                if (!isCurrentSearch(epoch)) return;
                                 MessageObject messageObject = copy.get(a);
                                 for (int b = 0; b < search.length; b++) {
                                     String q = search[b];
@@ -10031,31 +10114,49 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 }
                             }
 
-                            updateSearchResults(resultArray);
-                        });
+                            updateSearchResults(resultArray, epoch);
+                        })) {
+                            updateSearchResults(new ArrayList<>(), epoch);
+                        }
+                    } else if (searchesInProgress == 0) {
+                        notifySearchResults(epoch, getItemCount(), query);
                     }
                 }, 300);
             }
         }
 
-        private void updateSearchResults(final ArrayList<MessageObject> documents) {
+        private void updateSearchResults(final ArrayList<MessageObject> documents, long epoch) {
             AndroidUtilities.runOnUIThread(() -> {
+                if (!isCurrentSearch(epoch) || !localSearchPending) return;
+                localSearchPending = false;
+                updateSearchesInProgress();
                 if (!searching) {
                     return;
                 }
-                searchesInProgress--;
                 int oldItemCount = getItemCount();
+                if (!isCurrentSearch(epoch)) return;
                 searchResult = documents;
+                notifySearchResults(epoch, oldItemCount, null);
+                        });
+                    }
+        private void notifySearchResults(long epoch, int oldItemCount, String query) {
+            if (!isCurrentSearch(epoch)) return;
                 int count = getItemCount();
+            if (!isCurrentSearch(epoch)) return;
                 if (searchesInProgress == 0 || count != 0) {
                     switchToCurrentSelectedMode(false);
+                if (!isCurrentSearch(epoch)) return;
                 }
 
                 for (int a = 0; a < mediaPages.length; a++) {
+                if (!isCurrentSearch(epoch)) return;
                     if (mediaPages[a].selectedType == currentType) {
                         if (searchesInProgress == 0 && count == 0) {
-                            mediaPages[a].emptyView.title.setText(getString("NoResult", R.string.NoResult));
+                        mediaPages[a].emptyView.title.setText(query == null ? getString("NoResult", R.string.NoResult)
+                                : LocaleController.formatString("NoResultFoundFor", R.string.NoResultFoundFor, query));
+                        if (!isCurrentSearch(epoch)) return;
                             mediaPages[a].emptyView.button.setVisibility(View.GONE);
+                        if (!isCurrentSearch(epoch)) return;
                             mediaPages[a].emptyView.showProgress(false, true);
                         } else if (oldItemCount == 0) {
                             animateItemsEnter(mediaPages[a].listView, 0, null);
@@ -10063,9 +10164,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                     }
                 }
 
-                notifyDataSetChanged();
-
-            });
+            if (isCurrentSearch(epoch)) notifyDataSetChanged();
         }
 
         @Override
@@ -10512,7 +10611,16 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private ReactionsLayoutInBubble.VisibleReaction lastReaction;
         private int reqId = -1;
 
+        private void retireSearch() {
+            ++lastSearchId;
+            AndroidUtilities.cancelRunOnUIThread(searchRunnable);
+            final int pendingRequest = reqId;
+            reqId = -1;
+            loading = false;
+            if (pendingRequest >= 0) ConnectionsManager.getInstance(currentAccount).cancelRequest(pendingRequest, true);
+        }
         public void search(String query, ReactionsLayoutInBubble.VisibleReaction reaction) {
+            if (destroyed) return;
             if (TextUtils.equals(query, lastQuery) && (lastReaction == null && reaction == null || lastReaction != null && lastReaction.equals(reaction))) {
                 return;
             }
@@ -10549,7 +10657,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         }
 
         public void loadMore() {
-            if (endReached || loading) return;
+            if (destroyed || endReached || loading) return;
             loading = true;
             sendRequest();
         }
@@ -10557,6 +10665,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         int lastSearchId;
         private Runnable searchRunnable = this::sendRequest;
         private void sendRequest() {
+            if (destroyed) return;
             if (TextUtils.isEmpty(lastQuery) && lastReaction == null) {
                 loading = false;
                 return;
@@ -10577,9 +10686,13 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             endReached = false;
             final int searchId = ++lastSearchId;
             Runnable request = () -> {
-                if (searchId != lastSearchId) return;
+                if (destroyed || searchId != lastSearchId) return;
                 reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
-                    if (!(res instanceof TLRPC.messages_Messages) || searchId != lastSearchId) {
+                    if (destroyed || searchId != lastSearchId) return;
+                    reqId = -1;
+                    loading = false;
+                    if (!(res instanceof TLRPC.messages_Messages)) {
+                        updateMessages(false);
                         return;
                     }
                     TLRPC.messages_Messages r = (TLRPC.messages_Messages) res;
@@ -10602,13 +10715,11 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         endReached = true;
                     }
                     updateMessages(false);
-                    loading = false;
-                    reqId = -1;
                 }));
             };
             if (lastReaction != null) {
                 MessagesStorage.getInstance(currentAccount).searchSavedByTag(lastReaction.toTLReaction(), 0, lastQuery, 100, cachedMessages.size(), (messages, users, chats, emoji) -> {
-                    if (searchId != lastSearchId) return;
+                    if (destroyed || searchId != lastSearchId) return;
                     MessagesController.getInstance(currentAccount).putUsers(users, true);
                     MessagesController.getInstance(currentAccount).putChats(chats, true);
                     AnimatedEmojiDrawable.getDocumentFetcher(currentAccount).processDocuments(emoji);
@@ -10976,6 +11087,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private boolean loading;
         private boolean endReached;
         private boolean refreshPending;
+        private int requestGeneration;
         private void refresh() {
             if (destroyed || chats.isEmpty()) return;
             if (loading) {
@@ -10985,23 +11097,17 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             }
         }
 
+        private int reqId;
         public CommonGroupsAdapter(Context context) {
             mContext = context;
         }
 
         private void getChats(long max_id, final int count) {
-            if (loading) {
+            if (destroyed || loading) {
                 return;
             }
             TLRPC.TL_messages_getCommonChats req = new TLRPC.TL_messages_getCommonChats();
-            long uid;
-            if (DialogObject.isEncryptedDialog(dialog_id)) {
-                TLRPC.EncryptedChat encryptedChat = profileActivity.getMessagesController().getEncryptedChat(DialogObject.getEncryptedChatId(dialog_id));
-                uid = encryptedChat.user_id;
-            } else {
-                uid = dialog_id;
-            }
-            req.user_id = profileActivity.getMessagesController().getInputUser(uid);
+            req.user_id = profileActivity.getMessagesController().getInputUser(getUserId());
             if (req.user_id instanceof TLRPC.TL_inputUserEmpty) {
                 return;
             }
@@ -11009,10 +11115,12 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             req.max_id = max_id;
             loading = true;
             notifyDataSetChanged();
-            int reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (destroyed) return;
+            final int generation = ++requestGeneration;
+            reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (destroyed || generation != requestGeneration) return;
+                reqId = 0;
                 final boolean wasEmpty = chats.isEmpty();
-                if (error == null) {
+                if (error == null && response instanceof TLRPC.messages_Chats) {
                     TLRPC.messages_Chats res = (TLRPC.messages_Chats) response;
                     if (wasEmpty && !res.chats.isEmpty()) prepareFirstProfileContent(this);
                     profileActivity.getMessagesController().putChats(res.chats, false);
@@ -11036,9 +11144,42 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             profileActivity.getConnectionsManager().bindRequestToGuid(reqId, profileActivity.getClassGuid());
         }
 
+        private void reload() {
+            if (destroyed) return;
+            ++requestGeneration;
+            if (reqId != 0) {
+                profileActivity.getConnectionsManager().cancelRequest(reqId, true);
+                reqId = 0;
+            }
+            loading = false;
+            endReached = false;
+            refreshPending = false;
+            getChats(0, 100);
+            TLRPC.User user = profileActivity.getMessagesController().getUser(getUserId());
+            if (user != null) {
+                profileActivity.getMessagesController().loadFullUser(user, profileActivity.getClassGuid(), true);
+            }
+        }
+
+        private long getUserId() {
+            if (DialogObject.isEncryptedDialog(dialog_id)) {
+                TLRPC.EncryptedChat encryptedChat = profileActivity.getMessagesController().getEncryptedChat(DialogObject.getEncryptedChatId(dialog_id));
+                return encryptedChat == null ? 0 : encryptedChat.user_id;
+            }
+            return dialog_id;
+        }
+
+        private boolean hasCreateRow() {
+            if (chats.isEmpty()) {
+                return false;
+            }
+            TLRPC.User user = profileActivity.getMessagesController().getUser(getUserId());
+            return user != null && !user.bot && !user.self && !UserObject.isDeleted(user);
+        }
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return holder.getItemViewType() == VIEW_TYPE_GROUP;
+            int viewType = holder.getItemViewType();
+            return viewType == VIEW_TYPE_GROUP || viewType == VIEW_TYPE_GROUP_CREATE;
         }
 
         @Override
@@ -11051,6 +11192,9 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             }
             int count = chats.size();
             if (!chats.isEmpty()) {
+                if (hasCreateRow()) {
+                    count++;
+                }
                 if (!endReached) {
                     count++;
                 }
@@ -11064,6 +11208,12 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             switch (viewType) {
                 case VIEW_TYPE_GROUP:
                     view = new ProfileSearchCell(mContext, resourcesProvider);
+                    break;
+                case VIEW_TYPE_GROUP_CREATE:
+                    ManageChatTextCell createCell = new ManageChatTextCell(mContext);
+                    createCell.setColors(Theme.key_windowBackgroundWhiteBlueIcon, Theme.key_windowBackgroundWhiteBlueButton);
+                    createCell.setTextLeft(AndroidUtilities.leftBaseline);
+                    view = createCell;
                     break;
                 case VIEW_TYPE_GROUP_EMPTY:
                     View emptyStubView = createEmptyStubView(mContext, 6, dialog_id, resourcesProvider);
@@ -11088,9 +11238,17 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             if (holder.getItemViewType() == VIEW_TYPE_GROUP) {
                 if (!(holder.itemView instanceof ProfileSearchCell)) return;
                 ProfileSearchCell cell = (ProfileSearchCell) holder.itemView;
+                if (hasCreateRow()) {
+                    position--;
+                }
                 TLRPC.Chat chat = chats.get(position);
                 cell.setData(chat, null, null, null, false, false);
                 cell.useSeparator = position != chats.size() - 1 || !endReached;
+            } else if (holder.getItemViewType() == VIEW_TYPE_GROUP_CREATE) {
+                if (!(holder.itemView instanceof ManageChatTextCell)) return;
+                ManageChatTextCell cell = (ManageChatTextCell) holder.itemView;
+                TLRPC.User user = profileActivity.getMessagesController().getUser(getUserId());
+                cell.setText(LocaleController.formatString(R.string.CreateGroupWith, UserObject.getFirstName(user)), null, R.drawable.msg_groups_create, true);
             }
         }
 
@@ -11098,6 +11256,12 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         public int getItemViewType(int i) {
             if (chats.isEmpty()) {
                 return loading ? VIEW_TYPE_GROUP_LOADING : VIEW_TYPE_GROUP_EMPTY;
+            }
+            if (hasCreateRow()) {
+                if (i == 0) {
+                    return VIEW_TYPE_GROUP_CREATE;
+                }
+                i--;
             }
             if (i < chats.size()) {
                 return VIEW_TYPE_GROUP;
@@ -11696,16 +11860,54 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private Runnable searchRunnable;
         private int totalCount = 0;
         private TLRPC.Chat currentChat;
+        private volatile int searchEpoch;
+        private boolean localSearchPending, serverSearchPending;
         int searchCount = 0;
 
         public GroupUsersSearchAdapter(Context context) {
             mContext = context;
-            searchAdapterHelper = new SearchAdapterHelper(true);
-            searchAdapterHelper.setDelegate(searchId -> {
+            searchAdapterHelper = new SearchAdapterHelper(profileActivity.getCurrentAccount(), true);
+            searchAdapterHelper.setDelegate(new SearchAdapterHelper.SearchAdapterHelperDelegate() {
+                @Override
+                public boolean canApplySearchResults(int searchId) {
+                    return isCurrentSearch(searchId);
+                }
+
+                @Override
+                public void onDataSetChanged(int searchId) {
+                    if (!isCurrentSearch(searchId)) return;
+                    boolean completed = serverSearchPending;
+                    serverSearchPending = false;
+                    updateSearchCount();
                 notifyDataSetChanged();
-                if (searchId == 1) {
-                    searchCount--;
-                    if (searchCount == 0) {
+                    if (completed) finishSearchPresentation(searchId);
+                }
+            });
+            currentChat = delegate.getCurrentChat();
+        }
+
+        private boolean isCurrentSearch(int epoch) {
+            return !destroyed && epoch == searchEpoch;
+        }
+
+        private void updateSearchCount() {
+            searchCount = (localSearchPending ? 1 : 0) + (serverSearchPending ? 1 : 0);
+        }
+
+        private int retireSearch() {
+            final int epoch = ++searchEpoch;
+            final Runnable pending = searchRunnable;
+            searchRunnable = null;
+            localSearchPending = serverSearchPending = false;
+            updateSearchCount();
+            if (pending != null) Utilities.searchQueue.cancelRunnable(pending);
+            searchAdapterHelper.queryServerSearch(null, true, false, true, false, false,
+                    ChatObject.isChannel(currentChat) ? currentChat.id : 0, false, 2, epoch);
+            return epoch;
+        }
+
+        private void finishSearchPresentation(int epoch) {
+            if (!isCurrentSearch(epoch) || !searching || searchCount != 0) return;
                         for (int a = 0; a < mediaPages.length; a++) {
                             if (mediaPages[a].selectedType == TAB_GROUPUSERS) {
                                 if (getItemCount() == 0) {
@@ -11713,12 +11915,9 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 } else {
                                     animateItemsEnter(mediaPages[a].listView, 0, null);
                                 }
-                            }
-                        }
-                    }
+                    if (!isCurrentSearch(epoch)) return;
                 }
-            });
-            currentChat = delegate.getCurrentChat();
+            }
         }
 
         private boolean createMenuForParticipant(TLObject participant, boolean resultOnly, View view) {
@@ -11735,40 +11934,45 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         }
 
         public void search(final String query, boolean animated) {
-            if (searchRunnable != null) {
-                Utilities.searchQueue.cancelRunnable(searchRunnable);
-                searchRunnable = null;
-            }
+            final int epoch = retireSearch();
+            if (!isCurrentSearch(epoch)) return;
             searchResultNames.clear();
             searchAdapterHelper.mergeResults(null);
-            searchAdapterHelper.queryServerSearch(null, true, false, true, false, false, ChatObject.isChannel(currentChat) ? currentChat.id : 0, false, 2, 0);
             notifyDataSetChanged();
 
+            if (!isCurrentSearch(epoch)) return;
             for (int a = 0; a < mediaPages.length; a++) {
                 if (mediaPages[a].selectedType == 7) {
                     if (!TextUtils.isEmpty(query)) {
                         mediaPages[a].emptyView.showProgress(true, animated);
+                        if (!isCurrentSearch(epoch)) return;
                     }
                 }
             }
 
             if (!TextUtils.isEmpty(query)) {
-                Utilities.searchQueue.postRunnable(searchRunnable = () -> processSearch(query), 300);
+                Utilities.searchQueue.postRunnable(searchRunnable = () -> processSearch(query, epoch), 300);
             }
         }
 
-        private void processSearch(final String query) {
+        private void processSearch(final String query, final int epoch) {
+            if (!isCurrentSearch(epoch)) return;
             AndroidUtilities.runOnUIThread(() -> {
+                if (!isCurrentSearch(epoch)) return;
                 searchRunnable = null;
 
-                final ArrayList<TLObject> participantsCopy = !ChatObject.isChannel(currentChat) && info != null ? new ArrayList<>(info.participants.participants) : null;
+                final ArrayList<TLObject> participantsCopy = !ChatObject.isChannel(currentChat) && info != null && info.participants != null
+                        ? new ArrayList<>(info.participants.participants) : null;
 
-                searchCount = 2;
+                localSearchPending = participantsCopy != null;
+                serverSearchPending = ChatObject.isChannel(currentChat);
+                updateSearchCount();
                 if (participantsCopy != null) {
-                    Utilities.searchQueue.postRunnable(() -> {
+                    boolean posted = Utilities.searchQueue.postRunnable(() -> {
+                        if (!isCurrentSearch(epoch)) return;
                         String search1 = query.trim().toLowerCase();
                         if (search1.length() == 0) {
-                            updateSearchResults(new ArrayList<>(), new ArrayList<>());
+                            updateSearchResults(new ArrayList<>(), new ArrayList<>(), epoch);
                             return;
                         }
                         String search2 = LocaleController.getInstance().getTranslitString(search1);
@@ -11784,6 +11988,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         ArrayList<TLObject> resultArray2 = new ArrayList<>();
 
                         for (int a = 0, N = participantsCopy.size(); a < N; a++) {
+                            if (!isCurrentSearch(epoch)) return;
                             long userId;
                             TLObject o = participantsCopy.get(a);
                             if (o instanceof TLRPC.ChatParticipant) {
@@ -11794,7 +11999,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 continue;
                             }
                             TLRPC.User user = profileActivity.getMessagesController().getUser(userId);
-                            if (user.id == profileActivity.getUserConfig().getClientUserId()) {
+                            if (user == null || user.id == profileActivity.getUserConfig().getClientUserId()) {
                                 continue;
                             }
 
@@ -11824,41 +12029,37 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 }
                             }
                         }
-                        updateSearchResults(resultArrayNames, resultArray2);
+                        updateSearchResults(resultArrayNames, resultArray2, epoch);
                     });
-                } else {
-                    searchCount--;
+                    if (!posted) {
+                        localSearchPending = false;
+                        updateSearchCount();
+                    }
                 }
-                searchAdapterHelper.queryServerSearch(query, false, false, true, false, false, ChatObject.isChannel(currentChat) ? currentChat.id : 0, false, 2, 1);
+                if (!isCurrentSearch(epoch)) return;
+                searchAdapterHelper.queryServerSearch(query, false, false, true, false, false,
+                        ChatObject.isChannel(currentChat) ? currentChat.id : 0, false, 2, epoch);
+                finishSearchPresentation(epoch);
             });
         }
 
-        private void updateSearchResults(final ArrayList<CharSequence> names, final ArrayList<TLObject> participants) {
+        private void updateSearchResults(final ArrayList<CharSequence> names, final ArrayList<TLObject> participants, final int epoch) {
             AndroidUtilities.runOnUIThread(() -> {
-                if (!searching) {
+                if (!searching || !isCurrentSearch(epoch)) {
                     return;
                 }
                 searchResultNames = names;
-                searchCount--;
+                localSearchPending = false;
+                updateSearchCount();
                 if (!ChatObject.isChannel(currentChat)) {
                     ArrayList<TLObject> search = searchAdapterHelper.getGroupSearch();
                     search.clear();
                     search.addAll(participants);
                 }
 
-                if (searchCount == 0) {
-                    for (int a = 0; a < mediaPages.length; a++) {
-                        if (mediaPages[a].selectedType == 7) {
-                            if (getItemCount() == 0) {
-                                mediaPages[a].emptyView.showProgress(false, true);
-                            } else {
-                                animateItemsEnter(mediaPages[a].listView, 0, null);
-                            }
-                        }
-                    }
-                }
 
                 notifyDataSetChanged();
+                finishSearchPresentation(epoch);
             });
         }
 
@@ -12479,8 +12680,13 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         }
 
         void markProfileContentCoveredByParent() {
+            profileContentArrivalHandled = true;
             profileContentEntryOwned = true;
             profileContentFade.markPresented();
+            if (memberContentPending || memberCrossfade.isRunning()) {
+                invalidate();
+                return;
+            }
             memberCrossfade.finish();
             memberContentPending = false;
             presentedMemberProgress = 1f;
@@ -12637,6 +12843,10 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         boolean clipToContent;
         public InternalListView(Context context) {
             super(context);
+        }
+
+        public InternalListView(Context context, Theme.ResourcesProvider resourcesProvider) {
+            super(context, resourcesProvider);
         }
 
         @Override
@@ -13115,6 +13325,10 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
 
         public SharedMediaListView(Context context) {
             super(context);
+        }
+
+        public SharedMediaListView(Context context, Theme.ResourcesProvider resourcesProvider) {
+            super(context, resourcesProvider);
         }
 
         final HashSet<SharedPhotoVideoCell2> excludeDrawViews = new HashSet<>();
@@ -13934,12 +14148,13 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             return;
         }
         final int tab = getClosestTab();
+        final boolean allowed = simpleMenuItemsAllowed && !isReordering();
         if (searchItem != null) {
-            final boolean shown = simpleMenuItemsAllowed && canShowSearchItem() && (isSearchItemVisible(tab) || tab == TAB_SAVED_DIALOGS && includeSavedDialogs());
+            final boolean shown = allowed && canShowSearchItem() && (isSearchItemVisible(tab) || tab == TAB_SAVED_DIALOGS && includeSavedDialogs());
             ((SimpleActionBarMenuItem) searchItem).setShown(shown, animated);
         }
         if (simpleOptionsItem != null) {
-            simpleOptionsItem.setShown(simpleMenuItemsAllowed && canShowSearchItem() && !isArchivedOnlyStoriesView() && hasPhotoVideoOptions(tab), optionsAnimated);
+            simpleOptionsItem.setShown(allowed && canShowSearchItem() && !isArchivedOnlyStoriesView() && hasPhotoVideoOptions(tab), optionsAnimated);
         }
     }
 

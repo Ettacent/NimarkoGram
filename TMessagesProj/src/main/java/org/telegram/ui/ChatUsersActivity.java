@@ -16,6 +16,8 @@ import static org.telegram.ui.bots.AffiliateProgramFragment.percents;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -49,7 +51,6 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
@@ -86,6 +87,7 @@ import org.telegram.ui.Components.GigagroupConvertAlert;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.ForegroundColorSpanThemable;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ListContentReveal;
 import org.telegram.ui.Components.RadialProgressView;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SlideChooseView;
@@ -97,8 +99,10 @@ import java.util.HashSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import app.nimarkogram.messenger.utils.UiAnimationClock;
 public class ChatUsersActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private static final int VIEW_TYPE_INNER_CHECK = 13;
@@ -213,10 +217,34 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             updateListAnimated(savedState);
         }
     }
-    private boolean firstParticipantsPresented;
-    private long participantsFadeStart = -1;
-    private boolean searchFadePending;
-    private long searchFadeStart = -1;
+    private static final WeakHashMap<TLRPC.ChatFull, CachedAdminList> cachedAdminLists = new WeakHashMap<>();
+    private static final int MAX_CACHED_ADMIN_LISTS = 16;
+    private long participantsOwnerUserId;
+
+    private static final class CachedAdminList {
+        final int account, adminsCount, offset;
+        final long userId, chatId;
+        final ArrayList<TLObject> participants;
+
+        CachedAdminList(int account, long userId, long chatId, int adminsCount, int offset, ArrayList<TLObject> participants) {
+            this.account = account;
+            this.userId = userId;
+            this.chatId = chatId;
+            this.adminsCount = adminsCount;
+            this.offset = offset;
+            this.participants = new ArrayList<>(participants);
+        }
+    }
+
+    private final ListContentReveal searchReveal = new ListContentReveal();
+    private int participantLoadingPhase;
+    private final Rect contentVisibleRect = new Rect();
+    private final Runnable contentRevealResume = () -> wakeListContentReveal(listView);
+    private boolean listPresentationVisible;
+    private boolean pendingParticipantListAppearance;
+    private boolean participantListOpening;
+    private float participantListOpeningProgress;
+    private boolean participantListAppearanceRunning;
     private int searchFadeFrom;
 
     private LongSparseArray<TLRPC.GroupCallParticipant> ignoredUsers;
@@ -571,13 +599,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 addNewRow = rowCount++;
             }
 
-            if (loadingUsers && !firstLoaded) {
-                if (!firstLoaded) {
-                    if (info != null && info.banned_count > 0) {
-                        loadingUserCellRow = rowCount++;
-                    }
-                }
-            } else {
+            if (!(loadingUsers && !firstLoaded)) {
                 if (!participants.isEmpty()) {
                     participantsStartRow = rowCount;
                     rowCount += participants.size();
@@ -607,13 +629,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     } else {
                         addNewSectionRow = rowCount++;
                     }
-                } else {
+                } else if (firstLoaded && !participantsLoadFailed) {
                     //restricted1SectionRow = rowCount++;
                     blockedEmptyRow = rowCount++;
                 }
-            } else if (!firstLoaded) {
-                restricted1SectionRow = rowCount++;
-                loadingUserCellRow = rowCount++;
             }
         } else if (type == TYPE_ADMIN) {
             if (!transfer && ChatObject.isChannel(currentChat) && currentChat.megagroup && !currentChat.gigagroup && (info == null || info.participants_count <= 200 || !isChannel && info.can_set_stickers)) {
@@ -638,8 +657,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 if (!isCommunity) {
                     participantsInfoRow = rowCount++;
                 }
-            } else if (!firstLoaded) {
-                loadingUserCellRow = rowCount++;
             }
             if (!transfer && ChatObject.isChannelAndNotMegaGroup(currentChat) && ChatObject.hasAdminRights(currentChat) && !isCommunity) {
                 signMessagesRow = rowCount++;
@@ -694,11 +711,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 if (rowCount != 0) {
                     participantsInfoRow = rowCount++;
                 }
-            } else if (!firstLoaded) {
-                if (selectType == SELECT_TYPE_MEMBERS) {
-                    loadingHeaderRow = rowCount++;
-                }
-                loadingUserCellRow = rowCount++;
             }
         }
     }
@@ -706,6 +718,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     @Override
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
+        participantsOwnerUserId = getUserConfig().getClientUserId();
+        restoreCachedAdministrators();
         getNotificationCenter().addWeakObserver(this, NotificationCenter.chatInfoDidLoad);
         getNotificationCenter().addWeakObserver(this, NotificationCenter.dialogDeleted);
         loadChatParticipants(0, 200);
@@ -714,7 +728,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     @Override
     public void onFragmentDestroy() {
+        rememberCachedAdministrators();
         participantsDestroyed = true;
+        suspendListContentReveal();
+        searchReveal.finish();
+        UiAnimationClock.setResumeCallback(contentRevealResume, false);
         pendingParticipantsResponse = null;
         pendingParticipantAdditions.clear();
         if (listView != null) listView.removeCallbacks(applyPendingParticipantsResponse);
@@ -735,6 +753,9 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     @Override
     public View createView(Context context) {
         cancelParticipantsViewportCheck();
+        UiAnimationClock.setResumeCallback(contentRevealResume, false);
+        searchReveal.finish();
+        listPresentationVisible = false;
         setHasOwnBackground(true);
         searching = false;
 
@@ -794,6 +815,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     listView.setAnimateEmptyView(false, 0);
                     listView.setAdapter(listViewAdapter);
                     listViewAdapter.notifyDataSetChanged();
+                    wakeListContentReveal(listView);
                     listView.setFastScrollVisible(true);
                     listView.setVerticalScrollBarEnabled(false);
                     updateParticipantsLoadState();
@@ -815,7 +837,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             showItemsAnimated(0);
                         }
                     }
-                    progressBar.setVisibility(View.GONE);
+                    if (progressBar != null) progressBar.setVisibility(View.GONE);
                     flickerLoadingView.setVisibility(View.VISIBLE);
                 }
             });
@@ -853,41 +875,127 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         flickerLoadingView.setColors(Theme.key_actionBarDefaultSubmenuBackground, Theme.key_listSelector, Theme.key_listSelector);
         progressLayout.addView(flickerLoadingView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.NO_GRAVITY, 12, 30, 12, 0));
 
+        progressBar = null;
+        if (!isParticipantCategory()) {
         progressBar = new RadialProgressView(context);
         progressLayout.addView(progressBar, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
 
+        }
         flickerLoadingView.setVisibility(View.GONE);
-        progressBar.setVisibility(View.GONE);
+        if (progressBar != null) progressBar.setVisibility(View.GONE);
 
         emptyView = new StickerEmptyView(context, progressLayout, StickerEmptyView.STICKER_TYPE_SEARCH);
         emptyView.title.setText(getString(R.string.NoResult));
         emptyView.subtitle.setText(getString(R.string.SearchEmptyViewFilteredSubtitle2));
         emptyView.setVisibility(View.GONE);
         emptyView.setAnimateLayoutChange(true);
-        emptyView.showProgress(true, false);
+        emptyView.showProgress(!isParticipantCategory(), false);
 
         emptyView.addView(progressLayout, 0);
 
         listView = new RecyclerListView(context) {
+            private int contentCaptureDepth;
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
                 super.onLayout(changed, left, top, right, bottom);
                 scheduleParticipantsViewportCheck();
+                wakeListContentReveal(this);
+            }
+
+            @Override
+            protected void dispatchDraw(Canvas canvas) {
+                if (contentCaptureDepth == 0 && canvas.isHardwareAccelerated()) {
+                    if ((!ListContentReveal.isMotionEnabled() || !canPresentParticipantList(this))
+                            && getItemAnimator() != null && getItemAnimator().isRunning()) getItemAnimator().endAnimations();
+                    advanceListContentReveal(this, canvas);
+                }
+                super.dispatchDraw(canvas);
+            }
+
+            @Override
+            public void capture(Canvas canvas, RectF position) {
+                contentCaptureDepth++;
+                try {
+                    super.capture(canvas, position);
+                } finally {
+                    contentCaptureDepth--;
+                }
+            }
+
+            @Override
+            protected void captureChildren(Canvas canvas, RectF position, long drawingTime) {
+                contentCaptureDepth++;
+                try {
+                    super.captureChildren(canvas, position, drawingTime);
+                } finally {
+                    contentCaptureDepth--;
+                }
             }
             @Override
             public boolean drawChild(Canvas canvas, View child, long drawingTime) {
-                boolean main = getAdapter() == listViewAdapter;
-                if (child instanceof ManageChatUserCell && (main || getChildAdapterPosition(child) >= searchFadeFrom)) {
-                    float alpha = getListContentAlpha(main);
+                if (listView == this && child instanceof ParticipantLoadingCell) {
+                    float alpha = ((ParticipantLoadingCell) child).reveal.getAlpha();
                     if (alpha < 1f) {
                         int save = canvas.saveLayerAlpha(child.getLeft(), child.getTop(), child.getRight(), child.getBottom(), Math.round(alpha * 255));
                         boolean drawn = super.drawChild(canvas, child, drawingTime);
                         canvas.restoreToCount(save);
-                        invalidate();
+                        return drawn;
+                    }
+                }
+                boolean search = getAdapter() == searchListViewAdapter;
+                int position = getChildAdapterPosition(child);
+                if (listView == this && child instanceof ManageChatUserCell && position >= 0 && search && position >= searchFadeFrom) {
+                    float alpha = searchReveal.getAlpha();
+                    if (alpha < 1f) {
+                        int save = canvas.saveLayerAlpha(child.getLeft(), child.getTop(), child.getRight(), child.getBottom(), Math.round(alpha * 255));
+                        boolean drawn = super.drawChild(canvas, child, drawingTime);
+                        canvas.restoreToCount(save);
                         return drawn;
                     }
                 }
                 return super.drawChild(canvas, child, drawingTime);
+            }
+
+            @Override
+            protected void onAttachedToWindow() {
+                super.onAttachedToWindow();
+                if (listView == this && !participantsDestroyed) {
+                    UiAnimationClock.setResumeCallback(contentRevealResume, true);
+                    wakeListContentReveal(this);
+                }
+            }
+
+            @Override
+            protected void onDetachedFromWindow() {
+                if (listView == this) {
+                    suspendListContentReveal();
+                    UiAnimationClock.setResumeCallback(contentRevealResume, false);
+                }
+                super.onDetachedFromWindow();
+            }
+
+            @Override
+            public void onWindowFocusChanged(boolean hasWindowFocus) {
+                super.onWindowFocusChanged(hasWindowFocus);
+                if (listView != this) return;
+                if (hasWindowFocus) wakeListContentReveal(this);
+                else suspendListContentReveal();
+            }
+
+            @Override
+            protected void onWindowVisibilityChanged(int visibility) {
+                super.onWindowVisibilityChanged(visibility);
+                if (listView != this) return;
+                if (visibility == View.VISIBLE) wakeListContentReveal(this);
+                else suspendListContentReveal();
+            }
+
+            @Override
+            protected void onVisibilityChanged(View changedView, int visibility) {
+                super.onVisibilityChanged(changedView, visibility);
+                if (listView != this) return;
+                if (visibility == View.VISIBLE) wakeListContentReveal(this);
+                else suspendListContentReveal();
             }
             @Override
             public void invalidate() {
@@ -915,11 +1023,29 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             @Override
             protected void onAllAnimationsDone() {
                 super.onAllAnimationsDone();
+                participantListAppearanceRunning = false;
                 notificationsLocker.unlock();
+                if (isParticipantCategory()) listView.invalidate();
+            }
+
+            @Override
+            public void endAnimations() {
+                super.endAnimations();
+                notificationsLocker.unlock();
+                pendingParticipantListAppearance = false;
+                participantListAppearanceRunning = false;
+                setDurations(420);
             }
 
             @Override
             public void runPendingAnimations() {
+                setDurations(pendingParticipantListAppearance ? 180 : 420);
+                participantListAppearanceRunning |= pendingParticipantListAppearance;
+                pendingParticipantListAppearance = false;
+                if (!ListContentReveal.isMotionEnabled() || !canPresentParticipantList(listView)) {
+                    endAnimations();
+                    return;
+                }
                 boolean removalsPending = !mPendingRemovals.isEmpty();
                 boolean movesPending = !mPendingMoves.isEmpty();
                 boolean changesPending = !mPendingChanges.isEmpty();
@@ -928,6 +1054,19 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     notificationsLocker.lock();
                 }
                 super.runPendingAnimations();
+                if (!isRunning()) participantListAppearanceRunning = false;
+            }
+
+            @Override
+            protected void onAddAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onAddAnimationUpdate(holder);
+                if (isParticipantCategory()) listView.invalidate();
+            }
+
+            @Override
+            protected void onRemoveAnimationUpdate(RecyclerView.ViewHolder holder) {
+                super.onRemoveAnimationUpdate(holder);
+                if (isParticipantCategory()) listView.invalidate();
             }
 
             @Override
@@ -956,8 +1095,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         frameLayout.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         listView.setOnItemClickListener((view, position, x, y) -> {
+            if (isFinished || participantsDestroyed || position < 0 || listView.getChildAdapterPosition(view) != position) {
+                return;
+            }
             boolean listAdapter = listView.getAdapter() == listViewAdapter;
-            if (position == signMessagesRow) {
+            if (listAdapter && position == signMessagesRow) {
                 signatures = !signatures;
                 ((TextCheckCell) view).setChecked(signatures);
 
@@ -967,7 +1109,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 updateListAnimated(diffCallback);
 
                 listViewAdapter.notifyItemChanged(signMessagesInfoRow);
-            } else if (position == signMessagesProfilesRow) {
+            } else if (listAdapter && position == signMessagesProfilesRow) {
                 profiles = !profiles;
                 ((TextCheckCell) view).setChecked(profiles);
 
@@ -977,7 +1119,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 updateListAnimated(diffCallback);
 
                 listViewAdapter.notifyItemChanged(signMessagesInfoRow);
-            } else if (position == payRow) {
+            } else if (listAdapter && position == payRow) {
                 enablePrice = !enablePrice;
                 ((TextCheckCell) view).setChecked(enablePrice);
 
@@ -1621,45 +1763,143 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     private void showItemsAnimated(int from) {
-        if (listView == null || listView.getAdapter() != searchListViewAdapter) {
+        if (participantsDestroyed || isFinished || !searching || listView == null || listView.getAdapter() != searchListViewAdapter) {
             return;
         }
         searchFadeFrom = Math.max(0, from);
-        searchFadeStart = -1;
-        searchFadePending = true;
-        listView.invalidate();
+        searchReveal.start(ListContentReveal.isMotionEnabled());
+        wakeListContentReveal(listView);
     }
-    private float getListContentAlpha(boolean main) {
-        if (main ? !firstLoaded || firstParticipantsPresented : !searchFadePending) {
-            return 1f;
-        }
-        if (isPaused) {
-            if (main) {
-                firstParticipantsPresented = true;
-            } else {
-                searchFadePending = false;
+
+    private static void settlePresentedContent(ListContentReveal reveal) {
+        if (reveal.hasStarted()) reveal.finish();
+        else reveal.suspend();
+    }
+
+    private void suspendListContentReveal() {
+        searchReveal.suspend();
+        if (listView != null) {
+            for (int i = 0; i < listView.getChildCount(); i++) {
+                View child = listView.getChildAt(i);
+                if (child instanceof ParticipantLoadingCell) ((ParticipantLoadingCell) child).reveal.suspend();
             }
-            return 1f;
+            if (listView.getItemAnimator() != null) listView.getItemAnimator().endAnimations();
         }
-        long now = SystemClock.uptimeMillis();
-        long start = main ? participantsFadeStart : searchFadeStart;
-        if (start < 0) {
-            start = now;
-            if (main) {
-                participantsFadeStart = start;
-            } else {
-                searchFadeStart = start;
+    }
+
+    private final class ParticipantLoadingCell extends LoadingCell {
+        final ListContentReveal reveal = new ListContentReveal();
+        int phase = -1;
+
+        ParticipantLoadingCell(Context context) {
+            super(context, dp(40), dp(56));
+        }
+
+        void bind() {
+            if (phase == participantLoadingPhase) return;
+            phase = participantLoadingPhase;
+            reveal.start(ListContentReveal.isMotionEnabled());
+        }
+    }
+
+    private boolean hasPresentedParticipantLoading() {
+        if (listView == null || listView.getAdapter() != listViewAdapter || !canPresentListContent(listView)
+                || !ListContentReveal.isMotionEnabled()) return false;
+        for (int i = 0; i < listView.getChildCount(); i++) {
+            View child = listView.getChildAt(i);
+            if (child instanceof ParticipantLoadingCell && ((ParticipantLoadingCell) child).phase == participantLoadingPhase
+                    && ((ParticipantLoadingCell) child).reveal.hasStarted() && ((ParticipantLoadingCell) child).reveal.getAlpha() > 0f) return true;
+        }
+        return false;
+    }
+
+    private void advanceParticipantLoading(RecyclerListView owner, Canvas canvas) {
+        for (int i = 0; i < owner.getChildCount(); i++) {
+            View child = owner.getChildAt(i);
+            if (!(child instanceof ParticipantLoadingCell)) continue;
+            ParticipantLoadingCell cell = (ParticipantLoadingCell) child;
+            int position = owner.getChildAdapterPosition(child);
+            if (!cell.reveal.isPending()) continue;
+            if (owner.getAdapter() != listViewAdapter || cell.phase != participantLoadingPhase
+                    || position < 0 || position != loadingUserCellRow && position != loadingProgressRow
+                    || !canPresentListContent(owner) || child.getVisibility() != View.VISIBLE || child.getAlpha() <= 0f
+                    || !child.getGlobalVisibleRect(contentVisibleRect)
+                    || canvas.quickReject(child.getX(), child.getY(), child.getX() + child.getWidth(), child.getY() + child.getHeight(), Canvas.EdgeType.AA)) {
+                cell.reveal.suspend();
+                continue;
+            }
+            if (!ListContentReveal.isMotionEnabled()) cell.reveal.finish();
+            else cell.reveal.advance(SystemClock.uptimeMillis());
+            if (cell.reveal.isPending()) owner.postInvalidateOnAnimation();
+        }
+    }
+
+    private boolean canPresentListContent(RecyclerListView owner) {
+        return canPresentListContent(owner, false);
+    }
+
+    private boolean canPresentParticipantList(RecyclerListView owner) {
+        return canPresentListContent(owner, pendingParticipantListAppearance || participantListAppearanceRunning);
+    }
+
+    private boolean canPresentListContent(RecyclerListView owner, boolean allowOpening) {
+        final boolean opening = allowOpening && participantListOpening && participantListOpeningProgress > 0f;
+        if (owner == null || owner != listView || participantsDestroyed || isFinished || isPaused
+                || !listPresentationVisible && !opening || inTransitionAnimation && !opening || UiAnimationClock.isPaused()
+                || parentLayout != null && (parentLayout.getLastFragment() != this
+                || parentLayout.isTransitionAnimationInProgress() && !opening || parentLayout.isSwipeInProgress())
+                || !owner.isAttachedToWindow() || !owner.isShown() || !owner.hasWindowFocus()
+                || owner.getWindowVisibility() != View.VISIBLE || owner.getWidth() <= 0 || owner.getHeight() <= 0
+                || !owner.getGlobalVisibleRect(contentVisibleRect)) return false;
+        for (View view = owner; view != null; view = view.getParent() instanceof View ? (View) view.getParent() : null) {
+            if (view.getAlpha() <= 0f) return false;
+        }
+        return true;
+    }
+
+    private void advanceListContentReveal(RecyclerListView owner, Canvas canvas) {
+        if (owner != listView || participantsDestroyed || isFinished) return;
+        advanceParticipantLoading(owner, canvas);
+        if (owner.getAdapter() != searchListViewAdapter) {
+            searchReveal.suspend();
+            return;
+        }
+        final ListContentReveal reveal = searchReveal;
+        if (!reveal.isPending()) return;
+        if (!canPresentListContent(owner)) {
+            reveal.suspend();
+            return;
+        }
+        for (int i = 0; i < owner.getChildCount(); i++) {
+            final View child = owner.getChildAt(i);
+            final int position = owner.getChildAdapterPosition(child);
+            if (!(child instanceof ManageChatUserCell) || child.getVisibility() != View.VISIBLE || child.getAlpha() <= 0f
+                    || position < 0 || child.getWidth() <= 0 || child.getHeight() <= 0
+                    || position < searchFadeFrom
+                    || !child.getGlobalVisibleRect(contentVisibleRect)
+                    || canvas.quickReject(child.getX(), child.getY(), child.getX() + child.getWidth(), child.getY() + child.getHeight(), Canvas.EdgeType.AA)) continue;
+            if (!ListContentReveal.isMotionEnabled()) reveal.finish();
+            else reveal.advance(SystemClock.uptimeMillis());
+            if (reveal.isPending()) owner.postInvalidateOnAnimation();
+            return;
+        }
+        reveal.suspend();
+    }
+
+    private void wakeListContentReveal(RecyclerListView owner) {
+        if (owner == null || owner != listView || participantsDestroyed || isFinished) return;
+        for (int i = 0; i < owner.getChildCount(); i++) {
+            View child = owner.getChildAt(i);
+            if (child instanceof ParticipantLoadingCell && ((ParticipantLoadingCell) child).reveal.isPending()) {
+                if (!ListContentReveal.isMotionEnabled()) ((ParticipantLoadingCell) child).reveal.finish();
+                owner.invalidate();
             }
         }
-        float progress = SharedConfig.animationsEnabled() ? Math.min(1f, (now - start) / 200f) : 1f;
-        if (progress >= 1f) {
-            if (main) {
-                firstParticipantsPresented = true;
-            } else {
-                searchFadePending = false;
-            }
+        final boolean pending = owner.getAdapter() == searchListViewAdapter && searchReveal.isPending();
+        if (!ListContentReveal.isMotionEnabled()) {
+            searchReveal.finish();
         }
-        return CubicBezierInterpolator.EASE_OUT.getInterpolation(progress);
+        if (pending) owner.invalidate();
     }
 
     public void setIgnoresUsers(LongSparseArray<TLRPC.GroupCallParticipant> participants) {
@@ -2526,9 +2766,62 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         }
     }
 
+    private boolean canCacheAdministrators() {
+        return type == TYPE_ADMIN && selectType == SELECT_TYPE_MEMBERS && !transfer && ignoredUsers == null
+                && info != null && ChatObject.isChannel(currentChat) && ChatObject.hasAdminRights(currentChat)
+                && participantsOwnerUserId != 0 && participantsOwnerUserId == getUserConfig().getClientUserId();
+    }
+
+    private boolean hasCurrentCachedAdministrators(CachedAdminList cached) {
+        if (cached.account != currentAccount || cached.userId != participantsOwnerUserId || cached.chatId != chatId
+                || cached.adminsCount != info.admins_count) return false;
+        for (TLObject object : cached.participants) {
+            long peerId = getParticipantPeerId(object);
+            if (peerId == 0 || getMessagesController().getAdminInChannel(peerId, chatId) != object
+                    || (peerId > 0 ? getMessagesController().getUser(peerId) == null : getMessagesController().getChat(-peerId) == null)) return false;
+        }
+        return getMessagesController().isChannelAdminsLoaded(chatId);
+    }
+
+    private void restoreCachedAdministrators() {
+        if (firstLoaded || !canCacheAdministrators()) return;
+        CachedAdminList cached = cachedAdminLists.get(info);
+        if (cached == null) return;
+        if (!hasCurrentCachedAdministrators(cached)) {
+            cachedAdminLists.remove(info);
+            return;
+        }
+        participants.addAll(cached.participants);
+        for (TLObject object : participants) participantsMap.put(getParticipantPeerId(object), object);
+        participantsOffset = cached.offset;
+        participantsEndReached = true;
+        firstLoaded = true;
+        sortAdmins(participants);
+        updateRows();
+    }
+
+    private void rememberCachedAdministrators() {
+        if (type != TYPE_ADMIN || info == null || participantsOwnerUserId == 0
+                || participantsOwnerUserId != getUserConfig().getClientUserId()) return;
+        cachedAdminLists.remove(info);
+        if (!canCacheAdministrators()) return;
+        if (!firstLoaded || !participantsEndReached || participants.isEmpty() || participants.size() > 200
+                || info.admins_count > 0 && info.admins_count != participants.size()) return;
+        CachedAdminList cached = new CachedAdminList(currentAccount, participantsOwnerUserId, chatId,
+                info.admins_count, participantsOffset, participants);
+        if (!hasCurrentCachedAdministrators(cached)) return;
+        if (cachedAdminLists.size() >= MAX_CACHED_ADMIN_LISTS) {
+            java.util.Iterator<TLRPC.ChatFull> entries = cachedAdminLists.keySet().iterator();
+            if (entries.hasNext()) {
+                entries.next();
+                entries.remove();
+            }
+        }
+        cachedAdminLists.put(info, cached);
+    }
     @Override
     public boolean needDelayOpenAnimation() {
-        return true;
+        return !firstLoaded && !participantsLoadFailed;
     }
 
     public static int getChannelAdminParticipantType(TLObject participant) {
@@ -2605,9 +2898,24 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             emptyView.title.setText(getString(showError ? R.string.ErrorOccurred : R.string.NoResult));
             emptyView.subtitle.setText(getString(showError ? R.string.TryAgain : R.string.SearchEmptyViewFilteredSubtitle2));
             if (!searching) {
-                emptyView.showProgress(loadingUsers, openTransitionStarted);
+                emptyView.showProgress(!isParticipantCategory() && loadingUsers, openTransitionStarted);
+            }
+            if (isParticipantCategory() && listView != null) {
+                boolean hideLoading = !searching && !firstLoaded && (loadingUsers || !participantsLoadFailed);
+                listView.setEmptyView(hideLoading ? null : emptyView);
             }
         }
+    }
+
+    private boolean isParticipantCategory() {
+        return type == TYPE_ADMIN || type == TYPE_USERS || type == TYPE_KICKED || type == TYPE_BANNED;
+    }
+
+    private boolean shouldAnimateFirstParticipantList(boolean wasLoaded, boolean successful) {
+        return isParticipantCategory() && !wasLoaded && successful
+                && (!participants.isEmpty() || !contacts.isEmpty() || !bots.isEmpty())
+                && !searching && listView != null && listView.getAdapter() == listViewAdapter
+                && ListContentReveal.isMotionEnabled() && canPresentListContent(listView, true);
     }
 
     private ArrayList<TLRPC.TL_channels_getParticipants> loadChatParticipantsRequests(int offset, int count, boolean reset) {
@@ -2686,11 +2994,13 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             applyPendingParticipantsResponse.run();
             return;
         }
-        final DiffCallback localSavedState = localParticipants && firstLoaded && listViewAdapter != null ? saveState() : null;
+        final boolean localWasLoaded = firstLoaded;
+        final DiffCallback localSavedState = localParticipants && listViewAdapter != null
+                && (firstLoaded || isParticipantCategory() && !searching && ListContentReveal.isMotionEnabled()
+                && canPresentListContent(listView, true)) ? saveState() : null;
         if (isCommunity && type == TYPE_USERS) {
             loadingUsers = false;
             firstLoaded = true;
-            firstParticipantsPresented = true;
             participants.clear();
             bots.clear();
             contacts.clear();
@@ -2710,6 +3020,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
 
             if (localSavedState != null) {
+                if (shouldAnimateFirstParticipantList(localWasLoaded, true)) pendingParticipantListAppearance = true;
                 updateListAnimated(localSavedState);
             } else {
                 updateRows();
@@ -2727,7 +3038,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
             loadingUsers = false;
             firstLoaded = true;
-            firstParticipantsPresented = true;
             participants.clear();
             bots.clear();
             contacts.clear();
@@ -2782,12 +3092,14 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 }
             }
             if (localSavedState != null) {
+                if (shouldAnimateFirstParticipantList(localWasLoaded, true)) pendingParticipantListAppearance = true;
                 updateListAnimated(localSavedState);
             } else {
                 updateRows();
                 if (listViewAdapter != null) listViewAdapter.notifyDataSetChanged();
             }
         } else {
+            if (!firstLoaded) ++participantLoadingPhase;
             loadingUsers = true;
             updateParticipantsLoadState();
             if (!firstLoaded) {
@@ -2928,7 +3240,9 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     if (!searching) {
                         listView.setAnimateEmptyView(openTransitionStarted, RecyclerListView.EMPTY_VIEW_ANIMATION_TYPE_ALPHA);
                     }
-                    if (wasLoaded) {
+                    boolean animateFirstArrival = shouldAnimateFirstParticipantList(wasLoaded, hadSuccessfulResponse);
+                    if (animateFirstArrival) pendingParticipantListAppearance = true;
+                    if (wasLoaded || hasPresentedParticipantLoading() || animateFirstArrival) {
                         updateListAnimated(savedState);
                     } else {
                         updateRows();
@@ -2960,6 +3274,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 getConnectionsManager().bindRequestToGuid(reqId, classGuid);
             }
         }
+        if (localParticipants && firstLoaded) resumeDelayedFragmentAnimation();
     }
     private static long getParticipantPeerId(TLObject participant) {
         if (participant instanceof TLRPC.ChannelParticipant) {
@@ -3033,11 +3348,12 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     @Override
     public void onResume() {
         super.onResume();
-        applyPendingParticipantsResponse.run();
+        wakeListContentReveal(listView);
         AndroidUtilities.requestAdjustResize(getParentActivity(), classGuid);
         if (listViewAdapter != null) {
             listViewAdapter.notifyDataSetChanged();
         }
+        applyPendingParticipantsResponse.run();
         if (emptyView != null) {
             emptyView.requestLayout();
         }
@@ -3047,11 +3363,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     @Override
     public void onPause() {
         super.onPause();
+        participantListOpening = false;
+        participantListOpeningProgress = 0f;
         cancelParticipantsViewportCheck();
-        if (participantsFadeStart >= 0) {
-            firstParticipantsPresented = true;
-        }
-        searchFadePending = false;
+        suspendListContentReveal();
+        settlePresentedContent(searchReveal);
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -3059,6 +3375,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     @Override
     public void onBecomeFullyHidden() {
+        listPresentationVisible = false;
+        participantListOpening = false;
+        participantListOpeningProgress = 0f;
+        suspendListContentReveal();
+        settlePresentedContent(searchReveal);
         if (undoView != null) {
             undoView.hide(true, 0);
         }
@@ -3077,9 +3398,51 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 //    }
 
     @Override
+    public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
+        super.prepareFragmentToSlide(topFragment, beginSlide);
+        if (beginSlide) {
+            participantListOpening = false;
+            participantListOpeningProgress = 0f;
+        }
+        suspendListContentReveal();
+        if (topFragment && !beginSlide) wakeListContentReveal(listView);
+    }
+
+    @Override
+    public void onTransitionAnimationStart(boolean isOpen, boolean backward) {
+        super.onTransitionAnimationStart(isOpen, backward);
+        listPresentationVisible = false;
+        suspendListContentReveal();
+        participantListOpening = isOpen && !backward;
+        participantListOpeningProgress = 0f;
+    }
+
+    @Override
+    public void onTransitionAnimationProgress(boolean isOpen, float progress) {
+        super.onTransitionAnimationProgress(isOpen, progress);
+        if (participantListOpening && isOpen) {
+            participantListOpeningProgress = Float.isFinite(progress) ? Math.max(0f, Math.min(1f, progress)) : 0f;
+        }
+    }
+
+    @Override
+    public void onBecomeFullyVisible() {
+        super.onBecomeFullyVisible();
+        listPresentationVisible = true;
+        participantListOpening = false;
+        participantListOpeningProgress = 0f;
+        wakeListContentReveal(listView);
+    }
+
+    @Override
     public void onTransitionAnimationEnd(boolean isOpen, boolean backward) {
+        super.onTransitionAnimationEnd(isOpen, backward);
+        listPresentationVisible = isOpen;
+        participantListOpening = false;
+        participantListOpeningProgress = 0f;
         if (isOpen) {
             openTransitionStarted = true;
+            wakeListContentReveal(listView);
         }
         if (isOpen && !backward && needOpenSearch) {
             searchItem.getSearchField().requestFocus();
@@ -3127,9 +3490,12 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         }
 
         private void cancelSearch() {
-            searchFadePending = false;
+            searchReveal.finish();
             searchGeneration++;
             searchInProgress = false;
+            if (listView != null) {
+                listView.cancelClickRunnables(true);
+            }
             if (searchRunnable != null) {
                 Utilities.searchQueue.cancelRunnable(searchRunnable);
                 searchRunnable = null;
@@ -3322,6 +3688,9 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
         @Override
         public void notifyDataSetChanged() {
+            if (listView != null && (searching || listView.getAdapter() == this)) {
+                listView.cancelClickRunnables(true);
+            }
             totalCount = 0;
             int count = searchAdapterHelper.getGroupSearch().size();
             if (count != 0) {
@@ -3692,7 +4061,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     view.setBackground(null);
                     break;
                 case 10:
-                    view = new LoadingCell(mContext, dp(40), dp(120));
+                    view = new ParticipantLoadingCell(mContext);
                     break;
                 case 11:
                     FlickerLoadingView flickerLoadingView = new FlickerLoadingView(mContext);
@@ -3776,6 +4145,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
         @Override
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+            if (holder.itemView instanceof ParticipantLoadingCell) ((ParticipantLoadingCell) holder.itemView).bind();
             switch (holder.getItemViewType()) {
                 case 0:
                     ManageChatUserCell userCell = (ManageChatUserCell) holder.itemView;
@@ -4185,7 +4555,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             } else if (position == loadingProgressRow) {
                 return 10;
             } else if (position == loadingUserCellRow) {
-                return 11;
+                return 10;
             } else if (position == antiSpamRow || position == hideMembersRow || position == tagsRow) {
                 return 12;
             } else if (isExpandableSendMediaRow(position)) {

@@ -45,7 +45,13 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
 
     public static final ConcurrentHashMap<Long, FileStreamLoadOperation> allStreams = new ConcurrentHashMap<>();
 
-    private FileLoadOperation loadOperation;
+    private volatile FileLoadOperation loadOperation;
+    private final FileLoader.PlayerStreamScope playerStreamScope;
+    private final Object sourceStateLock = new Object();
+    private volatile FileLoader.StreamRegistration streamRegistration;
+    private FileLoader.StreamRegistration streamOwner;
+    private int streamOwnerAccount = -1;
+    private long openGeneration;
 
     private Uri uri;
     private long bytesRemaining;
@@ -63,16 +69,19 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
     private static final ConcurrentHashMap<Long, Integer> priorityMap = new ConcurrentHashMap<>();
 
     public FileStreamLoadOperation() {
+        this(null, null);
+    }
+
+    public FileStreamLoadOperation(@Nullable TransferListener listener, FileLoader.PlayerStreamScope playerStreamScope) {
+        this.playerStreamScope = playerStreamScope;
         this.isNetwork = true;
         this.listeners = new ArrayList<>(/* initialCapacity= */ 1);
+        if (listener != null) addTransferListener(listener);
     }
 
     @Deprecated
     public FileStreamLoadOperation(@Nullable TransferListener listener) {
-        this();
-        if (listener != null) {
-            addTransferListener(listener);
-        }
+        this(listener, null);
     }
 
     public static int getStreamPrioriy(TLRPC.Document document) {
@@ -88,6 +97,15 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
 
     @Override
     public long open(DataSpec dataSpec) throws IOException {
+        final long generation;
+        final FileLoader.StreamRegistration previous;
+        synchronized (sourceStateLock) {
+            generation = ++openGeneration;
+            opened = true;
+            previous = streamRegistration;
+            streamRegistration = null;
+        }
+        if (previous != null) previous.close();
         uri = dataSpec.uri;
         transferInitializing(dataSpec);
         currentAccount = Utilities.parseInt(uri.getQueryParameter("account"));
@@ -107,33 +125,56 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
         } else if (document.mime_type.startsWith("audio")) {
             document.attributes.add(new TLRPC.TL_documentAttributeAudio());
         }
-        allStreams.put(document.id, this);
         currentOffset = dataSpec.position;
         requestedLength = dataSpec.length;
-        loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, null, parentObject, currentOffset, false, getCurrentPriority());
+        final FileLoader.StreamRegistration inherited;
+        synchronized (sourceStateLock) {
+            inherited = streamOwnerAccount == currentAccount ? streamOwner : null;
+        }
+        final FileLoader.StreamRegistration registration = inherited == null
+                ? FileLoader.getInstance(currentAccount).createStreamRegistration(this, playerStreamScope) : inherited.fork();
+        boolean accepted;
+        synchronized (sourceStateLock) {
+            accepted = opened && openGeneration == generation;
+            if (accepted) {
+                streamRegistration = registration;
+                streamOwner = registration;
+                streamOwnerAccount = currentAccount;
+            }
+        }
+        if (!accepted) {
+            registration.close();
+            throw new IOException("Media stream was closed during admission");
+        }
+        final FileLoadOperation operation = acquireStreamOperation(registration);
+        synchronized (sourceStateLock) {
+            accepted = opened && openGeneration == generation && streamRegistration == registration;
+            if (accepted) loadOperation = operation;
+        }
+        if (!accepted || operation == null || registration.isClosed()) {
+            registration.close();
+            if (accepted) closeStream(registration);
+            throw new IOException("Media stream admission was cancelled");
+        }
+        allStreams.put(document.id, this);
+        if (!registration.isAttachedTo(operation)) {
+            allStreams.remove(document.id, this);
+            closeStream(registration);
+            throw new IOException("Media stream was closed during admission");
+        }
         bytesTransferred = 0;
         bytesRemaining = document.size - dataSpec.position;
         if (requestedLength != C.LENGTH_UNSET) {
             bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
         }
-        opened = true;
         transferStarted(dataSpec);
-        if (loadOperation != null) {
-            currentFile = loadOperation.getCurrentFile();
-            if (currentFile != null) {
-                try {
-                    file = new RandomAccessFile(currentFile, "r");
-                    file.seek(currentOffset);
-                    if (loadOperation.isFinished()) {
-                        isNetwork = false;
-                        bytesRemaining = currentFile.length() - currentOffset;
-                        if (requestedLength != C.LENGTH_UNSET) {
-                            bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
-                        }
-                    }
-                } catch (Throwable e) {
-                }
-            }
+        try {
+            replaceStreamFile(operation.getCurrentFile(), operation, registration);
+        } catch (IOException ignore) {
+        }
+        if (!registration.isAttachedTo(operation)) {
+            closeStream(registration);
+            throw new IOException("Media stream was closed");
         }
         FileLog.e("FileStreamLoadOperation " + document.id + " open operation=" + loadOperation + " currentFile=" + currentFile + " file=" + file + " bytesRemaining=" + bytesRemaining + " me=" + this);
         FileLog.e("FileStreamLoadOperation " + document.id + " " + MessageObject.getVideoWidth(document) + "x" + MessageObject.getVideoWidth(document) + " mime_type="+document.mime_type+" codec="+MessageObject.getVideoCodec(document)+" size="+ document.size);
@@ -141,11 +182,69 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
     }
 
     private int getCurrentPriority() {
+        if (playerStreamScope != null) return playerStreamScope.getPriority();
         Integer priority = priorityMap.getOrDefault(document.id, null);
         if (priority != null) {
             return priority;
         }
         return FileLoader.PRIORITY_HIGH;
+    }
+
+    private FileLoadOperation acquireStreamOperation(FileLoader.StreamRegistration registration) {
+        return FileLoader.getInstance(currentAccount).loadStreamFileWithRegistration(this, document, null, parentObject,
+                currentOffset, false, getCurrentPriority(), 0,
+                () -> opened && streamRegistration == registration, registration);
+    }
+
+    FileLoader.StreamRegistration registrationForOperation(FileLoadOperation operation) {
+        FileLoader.StreamRegistration registration = streamRegistration;
+        return opened && registration != null && registration.isAttachedTo(operation) ? registration : null;
+    }
+
+    private void acceptStreamOperation(FileLoadOperation operation, FileLoader.StreamRegistration registration) throws IOException {
+        synchronized (sourceStateLock) {
+            if (operation == null || !opened || streamRegistration != registration || !registration.isAttachedTo(operation)) {
+                throw new IOException("Media stream admission was cancelled");
+            }
+            loadOperation = operation;
+        }
+    }
+
+    private void replaceStreamFile(File nextFile, FileLoadOperation operation, FileLoader.StreamRegistration registration) throws IOException {
+        final RandomAccessFile previous;
+        final long position;
+        synchronized (sourceStateLock) {
+            if (!opened || streamRegistration != registration || !registration.isAttachedTo(operation)) {
+                throw new IOException("Media stream was closed");
+            }
+            previous = file;
+            file = null;
+            currentFile = nextFile;
+            position = currentOffset;
+        }
+        if (previous != null) previous.close();
+        if (nextFile == null) return;
+        RandomAccessFile candidate = new RandomAccessFile(nextFile, "r");
+        try {
+            candidate.seek(position);
+            long length = operation.isFinished() ? candidate.length() : -1;
+            synchronized (sourceStateLock) {
+                if (!opened || streamRegistration != registration || !registration.isAttachedTo(operation)) {
+                    throw new IOException("Media stream was closed");
+                }
+                file = candidate;
+                candidate = null;
+                if (length >= 0) {
+                    isNetwork = false;
+                    bytesRemaining = length - position;
+                    if (requestedLength != C.LENGTH_UNSET) {
+                        bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
+                    }
+                }
+            }
+        } finally {
+            if (candidate != null) candidate.close();
+        }
     }
 
     @Override
@@ -157,83 +256,75 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
 //            FileLog.e("FileStreamLoadOperation " + document.id + " read RESULT_END_OF_INPUT");
             return C.RESULT_END_OF_INPUT;
         } else {
+            final FileLoader.StreamRegistration registration = streamRegistration;
+            if (registration == null || registration.isClosed()) throw new IOException("Media stream was closed");
             int availableLength = 0;
             int bytesRead;
             try {
                 if (bytesRemaining < readLength) {
                     readLength = (int) bytesRemaining;
                 }
-                while (opened && (availableLength == 0 || file == null)) {
+                while (opened && streamRegistration == registration && (availableLength == 0 || file == null)) {
+                    FileLoadOperation operation = loadOperation;
+                    if (registration.isClosed() || operation == null) {
+                        throw new IOException("Media stream was closed");
+                    }
                     final CountDownLatch wakeup = new CountDownLatch(1);
+                    synchronized (sourceStateLock) {
+                        if (!opened || streamRegistration != registration) return 0;
                     countDownLatch = wakeup;
-                    long[] result = loadOperation.getDownloadedLengthFromOffset(currentOffset, readLength);
+                    }
+                    long[] result = operation.getDownloadedLengthFromOffset(currentOffset, readLength);
                     if (result[2] != 0) {
                         throw new IOException("Media download failed or was cancelled");
                     }
                     availableLength = (int) result[0];
                     if (availableLength == 0) {
-                        FileLoadOperation loadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, null, parentObject, currentOffset, false, getCurrentPriority());
-                        if (this.loadOperation != loadOperation) {
-//                            FileLog.e("FileStreamLoadOperation " + document.id + " read: changed operation!");
-                            this.loadOperation.removeStreamListener(this);
-                            this.loadOperation = loadOperation;
-                        }
+                        operation = acquireStreamOperation(registration);
+                        acceptStreamOperation(operation, registration);
 //                        FileLog.e("FileStreamLoadOperation " + document.id + " read sleeping.... Zzz");
                         if (opened) {
                             wakeup.await(1, TimeUnit.SECONDS);
                         }
                     }
 //                    FileLog.e("FileStreamLoadOperation " + document.id + " read availableLength=" + availableLength);
-                    File currentFileFast = loadOperation.getCurrentFileFast();
+                    File currentFileFast = operation.getCurrentFileFast();
                     if (file == null || !Objects.equals(currentFile, currentFileFast)) {
                         if (BuildVars.LOGS_ENABLED) {
                             FileLog.d("check stream file " + currentFileFast);
                         }
-                        if (file != null) {
-                            try {
-                                file.close();
-                            } catch (Exception ignore) {
-
-                            }
-                        }
-//                        FileLog.e("FileStreamLoadOperation " + document.id + " read update file from " + currentFile + " to " + currentFileFast + " me=" + this);
-                        currentFile = currentFileFast;
-                        if (currentFile != null) {
-                            try {
-                                file = new RandomAccessFile(currentFile, "r");
-                                file.seek(currentOffset);
-                                if (loadOperation.isFinished()) {
-                                    isNetwork = false;
-                                    bytesRemaining = currentFile.length() - currentOffset;
-                                    if (requestedLength != C.LENGTH_UNSET) {
-                                        bytesRemaining = Math.min(bytesRemaining, requestedLength - bytesTransferred);
-                                    }
-                                }
-                            } catch (Throwable e) {
-                                if (loadOperation.isFinished() && !currentFile.exists()) {
-                                    FileLoader.getInstance(currentAccount).cancelLoadFile(loadOperation.getFileName());
-                                    FileLoadOperation newLoadOperation = FileLoader.getInstance(currentAccount).loadStreamFile(this, document, null, parentObject, currentOffset, false, getCurrentPriority());
-                                    if (this.loadOperation != newLoadOperation) {
-//                            FileLog.e("FileStreamLoadOperation " + document.id + " read: changed operation!");
-                                        this.loadOperation.removeStreamListener(this);
-                                        this.loadOperation = newLoadOperation;
-                                    }
-                                }
+                        try {
+                            replaceStreamFile(currentFileFast, operation, registration);
+                        } catch (IOException e) {
+                            if (!registration.isAttachedTo(operation)) throw e;
+                            if (operation.isFinished() && currentFileFast != null && !currentFileFast.exists()) {
+                                if (!FileLoader.getInstance(currentAccount).recoverStreamFile(operation, registration)) throw e;
+                                acceptStreamOperation(acquireStreamOperation(registration), registration);
                             }
                         }
                     } else {
 //                        FileLog.e("FileStreamLoadOperation " + document.id + " read have exact same file");
                     }
                 }
-                if (!opened) {
+                if (!opened || streamRegistration != registration) {
 //                    FileLog.e("FileStreamLoadOperation " + document.id + " read return, not opened");
                     return 0;
                 }
-                bytesRead = file.read(buffer, offset, availableLength);
+                final RandomAccessFile current;
+                synchronized (sourceStateLock) {
+                    if (!opened || streamRegistration != registration || !registration.isAttachedTo(loadOperation)) {
+                        throw new IOException("Media stream was closed");
+                    }
+                    current = file;
+                }
+                bytesRead = current.read(buffer, offset, availableLength);
                 if (bytesRead > 0) {
+                    synchronized (sourceStateLock) {
+                        if (!opened || streamRegistration != registration) throw new IOException("Media stream was closed");
                     currentOffset += bytesRead;
                     bytesRemaining -= bytesRead;
                     bytesTransferred += bytesRead;
+                    }
                     bytesTransferred(bytesRead);
                 }
             } catch (InterruptedException e) {
@@ -243,7 +334,9 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
             } catch (Exception e) {
                 throw new IOException(e);
             } finally {
-                countDownLatch = null;
+                synchronized (sourceStateLock) {
+                    if (streamRegistration == registration) countDownLatch = null;
+                }
             }
             return bytesRead;
         }
@@ -256,29 +349,40 @@ public class FileStreamLoadOperation implements DataSource, FileLoadOperationStr
 
     @Override
     public void close() {
-        FileLog.e("FileStreamLoadOperation " + document.id + " close me=" + this);
-        if (loadOperation != null) {
-            loadOperation.removeStreamListener(this);
+        closeStream(null);
+    }
+
+    private void closeStream(FileLoader.StreamRegistration expected) {
+        final FileLoader.StreamRegistration registration;
+        final RandomAccessFile previousFile;
+        final CountDownLatch wakeup;
+        final boolean transferred;
+        synchronized (sourceStateLock) {
+            if (expected != null && streamRegistration != expected) return;
+            ++openGeneration;
+            opened = false;
+            registration = streamRegistration;
+            streamRegistration = null;
+            previousFile = file;
+            file = null;
+            loadOperation = null;
+            wakeup = countDownLatch;
+            countDownLatch = null;
+            transferred = this.dataSpec != null;
         }
-        if (file != null) {
+        FileLog.e("FileStreamLoadOperation " + (document == null ? 0 : document.id) + " close me=" + this);
+        if (wakeup != null) wakeup.countDown();
+        if (registration != null) registration.close();
+        if (previousFile != null) {
             try {
-                file.close();
+                previousFile.close();
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            file = null;
         }
         uri = null;
-        allStreams.remove(document.id);
-        if (opened) {
-            opened = false;
-            transferEnded();
-        }
-        if (countDownLatch != null) {
-         //   FileLog.d("FileStreamLoadOperation count down");
-            countDownLatch.countDown();
-            countDownLatch = null;
-        }
+        if (document != null) allStreams.remove(document.id, this);
+        if (transferred) transferEnded();
     }
 
     @Override

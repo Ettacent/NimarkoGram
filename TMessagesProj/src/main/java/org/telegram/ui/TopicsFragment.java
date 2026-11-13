@@ -78,6 +78,7 @@ import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.TopicsController;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.utils.OnPostDrawView;
@@ -85,6 +86,7 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_forum;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -108,6 +110,7 @@ import org.telegram.ui.Cells.TopicSearchCell;
 import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
+import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BlurredRecyclerView;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
@@ -152,12 +155,14 @@ import org.telegram.ui.Components.chat.ViewPositionWatcher;
 import org.telegram.ui.Components.voip.VoIPHelper;
 import org.telegram.ui.Delegates.ChatActivityMemberRequestsDelegate;
 
+import app.nimarkogram.messenger.notifications.InAppNotifications;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.concurrent.CountDownLatch;
 
+import java.util.function.BooleanSupplier;
 public class TopicsFragment extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, ChatActivityInterface, RightSlidingDialogContainer.BaseFragmentWithFullscreen, MainTabsActivity.TabFragmentDelegate {
 
     @Override
@@ -2697,6 +2702,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     private void animateToSearchView(boolean showSearch) {
         searching = showSearch;
+        searchContainer.invalidateSearch();
         if (searchAnimator != null) {
             searchAnimator.removeAllListeners();
             searchAnimator.cancel();
@@ -3383,6 +3389,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public void onFragmentDestroy() {
+        if (searchContainer != null) {
+            searchContainer.invalidateSearch();
+        }
         AndroidUtilities.cancelRunOnUIThread(emojiPickerPreloadRunnable);
         if (blurredPreviewBitmap != null) {
             if (blurredView != null) {
@@ -3534,10 +3543,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             updateUnreadBackBadge();
         } else if (id == NotificationCenter.chatInfoDidLoad) {
             TLRPC.ChatFull chatFull = (TLRPC.ChatFull) args[0];
+            if (chatFull.id == chatId) {
             if (chatFull.participants != null && this.chatFull != null) {
                 this.chatFull.participants = chatFull.participants;
             }
-            if (chatFull.id == chatId) {
                 updateChatInfo();
                 if (pendingRequestsDelegate != null) {
                     pendingRequestsDelegate.setChatInfo(chatFull, true);
@@ -3558,6 +3567,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     checkForLoadMore();
                 }
                 checkLoading();
+                if (searchContainer != null) {
+                    searchContainer.onTopicsLoaded();
+                }
             }
         } else if (id == NotificationCenter.updateInterfaces) {
             int mask = (Integer) args[0];
@@ -3860,13 +3872,21 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         public int position = -1;
 
         public TopicDialogCell(DialogsActivity fragment, Context context, boolean needCheck, boolean forceThreeLines) {
-            super(fragment, context, needCheck, forceThreeLines);
+            super(fragment, context, needCheck, forceThreeLines, TopicsFragment.this.currentAccount, null);
             drawAvatar = false;
             messagePaddingStart = isInPreviewMode() ? 11 : 50;
             chekBoxPaddingTop = 24;
             heightDefault = 64;
             heightThreeLines = 76;
             forbidVerified = true;
+        }
+
+        private void setUnresolvedSearchMessage(MessageObject message) {
+            setForumTopic(null, message.getDialogId(), null, false, false);
+            setAnimatedEmojiDrawable(null);
+            setForumIcon(null);
+            setTopicIcon(null);
+            setDialog(message.getDialogId(), message, null, message.messageOwner.date, false, false);
         }
 
         private TLRPC.TL_forumTopic currentTopic;
@@ -4253,7 +4273,154 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         int rowCount;
         private static final int MAX_ANIMATED_SEARCH_ROWS = 64;
         private ArrayList<String> presentedSearchRows = new ArrayList<>();
-        private int searchGeneration;
+        private long searchGeneration;
+        private final int searchAccount = currentAccount;
+        private final long searchUserId = UserConfig.getInstance(searchAccount).getClientUserId();
+        private final long searchSession = InAppNotifications.session(searchAccount);
+        private SearchOwner searchOwner;
+
+        private final class SearchOwner {
+            final long generation;
+            final String query;
+            final HashSet<Integer> requestedTopics = new HashSet<>();
+            final HashSet<SearchRequest> topicRequests = new HashSet<>();
+            SearchRequest messageRequest;
+            volatile boolean active = true;
+
+            SearchOwner(long generation, String query) {
+                this.generation = generation;
+                this.query = query;
+            }
+        }
+
+        private final class SearchRequest {
+            int token;
+            boolean completed;
+        }
+
+        private boolean isCurrentSearchAccount() {
+            return currentAccount == searchAccount && InAppNotifications.isCurrent(searchAccount, searchUserId, searchSession);
+        }
+
+        private boolean isCurrentSearch(SearchOwner owner) {
+            return owner != null && searchOwner == owner && owner.active && owner.generation == searchGeneration
+                    && owner.query.equals(searchString) && isCurrentSearchAccount()
+                    && !isFinished && !isPaused() && searching && TopicsFragment.this.searchContainer == this
+                    && isAttachedToWindow() && getVisibility() == View.VISIBLE;
+        }
+
+        private long invalidateSearch() {
+            SearchOwner owner = searchOwner;
+            if (owner != null) owner.active = false;
+            searchOwner = null;
+            long generation = ++searchGeneration;
+            messagesIsLoading = false;
+            isLoading = false;
+            canLoadMore = false;
+            Runnable pendingSearch = searchRunnable;
+            searchRunnable = null;
+            if (pendingSearch != null) {
+                AndroidUtilities.cancelRunOnUIThread(pendingSearch);
+            }
+            if (owner == null) {
+                if (recyclerView != null && generation == searchGeneration) recyclerView.cancelClickRunnables(true);
+                return generation;
+            }
+            ArrayList<SearchRequest> requests = new ArrayList<>(owner.topicRequests);
+            owner.topicRequests.clear();
+            if (owner.messageRequest != null) {
+                requests.add(owner.messageRequest);
+                owner.messageRequest = null;
+            }
+            for (SearchRequest request : requests) {
+                int token = request.token;
+                request.token = 0;
+                if (token != 0 && InAppNotifications.isCurrent(searchAccount, searchUserId, searchSession)) {
+                    ConnectionsManager.getInstance(searchAccount).cancelRequest(token, true);
+                }
+            }
+            if (recyclerView != null && generation == searchGeneration) recyclerView.cancelClickRunnables(true);
+            return generation;
+        }
+
+        private void trackSearchRequest(SearchOwner owner, SearchRequest request, int token) {
+            if (request.completed) {
+                return;
+            }
+            if (token <= 0) {
+                if (owner.messageRequest == request) {
+                    receiveSearchMessages(owner, request, null);
+                } else {
+                    receiveSearchTopics(owner, request, null);
+                }
+                return;
+            }
+            if (searchOwner == owner && owner.active) {
+                request.token = token;
+            } else {
+                request.completed = true;
+                if (InAppNotifications.isCurrent(searchAccount, searchUserId, searchSession)) {
+                    ConnectionsManager.getInstance(searchAccount).cancelRequest(token, true);
+                }
+            }
+        }
+
+        private void sendSearchRequest(SearchOwner owner, SearchRequest request, TLObject payload, boolean topics) {
+            Runnable failed = () -> {
+                if (topics) receiveSearchTopics(owner, request, null);
+                else receiveSearchMessages(owner, request, null);
+            };
+            try {
+                if (!Utilities.stageQueue.postRunnable(() -> {
+                    if (!owner.active || !InAppNotifications.isCurrent(searchAccount, searchUserId, searchSession)) {
+                        AndroidUtilities.runOnUIThread(failed);
+                        return;
+                    }
+                    try {
+                        int token = ConnectionsManager.getInstance(searchAccount).sendRequestSync(payload, (response, error) ->
+                                AndroidUtilities.runOnUIThread(() -> {
+                                    if (topics) receiveSearchTopics(owner, request, response);
+                                    else receiveSearchMessages(owner, request, response);
+                                }), null, null, 0, ConnectionsManager.DEFAULT_DATACENTER_ID,
+                                ConnectionsManager.ConnectionTypeGeneric, true);
+                        AndroidUtilities.runOnUIThread(() -> trackSearchRequest(owner, request, token));
+                    } catch (Exception error) {
+                        FileLog.e(error);
+                        AndroidUtilities.runOnUIThread(failed);
+                    }
+                })) {
+                    failed.run();
+                }
+            } catch (Exception error) {
+                FileLog.e(error);
+                failed.run();
+            }
+        }
+
+        private void resumeSearch() {
+            if (!isFinished && !isPaused() && searching && isAttachedToWindow()
+                    && viewPages[0] == searchContainer && !isCurrentSearch(searchOwner)) {
+                searchMessages(searchString);
+            }
+        }
+
+        private void onTopicsLoaded() {
+            if (isCurrentSearch(searchOwner) && !searchResultMessages.isEmpty()) {
+                updateRows();
+            }
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            resumeSearch();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            invalidateSearch();
+            super.onDetachedFromWindow();
+        }
 
         boolean isLoading;
         boolean canLoadMore;
@@ -4301,13 +4468,24 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             searchItemAnimator.setSupportsChangeAnimations(false);
             recyclerView.setItemAnimator(searchItemAnimator);
             recyclerView.setOnItemClickListener((view, position) -> {
-                if (view instanceof TopicSearchCell) {
-                    TopicSearchCell cell = (TopicSearchCell) view;
-                    ForumUtilities.openTopic(TopicsFragment.this, chatId, cell.getTopic(), 0);
-                } else if (view instanceof TopicDialogCell) {
-                    TopicDialogCell cell = (TopicDialogCell) view;
-                    ForumUtilities.openTopic(TopicsFragment.this, chatId, cell.forumTopic, cell.getMessageId());
+                SearchOwner owner = searchOwner;
+                if (!isCurrentSearch(owner) || viewPages[0] != searchContainer || view.getParent() != recyclerView) {
+                    return;
                 }
+                int currentPosition = recyclerView.getChildAdapterPosition(view);
+                if (currentPosition == RecyclerView.NO_POSITION) return;
+                TLRPC.TL_forumTopic topic;
+                int messageId = 0;
+                if (currentPosition >= topicsStartRow && currentPosition < topicsEndRow) {
+                    topic = searchResultTopics.get(currentPosition - topicsStartRow);
+                } else if (currentPosition >= messagesStartRow && currentPosition < messagesEndRow) {
+                    MessageObject message = searchResultMessages.get(currentPosition - messagesStartRow);
+                    topic = findSearchTopic(message);
+                    messageId = message.getId();
+                } else {
+                    return;
+                }
+                openSearchTopic(owner, topic, messageId);
             });
             recyclerView.setOnScrollListener(new RecyclerView.OnScrollListener() {
                 @Override
@@ -4515,7 +4693,12 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             long maxDate = 0;
             boolean includeFolder = false;
 
+            boolean changed = !TextUtils.equals(this.searchString, query);
             this.searchString = query;
+            if (changed) {
+                long generation = invalidateSearch();
+                if (generation != searchGeneration || !TextUtils.equals(this.searchString, query)) return;
+            }
             if (view == searchContainer) {
                 searchMessages(query);
             } else if (view instanceof FilteredSearchView) {
@@ -4529,16 +4712,21 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
 
         private void searchMessages(String searchString) {
-            final int generation = ++searchGeneration;
-            if (searchRunnable != null) {
-                AndroidUtilities.cancelRunOnUIThread(searchRunnable);
-                searchRunnable = null;
-            }
+            long generation = invalidateSearch();
+            if (generation != searchGeneration || !TextUtils.equals(this.searchString, searchString)) return;
+            final SearchOwner owner = new SearchOwner(generation, searchString);
+            searchOwner = owner;
 
 //            AndroidUtilities.updateViewVisibilityAnimated(TopicsFragment.this.searchContainer, !TextUtils.isEmpty(searchString), 1f, true);
 
             messagesIsLoading = false;
             canLoadMore = false;
+            if (!isCurrentSearchAccount()) {
+                searchResultTopics.clear();
+                searchResultMessages.clear();
+                updateRows();
+                return;
+            }
             if (TextUtils.isEmpty(searchString)) {
                 isLoading = false;
                 searchResultTopics.clear();
@@ -4557,8 +4745,10 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             isLoading = rowCount == 0;
             if (isLoading) emptyView.showProgress(true, true);
 
+            if (!isCurrentSearch(owner)) return;
             searchRunnable = () -> {
-                if (generation != searchGeneration) return;
+                if (!isCurrentSearch(owner)) return;
+                searchRunnable = null;
                 String searchTrimmed = searchString.trim().toLowerCase();
                 ArrayList<TLRPC.TL_forumTopic> topics = new ArrayList<>();
                 for (int i = 0; i < forumTopics.size(); i++) {
@@ -4574,27 +4764,30 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 isLoading = searchResultTopics.isEmpty();
                 updateRows();
 
+                if (!isCurrentSearch(owner)) return;
                 emptyView.showProgress(isLoading, true);
 
+                if (!isCurrentSearch(owner)) return;
                 loadMessages(searchString);
             };
             AndroidUtilities.runOnUIThread(searchRunnable, 200);
         }
 
         public void setSearchString(String searchString) {
-            if (this.searchString.equals(searchString)) {
+            if (this.searchString.equals(searchString)
+                    && (viewPages[0] != searchContainer || isCurrentSearch(searchOwner))) {
                 return;
             }
             search(viewPages[0], getCurrentPosition(), searchString, false);
         }
 
         private void loadMessages(String searchString) {
-            if (messagesIsLoading) {
+            final SearchOwner owner = searchOwner;
+            if (!isCurrentSearch(owner) || !owner.query.equals(searchString) || owner.messageRequest != null) {
                 return;
             }
-            final int generation = searchGeneration;
             TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
-            req.peer = getMessagesController().getInputPeer(-chatId);
+            req.peer = MessagesController.getInstance(searchAccount).getInputPeer(-chatId);
             req.filter = new TLRPC.TL_inputMessagesFilterEmpty();
             req.limit = 20;
             req.q = searchString;
@@ -4613,33 +4806,147 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 //                req.offset_id = 0;
 //                req.offset_peer = new TLRPC.TL_inputPeerEmpty();
 //            }
-            ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (generation == searchGeneration && searchString.equals(this.searchString)) {
+            final SearchRequest request = new SearchRequest();
+            owner.messageRequest = request;
+
+
+
+
+
+
+
+
+
+
+
+            sendSearchRequest(owner, request, req, false);
+        }
+
+        private boolean publishSearchMetadata(SearchOwner owner, ArrayList<TLRPC.User> users, ArrayList<TLRPC.Chat> chats,
+                ArrayList<TLRPC.TL_forumTopic> topics, ArrayList<TLRPC.Message> messages) {
+            if (!isCurrentSearch(owner)) return false;
+            MessagesController controller = MessagesController.getInstance(searchAccount);
+            controller.putUsers(users, false);
+            if (!isCurrentSearch(owner)) return false;
+            controller.putChats(chats, false);
+            if (!isCurrentSearch(owner)) return false;
+            if (!topics.isEmpty()) {
+                LongSparseArray<TLRPC.Message> messagesMap = new LongSparseArray<>();
+                for (TLRPC.Message message : messages) {
+                    messagesMap.put(message.id, message);
+                }
+                controller.getTopicsController().processTopics(chatId, new ArrayList<>(topics), messagesMap,
+                        false, TopicsController.LOAD_TYPE_LOAD_UNKNOWN, -1);
+            }
+            return isCurrentSearch(owner);
+        }
+
+        private void receiveSearchMessages(SearchOwner owner, SearchRequest request, TLObject response) {
+            if (owner.messageRequest != request || request.completed) {
+                return;
+            }
+            owner.messageRequest = null;
+            request.completed = true;
+            request.token = 0;
+            if (!isCurrentSearch(owner)) return;
                     messagesIsLoading = false;
                     isLoading = false;
+            canLoadMore = false;
                     if (response instanceof TLRPC.messages_Messages) {
-                        TLRPC.messages_Messages messages = (TLRPC.messages_Messages) response;
-
-                        for (int i = 0; i < messages.messages.size(); i++) {
-                            TLRPC.Message message = messages.messages.get(i);
-                            MessageObject messageObject = new MessageObject(currentAccount, message, false, false);
-                            messageObject.setQuery(searchString);
-                            searchResultMessages.add(messageObject);
-                        }
-                        canLoadMore = searchResultMessages.size() < messages.count && !messages.messages.isEmpty();
-                    } else {
-                        canLoadMore = false;
+                TLRPC.messages_Messages result = (TLRPC.messages_Messages) response;
+                if (!publishSearchMetadata(owner, result.users, result.chats, result.topics, result.messages)) return;
+                ArrayList<MessageObject> accepted = new ArrayList<>();
+                for (TLRPC.Message message : result.messages) {
+                    if (!isCurrentSearch(owner)) return;
+                    MessageObject object = new MessageObject(searchAccount, message, false, false);
+                    object.setQuery(owner.query);
+                    accepted.add(object);
+                }
+                if (!isCurrentSearch(owner)) return;
+                searchResultMessages.addAll(accepted);
+                canLoadMore = searchResultMessages.size() < result.count && !result.messages.isEmpty();
                     }
                     updateRows();
 
+            if (!isCurrentSearch(owner)) return;
                     if (rowCount == 0) {
                         emptyView.showProgress(false, true);
                     }
+            if (isCurrentSearch(owner)) {
+                loadMissingSearchTopics(owner);
+            }
+        }
+
+        private TLRPC.TL_forumTopic findSearchTopic(MessageObject message) {
+            if (!isCurrentSearchAccount() || message.currentAccount != searchAccount) {
+                return null;
+            }
+            long topicId = MessageObject.getTopicId(searchAccount, message.messageOwner, true);
+            return MessagesController.getInstance(searchAccount).getTopicsController().findTopic(chatId, topicId == 0 ? 1 : topicId);
+        }
+
+        private void loadMissingSearchTopics(SearchOwner owner) {
+            if (!isCurrentSearch(owner) || MessagesController.getInstance(searchAccount).isMonoForum(-chatId)) {
+                return;
+            }
+            TL_forum.TL_messages_getForumTopicsByID req = new TL_forum.TL_messages_getForumTopicsByID();
+            for (MessageObject message : searchResultMessages) {
+                TLRPC.TL_forumTopic topic = findSearchTopic(message);
+                if (topic != null && topic.topicStartMessage != null) continue;
+                int topicId = (int) MessageObject.getTopicId(searchAccount, message.messageOwner, true);
+                if (topicId == 0) topicId = 1;
+                if (owner.requestedTopics.add(topicId)) {
+                    req.topics.add(topicId);
+                    if (req.topics.size() == 100) break;
                 }
-            }));
+            }
+            if (req.topics.isEmpty() || !isCurrentSearch(owner)) return;
+            req.peer = MessagesController.getInstance(searchAccount).getInputPeer(-chatId);
+            SearchRequest request = new SearchRequest();
+            owner.topicRequests.add(request);
+            sendSearchRequest(owner, request, req, true);
+        }
+
+        private void receiveSearchTopics(SearchOwner owner, SearchRequest request, TLObject response) {
+            if (!owner.topicRequests.remove(request) || request.completed) {
+                return;
+            }
+            request.completed = true;
+            request.token = 0;
+            if (!isCurrentSearch(owner) || !(response instanceof TLRPC.TL_messages_forumTopics)) return;
+            TLRPC.TL_messages_forumTopics result = (TLRPC.TL_messages_forumTopics) response;
+            if (publishSearchMetadata(owner, result.users, result.chats, result.topics, result.messages)) {
+                updateRows();
+            }
+        }
+
+        private void openSearchTopic(SearchOwner owner, TLRPC.TL_forumTopic topic, int messageId) {
+            if (!isCurrentSearch(owner) || topic == null || topic.topicStartMessage == null) return;
+            BooleanSupplier navigationCurrent = TopicsFragment.this.captureNavigationRequest();
+            Bundle args = new Bundle();
+            args.putLong("chat_id", chatId);
+            if (messageId != 0 || topic.read_inbox_max_id == 0) {
+                args.putInt("message_id", messageId != 0 ? messageId : topic.id);
+            }
+            args.putInt("unread_count", topic.unread_count);
+            args.putBoolean("historyPreloaded", false);
+            ChatActivity activity = new ChatActivity(args);
+            activity.setCurrentAccount(searchAccount);
+            ArrayList<MessageObject> messages = new ArrayList<>();
+            messages.add(new MessageObject(searchAccount, topic.topicStartMessage, false, false));
+            if (!isCurrentSearch(owner) || !navigationCurrent.getAsBoolean()) return;
+            activity.setThreadMessages(messages, MessagesController.getInstance(searchAccount).getChat(chatId), topic.id,
+                    topic.read_inbox_max_id, topic.read_outbox_max_id, topic);
+            if (messageId != 0) activity.setHighlightMessageId(messageId);
+            if (isCurrentSearch(owner) && navigationCurrent.getAsBoolean()) {
+                TopicsFragment.this.presentFragment(activity);
+            }
         }
 
         private void updateRows() {
+            long generation = searchGeneration;
+            recyclerView.cancelClickRunnables(true);
+            if (generation != searchGeneration) return;
             topicsHeaderRow = -1;
             topicsStartRow = -1;
             topicsEndRow = -1;
@@ -4714,9 +5021,17 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     case VIEW_TYPE_HEADER:
                         view = new GraySectionCell(parent.getContext());
                         break;
-                    case VIEW_TYPE_TOPIC:
-                        view = new TopicSearchCell(parent.getContext());
+                    case VIEW_TYPE_TOPIC: {
+                        TopicSearchCell cell = new TopicSearchCell(parent.getContext());
+                        for (int i = 0; i < cell.getChildCount(); i++) {
+                            View child = cell.getChildAt(i);
+                            if (child instanceof BackupImageView) {
+                                ((BackupImageView) child).getImageReceiver().setCurrentAccount(searchAccount);
+                            }
+                        }
+                        view = cell;
                         break;
+                    }
                     case VIEW_TYPE_MESSAGE:
                         view = new TopicDialogCell(null, parent.getContext(), false, true);
                         ((TopicDialogCell) view).inPreviewMode = inPreviewMode;
@@ -4751,13 +5066,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     MessageObject message = searchResultMessages.get(position - messagesStartRow);
                     TopicDialogCell dialogCell = (TopicDialogCell) holder.itemView;
                     dialogCell.drawDivider = position != messagesEndRow - 1;
-                    long topicId = MessageObject.getTopicId(currentAccount, message.messageOwner, true);
-                    if (topicId == 0) {
-                        topicId = 1;
-                    }
-                    TLRPC.TL_forumTopic topic = topicsController.findTopic(chatId, topicId);
+                    TLRPC.TL_forumTopic topic = findSearchTopic(message);
                     if (topic == null) {
-                        FileLog.d("cant find topic " + topicId);
+                        dialogCell.setUnresolvedSearchMessage(message);
                     } else {
                         dialogCell.setForumTopic(topic, message.getDialogId(), message, false, false);
                         dialogCell.setTopicIcon(topic);
@@ -4786,7 +5097,16 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
             @Override
             public boolean isEnabled(RecyclerView.ViewHolder holder) {
-                return holder.getItemViewType() == VIEW_TYPE_MESSAGE || holder.getItemViewType() == VIEW_TYPE_TOPIC;
+                if (!isCurrentSearch(searchOwner)) return false;
+                int position = holder.getAdapterPosition();
+                if (position >= topicsStartRow && position < topicsEndRow) {
+                    return searchResultTopics.get(position - topicsStartRow).topicStartMessage != null;
+                }
+                if (position >= messagesStartRow && position < messagesEndRow) {
+                    TLRPC.TL_forumTopic topic = findSearchTopic(searchResultMessages.get(position - messagesStartRow));
+                    return topic != null && topic.topicStartMessage != null;
+                }
+                return false;
             }
         }
     }
@@ -4802,6 +5122,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
     @Override
     public void onResume() {
         super.onResume();
+        if (searchContainer != null) {
+            searchContainer.resumeSearch();
+        }
         normalizeHeaderGlassState();
         updateUnreadBackBadge();
         getMessagesController().getTopicsController().onTopicFragmentResume(chatId);
@@ -4852,6 +5175,9 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
     @Override
     public void onPause() {
+        if (searchContainer != null) {
+            searchContainer.invalidateSearch();
+        }
         super.onPause();
         getMessagesController().getTopicsController().onTopicFragmentPause(chatId);
         Bulletin.removeDelegate(this);

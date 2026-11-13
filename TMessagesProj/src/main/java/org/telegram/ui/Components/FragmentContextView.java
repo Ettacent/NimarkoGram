@@ -1689,7 +1689,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         if (!show) {
             lastLocationSharingCount = -1;
             AndroidUtilities.cancelRunOnUIThread(checkLocationRunnable);
-            if (visible) {
+            if (visible || create) {
                 visible = false;
                 if (create) {
                     if (getVisibility() != GONE) {

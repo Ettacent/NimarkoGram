@@ -118,6 +118,13 @@ public interface MenuOverlayHost {
         return false;
     }
 
+    default boolean isMenuCentered() {
+        return false;
+    }
+
+    default boolean hasButtonGlass() {
+        return true;
+    }
     default int getMenuRise() {
         return 0;
     }

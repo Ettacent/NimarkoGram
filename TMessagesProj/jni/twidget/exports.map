@@ -1,0 +1,9 @@
+# Modifications Copyright (C) 2026 Ettacent
+{
+  global:
+    Java_*;
+    JNI_OnLoad;
+  local:
+    *;
+
+};

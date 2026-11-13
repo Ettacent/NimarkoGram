@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -27,6 +29,7 @@ public:
     bool hasMessagesToConfirm();
     void addMessageToConfirm(int64_t messageId);
     NetworkMessage *generateConfirmationRequest();
+    void commitConfirmationRequest(const std::vector<int64_t> &ids, int64_t ownerSessionId);
     bool isSessionProcessed(int64_t sessionId);
     void addProcessedSession(int64_t sessionId);
 

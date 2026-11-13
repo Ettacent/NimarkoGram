@@ -11,6 +11,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
@@ -21,6 +22,10 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
+import android.view.WindowInsets;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
 import android.view.animation.AnimationUtils;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -142,6 +147,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
     private MenuOverlayHost glassBar;
     private final java.util.WeakHashMap<MenuOverlayHost, BlurredBackgroundDrawable> glasses = new java.util.WeakHashMap<>();
     private boolean pillBelow;
+    private boolean centered;
     private final Paint fallbackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint dimPaint = new Paint();
 
@@ -156,6 +162,22 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
     private boolean hostRegistered;
     private MenuOverlayHost.SourceGuard sourceGuard;
 
+    private final Rect viewportFrame = new Rect();
+    private final Rect viewportRootBounds = new Rect();
+    private final Rect viewportWindowBounds = new Rect();
+    private final int[] viewportLocation = new int[2];
+    private View viewportRoot;
+    private WindowInsets viewportInsets;
+    private boolean viewportWindowBoundsValid;
+    private int contentViewportTop, contentViewportBottom;
+    private ViewTreeObserver viewportObserver;
+    private final ViewTreeObserver.OnPreDrawListener viewportListener = () -> {
+        if (viewportObserver != null && content != null && (opened || this.animating)
+                && updateContentViewport(getHeight()) && !isLayoutRequested()) {
+            requestLayout();
+        }
+        return true;
+    };
     public static final class MenuSession implements View.OnAttachStateChangeListener {
         private SimpleActionBarMenuOverlay overlay;
         private View owner;
@@ -406,6 +428,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
         this.bar = bar;
         this.item = item;
         pillBelow = bar.isMenuFromPillBelow();
+        centered = bar.isMenuCentered();
         if (this.content != content) {
             if (this.content != null) {
                 AndroidUtilities.removeFromParent(this.content);
@@ -469,6 +492,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
                 if (menuGeneration == generation && (opened || animating)) close(true);
             });
         }
+        if (menuGeneration == generation) startWatchingViewport();
     }
 
     private boolean validateOpen(int generation, MenuOverlayHost.SourceGuard current) {
@@ -500,6 +524,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
 
     private void finish() {
         final int generation = ++menuGeneration;
+        stopWatchingViewport();
         final ActionBarMenuItem wasItem = item;
         final MenuOverlayHost wasBar = bar;
         final ActionBarPopupWindow.ActionBarPopupWindowLayout wasContent = content;
@@ -771,28 +796,113 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
         return u * u * (3f - 2f * u);
     }
 
+    private static final class ViewportApi30 {
+        static boolean getVisibleBounds(View owner, Rect out) {
+            out.setEmpty();
+            try {
+                final WindowManager manager = (WindowManager) owner.getContext().getSystemService(Context.WINDOW_SERVICE);
+                if (manager == null) return false;
+                final WindowMetrics metrics = manager.getCurrentWindowMetrics();
+                final Rect bounds = metrics.getBounds();
+                final android.graphics.Insets insets = metrics.getWindowInsets().getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                out.set(bounds.left + insets.left, bounds.top + insets.top,
+                        bounds.right - insets.right, bounds.bottom - insets.bottom);
+                return true;
+            } catch (RuntimeException ignored) {
+                return false;
+            }
+        }
+    }
+
+    private void startWatchingViewport() {
+        stopWatchingViewport();
+        viewportObserver = getViewTreeObserver();
+        viewportObserver.addOnPreDrawListener(viewportListener);
+    }
+
+    private void stopWatchingViewport() {
+        if (viewportObserver != null && viewportObserver.isAlive()) {
+            viewportObserver.removeOnPreDrawListener(viewportListener);
+        }
+        viewportObserver = null;
+        viewportRoot = null;
+        viewportInsets = null;
+        viewportWindowBoundsValid = false;
+        viewportRootBounds.setEmpty();
+        viewportWindowBounds.setEmpty();
+    }
+
+    private boolean updateContentViewport(int height) {
+        getLocationOnScreen(viewportLocation);
+        final int screenTop = viewportLocation[1];
+        int top = 0, bottom = height;
+        getWindowVisibleDisplayFrame(viewportFrame);
+        boolean hasBounds = !viewportFrame.isEmpty();
+        if (hasBounds) {
+            top = Math.max(top, viewportFrame.top - screenTop);
+            bottom = Math.min(bottom, viewportFrame.bottom - screenTop);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            final View root = getRootView();
+            root.getLocationOnScreen(viewportLocation);
+            final WindowInsets insets = getRootWindowInsets();
+            if (viewportRoot != root || viewportRootBounds.left != viewportLocation[0]
+                    || viewportRootBounds.top != viewportLocation[1]
+                    || viewportRootBounds.width() != root.getWidth() || viewportRootBounds.height() != root.getHeight()
+                    || !(insets == viewportInsets || insets != null && insets.equals(viewportInsets))) {
+                viewportRoot = root;
+                viewportRootBounds.set(viewportLocation[0], viewportLocation[1],
+                        viewportLocation[0] + root.getWidth(), viewportLocation[1] + root.getHeight());
+                viewportInsets = insets;
+                viewportWindowBoundsValid = ViewportApi30.getVisibleBounds(this, viewportWindowBounds);
+            }
+            if (viewportWindowBoundsValid) {
+                top = Math.max(top, viewportWindowBounds.top - screenTop);
+                bottom = Math.min(bottom, viewportWindowBounds.bottom - screenTop);
+                hasBounds = true;
+            }
+        }
+        if (!hasBounds) {
+            final View root = getRootView();
+            root.getLocationOnScreen(viewportLocation);
+            top = Math.max(top, viewportLocation[1] + AndroidUtilities.statusBarHeight - screenTop);
+            bottom = Math.min(bottom, viewportLocation[1] + root.getHeight() - AndroidUtilities.navigationBarHeight - screenTop);
+        }
+        top = Math.max(0, Math.min(height, top));
+        bottom = Math.max(top, Math.min(height, bottom));
+        final boolean changed = contentViewportTop != top || contentViewportBottom != bottom;
+        contentViewportTop = top;
+        contentViewportBottom = bottom;
+        return changed;
+    }
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         final int width = MeasureSpec.getSize(widthMeasureSpec), height = MeasureSpec.getSize(heightMeasureSpec);
         setMeasuredDimension(width, height);
-        if (content != null && content.getParent() == this) {
+        if (bar != null && content != null && content.getParent() == this) {
+            updateContentViewport(height);
             computeStartRect();
             final int maxHeight = pillBelow
-                ? (int) (startRect.bottom - AndroidUtilities.statusBarHeight - dp(16))
-                : height - getContentTop() - dp(16) - AndroidUtilities.navigationBarHeight;
-            content.measure(MeasureSpec.makeMeasureSpec(width - dp(16), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(Math.max(dp(48), maxHeight), MeasureSpec.AT_MOST));
+                ? getContentBottom() - contentViewportTop - dp(16)
+                : contentViewportBottom - getContentTop() - dp(16);
+            content.measure(MeasureSpec.makeMeasureSpec(width - dp(16), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(Math.max(0, maxHeight), MeasureSpec.AT_MOST));
         }
     }
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        if (content != null && content.getParent() == this) {
+        if (bar != null && content != null && content.getParent() == this) {
             computeStartRect();
             final int w = content.getMeasuredWidth(), h = content.getMeasuredHeight();
             if (pillBelow) {
                 final int l = (int) Math.max(dp(8), Math.min(getWidth() - dp(8) - w, startRect.centerX() - w / 2f));
-                final int b = (int) startRect.bottom;
+                final int b = getContentBottom();
                 content.layout(l, b - h, l + w, b);
+            } else if (centered) {
+                final int t = getContentTop();
+                final int l = (int) Math.max(dp(8), Math.min(getWidth() - dp(8) - w, startRect.centerX() - w / 2f));
+                content.layout(l, t, l + w, t + h);
             } else {
                 final int r = (int) startRect.right, t = getContentTop();
                 final int l = Math.max(dp(8), r - w);
@@ -803,7 +913,12 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
 
     private int getContentTop() {
         final int top = (int) startRect.top;
-        return Math.max(Math.min(top, 0), top - bar.getMenuRise());
+        return Math.max(contentViewportTop, Math.min(contentViewportBottom - dp(16 + 48),
+                Math.max(Math.min(top, 0), top - bar.getMenuRise())));
+    }
+
+    private int getContentBottom() {
+        return Math.max(contentViewportTop, Math.min(contentViewportBottom, (int) startRect.bottom));
     }
 
     private void computeStartRect() {
@@ -861,7 +976,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
         canvas.drawRect(0, 0, getWidth(), getHeight(), dimPaint);
 
         final int p = dp(6);
-        final float glassAlpha = startFromPill ? 1f : Utilities.clamp01(m / 0.25f);
+        final float glassAlpha = startFromPill && bar.hasButtonGlass() ? 1f : Utilities.clamp01(m / 0.25f);
         glassColorsFactor = startFromPill || bar.interpolateMenuColors() ? Utilities.clamp01(m) : 1f;
         if (glass != null) {
             bar.setMenuGlassFrostedProgress(glassColorsFactor);
@@ -938,8 +1053,13 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
         } else if (ca > 0.004f) {
             final float cs = Math.max(0.3f, shapeRect.width() / Math.max(1f, endRect.width()));
             saveFaded(canvas, shapeRect.left, shapeRect.top, shapeRect.right, shapeRect.bottom, ca);
+            if (centered) {
+                canvas.translate(shapeRect.centerX() - endRect.centerX(), shapeRect.top - endRect.top);
+                canvas.scale(cs, cs, endRect.centerX(), endRect.top);
+            } else {
             canvas.translate(shapeRect.right - endRect.right, shapeRect.top - endRect.top);
             canvas.scale(cs, cs, endRect.right, endRect.top);
+            }
             super.dispatchDraw(canvas);
             canvas.restore();
         }
@@ -1021,6 +1141,7 @@ public class SimpleActionBarMenuOverlay extends FrameLayout {
 
     @Override
     protected void onDetachedFromWindow() {
+        stopWatchingViewport();
         if (opened || animating || bar != null || content != null) {
             finish();
         }

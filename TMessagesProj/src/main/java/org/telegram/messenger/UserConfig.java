@@ -462,6 +462,7 @@ public class UserConfig extends BaseController {
     }
 
     public void clearConfig() {
+        FileLoader.TransferOwner outgoingTransfers = FileLoader.onAccountLoggedOut(currentAccount);
         app.nimarkogram.messenger.media.MediaControllerExt.onAccountLoggedOut(currentAccount);
         app.nimarkogram.messenger.notifications.InAppNotifications.onAccountLoggedOut(currentAccount);
         app.nimarkogram.messenger.security.AppBiometricPrompt.clearVerifiedForAccount(currentAccount);
@@ -475,6 +476,7 @@ public class UserConfig extends BaseController {
         lastMyLocationShareTime = 0;
         currentUser = null;
         clientUserId = 0;
+        FileLoader.onAccountOwnerCleared(outgoingTransfers);
         app.nimarkogram.messenger.security.AppBiometricPrompt.onAccountOwnerCleared(currentAccount);
         app.nimarkogram.messenger.utils.LockedChats.onAccountOwnerCleared(currentAccount);
         registeredForPush = false;

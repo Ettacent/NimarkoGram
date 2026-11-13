@@ -110,6 +110,20 @@ void NativeByteBuffer::clearCapacity() {
         return;
     }
     _capacity = 0;
+    writeError = false;
+}
+
+bool NativeByteBuffer::hasWriteError() const {
+    return writeError;
+}
+
+void NativeByteBuffer::setWriteError() {
+    writeError = true;
+}
+
+void NativeByteBuffer::addCalculatedSize(uint32_t length) {
+    if (length > UINT32_MAX - _capacity) writeError = true;
+    _capacity += length;
 }
 
 void NativeByteBuffer::limit(uint32_t limit) {
@@ -130,6 +144,7 @@ void NativeByteBuffer::flip() {
 void NativeByteBuffer::clear() {
     _position = 0;
     _limit = _capacity;
+    writeError = false;
 }
 
 uint8_t *NativeByteBuffer::bytes() {
@@ -138,6 +153,7 @@ uint8_t *NativeByteBuffer::bytes() {
 
 void NativeByteBuffer::rewind() {
     _position = 0;
+    writeError = false;
 }
 
 void NativeByteBuffer::compact() {
@@ -160,13 +176,14 @@ void NativeByteBuffer::skip(uint32_t length) {
         }
         _position += length;
     } else {
-        _capacity += length;
+        addCalculatedSize(length);
     }
 }
 
 void NativeByteBuffer::writeInt32(int32_t x, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + 4 > _limit) {
+        if (4 > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -178,13 +195,14 @@ void NativeByteBuffer::writeInt32(int32_t x, bool *error) {
         buffer[_position++] = (uint8_t) (x >> 16);
         buffer[_position++] = (uint8_t) (x >> 24);
     } else {
-        _capacity += 4;
+        addCalculatedSize(4);
     }
 }
 
 void NativeByteBuffer::writeInt64(int64_t x, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + 8 > _limit) {
+        if (8 > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -200,7 +218,7 @@ void NativeByteBuffer::writeInt64(int64_t x, bool *error) {
         buffer[_position++] = (uint8_t) (x >> 48);
         buffer[_position++] = (uint8_t) (x >> 56);
     } else {
-        _capacity += 8;
+        addCalculatedSize(8);
     }
 }
 
@@ -212,13 +230,14 @@ void NativeByteBuffer::writeBool(bool value, bool *error) {
             writeInt32(0xbc799737, error);
         }
     } else {
-        _capacity += 4;
+        addCalculatedSize(4);
     }
 }
 
 void NativeByteBuffer::writeBytes(uint8_t *b, uint32_t length, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + length > _limit) {
+        if (length > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -227,13 +246,14 @@ void NativeByteBuffer::writeBytes(uint8_t *b, uint32_t length, bool *error) {
         }
         writeBytesInternal(b, 0, length);
     } else {
-        _capacity += length;
+        addCalculatedSize(length);
     }
 }
 
 void NativeByteBuffer::writeBytes(uint8_t *b, uint32_t offset, uint32_t length, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + length > _limit) {
+        if (length > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -242,7 +262,7 @@ void NativeByteBuffer::writeBytes(uint8_t *b, uint32_t offset, uint32_t length, 
         }
         writeBytesInternal(b, offset, length);
     } else {
-        _capacity += length;
+        addCalculatedSize(length);
     }
 }
 
@@ -252,7 +272,8 @@ void NativeByteBuffer::writeBytes(NativeByteBuffer *b, bool *error) {
         return;
     }
     if (!calculateSizeOnly) {
-        if (_position + length > _limit) {
+        if (length > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -262,13 +283,14 @@ void NativeByteBuffer::writeBytes(NativeByteBuffer *b, bool *error) {
         writeBytesInternal(b->buffer + b->_position, 0, length);
         b->position(b->limit());
     } else {
-        _capacity += length;
+        addCalculatedSize(length);
     }
 }
 
 void NativeByteBuffer::writeBytes(ByteArray *b, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + b->length > _limit) {
+        if (b->length > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -277,7 +299,7 @@ void NativeByteBuffer::writeBytes(ByteArray *b, bool *error) {
         }
         writeBytesInternal(b->bytes, 0, b->length);
     } else {
-        _capacity += b->length;
+        addCalculatedSize(b->length);
     }
 }
 
@@ -288,7 +310,8 @@ void NativeByteBuffer::writeBytesInternal(uint8_t *b, uint32_t offset, uint32_t 
 
 void NativeByteBuffer::writeByte(uint8_t i, bool *error) {
     if (!calculateSizeOnly) {
-        if (_position + 1 > _limit) {
+        if (1 > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -297,18 +320,29 @@ void NativeByteBuffer::writeByte(uint8_t i, bool *error) {
         }
         buffer[_position++] = i;
     } else {
-        _capacity += 1;
+        addCalculatedSize(1);
     }
 }
 
-void NativeByteBuffer::writeString(std::string s, bool *error) {
+void NativeByteBuffer::writeString(const std::string &s, bool *error) {
+    if (s.length() > 0x00ffffff) {
+        writeError = true;
+        if (error != nullptr) *error = true;
+        return;
+    }
     writeByteArray((uint8_t *) s.c_str(), (uint32_t) s.length(), error);
 }
 
 void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t offset, uint32_t length, bool *error) {
+    if (length > 0x00ffffff) {
+        writeError = true;
+        if (error != nullptr) *error = true;
+        return;
+    }
     if (length <= 253) {
         if (!calculateSizeOnly) {
-            if (_position + 1 > _limit) {
+            if (1 > _limit - _position) {
+                writeError = true;
                 if (error != nullptr) {
                     *error = true;
                 }
@@ -317,11 +351,12 @@ void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t offset, uint32_t leng
             }
             buffer[_position++] = (uint8_t) length;
         } else {
-            _capacity += 1;
+            addCalculatedSize(1);
         }
     } else {
         if (!calculateSizeOnly) {
-            if (_position + 4 > _limit) {
+            if (4 > _limit - _position) {
+                writeError = true;
                 if (error != nullptr) {
                     *error = true;
                 }
@@ -333,11 +368,12 @@ void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t offset, uint32_t leng
             buffer[_position++] = (uint8_t) (length >> 8);
             buffer[_position++] = (uint8_t) (length >> 16);
         } else {
-            _capacity += 4;
+            addCalculatedSize(4);
         }
     }
     if (!calculateSizeOnly) {
-        if (_position + length > _limit) {
+        if (length > _limit - _position) {
+            writeError = true;
             if (error != nullptr) {
                 *error = true;
             }
@@ -346,13 +382,14 @@ void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t offset, uint32_t leng
         }
         writeBytesInternal(b, offset, length);
     } else {
-        _capacity += length;
+        addCalculatedSize(length);
     }
     uint32_t addition = (length + (length <= 253 ? 1 : 4)) % 4;
     if (addition != 0) {
         addition = 4 - addition;
     }
-    if (!calculateSizeOnly && _position + addition > _limit) {
+    if (!calculateSizeOnly && addition > _limit - _position) {
+        writeError = true;
         if (error != nullptr) {
             *error = true;
         }
@@ -363,7 +400,7 @@ void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t offset, uint32_t leng
         if (!calculateSizeOnly) {
             buffer[_position++] = (uint8_t) 0;
         } else {
-            _capacity += 1;
+            addCalculatedSize(1);
         }
     }
 }
@@ -373,11 +410,21 @@ void NativeByteBuffer::writeByteArray(uint8_t *b, uint32_t length, bool *error) 
 }
 
 void NativeByteBuffer::writeByteArray(NativeByteBuffer *b, bool *error) {
+    if (b == nullptr || b->limit() > 0x00ffffff) {
+        writeError = true;
+        if (error != nullptr) *error = true;
+        return;
+    }
     b->rewind();
     writeByteArray(b->buffer, 0, b->limit(), error);
 }
 
 void NativeByteBuffer::writeByteArray(ByteArray *b, bool *error) {
+    if (b == nullptr) {
+        writeError = true;
+        if (error != nullptr) *error = true;
+        return;
+    }
     writeByteArray(b->bytes, 0, b->length, error);
 }
 
@@ -419,7 +466,7 @@ void NativeByteBuffer::writeByte(uint8_t i) {
     writeByte(i, nullptr);
 }
 
-void NativeByteBuffer::writeString(std::string s) {
+void NativeByteBuffer::writeString(const std::string &s) {
     writeString(s, nullptr);
 }
 

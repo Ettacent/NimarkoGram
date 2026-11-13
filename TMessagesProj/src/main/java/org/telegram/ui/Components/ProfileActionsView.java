@@ -61,6 +61,7 @@ import java.util.List;
 import java.util.Set;
 
 import app.nimarkogram.messenger.icons.IconResources;
+import app.nimarkogram.messenger.utils.ProfileAppearanceMotion;
 @SuppressLint("ViewConstructor")
 public class ProfileActionsView extends View {
 
@@ -73,6 +74,7 @@ public class ProfileActionsView extends View {
     public boolean isAnimatingCallAction = false;
     public boolean isOpeningLayout = true;
     private boolean snapPositionsPending;
+    private boolean snapGeometryPending;
     public float clipHeight = -1;
     @Nullable
     private BlurredBackgroundDrawableViewFactory glassFactory;
@@ -266,6 +268,14 @@ public class ProfileActionsView extends View {
         snapPositionsPending = true;
         invalidate();
     }
+    public void snapGeometryOnNextDraw() {
+        snapGeometryPending = true;
+        invalidate();
+    }
+
+    private boolean settleActionAppearance() {
+        return isOpeningLayout || snapPositionsPending || !ProfileAppearanceMotion.isEnabled();
+    }
     private float getItemWidth() {
         int w = getMeasuredWidth();
         float betweenPadding = xpadding / 2f;
@@ -306,8 +316,9 @@ public class ProfileActionsView extends View {
         int c = actions.size();
         for (int i = 0; i < c; i++) {
             Action action = actions.get(i);
-            if (snapPositionsPending && action.isDeleting) {
+            if (settleActionAppearance() && action.isDeleting) {
                 action.positionFraction.set(1f, true);
+                action.appearanceAlpha.set(0f, true);
                 action.isDeleted = true;
             }
             if (action.isDeleted) continue;
@@ -391,6 +402,7 @@ public class ProfileActionsView extends View {
             }
         }
         snapPositionsPending = false;
+        snapGeometryPending = false;
     }
 
     public void stopLoading(int key) {
@@ -1040,6 +1052,7 @@ public class ProfileActionsView extends View {
         final RectF rect = new RectF();
 
         private final AnimatedFloat positionFraction = new AnimatedFloat(ProfileActionsView.this, 0, 250, CubicBezierInterpolator.DEFAULT);
+        private final AnimatedFloat appearanceAlpha = new AnimatedFloat(1f, ProfileActionsView.this, 0, 250, CubicBezierInterpolator.DEFAULT);
         private final RectF to = new RectF();
         private final RectF from = new RectF();
 
@@ -1114,13 +1127,7 @@ public class ProfileActionsView extends View {
         }
 
         public float getAlpha() {
-            if (isDeleting) {
-                return 1f - positionFraction.set(1f);
-            } else if (isOpening) {
-                return positionFraction.set(1f);
-            } else {
-                return 1f;
-            }
+            return appearanceAlpha.set(isDeleting ? 0f : 1f);
         }
 
         public void delete() {
@@ -1174,20 +1181,30 @@ public class ProfileActionsView extends View {
                 return;
             }
 
-            if (isOpeningLayout || snapPositionsPending) {
+            if (settleActionAppearance()) {
                 isOpening = false;
                 prevRect.set(rect);
                 from.set(rect);
                 to.set(rect);
                 positionFraction.set(1f, true);
+                appearanceAlpha.set(1f, true);
                 return;
             }
 
             if (to.isEmpty()) {
                 isOpening = true;
+                appearanceAlpha.set(0f, true);
                 to.set(rect);
                 from.set(rect);
                 positionFraction.set(0f, true);
+            }
+
+            if (snapGeometryPending) {
+                prevRect.set(rect);
+                from.set(rect);
+                to.set(rect);
+                positionFraction.set(1f, true);
+                return;
             }
 
             if (!rect.equals(to)) {
@@ -1206,8 +1223,9 @@ public class ProfileActionsView extends View {
                 rect.left = AndroidUtilities.lerp(from.left, to.left, fraction);
                 rect.right = AndroidUtilities.lerp(from.right, to.right, fraction);
             } else {
-                isOpening = false;
-                if (isDeleting) {
+                float alpha = getAlpha();
+                if (!isDeleting && alpha >= 1f) isOpening = false;
+                if (isDeleting && alpha <= 0f) {
                     isDeleted = true;
                 }
             }
@@ -1216,7 +1234,7 @@ public class ProfileActionsView extends View {
         public float getScale() {
             float scale = bounce.getScale(0.04f);
             if (isOpening) {
-                scale *= AndroidUtilities.lerp(0.94f, 1f, positionFraction.set(1f));
+                scale *= AndroidUtilities.lerp(0.94f, 1f, getAlpha());
             }
             return scale;
         }

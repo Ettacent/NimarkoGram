@@ -393,6 +393,80 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
 
     private int currentGuid;
 
+    private volatile ImageLoadRequest imageLoadRequest;
+    private volatile boolean thumbLoadCancelled;
+
+    static final class ImageLoadRequest {
+        final ImageReceiver receiver;
+        final FileLoader.TransferOwner owner;
+        final int guid;
+        final ImageLocation imageLocation, mediaLocation, thumbLocation, strippedLocation;
+        final String imageFilter, mediaFilter, thumbFilter, ext, uniqKeyPrefix;
+        final Object parentObject;
+        final long size;
+        final int cacheType;
+        final boolean needsQualityThumb, shouldGenerateQualityThumb, currentKeyQuality;
+        final TLRPC.Document qualityDocument;
+
+        ImageLoadRequest(ImageReceiver receiver, FileLoader.TransferOwner owner, int guid) {
+            this.receiver = receiver;
+            this.owner = owner;
+            this.guid = guid;
+            imageLocation = receiver.currentImageLocation;
+            mediaLocation = receiver.currentMediaLocation;
+            thumbLocation = receiver.currentThumbLocation;
+            strippedLocation = receiver.strippedLocation;
+            imageFilter = receiver.currentImageFilter;
+            mediaFilter = receiver.currentMediaFilter;
+            thumbFilter = receiver.currentThumbFilter;
+            ext = receiver.currentExt;
+            uniqKeyPrefix = receiver.uniqKeyPrefix;
+            parentObject = receiver.currentParentObject;
+            size = receiver.currentSize;
+            cacheType = receiver.currentCacheType;
+            needsQualityThumb = receiver.needsQualityThumb;
+            shouldGenerateQualityThumb = receiver.shouldGenerateQualityThumb;
+            currentKeyQuality = receiver.currentKeyQuality;
+            qualityDocument = receiver.qulityThumbDocument;
+        }
+
+        boolean isCurrentBinding() {
+            return receiver.imageLoadRequest == this;
+        }
+
+        boolean isCurrentBinding(int type) {
+            return isCurrentBinding() && (type != TYPE_THUMB || !receiver.thumbLoadCancelled);
+        }
+    }
+
+    ImageLoadRequest captureImageLoadRequest(FileLoader.TransferOwner owner, int guid, boolean preserveThumbCancellation) {
+        if (currentGuid != guid || currentAccount != owner.account) return null;
+        if (!preserveThumbCancellation) thumbLoadCancelled = false;
+        return imageLoadRequest = new ImageLoadRequest(this, owner, guid);
+    }
+
+    void cancelImageLoadRequest(boolean all) {
+        if (all) imageLoadRequest = null;
+        else thumbLoadCancelled = true;
+    }
+
+    void retryAfterRetiredTransfer(ImageLoadRequest request, int type, String key) {
+        if (request == null || request.receiver != this || !request.isCurrentBinding(type)
+                || currentGuid != request.guid || currentAccount != request.owner.account || !request.owner.isCurrent()
+                || canceledLoading || key == null || !isLoadableType(type) || !Objects.equals(key, getKeyForType(type))
+                || !attachedToWindow && allowLoadingOnAttachedOnly
+                || currentImageLocation != request.imageLocation || currentMediaLocation != request.mediaLocation
+                || currentThumbLocation != request.thumbLocation || currentParentObject != request.parentObject
+                || !Objects.equals(currentImageFilter, request.imageFilter) || !Objects.equals(currentMediaFilter, request.mediaFilter)
+                || !Objects.equals(currentThumbFilter, request.thumbFilter) || !Objects.equals(currentExt, request.ext)
+                || currentSize != request.size || currentCacheType != request.cacheType
+                || strippedLocation != request.strippedLocation || !Objects.equals(uniqKeyPrefix, request.uniqKeyPrefix)
+                || needsQualityThumb != request.needsQualityThumb || shouldGenerateQualityThumb != request.shouldGenerateQualityThumb
+                || currentKeyQuality != request.currentKeyQuality || qulityThumbDocument != request.qualityDocument) return;
+        resetFailedLoadRetry(type);
+        if (!request.isCurrentBinding(type) || currentGuid != request.guid || !request.owner.isCurrent()) return;
+        loadImage(request.owner);
+    }
     private long currentSize;
     private int currentCacheType;
     private boolean allowLottieVibration = true;
@@ -487,6 +561,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void cancelLoadImage(boolean keepPreviewOnly) {
+        imageLoadRequest = null;
         currentGuid++;
         resetLoadingPresentation();
         forceLoding = false;
@@ -765,6 +840,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         }
 
         if (imageLocation == null && thumbLocation == null && mediaLocation == null) {
+            imageLoadRequest = null;
             resetLoadingPresentation();
             for (int a = 0; a < 4; a++) {
                 recycleBitmap(null, a);
@@ -1016,6 +1092,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
             crossfadeShader = null;
         }
 
+        imageLoadRequest = null;
         currentImageLocation = imageLocation;
         currentImageFilter = imageFilter;
         currentImageKey = imageKey;
@@ -1064,12 +1141,23 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     private void loadImage() {
+        loadImage(null);
+    }
+
+    private void loadImage(FileLoader.TransferOwner owner) {
         canceledLoading = false;
-        ImageLoader.getInstance().loadImageForImageReceiver(this, preloadReceivers);
+        if (owner == null) ImageLoader.getInstance().loadImageForImageReceiver(this, preloadReceivers);
+        else ImageLoader.getInstance().loadImageForImageReceiver(this, preloadReceivers, owner);
         invalidate();
     }
 
     void onImageLoadFailed(String key, int type, int guid, boolean allowRetry) {
+        onImageLoadFailed(key, type, guid, allowRetry, null);
+    }
+
+    void onImageLoadFailed(String key, int type, int guid, boolean allowRetry, ImageLoadRequest expectedRequest) {
+        if (expectedRequest != null && (!expectedRequest.isCurrentBinding(type) || !expectedRequest.owner.isCurrent()
+                || currentAccount != expectedRequest.owner.account)) return;
         if (!isLoadableType(type) || key == null || currentGuid != guid) {
             return;
         }
@@ -1114,9 +1202,10 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
                 if (!attachedToWindow || currentGuid != expectedGuid || getDrawableForType(type) != null) {
                     return;
                 }
+                if (expectedRequest != null && (!expectedRequest.isCurrentBinding(type) || !expectedRequest.owner.isCurrent())) return;
                 String activeKey = getKeyForType(type);
                 if (key.equals(activeKey)) {
-                    loadImage();
+                    loadImage(expectedRequest == null ? null : expectedRequest.owner);
                 }
             }
         };
@@ -1556,6 +1645,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void setImageBitmap(Drawable bitmap) {
+        imageLoadRequest = null;
         keepOnlyPreviewAfterCancel = false;
         resetLoadingPresentation();
         ImageLoader.getInstance().cancelLoadingForImageReceiver(this, true);
@@ -1774,6 +1864,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void clearImage() {
+        imageLoadRequest = null;
         resetLoadingPresentation();
         crossfadeOnReadyDrawable = null;
         crossfadeFromImage = false;
@@ -1784,6 +1875,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public void onDetachedFromWindow() {
+        imageLoadRequest = null;
         resetLoadingPresentation();
         resetFailedLoadRetry();
         if (!attachedToWindow) {
@@ -3509,6 +3601,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
     }
 
     public int getNewGuid() {
+        imageLoadRequest = null;
         return ++currentGuid;
     }
 
@@ -3643,6 +3736,7 @@ public class ImageReceiver implements NotificationCenter.NotificationCenterDeleg
         if (currentAccount == value) {
             return;
         }
+        imageLoadRequest = null;
         currentGuid++;
         resetLoadingPresentation();
         resetFailedLoadRetry();

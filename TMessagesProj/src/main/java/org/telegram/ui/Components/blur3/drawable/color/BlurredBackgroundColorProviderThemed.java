@@ -18,6 +18,9 @@ public class BlurredBackgroundColorProviderThemed implements BlurredBackgroundCo
     private float alpha;
     private boolean useDefaultAlpha;
 
+    private int readableTextKey = -1, readableSecondaryKey = -1;
+    private final app.nimarkogram.messenger.utils.ui.MonetHelper.GlassContrast glassContrast =
+            new app.nimarkogram.messenger.utils.ui.MonetHelper.GlassContrast();
     public BlurredBackgroundColorProviderThemed(Theme.ResourcesProvider resourcesProvider, int backgroundColorId) {
         this(resourcesProvider, backgroundColorId, 0, true);
     }
@@ -38,6 +41,17 @@ public class BlurredBackgroundColorProviderThemed implements BlurredBackgroundCo
         this.alpha = alpha;
         useDefaultAlpha = false;
         updateColors();
+    }
+
+    public BlurredBackgroundColorProviderThemed setReadableTextColors(int primary, int secondary) {
+        readableTextKey = primary;
+        readableSecondaryKey = secondary;
+        return this;
+    }
+
+    protected int readableBackgroundColor(int color) {
+        return readableTextKey < 0 ? color : glassContrast.color(color,
+                Theme.getColor(readableTextKey, resourcesProvider), Theme.getColor(readableSecondaryKey, resourcesProvider));
     }
 
     private int backgroundColor, shadowColor, strokeColorTop, strokeColorBottom, strokeColorFull;
@@ -127,6 +141,10 @@ public class BlurredBackgroundColorProviderThemed implements BlurredBackgroundCo
 
     @Override
     public int getBackgroundColor() {
+        return readableBackgroundColor(getRawBackgroundColor());
+    }
+
+    protected int getRawBackgroundColor() {
         checkThemeGeneration();
         return backgroundColor;
     }

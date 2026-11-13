@@ -1168,6 +1168,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private VideoPlayer videoPlayer;
     private boolean manuallyPaused;
     private Runnable videoPlayRunnable;
+    private Runnable videoTimelineSeekRunnable;
     private boolean previousHasTransform;
     private float previousCropPx;
     private float previousCropPy;
@@ -1635,6 +1636,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (videoPlayRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(videoPlayRunnable);
             videoPlayRunnable = null;
+        }
+    }
+
+    private void cancelVideoTimelineSeek() {
+        if (videoTimelineSeekRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(videoTimelineSeekRunnable);
+            videoTimelineSeekRunnable = null;
         }
     }
 
@@ -6813,7 +6821,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         };
         videoTimelineView.setDelegate(new VideoTimelinePlayView.VideoTimelineViewDelegate() {
 
-            private Runnable seekToRunnable;
             private int seekTo;
             private boolean wasPlaying;
 
@@ -6865,6 +6872,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             private void seekTo(float progress) {
                 seekTo = (int) (videoDuration * progress);
                 if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_HIGH) {
+                    cancelVideoTimelineSeek();
                     seekVideoOrWebTo(seekTo);
                     if (sendPhotoType == SELECT_TYPE_AVATAR) {
                         needCaptureFrameReadyAtTime = seekTo;
@@ -6872,9 +6880,22 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                             captureFrameReadyAtTime = -1;
                         }
                     }
-                    seekToRunnable = null;
-                } else if (seekToRunnable == null) {
-                    AndroidUtilities.runOnUIThread(seekToRunnable = () -> {
+                } else if (videoTimelineSeekRunnable == null) {
+                    final VideoPlayer seekPlayer = videoPlayer;
+                    final int seekPlayerGeneration = playerGeneration;
+                    final int seekOpenGeneration = openGeneration;
+                    final int seekAccount = currentAccount;
+                    AndroidUtilities.runOnUIThread(videoTimelineSeekRunnable = new Runnable() {
+                        @Override
+                        public void run() {
+                            if (videoTimelineSeekRunnable != this) {
+                                return;
+                            }
+                            videoTimelineSeekRunnable = null;
+                            if (!isPlayerCallbackCurrent(seekPlayer, seekPlayerGeneration,
+                                    seekOpenGeneration, seekAccount)) {
+                                return;
+                            }
                         seekVideoOrWebTo(seekTo);
                         if (sendPhotoType == SELECT_TYPE_AVATAR) {
                             needCaptureFrameReadyAtTime = seekTo;
@@ -6882,7 +6903,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                 captureFrameReadyAtTime = -1;
                             }
                         }
-                        seekToRunnable = null;
+                        }
                     }, 100);
                 }
             }
@@ -6925,9 +6946,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
             @Override
             public void didStopDragging(int type) {
-                if (seekToRunnable != null) {
-                    AndroidUtilities.cancelRunOnUIThread(seekToRunnable);
-                    seekToRunnable.run();
+                if (videoTimelineSeekRunnable != null) {
+                    Runnable pendingSeek = videoTimelineSeekRunnable;
+                    AndroidUtilities.cancelRunOnUIThread(pendingSeek);
+                    pendingSeek.run();
                 }
                 cancelVideoPlayRunnable();
                 if (sendPhotoType == SELECT_TYPE_AVATAR && flashView != null && type == VideoTimelinePlayView.TYPE_PROGRESS) {
@@ -6997,82 +7019,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             coverEditor.closeGallery();
             final MediaController.PhotoEntry entry = (MediaController.PhotoEntry) imagesArrLocals.get(currentIndex);
-            final String coverPath = getTempFileAbsolutePath();
-            Utilities.globalQueue.postRunnable(() -> {
-                Bitmap frame = BitmapFactory.decodeFile(fromEntry.path);
-                if (frame == null) {
-                    AndroidUtilities.runOnUIThread(() -> {
-                        coverEditor.button.setLoading(false);
-                        switchToEditMode(EDIT_MODE_NONE);
-                    });
-                    return;
-                }
-
-                int[] params = new int[AnimatedFileInfo.PARAM_NUM_COUNT];
-                AnimatedFileNative.getVideoInfo(entry.path, params, 0);
-
-                int w = Math.max(params[AnimatedFileInfo.PARAM_NUM_WIDTH], entry.width);
-                int h = Math.max(params[AnimatedFileInfo.PARAM_NUM_HEIGHT], entry.height);
-                if ((params[AnimatedFileInfo.PARAM_NUM_ROTATION] / 90) % 2 == 1) {
-                    int t = w;
-                    w = h;
-                    h = t;
-                }
-
-                float scale = Math.max((float) frame.getWidth() / w, (float) frame.getHeight() / h);
-                final Bitmap croppedFrame = Bitmap.createBitmap((int) (w * scale), (int) (h * scale), Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(croppedFrame);
-                final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-                canvas.translate(croppedFrame.getWidth() / 2, croppedFrame.getHeight() / 2);
-                scale = Math.max((float) croppedFrame.getWidth() / frame.getWidth(), (float) croppedFrame.getHeight() / frame.getHeight());
-                canvas.scale(scale, scale);
-                canvas.drawBitmap(frame, -frame.getWidth() / 2, -frame.getHeight() / 2, paint);
-
-                try {
-                    FileOutputStream stream = new FileOutputStream(new File(coverPath));
-                    croppedFrame.compress(Bitmap.CompressFormat.JPEG, 90, stream);
-                    stream.close();
-                } catch (Exception e) {
-                    FileLog.e(e);
-                    AndroidUtilities.runOnUIThread(() -> {
-                        coverEditor.button.setLoading(false);
-                        switchToEditMode(EDIT_MODE_NONE);
-                    });
-                    return;
-                }
-
-                final Bitmap bitmap = Bitmap.createBitmap(dp(26), dp(26), Bitmap.Config.ARGB_8888);
-                canvas = new Canvas(bitmap);
-                canvas.translate(bitmap.getWidth() / 2.0f, bitmap.getHeight() / 2.0f);
-                scale = Math.max((float) bitmap.getWidth() / croppedFrame.getWidth(), (float) bitmap.getHeight() / croppedFrame.getHeight());
-                canvas.scale(scale, scale);
-                canvas.drawBitmap(croppedFrame, -croppedFrame.getWidth() / 2.0f, -croppedFrame.getHeight() / 2.0f, paint);
-
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (entry.coverPath != null) {
-                        try {
-                            new File(entry.coverPath).delete();
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                        }
-                    }
-                    entry.coverSavedPosition = -1;
-                    entry.coverPath = coverPath;
-                    entry.coverPhoto = null;
-                    entry.coverPhotoParentObject = null;
-                    coverEditor.button.setLoading(false);
-                    if (placeProvider != null) {
-                        placeProvider.updatePhotoAtIndex(currentIndex);
-                    }
-                    if (editCoverButton != null) {
-                        editCoverButton.setImage(bitmap);
-                    }
-                    switchToEditMode(EDIT_MODE_NONE);
-                    if (!checkImageView.isChecked()) {
-                        checkImageView.callOnClick();
-                    }
-                });
-            });
+            startGalleryCoverOperation(entry, fromEntry.path);
         });
 
         muteButton = new ImageView(parentActivity) {
@@ -11610,6 +11557,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void releasePlayer(boolean onClose) {
+        cancelVideoTimelineSeek();
         ++playerGeneration;
         usedSurfaceView = false;
         updateVideoSubtitles(null);
@@ -12606,6 +12554,13 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 && imagesArrLocals.get(operation.index) == operation.entry;
     }
 
+    private void retireCoverOperation() {
+        ++coverOperationGeneration;
+        if (coverEditor != null) {
+            coverEditor.button.setLoading(false);
+        }
+    }
+
     private void startCurrentFrameCoverOperation(
             MediaController.PhotoEntry entry, long time) {
         final CoverOperation operation = beginCoverOperation(entry, time);
@@ -12892,6 +12847,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         if (mode == EDIT_MODE_CROP && !isCurrentVideo && !isPhotoReadyForCrop(centerImage.getBitmap())) {
             return;
+        }
+        if (currentEditMode == EDIT_MODE_COVER && mode != EDIT_MODE_COVER) {
+            retireCoverOperation();
         }
         if (placeProvider != null && (currentEditMode == EDIT_MODE_NONE || mode == EDIT_MODE_NONE)) {
             placeProvider.onEditModeChanged(mode != EDIT_MODE_NONE);
@@ -14875,7 +14833,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private void onPhotoShow(final MessageObject messageObject, final TLRPC.FileLocation fileLocation, ImageLocation imageLocation, ImageLocation videoLocation, final ArrayList<MessageObject> messages, final ArrayList<SecureDocument> documents, final List<Object> photos, int index, final PlaceProviderObject object) {
         ++openGeneration;
         preparePhotoCloseResourcesForOpen();
-        ++coverOperationGeneration;
+        retireCoverOperation();
         ++segmentationGeneration;
         showAfterAnimation = null;
         hideAfterAnimation = null;
@@ -16749,7 +16707,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (!force && currentIndex == index || placeProvider == null) {
             return;
         }
-        ++coverOperationGeneration;
+        retireCoverOperation();
         ++segmentationGeneration;
         if (!init) {
             if (currentThumb != null) {
@@ -19387,7 +19345,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // boundary, not at animation end. Otherwise stale callbacks can publish
         // into the closing viewer during the transition.
         ++openGeneration;
-        ++coverOperationGeneration;
+        retireCoverOperation();
         ++segmentationGeneration;
         final int closeGeneration = openGeneration;
         final PhotoCloseBinding closeBinding = new PhotoCloseBinding();
@@ -19966,7 +19924,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         ++openGeneration;
         preparePhotoCloseResourcesForOpen();
         clearOpeningPreDraw();
-        ++coverOperationGeneration;
+        retireCoverOperation();
         ++segmentationGeneration;
         restoreDeferredPlaceReceivers();
         recycleCurrentBitmap();
@@ -20039,7 +19997,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (openGeneration != transitionGeneration) return;
         normalizeParentScaleAfterClose(closeBinding);
         ++openGeneration;
-        ++coverOperationGeneration;
+        retireCoverOperation();
         ++segmentationGeneration;
         restoreDeferredPlaceReceivers();
         final int closedGeneration = openGeneration;

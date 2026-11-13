@@ -326,6 +326,10 @@ public class ThemeColors {
         defaultColors[key_chat_compact_buttonGlassOutline] = 0x24000000;
         defaultColors[key_chat_compact_fadeEdge] = 0xffffffff;
         defaultColors[key_chat_compact_fadeMiddle] = 0xa3ffffff;
+        defaultColors[key_chat_compact_inText] = 0xff000000;
+        defaultColors[key_chat_compact_outText] = 0xff000000;
+        defaultColors[key_chat_compact_inLink] = 0xff2678b6;
+        defaultColors[key_chat_compact_outLink] = 0xff2678b6;
         defaultColors[key_chat_compact_actionBackground] = 0x0D000000;
         defaultColors[key_chat_compact_actionText] = 0xff000000;
         defaultColors[key_chat_compact_actionIcon] = 0xff000000;
@@ -1243,6 +1247,10 @@ public class ThemeColors {
         colorKeysMap.put(key_chat_compact_buttonGlassOutline, "chat_compact_buttonGlassOutline");
         colorKeysMap.put(key_chat_compact_fadeEdge, "chat_compact_fadeEdge");
         colorKeysMap.put(key_chat_compact_fadeMiddle, "chat_compact_fadeMiddle");
+        colorKeysMap.put(key_chat_compact_inText, "chat_compact_inText");
+        colorKeysMap.put(key_chat_compact_outText, "chat_compact_outText");
+        colorKeysMap.put(key_chat_compact_inLink, "chat_compact_inLink");
+        colorKeysMap.put(key_chat_compact_outLink, "chat_compact_outLink");
         colorKeysMap.put(key_chat_compact_actionBackground, "chat_compact_actionBackground");
         colorKeysMap.put(key_chat_compact_actionText, "chat_compact_actionText");
         colorKeysMap.put(key_chat_compact_actionIcon, "chat_compact_actionIcon");

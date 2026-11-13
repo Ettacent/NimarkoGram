@@ -42,6 +42,8 @@ public:
     void clear();
     void skip(uint32_t length);
     void clearCapacity();
+    bool hasWriteError() const;
+    void setWriteError();
     uint8_t *bytes();
 
     void writeInt32(int32_t x, bool *error);
@@ -52,7 +54,7 @@ public:
     void writeBytes(ByteArray *b, bool *error);
     void writeBytes(NativeByteBuffer *b, bool *error);
     void writeByte(uint8_t i, bool *error);
-    void writeString(std::string s, bool *error);
+    void writeString(const std::string &s, bool *error);
     void writeByteArray(uint8_t *b, uint32_t offset, uint32_t length, bool *error);
     void writeByteArray(uint8_t *b, uint32_t length, bool *error);
     void writeByteArray(NativeByteBuffer *b, bool *error);
@@ -66,7 +68,7 @@ public:
     void writeBytes(ByteArray *b);
     void writeBytes(NativeByteBuffer *b);
     void writeByte(uint8_t i);
-    void writeString(std::string s);
+    void writeString(const std::string &s);
     void writeByteArray(uint8_t *b, uint32_t offset, uint32_t length);
     void writeByteArray(uint8_t *b, uint32_t length);
     void writeByteArray(NativeByteBuffer *b);
@@ -96,10 +98,12 @@ public:
 #endif
 
 private:
+    void addCalculatedSize(uint32_t length);
     void writeBytesInternal(uint8_t *b, uint32_t offset, uint32_t length);
 
     uint8_t *buffer = nullptr;
     bool calculateSizeOnly = false;
+    bool writeError = false;
     bool sliced = false;
     uint32_t _position = 0;
     uint32_t _limit = 0;

@@ -19,6 +19,7 @@ import android.os.SystemClock;
 import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 
+import java.util.concurrent.atomic.AtomicInteger;
 public class DispatchQueue extends Thread {
 
     private static final int THREAD_PRIORITY_DEFAULT = -1000;
@@ -26,8 +27,8 @@ public class DispatchQueue extends Thread {
     private volatile Handler handler = null;
     private CountDownLatch syncLatch = new CountDownLatch(1);
     private long lastTaskTime;
-    private static int indexPointer = 0;
-    public final int index = indexPointer++;
+    private static final AtomicInteger indexPointer = new AtomicInteger();
+    public final int index = indexPointer.getAndIncrement();
     private int threadPriority = THREAD_PRIORITY_DEFAULT;
 
     private Runnable initialTask;

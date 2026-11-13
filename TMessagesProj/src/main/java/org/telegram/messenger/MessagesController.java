@@ -276,6 +276,7 @@ public class MessagesController extends BaseController implements NotificationCe
     private LongSparseArray<TLRPC.Dialog> clearingHistoryDialogs = new LongSparseArray<>();
 
     public boolean loadingBlockedPeers = false;
+    private int blockedPeersLoadGeneration;
     public LongSparseIntArray blockePeers = new LongSparseIntArray();
     public int totalBlockedCount = -1;
     public boolean blockedEndReached;
@@ -426,6 +427,33 @@ public class MessagesController extends BaseController implements NotificationCe
     public String uploadingWallpaper;
     public Theme.OverrideWallpaperInfo uploadingWallpaperInfo;
 
+    private volatile WallpaperUpload wallpaperUpload;
+
+    private final class WallpaperUpload {
+        final String path;
+        final File source;
+        final long userId = getUserConfig().getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+        final ArrayList<Integer> requestIds = new ArrayList<>();
+        Theme.OverrideWallpaperInfo info;
+        FileLoader.UploadRequest upload;
+        TLRPC.WallPaper result;
+        TLRPC.WallPaper rollbackWallpaper;
+        long applyGeneration;
+        volatile boolean retired;
+
+        WallpaperUpload(File path, Theme.OverrideWallpaperInfo info) {
+            this.path = path.getAbsolutePath();
+            source = new File(ApplicationLoader.getFilesDirFixed(), info.originalFileName);
+            this.info = info;
+            rollbackWallpaper = info.prevUserWallpaper;
+            info.requestIds = requestIds;
+        }
+
+        boolean accountCurrent() {
+            return app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, session);
+        }
+    }
     private UserNameResolver userNameResolver;
 
     public ArrayList<DialogFilter> getDialogFilters() {
@@ -6175,50 +6203,6 @@ public class MessagesController extends BaseController implements NotificationCe
                         });
                     }
                 });
-            } else if (uploadingWallpaper != null && uploadingWallpaper.equals(location)) {
-                TL_account.uploadWallPaper req = new TL_account.uploadWallPaper();
-                req.file = file;
-                req.mime_type = "image/jpeg";
-                Theme.OverrideWallpaperInfo overrideWallpaperInfo = uploadingWallpaperInfo;
-                String uploadingWallpaperFinal = uploadingWallpaper;
-                TLRPC.TL_wallPaperSettings settings = new TLRPC.TL_wallPaperSettings();
-                settings.blur = overrideWallpaperInfo.isBlurred;
-                settings.motion = overrideWallpaperInfo.isMotion;
-                req.settings = settings;
-                uploadingWallpaperInfo.uploadingProgress = 1f;
-                uploadingWallpaperInfo.requestIds = new ArrayList<>();
-                uploadingWallpaperInfo.requestIds.add(getConnectionsManager().sendRequest(req, (response, error) -> {
-                    TLRPC.WallPaper wallPaper = (TLRPC.WallPaper) response;
-                    File path = new File(ApplicationLoader.getFilesDirFixed(), overrideWallpaperInfo.originalFileName);
-                    if (wallPaper != null) {
-                        try {
-                            AndroidUtilities.copyFile(path, getFileLoader().getPathToAttach(wallPaper.document, true));
-                        } catch (Exception ignore) {
-
-                        }
-                    }
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (uploadingWallpaper != null && uploadingWallpaperInfo.requestIds != null && wallPaper != null) {
-                            wallPaper.settings = settings;
-                            wallPaper.flags |= 4;
-                            overrideWallpaperInfo.slug = wallPaper.slug;
-                            overrideWallpaperInfo.saveOverrideWallpaper();
-                            ArrayList<TLRPC.WallPaper> wallpapers = new ArrayList<>();
-                            wallpapers.add(wallPaper);
-                            getMessagesStorage().putWallpapers(wallpapers, 2);
-                            TLRPC.PhotoSize image = FileLoader.getClosestPhotoSizeWithSize(wallPaper.document.thumbs, 320);
-                            if (image != null) {
-                                String newKey = image.location.volume_id + "_" + image.location.local_id + "@100_100";
-                                String oldKey = Utilities.MD5(path.getAbsolutePath()) + "@100_100";
-                                ImageLoader.getInstance().replaceImageInCache(oldKey, newKey, ImageLocation.getForDocument(image, wallPaper.document), false);
-                            }
-                            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.wallpapersNeedReload, wallPaper.slug);
-                            if (uploadingWallpaperInfo.requestIds != null && overrideWallpaperInfo.dialogId != 0) {
-                                uploadingWallpaperInfo.requestIds.add(ChatThemeController.getInstance(currentAccount).setWallpaperToPeer(overrideWallpaperInfo.dialogId, uploadingWallpaperFinal, overrideWallpaperInfo, null, null));
-                            }
-                        }
-                    });
-                }));
             } else {
                 Object object = uploadingThemes.get(location);
                 Theme.ThemeInfo themeInfo;
@@ -6402,9 +6386,6 @@ public class MessagesController extends BaseController implements NotificationCe
             String location = (String) args[0];
             if (uploadingAvatar != null && uploadingAvatar.equals(location)) {
                 uploadingAvatar = null;
-            } else if (uploadingWallpaper != null && uploadingWallpaper.equals(location)) {
-                uploadingWallpaper = null;
-                uploadingWallpaperInfo = null;
             } else {
                 Object object = uploadingThemes.remove(location);
                 if (object instanceof Theme.ThemeInfo) {
@@ -6417,13 +6398,6 @@ public class MessagesController extends BaseController implements NotificationCe
                     accent.uploadingThumb = null;
                     getNotificationCenter().postNotificationName(NotificationCenter.themeUploadError, accent.parentTheme, accent);
                 }
-            }
-        } if (id == NotificationCenter.fileUploadProgressChanged) {
-            String location = (String) args[0];
-            if (uploadingWallpaper != null && uploadingWallpaper.equals(location)) {
-                Long loadedSize = (Long) args[1];
-                Long totalSize = (Long) args[2];
-                uploadingWallpaperInfo.uploadingProgress = loadedSize / (float) totalSize;
             }
         } else if (id == NotificationCenter.messageReceivedByServer) {
             Boolean scheduled = (Boolean) args[6];
@@ -6482,11 +6456,12 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void cleanup() {
+        retireWallpaperUpload(wallpaperUpload, false);
         getMessagesStorage().invalidateWidgetState();
         peerColorsLoadGeneration++;
         loadingPeerColors = loadingProfilePeerColors = false;
         getContactsController().cleanup();
-        MediaController.getInstance().cleanup();
+        MediaController.getInstance().cleanup(currentAccount);
         getNotificationsController().cleanup();
         getSendMessagesHelper().cleanup();
         getSecretChatHelper().cleanup();
@@ -6693,6 +6668,7 @@ public class MessagesController extends BaseController implements NotificationCe
         currentDeletingTaskMids = null;
         currentDeletingTaskMediaMids = null;
         gettingNewDeleteTask = false;
+        ++blockedPeersLoadGeneration;
         loadingBlockedPeers = false;
         totalBlockedCount = -1;
         blockedEndReached = false;
@@ -6890,6 +6866,17 @@ public class MessagesController extends BaseController implements NotificationCe
         return exportedChats.get(chatId);
     }
 
+    public void cacheLocalSearchPeers(List<?> peers) {
+        for (Object peer : peers) {
+            if (peer instanceof TLRPC.User) {
+                TLRPC.User user = (TLRPC.User) peer;
+                users.putIfAbsent(user.id, user);
+            } else if (peer instanceof TLRPC.Chat) {
+                TLRPC.Chat chat = (TLRPC.Chat) peer;
+                chats.putIfAbsent(chat.id, chat);
+            }
+        }
+    }
     public boolean putUser(TLRPC.User user, boolean fromCache) {
         return putUser(user, fromCache, false);
     }
@@ -9023,11 +9010,16 @@ public class MessagesController extends BaseController implements NotificationCe
             return;
         }
         loadingBlockedPeers = true;
+        final int generation = ++blockedPeersLoadGeneration;
+        final long ownerUserId = getUserConfig().getClientUserId();
         TLRPC.TL_contacts_getBlocked req = new TLRPC.TL_contacts_getBlocked();
         req.offset = reset ? 0 : blockePeers.size();
         req.limit = reset ? 20 : 100;
         getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response != null) {
+            if (generation != blockedPeersLoadGeneration || ownerUserId != getUserConfig().getClientUserId()
+                    || !getUserConfig().isClientActivated()) return;
+            loadingBlockedPeers = false;
+            if (error == null && response instanceof TLRPC.contacts_Blocked) {
                 TLRPC.contacts_Blocked res = (TLRPC.contacts_Blocked) response;
                 putUsers(res.users, false);
                 putChats(res.chats, false);
@@ -9041,9 +9033,8 @@ public class MessagesController extends BaseController implements NotificationCe
                     TLRPC.TL_peerBlocked blocked = res.blocked.get(a);
                     blockePeers.put(MessageObject.getPeerId(blocked.peer_id), 1);
                 }
-                loadingBlockedPeers = false;
-                getNotificationCenter().postNotificationName(NotificationCenter.blockedUsersDidLoad);
             }
+                getNotificationCenter().postNotificationName(NotificationCenter.blockedUsersDidLoad);
         }));
     }
 
@@ -9230,21 +9221,177 @@ public class MessagesController extends BaseController implements NotificationCe
         });
     }
 
-    public void saveWallpaperToServer(File path, Theme.OverrideWallpaperInfo info, boolean install, long taskId) {
-        if (uploadingWallpaper != null) {
-            File finalPath = new File(ApplicationLoader.getFilesDirFixed(), info.originalFileName);
-            if (path != null && (path.getAbsolutePath().equals(uploadingWallpaper) || path.equals(finalPath))) {
-                uploadingWallpaperInfo = info;
-                return;
-            }
-            getFileLoader().cancelFileUpload(uploadingWallpaper, false);
+    private boolean isCurrentWallpaperUpload(WallpaperUpload upload) {
+        return upload != null && wallpaperUpload == upload && !upload.retired && upload.accountCurrent()
+                && upload.info == uploadingWallpaperInfo && upload.path.equals(uploadingWallpaper);
+    }
+
+    private void retireWallpaperUpload(WallpaperUpload upload, boolean rollback) {
+        if (upload == null || upload.retired) return;
+        final boolean owned = wallpaperUpload == upload;
+        upload.retired = true;
+        if (owned) {
+            wallpaperUpload = null;
             uploadingWallpaper = null;
             uploadingWallpaperInfo = null;
         }
+        if (upload.upload != null) upload.upload.cancel();
+        for (int requestId : upload.requestIds) getConnectionsManager().cancelRequest(requestId, true);
+        upload.requestIds.clear();
+        if (upload.info.requestIds == upload.requestIds) upload.info.requestIds = null;
+        if (!owned || !rollback || !upload.accountCurrent() || upload.info.dialogId == 0) return;
+        final Theme.OverrideWallpaperInfo info = upload.info;
+        if (info.dialogId >= 0) {
+            final TLRPC.UserFull userFull = getUserFull(info.dialogId);
+            if (userFull != null && userFull.wallpaper != null && upload.path.equals(userFull.wallpaper.uploadingImage)) {
+                userFull.wallpaper = upload.rollbackWallpaper;
+                getNotificationCenter().postNotificationName(NotificationCenter.userInfoDidLoad, info.dialogId, userFull);
+            }
+        } else {
+            final TLRPC.ChatFull chatFull = getChatFull(-info.dialogId);
+            if (chatFull != null && chatFull.wallpaper != null && upload.path.equals(chatFull.wallpaper.uploadingImage)) {
+                chatFull.wallpaper = upload.rollbackWallpaper;
+                getNotificationCenter().postNotificationName(NotificationCenter.chatInfoDidLoad, chatFull, 0, false, false);
+            }
+        }
+    }
+
+    private void onWallpaperFileUploaded(WallpaperUpload upload, TLRPC.InputFile file) {
+        if (!isCurrentWallpaperUpload(upload)) return;
+        TL_account.uploadWallPaper req = new TL_account.uploadWallPaper();
+        req.file = file;
+        req.mime_type = "image/jpeg";
+        req.settings = new TLRPC.TL_wallPaperSettings();
+        req.settings.blur = upload.info.isBlurred;
+        req.settings.motion = upload.info.isMotion;
+        upload.info.uploadingProgress = 1f;
+        try {
+            final int requestId = getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (!isCurrentWallpaperUpload(upload)) return;
+                if (error != null || !(response instanceof TLRPC.TL_wallPaper) || ((TLRPC.WallPaper) response).document == null) {
+                    retireWallpaperUpload(upload, true);
+                    return;
+                }
+                final TLRPC.WallPaper wallPaper = (TLRPC.WallPaper) response;
+                if (!Utilities.globalQueue.postRunnable(() -> {
+                    if (wallpaperUpload != upload || upload.retired || !upload.accountCurrent()) return;
+                    try {
+                        AndroidUtilities.copyFile(upload.source, getFileLoader().getPathToAttach(wallPaper.document, true));
+                    } catch (Exception ignore) {
+
+                    }
+                    AndroidUtilities.runOnUIThread(() -> applyUploadedWallpaper(upload, wallPaper));
+                })) applyUploadedWallpaper(upload, wallPaper);
+            }));
+            if (requestId == 0) retireWallpaperUpload(upload, true);
+            else if (isCurrentWallpaperUpload(upload)) upload.requestIds.add(requestId);
+            else getConnectionsManager().cancelRequest(requestId, true);
+        } catch (Exception e) {
+            FileLog.e(e);
+            retireWallpaperUpload(upload, true);
+        }
+    }
+
+    private void applyUploadedWallpaper(WallpaperUpload upload, TLRPC.WallPaper wallPaper) {
+        if (!isCurrentWallpaperUpload(upload)) return;
+        final long generation = ++upload.applyGeneration;
+        upload.result = wallPaper;
+        final Theme.OverrideWallpaperInfo info = upload.info;
+        TLRPC.TL_wallPaperSettings settings = new TLRPC.TL_wallPaperSettings();
+        settings.blur = info.isBlurred;
+        settings.motion = info.isMotion;
+        wallPaper.settings = settings;
+        wallPaper.flags |= 4;
+        info.slug = wallPaper.slug;
+        info.saveOverrideWallpaper();
+        ArrayList<TLRPC.WallPaper> wallpapers = new ArrayList<>();
+        wallpapers.add(wallPaper);
+        getMessagesStorage().putWallpapers(wallpapers, 2);
+        TLRPC.PhotoSize image = FileLoader.getClosestPhotoSizeWithSize(wallPaper.document.thumbs, 320);
+        if (image != null) {
+            String newKey = image.location.volume_id + "_" + image.location.local_id + "@100_100";
+            String oldKey = Utilities.MD5(upload.source.getAbsolutePath()) + "@100_100";
+            ImageLoader.getInstance().replaceImageInCache(oldKey, newKey, ImageLocation.getForDocument(image, wallPaper.document), false);
+        }
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.wallpapersNeedReload, wallPaper.slug);
+        if (isCurrentWallpaperApply(upload, info, generation) && info.dialogId != 0) {
+            final int requestId = ChatThemeController.getInstance(currentAccount).setWallpaperToPeer(info.dialogId, upload.path, info, null,
+                    () -> confirmWallpaperApply(upload, info, generation),
+                    () -> isCurrentWallpaperApply(upload, info, generation));
+            if (requestId != 0) {
+                if (isCurrentWallpaperApply(upload, info, generation)) upload.requestIds.add(requestId);
+                else getConnectionsManager().cancelRequest(requestId, true);
+            }
+        }
+    }
+
+    private boolean isCurrentWallpaperApply(WallpaperUpload upload, Theme.OverrideWallpaperInfo info, long generation) {
+        return isCurrentWallpaperUpload(upload) && info == upload.info && generation == upload.applyGeneration;
+    }
+
+    private void confirmWallpaperApply(WallpaperUpload upload, Theme.OverrideWallpaperInfo info, long generation) {
+        if (!isCurrentWallpaperApply(upload, info, generation)) return;
+        TLRPC.WallPaper applied = null;
+        if (info.dialogId >= 0) {
+            TLRPC.UserFull userFull = getUserFull(info.dialogId);
+            if (userFull != null) applied = userFull.wallpaper;
+        } else {
+            TLRPC.ChatFull chatFull = getChatFull(-info.dialogId);
+            if (chatFull != null) applied = chatFull.wallpaper;
+        }
+        if (applied != null && applied.document != null) upload.rollbackWallpaper = applied;
+    }
+
+    public void saveWallpaperToServer(File path, Theme.OverrideWallpaperInfo info, boolean install, long taskId) {
+        final WallpaperUpload previous = wallpaperUpload;
+        if (isCurrentWallpaperUpload(previous)) {
+            if (info.dialogId == previous.info.dialogId && info.prevUserWallpaper != null
+                    && previous.path.equals(info.prevUserWallpaper.uploadingImage)) {
+                info.prevUserWallpaper = previous.rollbackWallpaper;
+            }
+            File finalPath = new File(ApplicationLoader.getFilesDirFixed(), info.originalFileName);
+            if (path != null && info.dialogId == previous.info.dialogId
+                    && (path.getAbsolutePath().equals(uploadingWallpaper) || path.equals(finalPath))) {
+                info.uploadingProgress = previous.info.uploadingProgress;
+                if (info.dialogId == previous.info.dialogId) info.prevUserWallpaper = previous.rollbackWallpaper;
+                info.requestIds = previous.requestIds;
+                previous.info = info;
+                uploadingWallpaperInfo = info;
+                if (previous.result != null) {
+                    for (int requestId : previous.requestIds) getConnectionsManager().cancelRequest(requestId, true);
+                    previous.requestIds.clear();
+                    applyUploadedWallpaper(previous, previous.result);
+                }
+                return;
+            }
+        }
+        retireWallpaperUpload(previous, previous != null && info.dialogId != previous.info.dialogId);
         if (path != null) {
-            uploadingWallpaper = path.getAbsolutePath();
+            final WallpaperUpload upload = wallpaperUpload = new WallpaperUpload(path, info);
+            uploadingWallpaper = upload.path;
             uploadingWallpaperInfo = info;
-            getFileLoader().uploadFile(uploadingWallpaper, false, true, ConnectionsManager.FileTypePhoto);
+            if (!upload.accountCurrent()) {
+                retireWallpaperUpload(upload, false);
+                return;
+            }
+            upload.upload = getFileLoader().uploadFile(upload.path, true, ConnectionsManager.FileTypePhoto, new FileLoader.UploadFileCallback() {
+                @Override
+                public void onProgress(FileLoader.UploadRequest request, long uploadedSize, long totalSize) {
+                    if (isCurrentWallpaperUpload(upload) && upload.upload == request) {
+                        upload.info.uploadingProgress = totalSize > 0 ? Math.min(1f, uploadedSize / (float) totalSize) : 0f;
+                    }
+                }
+
+                @Override
+                public void onUploaded(FileLoader.UploadRequest request, TLRPC.InputFile file) {
+                    if (upload.upload == request) onWallpaperFileUploaded(upload, file);
+                }
+
+                @Override
+                public void onFailed(FileLoader.UploadRequest request) {
+                    if (wallpaperUpload == upload && upload.upload == request) retireWallpaperUpload(upload, true);
+                }
+            });
         } else if (!info.isDefault() && !info.isColor() && info.wallpaperId > 0 && !info.isTheme()) {
             TLRPC.InputWallPaper inputWallPaper = getInputWallpaper(info);
             TLRPC.TL_wallPaperSettings settings = getWallpaperSetting(info);
@@ -15215,7 +15362,21 @@ public class MessagesController extends BaseController implements NotificationCe
         });
     }
 
+    public interface CreateChatCallback {
+        boolean isCurrent();
+
+        void onComplete(long chatId);
+    }
     public int createChat(String title, ArrayList<Long> selectedContacts, String about, int type, boolean forImport, Location location, String locationAddress, int ttlPeriod, BaseFragment fragment) {
+        return createChat(title, selectedContacts, about, type, forImport, location, locationAddress, ttlPeriod, fragment, null);
+    }
+
+    public int createChat(String title, ArrayList<Long> selectedContacts, String about, int type, boolean forImport, Location location, String locationAddress, int ttlPeriod, BaseFragment fragment, CreateChatCallback callback) {
+        final long ownerUserId = callback == null ? 0 : getUserConfig().getClientUserId();
+        final long ownerSession = callback == null ? 0 : app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+        final java.util.function.BooleanSupplier ownerCurrent = () -> callback == null
+                || app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, ownerUserId, ownerSession);
+        if (callback != null && (!ownerCurrent.getAsBoolean() || !callback.isCurrent())) return 0;
         if (type == ChatObject.CHAT_TYPE_CHAT && !forImport) {
             TLRPC.TL_messages_createChat req = new TLRPC.TL_messages_createChat();
             req.title = title;
@@ -15231,10 +15392,14 @@ public class MessagesController extends BaseController implements NotificationCe
                 req.users.add(getInputUser(user));
             }
             return getConnectionsManager().sendRequest(req, (response, error) -> {
+                if (!ownerCurrent.getAsBoolean()) return;
                 if (error != null) {
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!ownerCurrent.getAsBoolean()) return;
+                        if (callback == null || callback.isCurrent()) {
                         AlertsCreator.processError(currentAccount, error, fragment, req);
-                        getNotificationCenter().postNotificationName(NotificationCenter.chatDidFailCreate);
+                        }
+                        notifyCreateChatResult(callback, ownerCurrent, null);
                     });
                     return;
                 }
@@ -15242,15 +15407,21 @@ public class MessagesController extends BaseController implements NotificationCe
                     TLRPC.TL_messages_invitedUsers res = (TLRPC.TL_messages_invitedUsers) response;
                     processUpdates(res.updates, false);
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!ownerCurrent.getAsBoolean()) return;
                         putUsers(res.updates.users, false);
                         putChats(res.updates.chats, false);
                         if (res.updates.chats != null && !res.updates.chats.isEmpty()) {
-                            getNotificationCenter().postNotificationName(NotificationCenter.chatDidCreated, res.updates.chats.get(0).id);
+                            final boolean showInviteResult = callback == null || callback.isCurrent();
+                            notifyCreateChatResult(callback, ownerCurrent, res.updates.chats.get(0).id);
+                            if (showInviteResult && ownerCurrent.getAsBoolean()) {
                             AlertsCreator.checkRestrictedInviteUsers(currentAccount, res.updates.chats.get(0), res);
+                            }
                         } else {
-                            getNotificationCenter().postNotificationName(NotificationCenter.chatDidFailCreate);
+                            notifyCreateChatResult(callback, ownerCurrent, null);
                         }
                     });
+                } else if (callback != null) {
+                    AndroidUtilities.runOnUIThread(() -> notifyCreateChatResult(callback, ownerCurrent, null));
                 }
             }, ConnectionsManager.RequestFlagFailOnServerErrors);
         } else if (forImport || type == ChatObject.CHAT_TYPE_CHANNEL || type == ChatObject.CHAT_TYPE_MEGAGROUP || type == ChatObject.CHAT_TYPE_FORUM) {
@@ -15272,27 +15443,47 @@ public class MessagesController extends BaseController implements NotificationCe
                 req.flags |= 4;
             }
             return getConnectionsManager().sendRequest(req, (response, error) -> {
+                if (!ownerCurrent.getAsBoolean()) return;
                 if (error != null) {
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (!ownerCurrent.getAsBoolean()) return;
+                        if (callback == null || callback.isCurrent()) {
                         AlertsCreator.processError(currentAccount, error, fragment, req);
-                        getNotificationCenter().postNotificationName(NotificationCenter.chatDidFailCreate);
+                        }
+                        notifyCreateChatResult(callback, ownerCurrent, null);
                     });
+                    return;
+                }
+                if (callback != null && !(response instanceof TLRPC.Updates)) {
+                    AndroidUtilities.runOnUIThread(() -> notifyCreateChatResult(callback, ownerCurrent, null));
                     return;
                 }
                 TLRPC.Updates updates = (TLRPC.Updates) response;
                 processUpdates(updates, false);
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (!ownerCurrent.getAsBoolean()) return;
                     putUsers(updates.users, false);
                     putChats(updates.chats, false);
                     if (updates.chats != null && !updates.chats.isEmpty()) {
-                        getNotificationCenter().postNotificationName(NotificationCenter.chatDidCreated, updates.chats.get(0).id);
+                        notifyCreateChatResult(callback, ownerCurrent, updates.chats.get(0).id);
                     } else {
-                        getNotificationCenter().postNotificationName(NotificationCenter.chatDidFailCreate);
+                        notifyCreateChatResult(callback, ownerCurrent, null);
                     }
                 });
             }, ConnectionsManager.RequestFlagFailOnServerErrors);
         }
         return 0;
+    }
+
+    private void notifyCreateChatResult(CreateChatCallback callback, java.util.function.BooleanSupplier ownerCurrent, Long chatId) {
+        if (!ownerCurrent.getAsBoolean()) return;
+        if (callback != null && callback.isCurrent()) callback.onComplete(chatId == null ? 0 : chatId);
+        if (!ownerCurrent.getAsBoolean()) return;
+        if (chatId != null) {
+            getNotificationCenter().postNotificationName(NotificationCenter.chatDidCreated, chatId);
+                    } else {
+                        getNotificationCenter().postNotificationName(NotificationCenter.chatDidFailCreate);
+                    }
     }
 
     public void convertToMegaGroup(Context context, long chatId, BaseFragment fragment, MessagesStorage.LongCallback convertRunnable) {
@@ -20093,6 +20284,11 @@ public class MessagesController extends BaseController implements NotificationCe
 //                    updatesOnMainThread = new ArrayList<>();
 //                }
 //                updatesOnMainThread.add(baseUpdate);
+            } else if (baseUpdate instanceof TL_update.TL_updatePhoneCallSignalingData) {
+                VoIPService svc = VoIPService.getSharedInstance();
+                if (svc != null && svc.getAccount() == currentAccount) {
+                    svc.onSignalingData((TL_update.TL_updatePhoneCallSignalingData) baseUpdate);
+                }
             } else {
                 if (updatesOnMainThread == null) {
                     updatesOnMainThread = new ArrayList<>();
@@ -20783,12 +20979,6 @@ public class MessagesController extends BaseController implements NotificationCe
                     } else if (baseUpdate instanceof TL_update.TL_updateEditForumTopic) {
                         TL_update.TL_updateEditForumTopic update = (TL_update.TL_updateEditForumTopic) baseUpdate;
                         getTopicsController().onTopicEditedServerSide(DialogObject.getPeerDialogId(update.peer), update);
-                    } else if (baseUpdate instanceof TL_update.TL_updatePhoneCallSignalingData) {
-                        TL_update.TL_updatePhoneCallSignalingData data = (TL_update.TL_updatePhoneCallSignalingData) baseUpdate;
-                        VoIPService svc = VoIPService.getSharedInstance();
-                        if (svc != null) {
-                            svc.onSignalingData(data);
-                        }
                     } else if (baseUpdate instanceof TL_update.TL_updateGroupCallParticipants) {
                         TL_update.TL_updateGroupCallParticipants update = (TL_update.TL_updateGroupCallParticipants) baseUpdate;
                         ChatObject.Call call = groupCalls.get(update.call.id);
@@ -20869,7 +21059,7 @@ public class MessagesController extends BaseController implements NotificationCe
 //                                svc.answerToRequestForConference((TL_phone.phoneCallRequested) call);
 //                                continue;
 //                            }
-                            if (svc != null || VoIPService.callIShouldHavePutIntoIntent != null || !callStateIsIdle) {
+                            if (svc != null || VoIPPreNotificationService.hasPendingIncomingCall() || !callStateIsIdle) {
                                 if (svc != null && svc.getAccount() != currentAccount && svc.getUser() != null && svc.getUser().id == getUserConfig().getClientUserId()) {
                                     // calling from the same device, don't discard
                                     continue;
@@ -20894,13 +21084,13 @@ public class MessagesController extends BaseController implements NotificationCe
                             if (BuildVars.LOGS_ENABLED) {
                                 FileLog.d("Starting service for call " + call.id);
                             }
-                            VoIPService.callIShouldHavePutIntoIntent = call;
-                            FileLog.e("set VoIPService.callIShouldHavePutIntoIntent = " + call);
                             Intent intent = new Intent(ApplicationLoader.applicationContext, VoIPService.class);
                             intent.putExtra("is_outgoing", false);
                             intent.putExtra("user_id", call.participant_id == getUserConfig().getClientUserId() ? call.admin_id : call.participant_id);
                             intent.putExtra("account", currentAccount);
                             intent.putExtra("notifications_disabled", notificationsDisabled);
+                            if (!VoIPPreNotificationService.prepareIncomingCall(intent, call)) continue;
+                            FileLog.e("set VoIPService.callIShouldHavePutIntoIntent = " + call);
                             try {
                                 if (Build.VERSION.SDK_INT >= 33) {
                                     intent.putExtra("accept", true);
@@ -20910,28 +21100,26 @@ public class MessagesController extends BaseController implements NotificationCe
                                 } else {
                                     ApplicationLoader.applicationContext.startService(intent);
                                 }
-                                if (ApplicationLoader.mainInterfacePaused || !ApplicationLoader.isScreenOn) {
+                                if ((ApplicationLoader.mainInterfacePaused || !ApplicationLoader.isScreenOn)
+                                        && VoIPPreNotificationService.getIncomingCall(intent) != null) {
                                     ignoreSetOnline = true;
                                 }
                             } catch (Throwable e) {
+                                VoIPPreNotificationService.cancelIncomingCall(intent);
                                 FileLog.e(e);
                             }
                         } else {
+                            if (call instanceof TL_phone.TL_phoneCallDiscarded) {
+                                VoIPPreNotificationService.dismiss(ApplicationLoader.applicationContext, currentAccount, call.id, false);
+                            }
                             if (svc != null && svc.getAccount() == currentAccount && call != null) {
                                 svc.onCallUpdated(call);
-                            } else {
-                                if (call instanceof TL_phone.TL_phoneCallDiscarded) {
-                                    VoIPPreNotificationService.dismiss(ApplicationLoader.applicationContext, false);
-                                }
-                                if (VoIPService.callIShouldHavePutIntoIntent != null) {
+                            }
+                            if (VoIPPreNotificationService.updateIncomingCall(currentAccount, call)) {
                                     if (BuildVars.LOGS_ENABLED) {
                                         FileLog.d("Updated the call while the service is starting");
                                     }
-                                    if (call.id == VoIPService.callIShouldHavePutIntoIntent.id) {
-                                        VoIPService.callIShouldHavePutIntoIntent = call instanceof TL_phone.TL_phoneCallDiscarded ? null : call;
                                         FileLog.e("(2) set VoIPService.callIShouldHavePutIntoIntent = " + VoIPService.callIShouldHavePutIntoIntent);
-                                    }
-                                }
                             }
                         }
                     } else if (baseUpdate instanceof TL_update.TL_updateDialogUnreadMark) {
@@ -21141,7 +21329,8 @@ public class MessagesController extends BaseController implements NotificationCe
                         loadingArePaidReactionsAnonymous = false;
                     } else if (baseUpdate instanceof TL_update.TL_updateGroupCallChainBlocks) {
                         final VoIPService service = VoIPService.getSharedInstance();
-                        if (service != null && service.conference != null) {
+                        if (service != null && service.getAccount() == currentAccount && service.conference != null
+                                && VoIPPreNotificationService.isServiceOwnerCurrent(service)) {
                             service.conference.applyUpdate(null, (TL_update.TL_updateGroupCallChainBlocks) baseUpdate, true, null);
                         }
                     } else if (baseUpdate instanceof TL_update.TL_updateChatParticipantRank) {
@@ -24070,31 +24259,7 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public void cancelUploadWallpaper() {
-        if (uploadingWallpaperInfo != null) {
-            if (uploadingWallpaperInfo.requestIds != null) {
-                for (int i = 0; i < uploadingWallpaperInfo.requestIds.size(); i++) {
-                    ConnectionsManager.getInstance(currentAccount).cancelRequest(uploadingWallpaperInfo.requestIds.get(i), true);
-                }
-            }
-            FileLoader.getInstance(currentAccount).cancelFileUpload(uploadingWallpaper, false);
-            if (uploadingWallpaperInfo.dialogId != 0) {
-                if (uploadingWallpaperInfo.dialogId >= 0) {
-                    TLRPC.UserFull userFull = getUserFull(uploadingWallpaperInfo.dialogId);
-                    if (userFull != null) {
-                        userFull.wallpaper = uploadingWallpaperInfo.prevUserWallpaper;
-                        NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.userInfoDidLoad, uploadingWallpaperInfo.dialogId, userFull);
-                    }
-                } else {
-                    TLRPC.ChatFull chatFull = getChatFull(-uploadingWallpaperInfo.dialogId);
-                    if (chatFull != null) {
-                        chatFull.wallpaper = uploadingWallpaperInfo.prevUserWallpaper;
-                        NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.chatInfoDidLoad, chatFull, 0, false, false);
-                    }
-                }
-            }
-            uploadingWallpaperInfo = null;
-            uploadingWallpaper = null;
-        }
+        retireWallpaperUpload(wallpaperUpload, true);
     }
 
     public StoriesController getStoriesController() {

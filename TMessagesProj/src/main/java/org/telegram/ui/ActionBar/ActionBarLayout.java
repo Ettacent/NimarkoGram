@@ -376,7 +376,9 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
             for (int a = 0; a < count; a++) {
                 View child = getChildAt(a);
                 if (!(child instanceof ActionBar)) {
-                    if (child instanceof BaseFragment.AttachedSheetWindow) {
+                    if (child instanceof SimpleActionBarMenuOverlay) {
+                        measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0);
+                    } else if (child instanceof BaseFragment.AttachedSheetWindow) {
                         boolean drawBehindNavigationBar = attachedSheetDrawsBehindNavigationBar((BaseFragment.AttachedSheetWindow) child);
                         measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, getBottomTabsHeight(false) > 0 || !isSupportEdgeToEdge || drawBehindNavigationBar ? 0 : systemAndDisplayInsets.bottom);
                     } else if (child.getTag(R.id.sheet_attached_to_fragment_tag) != null || child.getFitsSystemWindows()) {
@@ -408,7 +410,7 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 View child = getChildAt(a);
                 if (!(child instanceof ActionBar)) {
                     FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) child.getLayoutParams();
-                    if (child.getTag(R.id.sheet_attached_to_fragment_tag) != null || child.getFitsSystemWindows() || child instanceof BaseFragment.AttachedSheetWindow) {
+                    if (child instanceof SimpleActionBarMenuOverlay || child.getTag(R.id.sheet_attached_to_fragment_tag) != null || child.getFitsSystemWindows() || child instanceof BaseFragment.AttachedSheetWindow) {
                         child.layout(
                             paddingLeft + layoutParams.leftMargin,
                             layoutParams.topMargin,

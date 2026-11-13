@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.os.SystemClock;
@@ -21,11 +23,16 @@ import java.util.HashMap;
 
 public class FileRefController extends BaseController {
 
+    public interface ReferenceCallback extends Runnable {
+        void onFailure();
+    }
     private static class Requester {
         private TLRPC.InputFileLocation location;
         private Object[] args;
         private String locationKey;
+        private String parentKey;
         private boolean completed;
+        private boolean processing;
     }
 
     private static class CachedResult {
@@ -423,6 +430,7 @@ public class FileRefController extends BaseController {
         requester.location = location;
         requester.locationKey = locationKey;
 
+        requester.parentKey = parentKey;
         int added = 0;
         ArrayList<Requester> arrayList = locationRequester.get(locationKey);
         if (arrayList == null) {
@@ -463,7 +471,7 @@ public class FileRefController extends BaseController {
         CachedResult cachedResult = getCachedResponse(cacheKey);
         if (cachedResult != null) {
             if (!onRequestComplete(locationKey, parentKey, cachedResult.response, null,false, true)) {
-                responseCache.remove(locationKey);
+                responseCache.remove(cacheKey);
             } else {
                 return;
             }
@@ -1028,6 +1036,11 @@ public class FileRefController extends BaseController {
 
     @SuppressWarnings("unchecked")
     private void sendErrorToObject(Object[] args, int reason) {
+        if ((args[0] instanceof TLRPC.InputPhoto || args[0] instanceof TLRPC.InputDocument)
+                && args.length > 1 && args[1] instanceof ReferenceCallback) {
+            AndroidUtilities.runOnUIThread(((ReferenceCallback) args[1])::onFailure);
+            return;
+        }
         if (args[0] instanceof TLRPC.TL_inputSingleMedia) {
             TLRPC.TL_messages_sendMultiMedia req = (TLRPC.TL_messages_sendMultiMedia) args[1];
             Object[] objects = multiMediaCache.get(req);
@@ -1078,6 +1091,47 @@ public class FileRefController extends BaseController {
         }
     }
 
+    private boolean areRequestersCompleted(ArrayList<Requester> requesters) {
+        if (requesters != null) {
+            for (int i = 0, N = requesters.size(); i < N; i++) {
+                Requester requester = requesters.get(i);
+                if (!requester.completed || requester.processing) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean removeCompletedParentRequesters(String parentKey) {
+        ArrayList<Requester> requesters = parentRequester.get(parentKey);
+        if (!areRequestersCompleted(requesters)) {
+            return false;
+        }
+        if (requesters != null) {
+            for (int i = 0, N = requesters.size(); i < N; i++) {
+                if (!areRequestersCompleted(locationRequester.get(requesters.get(i).locationKey))) {
+                    return false;
+                }
+            }
+            parentRequester.remove(parentKey);
+        }
+        return true;
+    }
+
+    private boolean removeCompletedLocationRequesters(String locationKey) {
+        ArrayList<Requester> requesters = locationRequester.get(locationKey);
+        if (!areRequestersCompleted(requesters)) {
+            return false;
+        }
+        if (requesters != null) {
+            locationRequester.remove(locationKey);
+            for (int i = 0, N = requesters.size(); i < N; i++) {
+                removeCompletedParentRequesters(requesters.get(i).parentKey);
+            }
+        }
+        return true;
+    }
     private boolean onRequestComplete(String locationKey, String parentKey, TLObject response, TLRPC.TL_error error, boolean cache, boolean fromCache) {
         boolean found = false;
         String cacheKey = parentKey;
@@ -1095,34 +1149,36 @@ public class FileRefController extends BaseController {
         if (parentKey != null) {
             ArrayList<Requester> arrayList = parentRequester.get(parentKey);
             if (arrayList != null) {
+                arrayList = new ArrayList<>(arrayList);
                 for (int q = 0, N = arrayList.size(); q < N; q++) {
                     Requester requester = arrayList.get(q);
-                    if (requester.completed) {
+                    if (requester.processing || requester.completed && areRequestersCompleted(locationRequester.get(requester.locationKey))) {
                         continue;
                     }
                     if (onRequestComplete(requester.locationKey, null, response, error, cache && !found, fromCache)) {
                         found = true;
                     }
                 }
-                if (found) {
+                boolean completed = removeCompletedParentRequesters(parentKey);
+                if (found && (!fromCache || completed)) {
                     putReponseToCache(cacheKey, response);
                 }
-                parentRequester.remove(parentKey);
             }
+        }
+        ArrayList<Requester> arrayList = locationRequester.get(locationKey);
+        if (arrayList == null) {
+            return fromCache ? removeCompletedParentRequesters(parentKey) : found;
+        }
+        arrayList = new ArrayList<>(arrayList);
+        cacheKey = locationKey;
+        for (int q = 0, N = arrayList.size(); q < N; q++) {
+            Requester requester = arrayList.get(q);
+            if (requester.completed || requester.processing) {
+                continue;
         }
         byte[] result = null;
         TLRPC.InputFileLocation[] locationReplacement = null;
         boolean[] needReplacement = null;
-        ArrayList<Requester> arrayList = locationRequester.get(locationKey);
-        if (arrayList == null) {
-            return found;
-        }
-        cacheKey = locationKey;
-        for (int q = 0, N = arrayList.size(); q < N; q++) {
-            Requester requester = arrayList.get(q);
-            if (requester.completed) {
-                continue;
-            }
             if (error != null && BuildVars.LOGS_ENABLED) {
                 if (requester.args.length > 1 && requester.args[1] instanceof FileLoadOperation) {
                     FileLoadOperation operation = (FileLoadOperation) requester.args[1];
@@ -1133,7 +1189,7 @@ public class FileRefController extends BaseController {
                 locationReplacement = new TLRPC.InputFileLocation[1];
                 needReplacement = new boolean[1];
             }
-            requester.completed = true;
+            requester.completed = !fromCache;
             if (response instanceof StoriesController.BotPreview) {
                 StoriesController.BotPreview newStoryItem = (StoriesController.BotPreview) response;
                 if (newStoryItem.media.document != null) {
@@ -1174,7 +1230,7 @@ public class FileRefController extends BaseController {
                             break;
                         }
                     }
-                    if (result == null) {
+                    if (result == null && !fromCache) {
                         getMessagesStorage().replaceMessageIfExists(res.messages.get(0), res.users, res.chats, true);
                         if (BuildVars.DEBUG_VERSION) {
                             FileLog.d("file ref not found in messages, replacing message");
@@ -1195,8 +1251,10 @@ public class FileRefController extends BaseController {
                 }
             } else if (response instanceof TLRPC.TL_messages_availableReactions) {
                 TLRPC.TL_messages_availableReactions availableReactions = (TLRPC.TL_messages_availableReactions) response;
+                if (!fromCache) {
                 getMediaDataController().processLoadedReactions(availableReactions.reactions, availableReactions.hash, (int) (System.currentTimeMillis() / 1000), false);
 
+                }
                 for (TLRPC.TL_availableReaction reaction : availableReactions.reactions) {
                     result = getFileReference(reaction.static_icon, null, requester.location, needReplacement, locationReplacement);
                     if (result != null) {
@@ -1229,20 +1287,21 @@ public class FileRefController extends BaseController {
                 }
             } else if (response instanceof TLRPC.TL_users_userFull) {
                 TLRPC.TL_users_userFull usersFull = (TLRPC.TL_users_userFull) response;
+                if (!fromCache) {
                 getMessagesController().putUsers(usersFull.users, false);
                 getMessagesController().putChats(usersFull.chats, false);
+                }
                 TLRPC.UserFull userFull = usersFull.full_user;
                 TL_bots.BotInfo botInfo = userFull.bot_info;
                 if (botInfo != null) {
-                    getMessagesStorage().updateUserInfo(userFull, true);
+                    if (!fromCache) getMessagesStorage().updateUserInfo(userFull, true);
 
                     result = getFileReference(botInfo.description_document, null, requester.location, needReplacement, locationReplacement);
 
-                    if (result != null) {
-                        continue;
-                    }
+                    if (result == null) {
 
                     result = getFileReference(botInfo.description_photo, requester.location, needReplacement, locationReplacement);
+                    }
                 }
             } else if (response instanceof TLRPC.TL_attachMenuBotsBot) {
                 TLRPC.TL_attachMenuBot bot = ((TLRPC.TL_attachMenuBotsBot) response).bot;
@@ -1267,6 +1326,7 @@ public class FileRefController extends BaseController {
                 }
             } else if (response instanceof TLRPC.TL_help_appUpdate) {
                 TLRPC.TL_help_appUpdate appUpdate = (TLRPC.TL_help_appUpdate) response;
+                if (!fromCache) {
                 try {
                     SharedConfig.pendingAppUpdate = appUpdate;
                     SharedConfig.saveConfig();
@@ -1277,6 +1337,7 @@ public class FileRefController extends BaseController {
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
                 } catch (Exception e) {
                     FileLog.e(e);
+                    }
                 }
                 try {
                     if (appUpdate.document != null) {
@@ -1301,8 +1362,10 @@ public class FileRefController extends BaseController {
                 }
             } else if (response instanceof TLRPC.TL_messages_webPage) {
                 TLRPC.TL_messages_webPage res = (TLRPC.TL_messages_webPage) response;
+                if (!fromCache) {
                 getMessagesController().putChats(res.chats, false);
                 getMessagesController().putUsers(res.users, false);
+                }
                 result = getFileReference(res.webpage, requester.location, needReplacement, locationReplacement);
             } else if (response instanceof TLRPC.WebPage) {
                 result = getFileReference((TLRPC.WebPage) response, requester.location, needReplacement, locationReplacement);
@@ -1457,7 +1520,7 @@ public class FileRefController extends BaseController {
                     FileLoadOperation operation = (FileLoadOperation) requester.args[1];
                     if (operation.parentObject instanceof TL_stories.StoryItem) {
                         TL_stories.StoryItem storyItem = (TL_stories.StoryItem) operation.parentObject;
-                        if (newStoryItem == null) {
+                        if (newStoryItem == null && !fromCache) {
                             TL_stories.TL_updateStory story = new TL_stories.TL_updateStory();
                             story.peer = getMessagesController().getPeer(storyItem.dialogId);
                             story.story = new TL_stories.TL_storyItemDeleted();
@@ -1465,13 +1528,13 @@ public class FileRefController extends BaseController {
                             ArrayList<TLRPC.Update> updates = new ArrayList<>();
                             updates.add(story);
                             getMessagesController().processUpdateArray(updates, null, null, false, 0);
-                        } else {
+                        } else if (newStoryItem != null && !fromCache) {
                             TLRPC.User user = getMessagesController().getUser(storyItem.dialogId);
                             if (user != null && user.contact) {
                                 MessagesController.getInstance(currentAccount).getStoriesController().getStoriesStorage().updateStoryItem(storyItem.dialogId, newStoryItem);
                             }
                         }
-                        if (newStoryItem != null && result == null) {
+                        if (newStoryItem != null && result == null && !fromCache) {
                             TL_stories.TL_updateStory updateStory = new TL_stories.TL_updateStory();
                             updateStory.peer = MessagesController.getInstance(currentAccount).getPeer(storyItem.dialogId);
                             updateStory.story = newStoryItem;
@@ -1483,18 +1546,25 @@ public class FileRefController extends BaseController {
                 }
             }
             if (result != null) {
+                requester.processing = true;
+                try {
                 if (onUpdateObjectReference(requester, result, locationReplacement != null ? locationReplacement[0] : null, fromCache)) {
+                        requester.completed = true;
                     found = true;
                 }
-            } else {
+                } finally {
+                    requester.processing = false;
+                }
+            } else if (!fromCache) {
                 sendErrorToObject(requester.args, 1);
             }
         }
-        locationRequester.remove(locationKey);
-        if (found) {
+        boolean completed = removeCompletedLocationRequesters(locationKey);
+        completed &= removeCompletedParentRequesters(parentKey);
+        if (found && (!fromCache || completed)) {
             putReponseToCache(cacheKey, response);
         }
-        return found;
+        return fromCache ? completed : found;
     }
 
     private Pair<byte[], TLRPC.InputFileLocation> getFileReferenceFromResponse(TLRPC.InputFileLocation location, String locationKey, String parentKey, TLObject response, Object... args) {
@@ -1504,15 +1574,6 @@ public class FileRefController extends BaseController {
         if (location instanceof TLRPC.TL_inputFileLocation || location instanceof TLRPC.TL_inputPeerPhotoFileLocation) {
             locationReplacement = new TLRPC.InputFileLocation[1];
             needReplacement = new boolean[1];
-        }
-        if (parentKey != null) {
-            Pair<byte[], TLRPC.InputFileLocation> pair = getFileReferenceFromResponse(location, locationKey, null, response, args);
-            if (pair != null) {
-                result = pair.first;
-                if (pair.second != null && locationReplacement != null) {
-                    locationReplacement[0] = pair.second;
-                }
-            }
         }
         if (response instanceof StoriesController.BotPreview) {
             StoriesController.BotPreview newStoryItem = (StoriesController.BotPreview) response;
@@ -1548,12 +1609,6 @@ public class FileRefController extends BaseController {
                         result = getFileReference(message.action.photo, location, needReplacement, locationReplacement);
                     }
                 }
-                if (result == null) {
-                    getMessagesStorage().replaceMessageIfExists(res.messages.get(0), res.users, res.chats, true);
-                    if (BuildVars.DEBUG_VERSION) {
-                        FileLog.d("file ref not found in messages, replacing message");
-                    }
-                }
             } else {
                 if (BuildVars.DEBUG_VERSION) {
                     FileLog.d("empty messages, file ref not found");
@@ -1569,7 +1624,6 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TLRPC.TL_messages_availableReactions) {
             TLRPC.TL_messages_availableReactions availableReactions = (TLRPC.TL_messages_availableReactions) response;
-            getMediaDataController().processLoadedReactions(availableReactions.reactions, availableReactions.hash, (int) (System.currentTimeMillis() / 1000), false);
 
             for (TLRPC.TL_availableReaction reaction : availableReactions.reactions) {
                 result = getFileReference(reaction.static_icon, null, location, needReplacement, locationReplacement);
@@ -1603,12 +1657,9 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TLRPC.TL_users_userFull) {
             TLRPC.TL_users_userFull usersFull = (TLRPC.TL_users_userFull) response;
-            getMessagesController().putUsers(usersFull.users, false);
-            getMessagesController().putChats(usersFull.chats, false);
             TLRPC.UserFull userFull = usersFull.full_user;
             TL_bots.BotInfo botInfo = userFull.bot_info;
             if (botInfo != null) {
-                getMessagesStorage().updateUserInfo(userFull, true);
                 if (result == null) {
                     result = getFileReference(botInfo.description_document, null, location, needReplacement, locationReplacement);
                 }
@@ -1626,17 +1677,6 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TLRPC.TL_help_appUpdate) {
             TLRPC.TL_help_appUpdate appUpdate = (TLRPC.TL_help_appUpdate) response;
-            try {
-                SharedConfig.pendingAppUpdate = appUpdate;
-                SharedConfig.saveConfig();
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-            try {
-                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
             try {
                 if (appUpdate.document != null) {
                     result = appUpdate.document.file_reference;
@@ -1660,8 +1700,6 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TLRPC.TL_messages_webPage) {
             TLRPC.TL_messages_webPage res = (TLRPC.TL_messages_webPage) response;
-            getMessagesController().putChats(res.chats, false);
-            getMessagesController().putUsers(res.users, false);
             result = getFileReference(res.webpage, location, needReplacement, locationReplacement);
         } else if (response instanceof TLRPC.WebPage) {
             result = getFileReference((TLRPC.WebPage) response, location, needReplacement, locationReplacement);
@@ -1751,11 +1789,9 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TL_stories.TL_stories_stories) {
             TL_stories.TL_stories_stories stories = (TL_stories.TL_stories_stories) response;
-            TL_stories.StoryItem newStoryItem = null;
             if (!stories.stories.isEmpty()) {
                 TL_stories.StoryItem storyItem = stories.stories.get(0);
                 if (storyItem.media != null) {
-                    newStoryItem = storyItem;
                     if (result == null && storyItem.media.photo != null) {
                         result = getFileReference(storyItem.media.photo, location, needReplacement, locationReplacement);
                     }
@@ -1764,35 +1800,6 @@ public class FileRefController extends BaseController {
                     }
                     if (result == null && storyItem.media.document != null) {
                         result = getFileReference(storyItem.media.document, storyItem.media.alt_documents, location, needReplacement, locationReplacement);
-                    }
-                }
-            }
-            Object arg = args[1];
-            if (arg instanceof FileLoadOperation) {
-                FileLoadOperation operation = (FileLoadOperation) args[1];
-                if (operation.parentObject instanceof TL_stories.StoryItem) {
-                    TL_stories.StoryItem storyItem = (TL_stories.StoryItem) operation.parentObject;
-                    if (newStoryItem == null) {
-                        TL_stories.TL_updateStory story = new TL_stories.TL_updateStory();
-                        story.peer = getMessagesController().getPeer(storyItem.dialogId);
-                        story.story = new TL_stories.TL_storyItemDeleted();
-                        story.story.id = storyItem.id;
-                        ArrayList<TLRPC.Update> updates = new ArrayList<>();
-                        updates.add(story);
-                        getMessagesController().processUpdateArray(updates, null, null, false, 0);
-                    } else {
-                        TLRPC.User user = getMessagesController().getUser(storyItem.dialogId);
-                        if (user != null && user.contact) {
-                            MessagesController.getInstance(currentAccount).getStoriesController().getStoriesStorage().updateStoryItem(storyItem.dialogId, newStoryItem);
-                        }
-                    }
-                    if (newStoryItem != null && result == null) {
-                        TL_stories.TL_updateStory updateStory = new TL_stories.TL_updateStory();
-                        updateStory.peer = MessagesController.getInstance(currentAccount).getPeer(storyItem.dialogId);
-                        updateStory.story = newStoryItem;
-                        ArrayList<TLRPC.Update> updates = new ArrayList<>();
-                        updates.add(updateStory);
-                        MessagesController.getInstance(currentAccount).processUpdateArray(updates, null, null, false, 0);
                     }
                 }
             }

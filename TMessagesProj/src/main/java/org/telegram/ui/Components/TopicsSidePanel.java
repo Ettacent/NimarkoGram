@@ -57,6 +57,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SavedMessagesController;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.TopicsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
@@ -1087,11 +1088,10 @@ public class TopicsSidePanel extends FrameLayout implements NotificationCenter.N
     private class Adapter extends RecyclerListView.SelectionAdapter {
         final ArrayList<Item> items = new ArrayList<>();
 
-        private String lastQuery;
 
         void update() {
-            final boolean animated = TextUtils.equals(lastQuery, query) && progress > 0 && !items.isEmpty();
-            lastQuery = query;
+            final boolean animated = progress > 0 && isAttachedToWindow()
+                    && SharedConfig.animationsEnabled();
             final ArrayList<Item> old = new ArrayList<>(items);
             items.clear();
             final ArrayList<TLRPC.TL_forumTopic> topics = saved ? null : MessagesController.getInstance(currentAccount).getTopicsController().getTopics(-dialogId);

@@ -40,7 +40,9 @@ public final class BadgesController {
 
     public static final BadgesController INSTANCE = new BadgesController();
 
-    private static final Gson GSON = new Gson();
+    private static final class GsonHolder {
+        static final Gson INSTANCE = new Gson();
+    }
     public static BadgesController getInstance() {
         return INSTANCE;
     }
@@ -94,36 +96,40 @@ public final class BadgesController {
             });
     private final Object persistLock = new Object();
     private long persistRevision;
+    private long serverRevision;
+    private boolean cacheLoadComplete;
+    private boolean cacheReady;
+    private boolean persistRequested;
+    private Context cacheContext;
     private ScheduledFuture<?> pendingPersist;
 
     private final Object badgePollLock = new Object();
     private ScheduledFuture<?> pendingBadgePoll;
     private long badgePollRevision;
     private long badgePollDelayMs = BADGE_POLL_ACTIVE_MS;
-    private long lastBadgeHash;
+    private volatile long lastBadgeHash;
     private boolean cacheMigrationPending;
     private BadgesController() {}
 
-    public synchronized void init(Context context) {
+    public void init(Context context) {
+        synchronized (persistLock) {
         if (initialized) return;
         initialized = true;
 
-        try {
-            SharedPreferences sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-            if (!sp.getBoolean("extera_badges_cleared_v1", false)) {
-                sp.edit()
-                        .remove(KEY_CACHE)
-                        .putBoolean("extera_badges_cleared_v1", true)
-                        .apply();
-            }
-        } catch (Throwable ignored) {}
+        }
         seedBootstrapEntry();
-        loadFromDisk(context);
+        final Context application = context.getApplicationContext();
+        synchronized (persistLock) {
+            cacheContext = application != null ? application : context;
+        }
+        persistScheduler.execute(() -> {
+            lastBadgeHash = computeBadgeHash();
+            loadFromDisk(cacheContext);
+        });
         scheduler.scheduleWithFixedDelay(() -> {
             if (!ApplicationLoader.mainInterfacePaused) refresh();
         }, 0L, REFRESH_INTERVAL_SECONDS, TimeUnit.SECONDS);
 
-        lastBadgeHash = computeBadgeHash();
         synchronized (badgePollLock) {
             scheduleBadgePollLocked(BADGE_POLL_ACTIVE_MS);
         }
@@ -141,6 +147,9 @@ public final class BadgesController {
             pendingBadgePoll = null;
         }
         try {
+            synchronized (persistLock) {
+                if (!cacheLoadComplete) return;
+            }
             long hash = computeBadgeHash();
             boolean contentChanged = hash != lastBadgeHash;
             if (contentChanged) {
@@ -174,18 +183,44 @@ public final class BadgesController {
     }
 
     private long computeBadgeHash() {
+        return computeBadgeHash(apiBadgeSource.cache);
+    }
+
+    private static final class BadgeFingerprint {
+        final long key;
+        final int entryHash;
+        final BadgePluginOwners.Owner owner;
+
+        BadgeFingerprint(long key, BadgeEntry entry) {
+            this.key = key;
+            if (entry == null) {
+                entryHash = 0;
+                owner = null;
+            } else {
+                BadgeDTO badge = entry.getBadge();
+                int hash = badge == null ? 0 : copyBadge(badge).hashCode();
+                hash = hash * 31 + entry.getStatus().hashCode();
+                entryHash = hash * 31 + Boolean.hashCode(entry.getCanChangeBadge());
+                owner = entry.getPluginOwner();
+            }
+        }
+    }
+
+    private long computeBadgeHash(Map<Long, BadgeEntry> source) {
         long h = 0xcbf29ce484222325L;
         try {
-            ArrayList<Map.Entry<Long, BadgeEntry>> entries = new ArrayList<>(apiBadgeSource.cache.entrySet());
-            entries.sort(Comparator.comparingLong(e -> e.getKey() == null ? 0L : e.getKey()));
-            for (Map.Entry<Long, BadgeEntry> e : entries) {
-                Long k = e.getKey();
-                BadgeEntry v = e.getValue() == null ? null : e.getValue().snapshot();
-                h ^= (k == null ? 0L : k);
+            ArrayList<BadgeFingerprint> entries = new ArrayList<>(source.size());
+            for (Map.Entry<Long, BadgeEntry> row : source.entrySet()) {
+                BadgeEntry entry = row.getValue() == null ? null : row.getValue().snapshot();
+                entries.add(new BadgeFingerprint(row.getKey() == null ? 0L : row.getKey(), entry));
+            }
+            entries.sort(Comparator.comparingLong(e -> e.key));
+            for (BadgeFingerprint entry : entries) {
+                h ^= entry.key;
                 h *= 0x100000001b3L;
-                h ^= v == null ? 0 : v.hashCode();
+                h ^= entry.entryHash;
                 h *= 0x100000001b3L;
-                BadgePluginOwners.Owner owner = v == null ? null : v.getPluginOwner();
+                BadgePluginOwners.Owner owner = entry.owner;
                 h ^= owner == null ? 0 : owner.pluginId.hashCode();
                 h *= 0x100000001b3L;
                 h ^= BadgePluginOwners.isActive(owner) ? 1 : 0;
@@ -198,10 +233,8 @@ public final class BadgesController {
     public void putPluginBadge(long userId, long emojiDocumentId, String text) {
         if (userId == 0L || emojiDocumentId == 0L) return;
         BadgeDTO dto = new BadgeDTO(emojiDocumentId, text);
-        synchronized (persistLock) {
             apiBadgeSource.cache.put(userId, new BadgeEntry(dto, ProfileStatus.SUPPORTER, false));
-            schedulePersistLocked();
-        }
+        persist();
         apiBadgeSource.forceNotify();
 
     }
@@ -209,11 +242,9 @@ public final class BadgesController {
     public void putPluginChatBadge(long chatId, long emojiDocumentId, String text) {
         if (chatId == 0L || emojiDocumentId == 0L) return;
         BadgeDTO dto = new BadgeDTO(emojiDocumentId, text);
-        synchronized (persistLock) {
             apiBadgeSource.cache.put(pluginChatKey(chatId),
                     new BadgeEntry(dto, ProfileStatus.SUPPORTER, false));
-            schedulePersistLocked();
-        }
+        persist();
         apiBadgeSource.forceNotify();
     }
 
@@ -365,20 +396,15 @@ public final class BadgesController {
             clearBadgeForUser(userId);
             return;
         }
-        synchronized (persistLock) {
             apiBadgeSource.cache.put(userId, new BadgeEntry(badge, ProfileStatus.SUPPORTER, false));
-            schedulePersistLocked();
-        }
+        persist();
         apiBadgeSource.forceNotify();
     }
 
     public void clearBadgeForUser(long userId) {
-        boolean removed;
-        synchronized (persistLock) {
-            removed = apiBadgeSource.cache.remove(userId) != null;
-            if (removed) schedulePersistLocked();
-        }
+        boolean removed = apiBadgeSource.clearForHydration(userId);
         if (removed) {
+            persist();
             apiBadgeSource.forceNotify();
         }
     }
@@ -430,7 +456,6 @@ public final class BadgesController {
             return;
         }
         lastRefreshAtMs = now;
-        ServerBadgeSnapshot beforeServer = serverBadges;
         try {
 
             ApiClient.BadgeFetchResult fetch = ApiClient.fetchNimarkoBadges();
@@ -456,43 +481,42 @@ public final class BadgesController {
             ServerBadgeSnapshot nextServer = new ServerBadgeSnapshot(
                     Collections.unmodifiableMap(nextUsers),
                     Collections.unmodifiableMap(nextChats));
-            if (beforeServer.users.equals(nextServer.users) && beforeServer.chats.equals(nextServer.chats)) {
-                synchronized (persistLock) {
-                    if (cacheMigrationPending) schedulePersistLocked();
-                }
-                return;
-            }
+            final boolean changed;
             synchronized (persistLock) {
-                serverBadges = nextServer;
-                schedulePersistLocked();
+                ++serverRevision;
+                ServerBadgeSnapshot current = serverBadges;
+                changed = !current.users.equals(nextServer.users) || !current.chats.equals(nextServer.chats);
+                if (changed) serverBadges = nextServer;
+                if (changed || cacheMigrationPending || !cacheLoadComplete) schedulePersistLocked();
             }
-
-            apiBadgeSource.forceNotify();
+            if (changed) apiBadgeSource.forceNotify();
         } catch (Throwable t) {
             FileLog.e("nimarko-badges: refresh failed", t);
         }
     }
 
     private void loadFromDisk(Context ctx) {
-        synchronized (persistLock) {
             try {
                 SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (!sp.getBoolean("extera_badges_cleared_v1", false)) {
+                sp.edit().remove(KEY_CACHE).putBoolean("extera_badges_cleared_v1", true).apply();
+            }
                 Type t = new TypeToken<LinkedHashMap<Long, BadgeDTO>>(){}.getType();
-                cacheMigrationPending = !sp.getBoolean(KEY_FILE_MIGRATED, false);
+            final boolean migrate = !sp.getBoolean(KEY_FILE_MIGRATED, false);
                 JsonObject disk = null;
-                try {
                     String json = new BadgeCacheFile(ctx).read();
                     if (json != null) {
-                        disk = GSON.fromJson(json, JsonObject.class);
+                try {
+                    disk = GsonHolder.INSTANCE.fromJson(json, JsonObject.class);
                         if (disk == null || !disk.has("version") || disk.get("version").getAsInt() != 1) {
                             throw new IllegalStateException("Unsupported badge cache");
                         }
-                    }
-                } catch (Exception invalidCache) {
+                } catch (RuntimeException invalidCache) {
                     disk = null;
-                    FileLog.e("nimarko-badges: cache file unavailable", invalidCache);
+                    FileLog.e("nimarko-badges: invalid cache file", invalidCache);
                 }
-                boolean legacy = disk == null && cacheMigrationPending;
+            }
+            boolean legacy = disk == null && migrate;
                 LinkedHashMap<Long, BadgeDTO> persisted = readBadgeMap(disk != null && disk.has("plugins")
                         ? disk.get("plugins").toString() : legacy ? sp.getString(KEY_CACHE, null) : null, t);
                 LinkedHashMap<Long, BadgeDTO> persistedServerUsers =
@@ -502,7 +526,7 @@ public final class BadgesController {
                         readBadgeMap(disk != null && disk.has("chats") ? disk.get("chats").toString()
                                 : legacy ? sp.getString(KEY_CHAT_CACHE, null) : null, t);
                 Map<Long, String> persistedOwners = disk != null && disk.has("owners")
-                        ? GSON.fromJson(disk.get("owners"), new TypeToken<LinkedHashMap<Long, String>>(){}.getType())
+                    ? GsonHolder.INSTANCE.fromJson(disk.get("owners"), new TypeToken<LinkedHashMap<Long, String>>(){}.getType())
                         : Collections.emptyMap();
                 if (persistedOwners == null) persistedOwners = Collections.emptyMap();
 
@@ -524,20 +548,36 @@ public final class BadgesController {
                         if (dto != null) persistedServerUsers.put(serverId, dto);
                     }
                 }
+            Map<Long, BadgeEntry> plugins = new LinkedHashMap<>();
                 for (Map.Entry<Long, BadgeDTO> e : persisted.entrySet()) {
                     if (e.getKey() == null || e.getKey() == BOOTSTRAP_USER_ID || e.getValue() == null) continue;
 
                     BadgeEntry restored = new BadgeEntry(e.getValue(), ProfileStatus.SUPPORTER, false);
                     restored.restorePluginOwner(persistedOwners.get(e.getKey()));
-                    apiBadgeSource.cache.putIfAbsent(e.getKey(), restored);
-                }
-                serverBadges = new ServerBadgeSnapshot(
+                plugins.put(e.getKey(), restored);
+            }
+            ServerBadgeSnapshot restoredServer = new ServerBadgeSnapshot(
                         toEntryMap(persistedServerUsers),
                         toEntryMap(persistedServerChats));
-                if (cacheMigrationPending) schedulePersistLocked();
-            } catch (Throwable t) {
-                FileLog.e("nimarko-badges: load cache failed", t);
+            long projectedHash = computeBadgeHash(apiBadgeSource.projectHydration(plugins));
+            synchronized (persistLock) {
+                if (serverRevision == 0) serverBadges = restoredServer;
+                cacheMigrationPending = migrate;
             }
+            apiBadgeSource.hydrate(plugins);
+            lastBadgeHash = projectedHash;
+            boolean startupDirty = apiBadgeSource.finishHydration();
+            synchronized (persistLock) {
+                cacheLoadComplete = cacheReady = true;
+                if (migrate || persistRequested || startupDirty) schedulePersistLocked();
+            }
+            apiBadgeSource.forceNotify();
+        } catch (Exception failure) {
+            apiBadgeSource.finishHydration();
+            synchronized (persistLock) {
+                cacheLoadComplete = true;
+            }
+            FileLog.e("nimarko-badges: load cache failed", failure);
         }
     }
 
@@ -549,6 +589,8 @@ public final class BadgesController {
 
     private void schedulePersistLocked() {
         final long revision = ++persistRevision;
+        persistRequested = true;
+        if (!cacheReady) return;
         if (pendingPersist != null) {
             pendingPersist.cancel(false);
         }
@@ -559,15 +601,15 @@ public final class BadgesController {
     private void persistRevision(long revision) {
         synchronized (persistLock) {
 
-            if (revision != persistRevision) return;
+            if (revision != persistRevision || !cacheReady) return;
             pendingPersist = null;
-            persistSnapshotLocked();
         }
+        persistSnapshot(revision);
     }
 
-    private void persistSnapshotLocked() {
+    private void persistSnapshot(long revision) {
         try {
-            Context ctx = ApplicationLoader.applicationContext;
+            Context ctx = cacheContext;
             if (ctx == null) return;
             LinkedHashMap<Long, BadgeDTO> pluginSnapshot = new LinkedHashMap<>(apiBadgeSource.cache.size());
             LinkedHashMap<Long, String> pluginOwners = new LinkedHashMap<>();
@@ -577,7 +619,7 @@ public final class BadgesController {
                 if (entry == null || entry.getBadge() == null) continue;
                 BadgePluginOwners.Owner owner = entry.getPluginOwner();
                 if (!BadgePluginOwners.isActive(owner)) continue;
-                pluginSnapshot.put(e.getKey(), entry.getBadge());
+                pluginSnapshot.put(e.getKey(), copyBadge(entry.getBadge()));
                 pluginOwners.put(e.getKey(), owner.pluginId);
             }
             ServerBadgeSnapshot server = serverBadges;
@@ -585,11 +627,15 @@ public final class BadgesController {
             LinkedHashMap<Long, BadgeDTO> chatSnapshot = badgeSnapshot(server.chats);
             JsonObject disk = new JsonObject();
             disk.addProperty("version", 1);
-            disk.add("plugins", GSON.toJsonTree(pluginSnapshot));
-            disk.add("owners", GSON.toJsonTree(pluginOwners));
-            disk.add("users", GSON.toJsonTree(serverUserSnapshot));
-            disk.add("chats", GSON.toJsonTree(chatSnapshot));
-            new BadgeCacheFile(ctx).write(GSON.toJson(disk));
+            disk.add("plugins", GsonHolder.INSTANCE.toJsonTree(pluginSnapshot));
+            disk.add("owners", GsonHolder.INSTANCE.toJsonTree(pluginOwners));
+            disk.add("users", GsonHolder.INSTANCE.toJsonTree(serverUserSnapshot));
+            disk.add("chats", GsonHolder.INSTANCE.toJsonTree(chatSnapshot));
+            String json = GsonHolder.INSTANCE.toJson(disk);
+            synchronized (persistLock) {
+                if (revision != persistRevision) return;
+            }
+            new BadgeCacheFile(ctx).write(json);
             SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
             boolean committed = sp.edit()
                     .putBoolean(KEY_FILE_MIGRATED, true)
@@ -600,7 +646,10 @@ public final class BadgesController {
                     .remove(KEY_API_USERS)
                     .remove(KEY_API_CHATS)
                     .commit();
+            synchronized (persistLock) {
             cacheMigrationPending = !committed;
+                if (committed && revision == persistRevision) persistRequested = false;
+            }
             if (!committed) {
                 FileLog.e("nimarko-badges: persist commit failed");
             }
@@ -619,7 +668,8 @@ public final class BadgesController {
 
     private static LinkedHashMap<Long, BadgeDTO> readBadgeMap(String json, Type type) {
         if (TextUtils.isEmpty(json)) return new LinkedHashMap<>();
-        LinkedHashMap<Long, BadgeDTO> map = GSON.fromJson(json, type);
+        if (json.length() > BadgeCacheFile.MAX_BYTES) throw new IllegalArgumentException("Badge cache too large");
+        LinkedHashMap<Long, BadgeDTO> map = GsonHolder.INSTANCE.fromJson(json, type);
         return map != null ? map : new LinkedHashMap<>();
     }
 
@@ -637,9 +687,12 @@ public final class BadgesController {
         LinkedHashMap<Long, BadgeDTO> snapshot = new LinkedHashMap<>(entries.size());
         for (Map.Entry<Long, BadgeEntry> e : entries.entrySet()) {
             if (e.getKey() != null && e.getValue() != null && e.getValue().getBadge() != null) {
-                snapshot.put(e.getKey(), e.getValue().getBadge());
+                snapshot.put(e.getKey(), copyBadge(e.getValue().getBadge()));
             }
         }
         return snapshot;
+    }
+    private static BadgeDTO copyBadge(BadgeDTO badge) {
+        return new BadgeDTO(badge.getDocumentId(), badge.getText());
     }
 }

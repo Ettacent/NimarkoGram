@@ -65,6 +65,7 @@ import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Components.ChatAttachAlert;
 import org.telegram.ui.Components.ChatAttachAlertDocumentLayout;
 import org.telegram.ui.Components.ChatAvatarContainer;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.Forum.ForumUtilities;
@@ -1005,40 +1006,58 @@ public class NotificationsSoundActivity extends BaseFragment implements ChatAtta
             }
 
             if (chatAttachAlert != null) {
-                boolean apply = false;
+                final ChatAttachAlert picker = chatAttachAlert;
+                ArrayList<Uri> uris = new ArrayList<>();
                 if (data.getData() != null) {
-                    String path = AndroidUtilities.getPath(data.getData());
-                    if (path != null) {
-                        if (path.startsWith("content://")) {
-                            path = MediaController.copyFileToCache(data.getData(), "mp3");
-                        }
-                        File file = new File(path);
-                        if (chatAttachAlert.getDocumentLayout().isRingtone(file)) {
-                            apply = true;
-                            getMediaDataController().uploadRingtone(path);
-                            getNotificationCenter().postNotificationName(NotificationCenter.onUserRingtonesUpdated);
-                        }
-                    }
+                    uris.add(data.getData());
                 } else if (data.getClipData() != null) {
                     ClipData clipData = data.getClipData();
                     for (int i = 0; i < clipData.getItemCount(); i++) {
-                        Uri uri = clipData.getItemAt(i).getUri();
-                        String path = uri.toString();
-                        if (path.startsWith("content://")) {
-                            path = MediaController.copyFileToCache(uri, "mp3");
+                        ClipData.Item item = clipData.getItemAt(i);
+                        uris.add(item == null ? null : item.getUri());
+                    }
+                }
+                boolean apply = false;
+                boolean failed = uris.isEmpty();
+                for (Uri uri : uris) {
+                    String path = getRingtonePath(uri, data.getData() == null);
+                    if (TextUtils.isEmpty(path)) {
+                        failed = true;
+                        continue;
                         }
-                        final File file = new File(path);
-                        if (chatAttachAlert.getDocumentLayout().isRingtone(file)) {
+                        File file = new File(path);
+                    if (picker.getDocumentLayout().isRingtone(file)) {
                             apply = true;
                             getMediaDataController().uploadRingtone(path);
                             getNotificationCenter().postNotificationName(NotificationCenter.onUserRingtonesUpdated);
                         }
                     }
-                }
                 if (apply) {
-                    chatAttachAlert.dismiss();
+                    picker.dismiss();
+                }
+                if (failed) {
+                    (picker.isDismissed() ? BulletinFactory.of(this) : BulletinFactory.of(picker.getContainer(), resourcesProvider))
+                            .createErrorBulletin(LocaleController.getString(R.string.AccessError))
+                            .hideAfterBottomSheet(false).show();
                 }
             }
+        }
+    }
+
+    @Nullable
+    private static String getRingtonePath(Uri uri, boolean copyContent) {
+        if (uri == null) return null;
+        try {
+            String path = AndroidUtilities.getPath(uri);
+            if ("content".equalsIgnoreCase(uri.getScheme()) && (copyContent || TextUtils.isEmpty(path)
+                    || path.startsWith("content://") || !new File(path).canRead())) {
+                            path = MediaController.copyFileToCache(uri, "mp3");
+                        }
+            if (TextUtils.isEmpty(path) || AndroidUtilities.isInternalUri(Uri.fromFile(new File(path)))) return null;
+            return path;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
         }
     }
 

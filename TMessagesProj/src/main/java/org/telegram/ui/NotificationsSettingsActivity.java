@@ -100,6 +100,8 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
     private ArrayList<NotificationException> exceptionStories = null;
     private ArrayList<NotificationException> exceptionAutoStories = null;
 
+    private long exceptionsGeneration;
+    private boolean exceptionsReloadNeeded;
     private int accountsSectionRow;
     @Keep
     private int accountsAllRow;
@@ -234,6 +236,15 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
     }
 
     public void loadExceptions(Runnable onDone) {
+        loadExceptions(onDone, false);
+    }
+
+    private void loadExceptions(Runnable onDone, boolean deferWhileHidden) {
+        if (isFinished) return;
+        final long generation = ++exceptionsGeneration;
+        final int account = currentAccount;
+        final long owner = UserConfig.getInstance(account).getClientUserId();
+        final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
         MediaDataController.getInstance(currentAccount).loadHints(true);
         final ArrayList<TLRPC.TL_topPeer> topPeers = new ArrayList<>(MediaDataController.getInstance(currentAccount).hints);
         MessagesStorage.getInstance(currentAccount).getStorageQueue().postRunnable(() -> {
@@ -424,6 +435,12 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                 }
             }
             AndroidUtilities.runOnUIThread(() -> {
+                if (isFinished || generation != exceptionsGeneration || currentAccount != account
+                        || !app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, owner, session)) return;
+                if (deferWhileHidden && !isExceptionsRefreshUiCurrent()) {
+                    exceptionsReloadNeeded = true;
+                    return;
+                }
                 MessagesController.getInstance(currentAccount).putUsers(users, true);
                 MessagesController.getInstance(currentAccount).putChats(chats, true);
                 MessagesController.getInstance(currentAccount).putEncryptedChats(encryptedChats, true);
@@ -447,6 +464,11 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
 
     }
 
+    private static ArrayList<NotificationException> clearedExceptions(ArrayList<NotificationException> exceptions) {
+        if (exceptions == null) return new ArrayList<>();
+        exceptions.clear();
+        return exceptions;
+    }
     public NotificationsCustomSettingsActivity makeNotificationsCustomSettingsActivity(int type) {
         ArrayList<NotificationException> exceptions;
         ArrayList<NotificationException> autoExceptions = null;
@@ -467,6 +489,7 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
 
     @Override
     public void onFragmentDestroy() {
+        exceptionsGeneration++;
         super.onFragmentDestroy();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.notificationsSettingsUpdated);
     }
@@ -619,22 +642,44 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                         return;
                     }
                     reseting = true;
+                    exceptionsGeneration++;
+                    final int account = currentAccount;
+                    final long owner = UserConfig.getInstance(account).getClientUserId();
+                    final long session = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
                     TL_account.resetNotifySettings req = new TL_account.resetNotifySettings();
-                    ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                        getMessagesController().enableJoined = true;
+                    ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                         reseting = false;
-                        SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
+                        if (!app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(account, owner, session)) return;
+                        if (error != null || !(response instanceof TLRPC.TL_boolTrue)) {
+                            if (!isFinished && currentAccount == account) {
+                                loadExceptions(null);
+                                if (error != null && UserConfig.selectedAccount == account && getParentActivity() != null) {
+                                    AlertsCreator.processError(account, error, this, req);
+                                }
+                            }
+                            return;
+                        }
+                        exceptionsGeneration++;
+                        MessagesController.getInstance(account).enableJoined = true;
+                        SharedPreferences preferences = MessagesController.getNotificationsSettings(account);
                         SharedPreferences.Editor editor = preferences.edit();
                         editor.clear();
                         editor.commit();
-                        exceptionChats.clear();
-                        exceptionUsers.clear();
-                        adapter.notifyDataSetChanged();
-                        if (getParentActivity() != null) {
+                        NotificationsController.getInstance(account).setInChatSoundEnabled(preferences.getBoolean("EnableInChatSound", true));
+                        exceptionChats = clearedExceptions(exceptionChats);
+                        exceptionUsers = clearedExceptions(exceptionUsers);
+                        exceptionChannels = clearedExceptions(exceptionChannels);
+                        exceptionStories = clearedExceptions(exceptionStories);
+                        exceptionAutoStories = clearedExceptions(exceptionAutoStories);
+                        if (!isFinished && currentAccount == account) {
+                            if (adapter != null) adapter.notifyDataSetChanged();
+                            loadExceptions(null);
+                            if (UserConfig.selectedAccount == account && getParentActivity() != null) {
                             Toast toast = Toast.makeText(getParentActivity(), getString("ResetNotificationsText", R.string.ResetNotificationsText), Toast.LENGTH_SHORT);
                             toast.show();
                         }
-                        getMessagesStorage().updateMutedDialogsFiltersCounters();
+                        }
+                        MessagesStorage.getInstance(account).updateMutedDialogsFiltersCounters();
                     }));
                 });
                 builder.setNegativeButton(getString("Cancel", R.string.Cancel), null);
@@ -916,15 +961,35 @@ else if (position == pinnedMessageRow) {
     @Override
     public void onResume() {
         super.onResume();
+        reloadExceptionsIfNeeded();
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
     }
 
     @Override
+    public void onBecomeFullyVisible() {
+        super.onBecomeFullyVisible();
+        reloadExceptionsIfNeeded();
+    }
+
+    private boolean isExceptionsRefreshUiCurrent() {
+        return !isFinished && !isPaused() && fragmentView != null && getParentLayout() != null
+                && getParentLayout().getLastFragment() == this;
+    }
+
+    private void reloadExceptionsIfNeeded() {
+        if (!exceptionsReloadNeeded || !isExceptionsRefreshUiCurrent()) return;
+        exceptionsReloadNeeded = false;
+        loadExceptions(null, true);
+    }
+
+    @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.notificationsSettingsUpdated) {
-            adapter.notifyDataSetChanged();
+        if (id == NotificationCenter.notificationsSettingsUpdated && account == currentAccount && !isFinished) {
+            exceptionsReloadNeeded = true;
+            reloadExceptionsIfNeeded();
+            if (adapter != null) adapter.notifyDataSetChanged();
         }
     }
 

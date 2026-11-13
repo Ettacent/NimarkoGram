@@ -36,7 +36,10 @@ public class FileUploadOperation {
         private byte[] iv;
     }
 
-    private int currentAccount;
+    private final int currentAccount;
+    private final FileLoader.TransferOwner transferOwner;
+    private final long uploadOwnerId;
+    private final int uploadLoginTime;
     private boolean isLastPart;
     private boolean nextPartFirst;
     private int operationGuid;
@@ -57,7 +60,9 @@ public class FileUploadOperation {
     private ArrayList<byte[]> freeRequestIvs;
     private int requestNum;
     private String uploadingFilePath;
-    private int state;
+    private volatile int state;
+    private final Object uploadLock = new Object();
+    private boolean sourceFileLocked;
     private byte[] readBuffer;
     private FileUploadOperationDelegate delegate;
     public final SparseIntArray requestTokens = new SparseIntArray();
@@ -100,7 +105,14 @@ public class FileUploadOperation {
     }
 
     public FileUploadOperation(int instance, String location, boolean encrypted, long estimated, int type) {
+        this(instance, location, encrypted, estimated, type, FileLoader.captureTransferOwner(instance));
+    }
+
+    FileUploadOperation(int instance, String location, boolean encrypted, long estimated, int type, FileLoader.TransferOwner owner) {
         currentAccount = instance;
+        transferOwner = owner;
+        uploadOwnerId = owner.userId;
+        uploadLoginTime = owner.loginTime;
         uploadingFilePath = location;
         isEncrypted = encrypted;
         estimatedSize = estimated;
@@ -112,17 +124,39 @@ public class FileUploadOperation {
         return totalFileSize;
     }
 
+    FileLoader.TransferOwner getTransferOwner() {
+        return transferOwner;
+    }
+
+    String getUploadingFilePath() {
+        return uploadingFilePath;
+    }
+
+    boolean isEncrypted() {
+        return isEncrypted;
+    }
+
+    boolean isPending() {
+        return state <= 1;
+    }
     public void setDelegate(FileUploadOperationDelegate fileUploadOperationDelegate) {
         delegate = fileUploadOperationDelegate;
     }
 
     public void start() {
+        if (!transferOwner.isCurrent()) {
+            cancelIfPending();
+            return;
+        }
+        synchronized (uploadLock) {
         if (state != 0) {
             return;
         }
         state = 1;
-        AutoDeleteMediaTask.lockFile(uploadingFilePath);
-        Utilities.stageQueue.postRunnable(() -> {
+            retainSourceFile();
+        }
+        if (!postStageTask(() -> {
+            if (state != 1) return;
             preferences = ApplicationLoader.applicationContext.getSharedPreferences("uploadinfo", Activity.MODE_PRIVATE);
             slowNetwork = ApplicationLoader.isConnectionSlow()
                     && !app.nimarkogram.messenger.AppConfig.uploadSpeedBoost
@@ -134,7 +168,58 @@ public class FileUploadOperation {
                 startUploadRequest();
             }
             startUploadRequests();
-        });
+        })) {
+            failUpload();
+        }
+    }
+
+    void retainSourceFile() {
+        synchronized (uploadLock) {
+            if (state <= 1 && transferOwner.isCurrent() && !sourceFileLocked) {
+                AutoDeleteMediaTask.lockFile(uploadingFilePath, this);
+                sourceFileLocked = true;
+            }
+        }
+    }
+
+    private boolean postStageTask(Runnable task) {
+        try {
+            return Utilities.stageQueue.postRunnable(() -> runWithUploadLock(task));
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
+    }
+
+    private void runWithUploadLock(Runnable task) {
+        synchronized (uploadLock) {
+            try {
+                if (!transferOwner.isCurrent() && state <= 1) {
+                    cancelIfPending();
+                    return;
+                }
+                task.run();
+            } catch (Exception e) {
+                FileLog.e(e);
+                failUpload();
+            }
+        }
+    }
+
+    private void failUpload() {
+        synchronized (uploadLock) {
+            if (state > 1) return;
+            state = 4;
+            operationGuid++;
+            try {
+                cancelRequests();
+            } catch (RuntimeException e) {
+                FileLog.e(e);
+            } finally {
+                cleanup();
+            }
+        }
+        if (delegate != null) delegate.didFailedUploadingFile(this);
     }
 
     private void startUploadRequests() {
@@ -151,17 +236,15 @@ public class FileUploadOperation {
         if (state != 1) {
             return;
         }
-        Utilities.stageQueue.postRunnable(() -> {
+        if (!postStageTask(() -> {
+            if (state != 1) return;
             if (slowNetwork != slow) {
                 slowNetwork = slow;
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("network changed to slow = " + slowNetwork);
                 }
-                for (int a = 0; a < requestTokens.size(); a++) {
-                    ConnectionsManager.getInstance(currentAccount).cancelRequest(requestTokens.valueAt(a), true);
-                }
-                requestTokens.clear();
-                cleanup();
+                cancelRequests();
+                cleanup(false);
                 isLastPart = false;
                 nextPartFirst = false;
                 requestNum = 0;
@@ -183,26 +266,55 @@ public class FileUploadOperation {
                     startUploadRequest();
                 }
             }
-        });
+        })) {
+            failUpload();
+        }
         AndroidUtilities.runOnUIThread(() -> uiRequestTokens.clear());
     }
 
     public void cancel() {
-        if (state == 3) {
-            return;
-        }
+        cancelIfPending();
+    }
+
+    boolean cancelIfPending() {
+        synchronized (uploadLock) {
+            if (state > 1) return false;
         state = 2;
-        Utilities.stageQueue.postRunnable(() -> {
-            for (int a = 0; a < requestTokens.size(); a++) {
-                ConnectionsManager.getInstance(currentAccount).cancelRequest(requestTokens.valueAt(a), true);
+            operationGuid++;
+            try {
+                cancelRequests();
+            } catch (RuntimeException e) {
+                FileLog.e(e);
             }
-        });
-        AutoDeleteMediaTask.unlockFile(uploadingFilePath);
-        delegate.didFailedUploadingFile(this);
-        cleanup();
+        }
+        final Runnable cancel = () -> {
+            synchronized (uploadLock) {
+                cleanup();
+            }
+            if (delegate != null) delegate.didFailedUploadingFile(this);
+        };
+        if (!postStageTask(cancel)) cancel.run();
+        return true;
     }
 
     private void cleanup() {
+        cleanup(true);
+    }
+
+    private void cancelRequests() {
+        try {
+            for (int a = 0; a < requestTokens.size(); a++) {
+                int token = requestTokens.valueAt(a);
+                if (token != 0) ConnectionsManager.native_cancelRequest(currentAccount, token, true);
+            }
+        } finally {
+            requestTokens.clear();
+        }
+    }
+
+    private void cleanup(boolean releaseSourceFile) {
+        try {
+            if (fileKey != null) {
         if (preferences == null) {
             preferences = ApplicationLoader.applicationContext.getSharedPreferences("uploadinfo", Activity.MODE_PRIVATE);
         }
@@ -213,19 +325,27 @@ public class FileUploadOperation {
                 remove(fileKey + "_iv").
                 remove(fileKey + "_key").
                 remove(fileKey + "_ivc").commit();
-        try {
-            if (stream != null) {
-                stream.close();
-                stream = null;
             }
         } catch (Exception e) {
             FileLog.e(e);
+        } finally {
+            try {
+                if (stream != null) stream.close();
+            } catch (Exception e) {
+                FileLog.e(e);
+            } finally {
+                stream = null;
+                if (releaseSourceFile && sourceFileLocked) {
+                    sourceFileLocked = false;
+                    AutoDeleteMediaTask.unlockFile(uploadingFilePath, this);
+                }
+            }
         }
-        AutoDeleteMediaTask.unlockFile(uploadingFilePath);
     }
 
     protected void checkNewDataAvailable(final long newAvailableSize, final long finalSize, final Float progress) {
-        Utilities.stageQueue.postRunnable(() -> {
+        if (!postStageTask(() -> {
+            if (state > 1) return;
             if (progress != null && estimatedSize != 0 && finalSize == 0) {
                 boolean needRecalculation = false;
                 if (progress > 0.75f && !recalculatedEstimatedSize[0]) {
@@ -253,7 +373,9 @@ public class FileUploadOperation {
             if (currentUploadRequetsCount < maxRequestsCount) {
                 startUploadRequest();
             }
-        });
+        })) {
+            failUpload();
+        }
     }
 
     private void storeFileUploadInfo() {
@@ -287,7 +409,12 @@ public class FileUploadOperation {
     }
 
     private void startUploadRequest() {
-        if (state != 1) {
+        runWithUploadLock(this::startUploadRequestInternal);
+    }
+
+    private void startUploadRequestInternal() {
+        if (state != 1 || !transferOwner.isCurrent()) {
+            if (state == 1) cancelIfPending();
             return;
         }
 
@@ -349,7 +476,8 @@ public class FileUploadOperation {
                 calcTotalPartsCount();
                 readBuffer = new byte[uploadChunkSize];
 
-                fileKey = Utilities.MD5(uploadingFilePath + (isEncrypted ? "enc" : ""));
+                fileKey = Utilities.MD5(currentAccount + ":" + uploadOwnerId + ":" + uploadLoginTime
+                        + ":" + (isEncrypted ? "1:" : "0:") + uploadingFilePath);
                 long fileSize = preferences.getLong(fileKey + "_size", 0);
                 uploadStartTime = (int)(System.currentTimeMillis() / 1000);
                 boolean rewrite = false;
@@ -549,9 +677,7 @@ public class FileUploadOperation {
             readBytesCount += currentRequestBytes;
         } catch (Exception e) {
             FileLog.e(e);
-            state = 4;
-            delegate.didFailedUploadingFile(this);
-            cleanup();
+            failUpload();
             return;
         }
         currentPartNum++;
@@ -576,10 +702,14 @@ public class FileUploadOperation {
         }
         final int requestConnectionNum = connectionType >> 16;
         uploadRequestsPerConnection[requestConnectionNum]++;
+        if (!transferOwner.isCurrent()) {
+            cancelIfPending();
+            return;
+        }
         long time = System.currentTimeMillis();
         int[] requestToken = new int[1];
-        requestToken[0] = ConnectionsManager.getInstance(currentAccount).sendRequest(finalRequest, (response, error) -> {
-            if (currentOperationGuid != operationGuid) {
+        requestToken[0] = ConnectionsManager.getInstance(currentAccount).sendRequestSync(finalRequest, (response, error) -> runWithUploadLock(() -> {
+            if (state != 1 || currentOperationGuid != operationGuid) {
                 return;
             }
             uploadRequestsPerConnection[requestConnectionNum]--;
@@ -631,8 +761,8 @@ public class FileUploadOperation {
                         result.parts = currentPartNum;
                         result.id = currentFileId;
                         result.name = uploadingFilePath.substring(uploadingFilePath.lastIndexOf("/") + 1);
-                        delegate.didFinishUploadingFile(FileUploadOperation.this, result, null, null, null);
                         cleanup();
+                        delegate.didFinishUploadingFile(FileUploadOperation.this, result, null, null, null);
                     } else {
                         TLRPC.InputEncryptedFile result;
                         if (isBigFile) {
@@ -644,8 +774,8 @@ public class FileUploadOperation {
                         result.parts = currentPartNum;
                         result.id = currentFileId;
                         result.key_fingerprint = fingerprint;
-                        delegate.didFinishUploadingFile(FileUploadOperation.this, null, result, key, iv);
                         cleanup();
+                        delegate.didFinishUploadingFile(FileUploadOperation.this, null, result, key, iv);
                     }
                     if (currentType == ConnectionsManager.FileTypeAudio) {
                         StatsController.getInstance(currentAccount).incrementSentItemsCount(ApplicationLoader.getCurrentNetworkType(), StatsController.TYPE_AUDIOS, 1);
@@ -698,13 +828,11 @@ public class FileUploadOperation {
                     startUploadRequests();
                 }
             } else {
-                state = 4;
-                delegate.didFailedUploadingFile(FileUploadOperation.this);
-                cleanup();
+                failUpload();
             }
-        }, null, () -> Utilities.stageQueue.postRunnable(() -> {
-            startUploadRequests();
-        }), forceSmallFile ? ConnectionsManager.RequestFlagCanCompress : 0, ConnectionsManager.DEFAULT_DATACENTER_ID, connectionType, true);
+        }), null, () -> {
+            if (!postStageTask(this::startUploadRequests)) failUpload();
+        }, forceSmallFile ? ConnectionsManager.RequestFlagCanCompress : 0, ConnectionsManager.DEFAULT_DATACENTER_ID, connectionType, true);
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("debug_uploading: " + " send reqId " + requestToken[0] + " " + uploadingFilePath + " file_part=" + currentRequestPartNum + " isBig=" + isBigFile + " file_id=" + currentFileId);
         }

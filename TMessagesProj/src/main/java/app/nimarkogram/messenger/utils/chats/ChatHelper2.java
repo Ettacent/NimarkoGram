@@ -1,3 +1,18 @@
+/**
+ * This is the source code of Cherrygram for Android.
+ * It is licensed under GNU GPL v. 2 or later.
+ * You should have received a copy of the license in this archive (see LICENSE).
+ * Please, be respectful and credit the original author if you use this code.
+ *
+ * Copyright github.com/arsLan4k1390, 2022-2026.
+ *
+ * NG port: ChatsHelper2.kt (Kotlin object) -> ChatHelper2.java (Java static utility).
+ * Per-method porting notes are at each method site below. CG-only branches that depend on
+ * Gemini AI / JsonBottomSheet / CG-trusted-IDs / Uzbekistan banking are intentionally
+ * dropped — these are tracked as "skipped" in the rebase plan.
+ * GPL-2.0 same-license relicensing approved (user owns both repos).
+ */
+
 
 /* Modifications Copyright (C) 2026 Ettacent */
 
@@ -265,11 +280,7 @@ public final class ChatHelper2 {
             args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
             args.putBoolean("quote", true);
             args.putBoolean("reply_to", true);
-            final long author = DialogObject.getPeerDialogId(selectedObject.getFromPeer());
-            long clientId = UserConfig.getInstance(chatActivity.getCurrentAccount()).getClientUserId();
-            if (author != 0 && author != chatActivity.getDialogId() && author != clientId && author > 0) {
-                args.putLong("reply_to_author", author);
-            }
+            chatActivity.putReplyToArgs(args, selectedObject);
             args.putInt("messagesCount", 1);
             args.putBoolean("canSelectTopics", true);
             DialogsActivity fragment = new DialogsActivity(args);
@@ -558,7 +569,7 @@ public final class ChatHelper2 {
                 currentIndex,
                 i -> {
                     AppConfig.setMessagesSearchFilter(values.get(i));
-                    chatActivity.openSearchWithText(null);
+                    chatActivity.hitSearch();
                 }
         );
     }

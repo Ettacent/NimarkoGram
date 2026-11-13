@@ -107,6 +107,8 @@ public class ImageLoader {
     private LruCache<BitmapDrawable> lottieMemCache;
     ArrayList<AnimatedFileDrawable> cachedAnimatedFileDrawables = new ArrayList<>();
     private HashMap<String, CacheImage> imageLoadingByUrl = new HashMap<>();
+    private final HashMap<String, RetiredImageLoad> retiringImageLoads = new HashMap<>();
+    private final HashMap<String, HashSet<NativeImageLoad>> nativeImageLoads = new HashMap<>();
     private HashMap<String, CacheImage> imageLoadingByUrlPframe = new HashMap<>();
     public ConcurrentHashMap<String, CacheImage> imageLoadingByKeys = new ConcurrentHashMap<>();
     public HashSet<String> imageLoadingKeys = new HashSet<>();
@@ -121,6 +123,66 @@ public class ImageLoader {
     private DispatchQueue2 imageLoadQueue = new DispatchQueue2("imageLoadQueue");
     private HashMap<String, String> replacedBitmaps = new HashMap<>();
     private ConcurrentHashMap<String, long[]> fileProgresses = new ConcurrentHashMap<>();
+    private final Object transferProgressLock = new Object();
+    private final HashMap<String, TransferProgress> transferProgresses = new HashMap<>();
+
+    private static final class TransferProgress {
+        final FileLoader.TransferOwner owner;
+        final Object operation;
+        final long[] value;
+
+        TransferProgress(FileLoader.TransferOwner owner, Object operation, long loaded, long total) {
+            this.owner = owner;
+            this.operation = operation;
+            value = new long[] { loaded, total };
+        }
+    }
+
+    private TransferProgress setTransferProgress(String location, FileLoader.TransferOwner owner, Object operation, long loaded, long total) {
+        synchronized (transferProgressLock) {
+            if (!owner.isCurrent()) return null;
+            FileLoader loader = FileLoader.getInstance(owner.account);
+            if (operation instanceof FileUploadOperation && !loader.isCurrentUploadOperation((FileUploadOperation) operation)
+                    || operation instanceof FileLoadOperation && !loader.isCurrentLoadOperation((FileLoadOperation) operation)) return null;
+            TransferProgress progress = new TransferProgress(owner, operation, loaded, total);
+            transferProgresses.put(location, progress);
+            fileProgresses.put(location, progress.value);
+            return progress;
+        }
+    }
+
+    private boolean isCurrentProgress(String location, TransferProgress progress) {
+        synchronized (transferProgressLock) {
+            return progress != null && progress.owner.isCurrent() && transferProgresses.get(location) == progress;
+        }
+    }
+
+    private void clearTransferProgress(String location, FileLoader.TransferOwner owner, Object operation) {
+        synchronized (transferProgressLock) {
+            TransferProgress progress = transferProgresses.get(location);
+            if (progress != null && progress.owner == owner && (operation == null || progress.operation == operation)) {
+                transferProgresses.remove(location);
+                fileProgresses.remove(location, progress.value);
+            }
+        }
+    }
+
+    private long[] currentFileProgress(String location) {
+        synchronized (transferProgressLock) {
+            long[] value = fileProgresses.get(location);
+            TransferProgress progress = transferProgresses.get(location);
+            return progress != null && progress.value == value && !progress.owner.isCurrent() ? null : value;
+        }
+    }
+
+    private void postTransferCompletion(Runnable completion) {
+        try {
+            if (Utilities.stageQueue.postRunnable(completion)) return;
+        } catch (RuntimeException e) {
+            FileLog.e(e);
+        }
+        completion.run();
+    }
     private HashMap<String, ThumbGenerateTask> thumbGenerateTasks = new HashMap<>();
     private HashMap<String, Integer> forceLoadingImages = new HashMap<>();
     private static final int MAX_RETAINED_IMAGE_BUFFER_SIZE = 256 * 1024;
@@ -1867,6 +1929,118 @@ public class ImageLoader {
         return getStrippedPhotoFallbackBitmap();
     }
 
+    private static final class ImageSubscriber {
+        final ImageReceiver.ImageLoadRequest request;
+        final ImageReceiver receiver;
+        final int guid, type, cacheType;
+        final String key, url, filter, ext;
+        final ImageLocation location;
+        final Object parentObject;
+        final long size;
+
+        ImageSubscriber(ImageReceiver.ImageLoadRequest request, String key, String url, String filter, String ext,
+                        ImageLocation location, long size, int cacheType, int type) {
+            this.request = request;
+            receiver = request.receiver;
+            guid = request.guid;
+            parentObject = request.parentObject;
+            this.key = key;
+            this.url = url;
+            this.filter = filter;
+            this.ext = ext;
+            this.location = location;
+            this.size = size;
+            this.cacheType = cacheType;
+            this.type = type;
+        }
+    }
+
+    private static final class NativeImageLoad {
+        final String url;
+        final FileLoader.TransferOwner owner;
+        boolean admissionResolved;
+        FileLoadOperation operation;
+        RetiredImageLoad retirement;
+        final ArrayList<Runnable> admissionWaiters = new ArrayList<>();
+        final ArrayList<CacheImage> images = new ArrayList<>();
+
+        NativeImageLoad(String url, FileLoader.TransferOwner owner) {
+            this.url = url;
+            this.owner = owner;
+        }
+    }
+
+    private final class RetiredImageLoad {
+        final NativeImageLoad load;
+        final ArrayList<ImageSubscriber> subscribers = new ArrayList<>();
+        final HashMap<FileLoadOperation, Long> operations = new HashMap<>();
+        final HashSet<NativeImageLoad> admissions = new HashSet<>();
+        int pending, pendingAdmissions;
+        boolean releasePosted;
+
+        RetiredImageLoad(NativeImageLoad load) {
+            this.load = load;
+        }
+
+        void addSubscriber(ImageSubscriber subscriber) {
+            subscribers.removeIf(old -> !old.request.isCurrentBinding(old.type) || !old.request.owner.isCurrent()
+                    || old.receiver == subscriber.receiver && old.type == subscriber.type);
+            if (subscriber.request.isCurrentBinding(subscriber.type) && subscriber.request.owner.isCurrent()) subscribers.add(subscriber);
+        }
+
+        void awaitOperation(FileLoadOperation operation) {
+            if (operation == null) return;
+            long generation = operation.getLocalFileGeneration();
+            Long previous = operations.get(operation);
+            if (previous != null && previous == generation) return;
+            operations.put(operation, generation);
+            pending++;
+            operation.whenLocalFileWorkDrained(() -> imageLoadQueue.postRunnable(() -> {
+                pending--;
+                releaseIfReady();
+            }));
+        }
+
+        void awaitAdmission(NativeImageLoad admission) {
+            if (!admissions.add(admission)) return;
+            admission.retirement = this;
+            pendingAdmissions++;
+            Runnable resolved = () -> {
+                pendingAdmissions--;
+                awaitOperation(admission.operation);
+                for (FileLoadOperation operation : FileLoader.getInstance(admission.owner.account).getLocalFileOperations(admission.url, admission.owner)) {
+                    awaitOperation(operation);
+                }
+                releaseIfReady();
+            };
+            if (admission.admissionResolved) resolved.run();
+            else admission.admissionWaiters.add(resolved);
+        }
+
+        boolean matchesOwner(FileLoader.TransferOwner owner) {
+            for (NativeImageLoad admission : admissions) {
+                if (owner.matches(admission.owner)) return true;
+            }
+            return false;
+        }
+
+        void releaseIfReady() {
+            if (pendingAdmissions != 0 || pending != 0 || releasePosted) return;
+            releasePosted = true;
+            imageLoadQueue.postRunnable(() -> {
+                releasePosted = false;
+                if (pendingAdmissions != 0 || pending != 0 || retiringImageLoads.get(load.url) != this) return;
+                retiringImageLoads.remove(load.url);
+                final ArrayList<ImageSubscriber> restart = new ArrayList<>(subscribers);
+                subscribers.clear();
+                AndroidUtilities.runOnUIThread(() -> {
+                    for (ImageSubscriber subscriber : restart) {
+                        subscriber.receiver.retryAfterRetiredTransfer(subscriber.request, subscriber.type, subscriber.key);
+                    }
+                });
+            });
+        }
+    }
     private class CacheImage {
 
         public volatile int priority = FileLoader.PRIORITY_LOW;
@@ -1886,6 +2060,13 @@ public class ImageLoader {
 
         protected int currentAccount;
 
+        protected FileLoader.TransferOwner transferOwner;
+        private NativeImageLoad nativeLoad;
+
+        private void setNativeLoad(NativeImageLoad load) {
+            nativeLoad = load;
+            if (load != null) load.images.add(this);
+        }
         protected File finalFilePath;
         protected File tempFilePath;
         protected File encryptionKeyPath;
@@ -1899,6 +2080,7 @@ public class ImageLoader {
         protected ArrayList<String> keys = new ArrayList<>();
         protected ArrayList<String> filters = new ArrayList<>();
         protected ArrayList<Integer> types = new ArrayList<>();
+        private final ArrayList<ImageSubscriber> subscribers = new ArrayList<>();
         private int decodeRetryCount;
 
         private int indexOfImageReceiver(ImageReceiver imageReceiver, int type) {
@@ -1910,12 +2092,14 @@ public class ImageLoader {
             return -1;
         }
 
-        public void addImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
+        public void addImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid, ImageSubscriber subscriber) {
+            if (!subscriber.request.isCurrentBinding(type) || nativeLoad != null && !subscriber.request.owner.isCurrent()) return;
             int index = indexOfImageReceiver(imageReceiver, type);
             if (index >= 0) {
                 imageReceiverGuidsArray.set(index, guid);
                 keys.set(index, key);
                 filters.set(index, filter);
+                subscribers.set(index, subscriber);
                 imageLoadingByTag.put(imageReceiver.getTag(type), this);
                 updatePriority();
                 return;
@@ -1925,11 +2109,13 @@ public class ImageLoader {
             keys.add(key);
             filters.add(filter);
             types.add(type);
+            subscribers.add(subscriber);
             imageLoadingByTag.put(imageReceiver.getTag(type), this);
             updatePriority();
         }
 
-        public boolean replaceImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid) {
+        public boolean replaceImageReceiver(ImageReceiver imageReceiver, String key, String filter, int type, int guid, ImageSubscriber subscriber) {
+            if (!subscriber.request.isCurrentBinding(type) || nativeLoad != null && !subscriber.request.owner.isCurrent()) return false;
             int index = indexOfImageReceiver(imageReceiver, type);
             if (index == -1) {
                 return false;
@@ -1937,36 +2123,45 @@ public class ImageLoader {
             imageReceiverGuidsArray.set(index, guid);
             keys.set(index, key);
             filters.set(index, filter);
+            subscribers.set(index, subscriber);
             imageLoadingByTag.put(imageReceiver.getTag(type), this);
             return true;
         }
 
-        public boolean setImageReceiverGuid(ImageReceiver imageReceiver, int type, int guid) {
+        public boolean setImageReceiverGuid(ImageReceiver imageReceiver, int type, int guid, ImageSubscriber subscriber) {
+            if (!subscriber.request.isCurrentBinding(type) || nativeLoad != null && !subscriber.request.owner.isCurrent()) return false;
             int index = indexOfImageReceiver(imageReceiver, type);
             if (index == -1) {
                 return false;
             }
             imageReceiverGuidsArray.set(index, guid);
+            subscribers.set(index, subscriber);
             return true;
         }
 
         public void removeImageReceiver(ImageReceiver imageReceiver) {
-            removeImageReceiver(imageReceiver, -1, false);
+            removeImageReceiver(imageReceiver, -1, false, false);
         }
 
         public void removeImageReceiver(ImageReceiver imageReceiver, int type) {
-            removeImageReceiver(imageReceiver, type, true);
+            removeImageReceiver(imageReceiver, type, true, false);
         }
 
-        private void removeImageReceiver(ImageReceiver imageReceiver, int requestedType, boolean matchType) {
+        private void removeCancelledImageReceiver(ImageReceiver imageReceiver, int type) {
+            removeImageReceiver(imageReceiver, type, true, true);
+        }
+
+        private void removeImageReceiver(ImageReceiver imageReceiver, int requestedType, boolean matchType, boolean cancelledOnly) {
             int currentMediaType = type;
             for (int a = 0; a < imageReceiverArray.size(); a++) {
                 ImageReceiver obj = imageReceiverArray.get(a);
-                if (obj == null || obj == imageReceiver && (!matchType || types.get(a) == requestedType)) {
+                if (obj == null || obj == imageReceiver && (!matchType || types.get(a) == requestedType)
+                        && (!cancelledOnly || !subscribers.get(a).request.isCurrentBinding(types.get(a)))) {
                     imageReceiverArray.remove(a);
                     imageReceiverGuidsArray.remove(a);
                     keys.remove(a);
                     filters.remove(a);
+                    subscribers.remove(a);
                     currentMediaType = types.remove(a);
                     if (obj != null) {
                         int tag = obj.getTag(currentMediaType);
@@ -1978,8 +2173,9 @@ public class ImageLoader {
                 }
             }
             if (imageReceiverArray.isEmpty()) {
+                if (nativeLoad != null) nativeLoad.images.remove(this);
                 if (imageLocation != null) {
-                    if (!forceLoadingImages.containsKey(key)) {
+                    if (!forceLoadingImages.containsKey(key) && (transferOwner == null || transferOwner.isCurrent())) {
                         if (imageLocation.location != null) {
                             FileLoader.getInstance(currentAccount).cancelLoadFile(imageLocation.location, ext);
                         } else if (imageLocation.document != null) {
@@ -2046,7 +2242,7 @@ public class ImageLoader {
             if (cacheTask != null && type != ImageReceiver.TYPE_THUMB && runningTask != null) {
                 runningTask = cacheOutQueue.changePriority(runningTask, newFileLoaderPriority);
             }
-            if (imageLocation != null) {
+            if (imageLocation != null && (transferOwner == null || transferOwner.isCurrent())) {
                 TLRPC.Document document = null;
                 SecureDocument secureDocument = null;
                 WebFile webDocument = null;
@@ -2071,6 +2267,7 @@ public class ImageLoader {
                 final ArrayList<ImageReceiver> finalImageReceiverArray = new ArrayList<>(imageReceiverArray);
                 final ArrayList<Integer> finalImageReceiverGuidsArray = new ArrayList<>(imageReceiverGuidsArray);
                 final ArrayList<Integer> finalImageReceiverTypesArray = new ArrayList<>(types);
+                final ArrayList<ImageSubscriber> finalSubscribers = new ArrayList<>(subscribers);
                 if (finalImageReceiverArray.isEmpty()) {
                     AndroidUtilities.runOnUIThread(() -> {
                         if (image instanceof AnimatedFileDrawable && !((AnimatedFileDrawable) image).isWebmSticker) {
@@ -2086,6 +2283,8 @@ public class ImageLoader {
                             boolean imageSet = false;
                             AnimatedFileDrawable fileDrawable = (AnimatedFileDrawable) image;
                             for (int a = 0; a < finalImageReceiverArray.size(); a++) {
+                                ImageSubscriber subscriber = finalSubscribers.get(a);
+                                if (nativeLoad != null && (!subscriber.request.isCurrentBinding(subscriber.type) || !subscriber.request.owner.isCurrent())) continue;
                                 ImageReceiver imgView = finalImageReceiverArray.get(a);
                                 AnimatedFileDrawable toSet = (a == 0 ? fileDrawable : fileDrawable.makeCopy());
                                 if (imgView.setImageBitmapByKey(toSet, key, finalImageReceiverTypesArray.get(a), false, finalImageReceiverGuidsArray.get(a))) {
@@ -2101,6 +2300,8 @@ public class ImageLoader {
                             }
                         } else {
                             for (int a = 0; a < finalImageReceiverArray.size(); a++) {
+                                ImageSubscriber subscriber = finalSubscribers.get(a);
+                                if (nativeLoad != null && (!subscriber.request.isCurrentBinding(subscriber.type) || !subscriber.request.owner.isCurrent())) continue;
                                 ImageReceiver imgView = finalImageReceiverArray.get(a);
                                 imgView.setImageBitmapByKey(image, key, finalImageReceiverTypesArray.get(a), false, finalImageReceiverGuidsArray.get(a));
                             }
@@ -2121,6 +2322,8 @@ public class ImageLoader {
             }
             imageReceiverArray.clear();
             imageReceiverGuidsArray.clear();
+            subscribers.clear();
+            if (nativeLoad != null) nativeLoad.images.remove(this);
             if (url != null) {
                 if (imageLoadingByUrl.get(url) == this) {
                     imageLoadingByUrl.remove(url);
@@ -2144,6 +2347,46 @@ public class ImageLoader {
                 || image.url != null && imageLoadingByUrl.get(image.url) == image);
     }
 
+    private void finishRetiredImageLoad(CacheImage image, FileLoader.TransferOwner owner, FileLoadOperation reportedOperation) {
+        if (owner == null || owner.isCurrent() || !isCurrentCacheImage(image) || image.nativeLoad == null || !owner.matches(image.transferOwner)
+                || reportedOperation != null && !owner.matches(FileLoader.downloadOwner(reportedOperation))) return;
+        RetiredImageLoad handoff = retiringImageLoads.get(image.nativeLoad.url);
+        if (handoff == null) {
+            handoff = new RetiredImageLoad(image.nativeLoad);
+            retiringImageLoads.put(image.nativeLoad.url, handoff);
+        }
+        for (ImageSubscriber subscriber : image.subscribers) {
+            if (!owner.matches(subscriber.request.owner) && subscriber.request.isCurrentBinding(subscriber.type) && subscriber.request.owner.isCurrent()) {
+                handoff.addSubscriber(subscriber);
+            }
+        }
+        image.setImageAndClear(null, null);
+        handoff.awaitOperation(reportedOperation);
+        handoff.awaitAdmission(image.nativeLoad);
+        handoff.releaseIfReady();
+    }
+
+    private void retireNativeImageLoad(NativeImageLoad load, FileLoadOperation operation) {
+        if (load.owner.isCurrent() || operation != null && !load.owner.matches(FileLoader.downloadOwner(operation))) return;
+        if (load.retirement != null && retiringImageLoads.get(load.url) != load.retirement) return;
+        RetiredImageLoad handoff = retiringImageLoads.get(load.url);
+        if (handoff == null) {
+            handoff = new RetiredImageLoad(load);
+            retiringImageLoads.put(load.url, handoff);
+        }
+        load.retirement = handoff;
+        for (CacheImage image : new ArrayList<>(load.images)) {
+            finishRetiredImageLoad(image, load.owner, operation);
+        }
+        handoff.awaitOperation(operation);
+        handoff.awaitAdmission(load);
+        handoff.releaseIfReady();
+    }
+
+    private void forgetNativeImageLoad(NativeImageLoad load) {
+        HashSet<NativeImageLoad> loads = nativeImageLoads.get(load.url);
+        if (loads != null && loads.remove(load) && loads.isEmpty()) nativeImageLoads.remove(load.url);
+    }
     private boolean isStickerCacheImage(CacheImage image) {
         if (image == null) {
             return false;
@@ -2159,6 +2402,10 @@ public class ImageLoader {
 
     private void handleCacheOutFailure(CacheImage image) {
         if (!isCurrentCacheImage(image)) {
+            return;
+        }
+        if (image.nativeLoad != null && !image.nativeLoad.owner.isCurrent()) {
+            retireNativeImageLoad(image.nativeLoad, image.nativeLoad.operation);
             return;
         }
         if (isStickerCacheImage(image) && image.decodeRetryCount++ == 0 && !image.imageReceiverArray.isEmpty()) {
@@ -2183,6 +2430,7 @@ public class ImageLoader {
         ArrayList<Integer> guids = sticker ? new ArrayList<>(image.imageReceiverGuidsArray) : null;
         ArrayList<String> keys = sticker ? new ArrayList<>(image.keys) : null;
         ArrayList<Integer> types = sticker ? new ArrayList<>(image.types) : null;
+        ArrayList<ImageSubscriber> subscribers = sticker && image.nativeLoad != null ? new ArrayList<>(image.subscribers) : null;
         image.setImageAndClear(null, null);
         if (!sticker || receivers == null) {
             return;
@@ -2192,7 +2440,8 @@ public class ImageLoader {
             for (int i = 0; i < count; i++) {
                 ImageReceiver receiver = receivers.get(i);
                 if (receiver != null) {
-                    receiver.onImageLoadFailed(keys.get(i), types.get(i), guids.get(i), allowStickerRetry);
+                    receiver.onImageLoadFailed(keys.get(i), types.get(i), guids.get(i), allowStickerRetry,
+                            subscribers == null ? null : subscribers.get(i).request);
                 }
             }
         });
@@ -2341,12 +2590,20 @@ public class ImageLoader {
             FileLoader.getInstance(a).setDelegate(new FileLoader.FileLoaderDelegate() {
                 @Override
                 public void fileUploadProgressChanged(FileUploadOperation operation, final String location, long uploadedSize, long totalSize, final boolean isEncrypted) {
-                    fileProgresses.put(location, new long[]{uploadedSize, totalSize});
+                    fileUploadProgressChanged(operation, location, uploadedSize, totalSize, isEncrypted, operation.getTransferOwner());
+                }
+
+                @Override
+                public void fileUploadProgressChanged(FileUploadOperation operation, final String location, long uploadedSize, long totalSize, final boolean isEncrypted, FileLoader.TransferOwner owner) {
+                    TransferProgress progress = setTransferProgress(location, owner, operation, uploadedSize, totalSize);
+                    if (progress == null) return;
                     long currentTime = SystemClock.elapsedRealtime();
                     if (operation.lastProgressUpdateTime == 0 || operation.lastProgressUpdateTime < currentTime - 100 || uploadedSize == totalSize) {
                         operation.lastProgressUpdateTime = currentTime;
 
-                        AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileUploadProgressChanged, location, uploadedSize, totalSize, isEncrypted));
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (isCurrentProgress(location, progress)) NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileUploadProgressChanged, location, uploadedSize, totalSize, isEncrypted);
+                        });
                     }
                 }
 
@@ -2359,6 +2616,16 @@ public class ImageLoader {
                 }
 
                 @Override
+                public void fileDidUploaded(final String location, final TLRPC.InputFile inputFile, final TLRPC.InputEncryptedFile inputEncryptedFile, final byte[] key, final byte[] iv, final long totalFileSize, FileLoader.TransferOwner owner, FileUploadOperation operation) {
+                    postTransferCompletion(() -> {
+                        clearTransferProgress(location, owner, operation);
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (owner.isCurrent()) NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileUploaded, location, inputFile, inputEncryptedFile, key, iv, totalFileSize);
+                        });
+                    });
+                }
+
+                @Override
                 public void fileDidFailedUpload(final String location, final boolean isEncrypted) {
                     Utilities.stageQueue.postRunnable(() -> {
                         AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileUploadFailed, location, isEncrypted));
@@ -2367,9 +2634,38 @@ public class ImageLoader {
                 }
 
                 @Override
+                public void fileDidFailedUpload(final String location, final boolean isEncrypted, FileLoader.TransferOwner owner, FileUploadOperation operation) {
+                    postTransferCompletion(() -> {
+                        clearTransferProgress(location, owner, operation);
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (owner.isCurrent()) NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileUploadFailed, location, isEncrypted);
+                        });
+                    });
+                }
+
+                @Override
                 public void fileDidLoaded(final String location, final File finalFile, Object parentObject, final int type) {
-                    fileProgresses.remove(location);
+                    deliverLoaded(location, finalFile, parentObject, type, null, null);
+                }
+
+                @Override
+                public void fileDidLoaded(final String location, final File finalFile, Object parentObject, final int type, FileLoader.TransferOwner owner) {
+                    deliverLoaded(location, finalFile, parentObject, type, owner, null);
+                }
+
+                @Override
+                public void fileDidLoaded(final String location, final File finalFile, Object parentObject, final int type, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+                    deliverLoaded(location, finalFile, parentObject, type, owner, operation);
+                }
+
+                private void deliverLoaded(final String location, final File finalFile, Object parentObject, final int type, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+                    if (owner == null) fileProgresses.remove(location);
+                    else clearTransferProgress(location, owner, null);
                     AndroidUtilities.runOnUIThread(() -> {
+                        if (owner != null && !owner.isCurrent()) {
+                            ImageLoader.this.fileDidFailedLoad(location, 1, owner, operation);
+                            return;
+                        }
                         if (finalFile != null && (location.endsWith(".mp4") || location.endsWith(".jpg"))) {
                             FilePathDatabase.FileMeta meta = FileLoader.getFileMetadataFromParent(currentAccount, parentObject);
                             if (meta != null) {
@@ -2394,25 +2690,50 @@ public class ImageLoader {
                             }
                         }
                         NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileLoaded, location, finalFile);
-                        ImageLoader.this.fileDidLoaded(location, finalFile, type);
+                        ImageLoader.this.fileDidLoaded(location, finalFile, type, owner, operation);
                     });
                 }
 
                 @Override
                 public void fileDidFailedLoad(final String location, final int canceled) {
-                    fileProgresses.remove(location);
+                    deliverLoadFailed(location, canceled, null, null);
+                }
+
+                @Override
+                public void fileDidFailedLoad(final String location, final int canceled, FileLoader.TransferOwner owner) {
+                    deliverLoadFailed(location, canceled, owner, null);
+                }
+
+                @Override
+                public void fileDidFailedLoad(final String location, final int canceled, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+                    deliverLoadFailed(location, canceled, owner, operation);
+                }
+
+                private void deliverLoadFailed(final String location, final int canceled, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+                    if (owner == null) fileProgresses.remove(location);
+                    else clearTransferProgress(location, owner, null);
                     AndroidUtilities.runOnUIThread(() -> {
-                        ImageLoader.this.fileDidFailedLoad(location, canceled);
+                        if (owner != null) ImageLoader.this.fileDidFailedLoad(location, canceled, owner, operation);
+                        if (owner != null && !owner.isCurrent()) return;
+                        if (owner == null) ImageLoader.this.fileDidFailedLoad(location, canceled);
                         NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileLoadFailed, location, canceled);
                     });
                 }
 
                 @Override
                 public void fileLoadProgressChanged(FileLoadOperation operation, final String location, long uploadedSize, long totalSize) {
-                    fileProgresses.put(location, new long[]{uploadedSize, totalSize});
+                    FileLoader.TransferOwner owner = FileLoader.downloadOwner(operation);
+                    if (owner != null) fileLoadProgressChanged(operation, location, uploadedSize, totalSize, owner);
+                }
+
+                @Override
+                public void fileLoadProgressChanged(FileLoadOperation operation, final String location, long uploadedSize, long totalSize, FileLoader.TransferOwner owner) {
+                    TransferProgress progress = setTransferProgress(location, owner, operation, uploadedSize, totalSize);
+                    if (progress == null) return;
 
                     if (!imageLoadingByUrlPframe.isEmpty() && operation.checkPrefixPreloadFinished()) {
                         imageLoadQueue.postRunnable(() -> {
+                            if (!FileLoader.getInstance(currentAccount).isCurrentLoadOperation(operation)) return;
                             CacheImage img = imageLoadingByUrlPframe.remove(location);
                             if (img == null) {
                                 return;
@@ -2431,6 +2752,8 @@ public class ImageLoader {
                                     cacheImage.priority = img.priority;
                                     cacheImage.secureDocument = img.secureDocument;
                                     cacheImage.currentAccount = img.currentAccount;
+                                    cacheImage.transferOwner = img.transferOwner;
+                                    cacheImage.setNativeLoad(img.nativeLoad);
                                     cacheImage.finalFilePath = operation.getCurrentFile();
                                     cacheImage.parentObject = img.parentObject;
                                     cacheImage.isPFrame = img.isPFrame;
@@ -2447,7 +2770,7 @@ public class ImageLoader {
                                     imageLoadingKeys.add(cutFilter(key));
                                     tasks.add(cacheImage.cacheTask);
                                 }
-                                cacheImage.addImageReceiver(imageReceiver, key, filter, type, guid);
+                                cacheImage.addImageReceiver(imageReceiver, key, filter, type, guid, img.subscribers.get(a));
                             }
                             for (int a = 0; a < tasks.size(); a++) {
                                 CacheOutTask task = tasks.get(a);
@@ -2457,13 +2780,16 @@ public class ImageLoader {
                                     task.cacheImage.runningTask = cacheOutQueue.postRunnable(task, task.cacheImage.priority);
                                 }
                             }
+                            img.setImageAndClear(null, null);
                         });
                     }
                     long currentTime = SystemClock.elapsedRealtime();
                     if (operation.lastProgressUpdateTime == 0 || operation.lastProgressUpdateTime < currentTime - 500 || uploadedSize == 0) {
                         operation.lastProgressUpdateTime = currentTime;
 
-                        AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileLoadProgressChanged, location, uploadedSize, totalSize));
+                        AndroidUtilities.runOnUIThread(() -> {
+                            if (isCurrentProgress(location, progress)) NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.fileLoadProgressChanged, location, uploadedSize, totalSize);
+                        });
                     }
                 }
             });
@@ -2844,7 +3170,7 @@ public class ImageLoader {
         if (location == null) {
             return null;
         }
-        long[] progress = fileProgresses.get(location);
+        long[] progress = currentFileProgress(location);
         if (progress == null) {
             return null;
         }
@@ -2858,7 +3184,7 @@ public class ImageLoader {
         if (location == null) {
             return null;
         }
-        return fileProgresses.get(location);
+        return currentFileProgress(location);
     }
 
     public String getReplacedKey(String oldKey) {
@@ -2995,9 +3321,14 @@ public class ImageLoader {
     }
 
     public void cancelLoadingForImageReceiver(final ImageReceiver imageReceiver, final boolean cancelAll) {
+        cancelLoadingForImageReceiver(imageReceiver, cancelAll, false);
+    }
+
+    private void cancelLoadingForImageReceiver(final ImageReceiver imageReceiver, final boolean cancelAll, boolean preserveRequest) {
         if (imageReceiver == null) {
             return;
         }
+        if (!preserveRequest) imageReceiver.cancelImageLoadRequest(cancelAll);
         WebInstantView.cancelLoadPhoto(imageReceiver);
         ArrayList<Runnable> runnables = imageReceiver.getLoadingOperations();
         if (!runnables.isEmpty()) {
@@ -3008,6 +3339,10 @@ public class ImageLoader {
         }
         imageReceiver.addLoadingImageRunnable(null);
         imageLoadQueue.postRunnable(() -> {
+            for (RetiredImageLoad handoff : retiringImageLoads.values()) {
+                handoff.subscribers.removeIf(subscriber -> subscriber.receiver == imageReceiver
+                        && !subscriber.request.isCurrentBinding(subscriber.type));
+            }
             for (int a = 0; a < 3; a++) {
                 int type;
                 if (a > 0 && !cancelAll) {
@@ -3027,7 +3362,7 @@ public class ImageLoader {
                     }
                     CacheImage ei = imageLoadingByTag.get(TAG);
                     if (ei != null) {
-                        ei.removeImageReceiver(imageReceiver);
+                        ei.removeCancelledImageReceiver(imageReceiver, type);
                     }
                 }
             }
@@ -3133,8 +3468,8 @@ public class ImageLoader {
         imageLoadQueue.postRunnable(() -> forceLoadingImages.remove(key));
     }
 
-    private void createLoadOperationForImageReceiver(final ImageReceiver imageReceiver, final String key, final String url, final String ext, final ImageLocation imageLocation, final String filter, final long size, final int cacheType, final int type, final int thumb, int guid) {
-        if (imageReceiver == null || url == null || key == null || imageLocation == null) {
+    private void createLoadOperationForImageReceiver(final ImageReceiver imageReceiver, final String key, final String url, final String ext, final ImageLocation imageLocation, final String filter, final long size, final int cacheType, final int type, final int thumb, int guid, ImageReceiver.ImageLoadRequest request) {
+        if (imageReceiver == null || url == null || key == null || imageLocation == null || request == null || !request.isCurrentBinding(type)) {
             return;
         }
         int TAG = imageReceiver.getTag(type);
@@ -3147,28 +3482,46 @@ public class ImageLoader {
         }
 
         final int finalTag = TAG;
-        final boolean finalIsNeedsQualityThumb = imageReceiver.isNeedsQualityThumb();
-        final Object parentObject = imageReceiver.getParentObject();
-        final TLRPC.Document qualityDocument = imageReceiver.getQualityThumbDocument();
-        final boolean shouldGenerateQualityThumb = imageReceiver.isShouldGenerateQualityThumb();
-        final int currentAccount = imageReceiver.getCurrentAccount();
-        final boolean currentKeyQuality = type == ImageReceiver.TYPE_IMAGE && imageReceiver.isCurrentKeyQuality();
+        final boolean finalIsNeedsQualityThumb = request.needsQualityThumb;
+        final Object parentObject = request.parentObject;
+        final TLRPC.Document qualityDocument = request.qualityDocument;
+        final boolean shouldGenerateQualityThumb = request.shouldGenerateQualityThumb;
+        final int currentAccount = request.owner.account;
+        final FileLoader.TransferOwner transferOwner = request.owner;
+        final boolean currentKeyQuality = type == ImageReceiver.TYPE_IMAGE && request.currentKeyQuality;
+        final ImageSubscriber subscriber = new ImageSubscriber(request, key, url, filter, ext, imageLocation, size, cacheType, type);
 
         final Runnable loadOperationRunnable = () -> {
+            if (!request.isCurrentBinding(type)) return;
+            if (transferOwner.userId != 0 && !transferOwner.isCurrent()) return;
             boolean added = false;
             if (thumb != 2) {
+                retireImageOwner(imageLoadingByUrl.get(url));
+                retireImageOwner(imageLoadingByKeys.get(key));
+                retireImageOwner(imageLoadingByTag.get(finalTag));
+                HashSet<NativeImageLoad> nativeLoads = imageLocation.path == null ? nativeImageLoads.get(url) : null;
+                if (nativeLoads != null) {
+                    for (NativeImageLoad load : new ArrayList<>(nativeLoads)) {
+                        if (!load.owner.isCurrent()) retireNativeImageLoad(load, null);
+                    }
+                }
+                RetiredImageLoad handoff = imageLocation.path == null ? retiringImageLoads.get(url) : null;
+                if (handoff != null) {
+                    handoff.addSubscriber(subscriber);
+                    return;
+                }
                 CacheImage alreadyLoadingUrl = imageLoadingByUrl.get(url);
                 CacheImage alreadyLoadingCache = imageLoadingByKeys.get(key);
                 CacheImage alreadyLoadingImage = imageLoadingByTag.get(finalTag);
                 if (alreadyLoadingImage != null) {
                     if (alreadyLoadingImage == alreadyLoadingCache) {
-                        added = alreadyLoadingImage.setImageReceiverGuid(imageReceiver, type, guid);
+                        added = alreadyLoadingImage.setImageReceiverGuid(imageReceiver, type, guid, subscriber);
                     } else if (alreadyLoadingImage == alreadyLoadingUrl) {
                         if (alreadyLoadingCache == null) {
-                            added = alreadyLoadingImage.replaceImageReceiver(imageReceiver, key, filter, type, guid);
+                            added = alreadyLoadingImage.replaceImageReceiver(imageReceiver, key, filter, type, guid, subscriber);
                         } else {
                             alreadyLoadingImage.removeImageReceiver(imageReceiver, type);
-                            alreadyLoadingCache.addImageReceiver(imageReceiver, key, filter, type, guid);
+                            alreadyLoadingCache.addImageReceiver(imageReceiver, key, filter, type, guid, subscriber);
                             added = true;
                         }
                     } else {
@@ -3177,11 +3530,11 @@ public class ImageLoader {
                 }
 
                 if (!added && alreadyLoadingCache != null) {
-                    alreadyLoadingCache.addImageReceiver(imageReceiver, key, filter, type, guid);
+                    alreadyLoadingCache.addImageReceiver(imageReceiver, key, filter, type, guid, subscriber);
                     added = true;
                 }
                 if (!added && alreadyLoadingUrl != null) {
-                    alreadyLoadingUrl.addImageReceiver(imageReceiver, key, filter, type, guid);
+                    alreadyLoadingUrl.addImageReceiver(imageReceiver, key, filter, type, guid, subscriber);
                     added = true;
                 }
             }
@@ -3405,6 +3758,7 @@ public class ImageLoader {
                     img.imageLocation = imageLocation;
                     img.ext = ext;
                     img.currentAccount = currentAccount;
+                    img.transferOwner = transferOwner;
                     img.parentObject = parentObject;
                     if (imageLocation.imageType != 0) {
                         img.imageType = imageLocation.imageType;
@@ -3412,7 +3766,7 @@ public class ImageLoader {
                     if (cacheType == 2) {
                         img.encryptionKeyPath = new File(FileLoader.getInternalCacheDir(), url + ".enc.key");
                     }
-                    img.addImageReceiver(imageReceiver, key, filter, type, guid);
+                    img.addImageReceiver(imageReceiver, key, filter, type, guid, subscriber);
 
                     if (onlyCache || cacheFileExists || cacheFile.exists()) {
                         img.finalFilePath = cacheFile;
@@ -3427,8 +3781,16 @@ public class ImageLoader {
                             img.runningTask = cacheOutQueue.postRunnable(img.cacheTask, img.priority);
                         }
                     } else {
+                        if (imageLocation.path == null && (!transferOwner.isCurrent() || !request.isCurrentBinding(type))) {
+                            img.setImageAndClear(null, null);
+                            return;
+                        }
                         img.url = url;
 
+                        if (imageLocation.path == null) {
+                            img.setNativeLoad(new NativeImageLoad(url, transferOwner));
+                            nativeImageLoads.computeIfAbsent(url, unused -> new HashSet<>()).add(img.nativeLoad);
+                        }
                         imageLoadingByUrl.put(url, img);
                         if (img.isPFrame) {
                             imageLoadingByUrlPframe.put(url, img);
@@ -3449,19 +3811,27 @@ public class ImageLoader {
                             }
                         } else {
                             int loadingPriority = thumb != 0 ? FileLoader.PRIORITY_HIGH : imageReceiver.getFileLoadingPriority();
+                            int localCacheType = cacheType;
                             if (imageLocation.location != null) {
-                                int localCacheType = cacheType;
                                 if (localCacheType == 0 && (size <= 0 || imageLocation.key != null)) {
                                     localCacheType = 1;
                                 }
-                                FileLoader.getInstance(currentAccount).loadFile(imageLocation, parentObject, ext, loadingPriority, localCacheType);
-                            } else if (imageLocation.document != null) {
-                                FileLoader.getInstance(currentAccount).loadFile(imageLocation.document, parentObject, loadingPriority, cacheType);
-                            } else if (imageLocation.secureDocument != null) {
-                                FileLoader.getInstance(currentAccount).loadFile(imageLocation.secureDocument, loadingPriority);
-                            } else if (imageLocation.webFile != null) {
-                                FileLoader.getInstance(currentAccount).loadFile(imageLocation.webFile, loadingPriority, cacheType);
                             }
+                            final NativeImageLoad nativeLoad = img.nativeLoad;
+                            FileLoader.getInstance(currentAccount).loadImageFile(imageLocation, parentObject, ext, loadingPriority,
+                                    localCacheType, transferOwner, operation -> imageLoadQueue.postRunnable(() -> {
+                                        nativeLoad.operation = operation;
+                                        nativeLoad.admissionResolved = true;
+                                        ArrayList<Runnable> waiters = new ArrayList<>(nativeLoad.admissionWaiters);
+                                        nativeLoad.admissionWaiters.clear();
+                                        for (Runnable waiter : waiters) waiter.run();
+                                        if (!transferOwner.isCurrent()) retireNativeImageLoad(nativeLoad, operation);
+                                        if (operation == null) {
+                                            forgetNativeImageLoad(nativeLoad);
+                                        } else {
+                                            operation.whenLocalFileWorkDrained(() -> imageLoadQueue.postRunnable(() -> forgetNativeImageLoad(nativeLoad)));
+                                        }
+                                    }));
                             if (imageReceiver.isForceLoding()) {
                                 forceLoadingImages.put(img.key, 0);
                             }
@@ -3509,13 +3879,21 @@ public class ImageLoader {
         loadImageForImageReceiver(imageReceiver, null);
     }
     public void loadImageForImageReceiver(ImageReceiver imageReceiver, List<ImageReceiver> preloadReceiver) {
+        loadImageForImageReceiver(imageReceiver, preloadReceiver, null);
+    }
+
+    void loadImageForImageReceiver(ImageReceiver imageReceiver, List<ImageReceiver> preloadReceiver, FileLoader.TransferOwner expectedOwner) {
         if (imageReceiver == null) {
             return;
         }
+        if (expectedOwner != null && (expectedOwner.account != imageReceiver.getCurrentAccount() || !expectedOwner.isCurrent())) return;
         boolean imageSet = false;
         boolean mediaSet = false;
         String mediaKey = imageReceiver.getMediaKey();
         int guid = imageReceiver.getNewGuid();
+        final ImageReceiver.ImageLoadRequest request = imageReceiver.captureImageLoadRequest(
+                expectedOwner == null ? FileLoader.captureTransferOwner(imageReceiver.getCurrentAccount()) : expectedOwner, guid, expectedOwner != null);
+        if (request == null) return;
         if (mediaKey != null) {
             ImageLocation mediaLocation = imageReceiver.getMediaLocation();
             Drawable drawable = findInPreloadImageReceivers(mediaKey, preloadReceiver);
@@ -3548,7 +3926,7 @@ public class ImageLoader {
                 hasBitmap = ((AnimatedFileDrawable) drawable).hasRenderingBitmap();
             }
             if (hasBitmap && drawable != null) {
-                cancelLoadingForImageReceiver(imageReceiver, true);
+                cancelLoadingForImageReceiver(imageReceiver, true, true);
                 imageReceiver.setImageBitmapByKey(drawable, mediaKey, ImageReceiver.TYPE_MEDIA, true, guid);
                 imageSet = true;
                 if (!imageReceiver.isForcePreview()) {
@@ -3585,7 +3963,7 @@ public class ImageLoader {
                 }
             }
             if (drawable != null) {
-                cancelLoadingForImageReceiver(imageReceiver, true);
+                cancelLoadingForImageReceiver(imageReceiver, true, true);
                 imageReceiver.setImageBitmapByKey(drawable, imageKey, ImageReceiver.TYPE_IMAGE, true, guid);
                 imageSet = true;
                 boolean readyForDraw = true;
@@ -3627,7 +4005,7 @@ public class ImageLoader {
             }
             if (drawable != null) {
                 imageReceiver.setImageBitmapByKey(drawable, thumbKey, ImageReceiver.TYPE_THUMB, true, guid);
-                cancelLoadingForImageReceiver(imageReceiver, false);
+                cancelLoadingForImageReceiver(imageReceiver, false, true);
                 if (imageSet && imageReceiver.isForcePreview()) {
                     return;
                 }
@@ -3799,9 +4177,9 @@ public class ImageLoader {
 
 
         if (imageLocation != null && imageLocation.path != null) {
-            createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, 1, ImageReceiver.TYPE_THUMB, thumbSet ? 2 : 1, guid);
+            createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, 1, ImageReceiver.TYPE_THUMB, thumbSet ? 2 : 1, guid, request);
             if (!imageSet) {
-                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, imageReceiver.getSize(), 1, ImageReceiver.TYPE_IMAGE, 0, guid);
+                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, imageReceiver.getSize(), 1, ImageReceiver.TYPE_IMAGE, 0, guid, request);
             }
         } else if (mediaLocation != null) {
             int mediaCacheType = imageReceiver.getCacheType();
@@ -3811,13 +4189,13 @@ public class ImageLoader {
             }
             int thumbCacheType = mediaCacheType == 0 ? 1 : mediaCacheType;
             if (!thumbSet) {
-                createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, thumbCacheType, ImageReceiver.TYPE_THUMB, 1, guid);
+                createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, thumbCacheType, ImageReceiver.TYPE_THUMB, 1, guid, request);
             }
             if (!imageSet) {
-                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, 0, imageCacheType, ImageReceiver.TYPE_IMAGE, 0, guid);
+                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, 0, imageCacheType, ImageReceiver.TYPE_IMAGE, 0, guid, request);
             }
             if (!mediaSet) {
-                createLoadOperationForImageReceiver(imageReceiver, mediaKey, mediaUrl, mediaExt, mediaLocation, mediaFilter, imageReceiver.getSize(), mediaCacheType, ImageReceiver.TYPE_MEDIA, 0, guid);
+                createLoadOperationForImageReceiver(imageReceiver, mediaKey, mediaUrl, mediaExt, mediaLocation, mediaFilter, imageReceiver.getSize(), mediaCacheType, ImageReceiver.TYPE_MEDIA, 0, guid, request);
             }
         } else {
             int imageCacheType = imageReceiver.getCacheType();
@@ -3825,9 +4203,9 @@ public class ImageLoader {
                 imageCacheType = 1;
             }
             int thumbCacheType = imageCacheType == 0 ? 1 : imageCacheType;
-            createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, thumbCacheType, ImageReceiver.TYPE_THUMB, thumbSet ? 2 : 1, guid);
+            createLoadOperationForImageReceiver(imageReceiver, thumbKey, thumbUrl, thumbExt, thumbLocation, thumbFilter, 0, thumbCacheType, ImageReceiver.TYPE_THUMB, thumbSet ? 2 : 1, guid, request);
             if (!imageSet) {
-                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, imageReceiver.getSize(), imageCacheType, ImageReceiver.TYPE_IMAGE, 0, guid);
+                createLoadOperationForImageReceiver(imageReceiver, imageKey, imageUrl, imageExt, imageLocation, imageFilter, imageReceiver.getSize(), imageCacheType, ImageReceiver.TYPE_IMAGE, 0, guid, request);
             }
         }
     }
@@ -3899,8 +4277,48 @@ public class ImageLoader {
         });
     }
 
+    private void retireImageOwner(CacheImage image) {
+        if (image != null && image.nativeLoad != null && image.transferOwner != null
+                && image.transferOwner.userId != 0 && !image.transferOwner.isCurrent()) {
+            retireNativeImageLoad(image.nativeLoad, null);
+        }
+    }
+
+    private void retireImageTransfer(String location, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+        if (operation != null && !owner.matches(FileLoader.downloadOwner(operation))) return;
+        HashSet<NativeImageLoad> loads = nativeImageLoads.get(location);
+        if (loads != null) {
+            for (NativeImageLoad load : new ArrayList<>(loads)) {
+                if (owner.matches(load.owner)) retireNativeImageLoad(load, operation);
+            }
+        }
+        CacheImage image = imageLoadingByUrl.get(location);
+        if (image != null && image.nativeLoad != null && owner.matches(image.transferOwner)) {
+            retireNativeImageLoad(image.nativeLoad, operation);
+        }
+        RetiredImageLoad handoff = retiringImageLoads.get(location);
+        if (handoff != null && handoff.matchesOwner(owner)
+                && (operation == null || owner.matches(FileLoader.downloadOwner(operation)))) {
+            handoff.awaitOperation(operation);
+            handoff.releaseIfReady();
+        }
+    }
     private void fileDidLoaded(final String location, final File finalFile, final int mediaType) {
+        fileDidLoaded(location, finalFile, mediaType, null);
+    }
+
+    private void fileDidLoaded(final String location, final File finalFile, final int mediaType, FileLoader.TransferOwner owner) {
+        fileDidLoaded(location, finalFile, mediaType, owner, null);
+    }
+
+    private void fileDidLoaded(final String location, final File finalFile, final int mediaType, FileLoader.TransferOwner owner, FileLoadOperation operation) {
         imageLoadQueue.postRunnable(() -> {
+            CacheImage current = imageLoadingByUrl.get(location);
+            if (owner != null && !owner.isCurrent()) {
+                retireImageTransfer(location, owner, operation);
+                return;
+            }
+            if (owner != null && current != null && !owner.matches(current.transferOwner)) return;
             ThumbGenerateInfo info = waitingForQualityThumb.get(location);
             if (info != null && info.parentDocument != null) {
                 generateThumb(mediaType, finalFile, info);
@@ -3925,6 +4343,8 @@ public class ImageLoader {
                     cacheImage.priority = img.priority;
                     cacheImage.secureDocument = img.secureDocument;
                     cacheImage.currentAccount = img.currentAccount;
+                    cacheImage.transferOwner = img.transferOwner;
+                    cacheImage.setNativeLoad(img.nativeLoad);
                     cacheImage.finalFilePath = finalFile;
                     cacheImage.parentObject = img.parentObject;
                     cacheImage.isPFrame = img.isPFrame;
@@ -3941,7 +4361,7 @@ public class ImageLoader {
                     imageLoadingKeys.add(cutFilter(key));
                     tasks.add(cacheImage.cacheTask);
                 }
-                cacheImage.addImageReceiver(imageReceiver, key, filter, type, guid);
+                cacheImage.addImageReceiver(imageReceiver, key, filter, type, guid, img.subscribers.get(a));
             }
             for (int a = 0; a < tasks.size(); a++) {
                 CacheOutTask task = tasks.get(a);
@@ -3951,17 +4371,30 @@ public class ImageLoader {
                     task.cacheImage.runningTask = cacheOutQueue.postRunnable(task, task.cacheImage.priority);
                 }
             }
+            img.setImageAndClear(null, null);
         });
     }
 
     private void fileDidFailedLoad(final String location, int canceled) {
-        if (canceled == 1) {
+        fileDidFailedLoad(location, canceled, null);
+    }
+
+    private void fileDidFailedLoad(final String location, int canceled, FileLoader.TransferOwner owner) {
+        fileDidFailedLoad(location, canceled, owner, null);
+    }
+
+    private void fileDidFailedLoad(final String location, int canceled, FileLoader.TransferOwner owner, FileLoadOperation operation) {
+        if (canceled == 1 && (owner == null || owner.isCurrent())) {
             return;
         }
         imageLoadQueue.postRunnable(() -> {
+            if (owner != null && !owner.isCurrent()) {
+                retireImageTransfer(location, owner, operation);
+                return;
+            }
             CacheImage img = imageLoadingByUrl.get(location);
-            if (img != null) {
-                finishFailedImageLoad(img, canceled != -1);
+            if (img != null && (owner == null || owner.matches(img.transferOwner))) {
+                finishFailedImageLoad(img, canceled != -1 && (owner == null || owner.isCurrent()));
             }
         });
     }

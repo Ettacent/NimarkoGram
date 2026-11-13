@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -28,6 +30,8 @@ public class PhotoViewerCoverEditor extends FrameLayout {
     public EditCoverButton openGalleryButton;
 
     private VideoPlayer videoPlayer;
+    private Runnable pendingSeek;
+    private long seekGeneration;
     private long time = -1;
     private float aspectRatio = 1.39f;
 
@@ -74,23 +78,41 @@ public class PhotoViewerCoverEditor extends FrameLayout {
         addView(openGalleryButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 32, Gravity.FILL_HORIZONTAL | Gravity.BOTTOM, 60, 0, 60, 16 + 48 + 10 + 60));
 
         timelineView.setDelegate(new TimelineView.TimelineDelegate() {
-            private Runnable betterSeek = () -> videoPlayer.seekTo(time, false);
             @Override
             public void onVideoLeftChange(boolean released, float left) {
-                if (videoPlayer == null) return;
-                final long duration = videoPlayer.getDuration();
+                cancelPendingSeek();
+                final VideoPlayer player = videoPlayer;
+                if (player == null) return;
+                final long generation = seekGeneration;
+                final long duration = player.getDuration();
                 final float regionLength = 2.8f / Math.max(60, duration);
-                time = (long) ((left + regionLength * (left / (1f - regionLength))) * duration);
-                videoPlayer.seekTo(time, !released);
-                if (!released) {
-                    AndroidUtilities.cancelRunOnUIThread(betterSeek);
-                    AndroidUtilities.runOnUIThread(betterSeek, 120);
+                final long position = time = (long) ((left + regionLength * (left / (1f - regionLength))) * duration);
+                player.seekTo(position, !released);
+                if (!released && videoPlayer == player && seekGeneration == generation) {
+                    pendingSeek = new Runnable() {
+                        @Override
+                        public void run() {
+                            if (pendingSeek != this || videoPlayer != player || seekGeneration != generation) return;
+                            pendingSeek = null;
+                            player.seekTo(position, false);
+                        }
+                    };
+                    AndroidUtilities.runOnUIThread(pendingSeek, 120);
                 }
             }
         });
     }
 
+    private void cancelPendingSeek() {
+        seekGeneration++;
+        final Runnable seek = pendingSeek;
+        pendingSeek = null;
+        if (seek != null) {
+            AndroidUtilities.cancelRunOnUIThread(seek);
+        }
+    }
     public void set(MediaController.PhotoEntry entry, VideoPlayer player, Theme.ResourcesProvider resourcesProvider) {
+        cancelPendingSeek();
         button.updateColors(resourcesProvider);
 
         if (entry.width > 0 && entry.height > 0) {
@@ -137,6 +159,7 @@ public class PhotoViewerCoverEditor extends FrameLayout {
     }
 
     public void destroy() {
+        cancelPendingSeek();
         videoPlayer = null;
         timelineView.setVideo(false, null, 0, 0);
     }

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">التصفية حسب التاريخ</string>
+    <string name="NM_SearchDatesDay">يوم</string>
+    <string name="NM_SearchDatesPeriod">فترة</string>
+    <string name="NM_SearchDatesFrom">من</string>
+    <string name="NM_SearchDatesUntil">إلى</string>
+    <string name="NM_SearchDatesAddEnd">إضافة تاريخ نهاية</string>
+    <string name="NM_SearchDatesToday">اليوم</string>
+    <string name="NM_SearchDatesYesterday">أمس</string>
+    <string name="NM_SearchDatesLast7">آخر 7 أيام</string>
+    <string name="NM_SearchDatesLast30">آخر 30 يومًا</string>
+    <string name="NM_SearchDatesApply">تطبيق الفلتر</string>
+    <string name="NM_SearchDatesReset">كل التواريخ</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">فلتر التاريخ: %1$s</string>
+    <string name="NM_SearchDatesChange">تغيير التواريخ</string>
+    <string name="NM_SearchDatesClear">إزالة فلتر التاريخ</string>
+    <string name="NM_SearchDatesJump">الانتقال إلى التاريخ</string>
+    <string name="NM_SearchDatesInvalid">لا يمكن أن يسبق تاريخ النهاية تاريخ البداية.</string>
+    <string name="NM_SearchDatesDayValue">اليوم: %1$s</string>
+    <string name="NM_SearchDatesMonthValue">الشهر: %1$s</string>
+    <string name="NM_SearchDatesYearValue">السنة: %1$s</string>
+</resources>

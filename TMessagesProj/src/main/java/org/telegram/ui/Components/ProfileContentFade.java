@@ -57,6 +57,10 @@ final class ProfileContentFade {
     }
 
     void start(View view, BooleanSupplier mayPresent) {
+        start(view, mayPresent, null);
+    }
+
+    void start(View view, BooleanSupplier mayPresent, BooleanSupplier coveredByParent) {
         if (!SharedConfig.animationsEnabled()) {
             reset(view);
             presented = true;
@@ -72,6 +76,13 @@ final class ProfileContentFade {
             if (generation != expectedGeneration || pendingView != view) return true;
             if (view.isLayoutRequested() || !isPresentationVisible(view, visibleRect, false)
                     || mayPresent != null && !mayPresent.getAsBoolean()) return true;
+            if (generation != expectedGeneration || pendingView != view) return true;
+            boolean parentOwnsFade = coveredByParent != null && coveredByParent.getAsBoolean();
+            if (generation != expectedGeneration || pendingView != view) return true;
+            if (parentOwnsFade) {
+                markPresented();
+                return true;
+            }
             clearPending();
             if (!SharedConfig.animationsEnabled()) {
                 presented = true;

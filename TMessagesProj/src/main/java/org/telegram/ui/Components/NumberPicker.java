@@ -456,6 +456,18 @@ public class NumberPicker extends LinearLayout implements Theme.Colorable {
                 mVelocityTracker = null;
             }
             break;
+            case MotionEvent.ACTION_CANCEL: {
+                removeChangeCurrentByOneFromLongPress();
+                mPressedStateHelper.cancel();
+                mFlingScroller.forceFinished(true);
+                mAdjustScroller.forceFinished(true);
+                mPreviousScrollerY = 0;
+                ensureScrollWheelAdjusted();
+                onScrollStateChange(OnScrollListener.SCROLL_STATE_IDLE);
+                mVelocityTracker.recycle();
+                mVelocityTracker = null;
+            }
+            break;
         }
         return true;
     }

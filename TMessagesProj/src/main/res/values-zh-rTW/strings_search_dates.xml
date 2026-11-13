@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_SearchDatesTitle">依日期篩選</string>
+    <string name="NM_SearchDatesDay">單日</string>
+    <string name="NM_SearchDatesPeriod">期間</string>
+    <string name="NM_SearchDatesFrom">開始</string>
+    <string name="NM_SearchDatesUntil">結束</string>
+    <string name="NM_SearchDatesAddEnd">新增結束日期</string>
+    <string name="NM_SearchDatesToday">今天</string>
+    <string name="NM_SearchDatesYesterday">昨天</string>
+    <string name="NM_SearchDatesLast7">最近7天</string>
+    <string name="NM_SearchDatesLast30">最近30天</string>
+    <string name="NM_SearchDatesApply">套用篩選</string>
+    <string name="NM_SearchDatesReset">所有日期</string>
+    <string name="NM_SearchDatesRange">%1$s – %2$s</string>
+    <string name="NM_SearchDatesActive">日期篩選：%1$s</string>
+    <string name="NM_SearchDatesChange">變更日期</string>
+    <string name="NM_SearchDatesClear">清除日期篩選</string>
+    <string name="NM_SearchDatesJump">跳至日期</string>
+    <string name="NM_SearchDatesInvalid">結束日期不能早於開始日期。</string>
+    <string name="NM_SearchDatesDayValue">日：%1$s</string>
+    <string name="NM_SearchDatesMonthValue">月：%1$s</string>
+    <string name="NM_SearchDatesYearValue">年：%1$s</string>
+</resources>

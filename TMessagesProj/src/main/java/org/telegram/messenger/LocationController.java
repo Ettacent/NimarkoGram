@@ -1003,24 +1003,31 @@ public class LocationController extends BaseController implements NotificationCe
         "Straße ohne Straßennamen"
     };
 
-    private static HashMap<LocationFetchCallback, Runnable> callbacks = new HashMap<>();
+    private static final class LocationFetchRequest {
+        Runnable runnable;
+    }
+
+    private static final HashMap<LocationFetchCallback, LocationFetchRequest> callbacks = new HashMap<>();
+
+    public static void cancelLocationAddressFetch(LocationFetchCallback callback) {
+        LocationFetchRequest request = callbacks.remove(callback);
+        if (request != null) Utilities.globalQueue.cancelRunnable(request.runnable);
+    }
     public static void fetchLocationAddress(Location location, LocationFetchCallback callback) {
         fetchLocationAddress(location, 0, callback);
     }
-    public static void fetchLocationAddress(Location location, int type, LocationFetchCallback callback) {
+    public static void fetchLocationAddress(Location sourceLocation, int type, LocationFetchCallback callback) {
         if (callback == null) {
             return;
         }
-        Runnable fetchLocationRunnable = callbacks.get(callback);
-        if (fetchLocationRunnable != null) {
-            Utilities.globalQueue.cancelRunnable(fetchLocationRunnable);
-            callbacks.remove(callback);
-        }
-        if (location == null) {
+        cancelLocationAddressFetch(callback);
+        if (sourceLocation == null) {
             callback.onLocationAddressAvailable(null, null, null, null, null);
             return;
         }
 
+        final Location location = new Location(sourceLocation);
+        final LocationFetchRequest request = new LocationFetchRequest();
         Locale locale;
         Locale englishLocale;
         try {
@@ -1034,7 +1041,7 @@ public class LocationController extends BaseController implements NotificationCe
             englishLocale = Locale.US;
         }
         final Locale finalLocale = locale;
-        Utilities.globalQueue.postRunnable(fetchLocationRunnable = () -> {
+        request.runnable = () -> {
             String name, displayName, city, street, countryCode = null, locality = null, feature = null, engFeature = null;
             String engState = null, engCity = null;
             StringBuilder engStreet = new StringBuilder();
@@ -1404,11 +1411,16 @@ public class LocationController extends BaseController implements NotificationCe
             final TLRPC.TL_messageMediaVenue finalCityLocation = cityLocation;
             final TLRPC.TL_messageMediaVenue finalStreetLocation = streetLocation;
             AndroidUtilities.runOnUIThread(() -> {
+                if (callbacks.get(callback) != request) return;
                 callbacks.remove(callback);
                 callback.onLocationAddressAvailable(nameFinal, displayNameFinal, finalCityLocation, finalStreetLocation, location);
             });
-        }, 300);
-        callbacks.put(callback, fetchLocationRunnable);
+        };
+        callbacks.put(callback, request);
+        if (!Utilities.globalQueue.postRunnable(request.runnable, 300) && callbacks.get(callback) == request) {
+            callbacks.remove(callback);
+            callback.onLocationAddressAvailable(null, null, null, null, location);
+        }
     }
 
     public static String countryCodeToEmoji(String code) {
