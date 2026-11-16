@@ -1902,7 +1902,11 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     private boolean canStartLocalPlayback(MessageObject message) {
-        return !isTemporaryPlayback(message) || !callInProgress && !VoIPService.isAnyKindOfCallActive()
+        return !isTemporaryPlayback(message) || canStartVideoPlayback();
+    }
+
+    public boolean canStartVideoPlayback() {
+        return !callInProgress && !VoIPService.isAnyKindOfCallActive()
                 && !isRecordingAudio() && !hasRecordAudioFocus && pendingVoiceRecordingGeneration < 0 && !raiseToEarRecord;
     }
 
@@ -2518,6 +2522,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         } else if (id == NotificationCenter.playerDidStartPlaying) {
             VideoPlayer p = (VideoPlayer) args[0];
             if (!isCurrentPlayer(p)) {
+                if (p.usesTransientAudioFocus()) {
+                    wasPlayingAudioBeforePause = false;
+                    return;
+                }
                 cancelAutomaticMusicReturn();
                 MessageObject message = getPlayingMessageObject();
                 if(message != null && isPlayingMessage(message) && !isMessagePaused() && (message.isMusic() || message.isVoice())){
@@ -5616,6 +5624,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     public void tryResumePausedAudio() {
+        if (playbackFocusListener != null && !playbackFocusGranted) {
+            wasPlayingAudioBeforePause = false;
+            return;
+        }
         MessageObject message = getPlayingMessageObject();
         if (message!= null && isMessagePaused() && wasPlayingAudioBeforePause && (message.isVoice() || message.isMusic())) {
             playMessage(message);
@@ -5624,6 +5636,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     void onAudioBecomingNoisy() {
+        VideoPlaybackFocus.onAudioBecomingNoisy();
         cancelAutomaticMusicReturn();
         pauseMessage(playingMessageObject);
     }

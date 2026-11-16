@@ -238,6 +238,10 @@ public class VoIPPreNotificationService { // } extends Service implements AudioM
 //    public static VoIPPreNotificationService instance;
 
     private static Notification makeNotification(Context context, State state) {
+        return makeNotification(context, state, true);
+    }
+
+    private static Notification makeNotification(Context context, State state, boolean allowCallStyle) {
         if (Build.VERSION.SDK_INT < 33) return null;
 
         final int account = state.currentAccount;
@@ -248,6 +252,9 @@ public class VoIPPreNotificationService { // } extends Service implements AudioM
 
         final NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
 
+        final boolean useCallStyle = allowCallStyle
+                && (Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent());
+        if (!useCallStyle && !nm.areNotificationsEnabled()) return null;
         final Intent intent = bindOwner(new Intent(context, LaunchActivity.class).setAction("voip"), state);
         final Notification.Builder builder = new Notification.Builder(context)
             .setContentTitle(LocaleController.getString(video ? R.string.VoipInVideoCallBranding : R.string.VoipInCallBranding))
@@ -349,7 +356,9 @@ public class VoIPPreNotificationService { // } extends Service implements AudioM
             builder.setColor(0xff2ca5e0);
             builder.setVibrate(new long[0]);
             builder.setCategory(Notification.CATEGORY_CALL);
+            if (useCallStyle) {
             builder.setFullScreenIntent(PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_MUTABLE), true);
+            }
             if (user != null && !TextUtils.isEmpty(user.phone)) {
                 builder.addPerson("tel:" + user.phone);
             }
@@ -372,12 +381,17 @@ public class VoIPPreNotificationService { // } extends Service implements AudioM
             //java.lang.IllegalArgumentException: person must have a non-empty a name
             personName = "___";
         }
-        Person person = new Person.Builder()
-                .setName(personName)
-                .setIcon(Icon.createWithAdaptiveBitmap(avatar)).build();
-        Notification.CallStyle notificationStyle = Notification.CallStyle.forIncomingCall(person, endPendingIntent, answerPendingIntent);
-
-        builder.setStyle(notificationStyle);
+        if (useCallStyle) {
+            Person.Builder person = new Person.Builder().setName(personName);
+            if (avatar != null) person.setIcon(Icon.createWithAdaptiveBitmap(avatar));
+            builder.setStyle(Notification.CallStyle.forIncomingCall(person.build(), endPendingIntent, answerPendingIntent));
+        } else {
+            builder.setContentTitle(personName);
+            builder.setContentText(LocaleController.getString(video ? R.string.VoipInVideoCallBranding : R.string.VoipInCallBranding));
+            if (avatar != null) builder.setLargeIcon(avatar);
+            builder.addAction(new Notification.Action.Builder((Icon) null, endTitle, endPendingIntent).build());
+            builder.addAction(new Notification.Action.Builder((Icon) null, answerTitle, answerPendingIntent).build());
+        }
         return builder.build();
     }
 
@@ -809,7 +823,29 @@ public class VoIPPreNotificationService { // } extends Service implements AudioM
             }
 
             final NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            try {
             nm.notify(VoIPService.ID_INCOMING_CALL_PRENOTIFICATION, notification);
+            } catch (IllegalArgumentException error) {
+                FileLog.e(error);
+                if (!checkPendingState(context, state)) return;
+                final Notification fallback = makeNotification(context, state, false);
+                if (!checkPendingState(context, state)) return;
+                if (fallback == null) {
+                    dismiss(context, false);
+                    return;
+                }
+                try {
+                    nm.notify(VoIPService.ID_INCOMING_CALL_PRENOTIFICATION, fallback);
+                } catch (IllegalArgumentException | SecurityException fallbackError) {
+                    FileLog.e(fallbackError);
+                    if (state.isCurrent()) dismiss(context, false);
+                    return;
+                }
+            } catch (SecurityException error) {
+                FileLog.e(error);
+                if (state.isCurrent()) dismiss(context, false);
+                return;
+            }
             if (state.isCurrent()) startRinging(context, account, user_id);
         });
     }

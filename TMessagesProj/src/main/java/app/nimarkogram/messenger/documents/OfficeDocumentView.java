@@ -1064,6 +1064,8 @@ public final class OfficeDocumentView extends FrameLayout {
                         .setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
             } else if (alpha < 1f) view.setAlpha(1f);
         }
+        releaseContentRenderNode();
+        view.invalidate();
         invalidate();
     }
 
@@ -1622,6 +1624,7 @@ public final class OfficeDocumentView extends FrameLayout {
             handler.removeCallbacks(timeout);
         }
         send(command("pause"));
+        releaseContentRenderNode();
         try { if (webView != null) webView.onPause(); } catch (RuntimeException | LinkageError e) { fail(session, ERROR_WEBVIEW); }
     }
     public void resume() {

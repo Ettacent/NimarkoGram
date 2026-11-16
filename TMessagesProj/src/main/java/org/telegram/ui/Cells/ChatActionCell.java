@@ -452,6 +452,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         public AnimatedEmojiSpan.EmojiGroupedSpans emoji;
 
         public void setText(CharSequence text, TextPaint textPaint, int width) {
+            width = Math.max(1, width);
             this.paint = textPaint;
             this.width = width;
             layout = new StaticLayout(text, textPaint, width, Layout.Alignment.ALIGN_CENTER, 1.1f, 0.0f, false);
@@ -2855,6 +2856,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         if (currentMessageObject != null && currentMessageObject.type == MessageObject.TYPE_GIFT_STARS) {
             width -= dp(16);
         }
+        width = Math.max(1, width);
         if (title != null) {
             if (currentMessageObject != null && currentMessageObject.type == MessageObject.TYPE_GIFT_STARS) {
                 giftTitlePaint.setTextSize(dp(14));
@@ -2886,7 +2888,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         } else {
             giftTextPaint.setTextSize(dp(15));
         }
-        int textWidth = width - dp(12);
+        int textWidth = Math.max(1, width - dp(12));
         if (currentMessageObject != null && (currentMessageObject.type == MessageObject.TYPE_ACTION_WALLPAPER && currentMessageObject.getDialogId() >= 0)) {
             final int recommendedWidthForTwoLines = HintView2.cutInFancyHalf(text, giftTextPaint);
             if (recommendedWidthForTwoLines < textWidth && recommendedWidthForTwoLines > textWidth / 5f) {

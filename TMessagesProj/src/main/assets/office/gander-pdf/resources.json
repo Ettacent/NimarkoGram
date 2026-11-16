@@ -859,8 +859,8 @@
     },
     {
       "path": "engine/gander/lib/pdf.min.mjs",
-      "bytes": 518644,
-      "sha256": "f909f58670ed46181f24032de2b6d4fbe199cce18a5e68bf312e007fecababee"
+      "bytes": 518818,
+      "sha256": "2816a248fc19b39a11e4d9b6811f8c26b1612a5eae74874e1d9209722f05ecca"
     },
     {
       "path": "engine/gander/lib/pdf.worker.min.mjs",
@@ -1004,8 +1004,8 @@
     },
     {
       "path": "engine/gander/pdf.mjs",
-      "bytes": 82212,
-      "sha256": "a984a3d517d0bfd8d794a3b8e24f82cfab9f4b58fbec8699329fa5cb534a26ec"
+      "bytes": 84201,
+      "sha256": "a0531149134181d7eb19a84c715072226c6cec4570ab895bce2194bcc94fa751"
     },
     {
       "path": "engine/gander/search-text.mjs",
@@ -1036,6 +1036,11 @@
       "path": "engine/gander/night-clip.mjs",
       "bytes": 2733,
       "sha256": "c5789526be751724dc25c197ac866e5cf1c2b2b4ec118e6f34780b6066d26279"
+    },
+    {
+      "path": "engine/gander/raster-canvas.mjs",
+      "bytes": 3523,
+      "sha256": "92006032aa2cf130710406d34b51b6810d6d50dc8c45503cceb1d49e72d34286"
     }
   ]
 }

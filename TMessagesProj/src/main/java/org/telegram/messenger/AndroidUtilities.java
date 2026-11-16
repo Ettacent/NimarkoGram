@@ -4527,7 +4527,6 @@ public class AndroidUtilities {
                         .callAttr("_dispatch_open_from_java", f.getAbsolutePath(),
                                 message.getFileName(), mimeType);
                 boolean handled = consumed != null && consumed.toBoolean();
-                if (consumed != null) consumed.close();
                 if (handled) return true;
             }
         } catch (Throwable t) {

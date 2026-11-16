@@ -59,6 +59,7 @@ import org.telegram.ui.LauncherIconController;
 import java.io.File;
 import java.util.Locale;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 public class ApplicationLoader extends Application {
 
     public static ApplicationLoader applicationLoaderInstance;
@@ -71,8 +72,10 @@ public class ApplicationLoader extends Application {
     private static ConnectivityManager connectivityManager;
     private static volatile boolean applicationInited = false;
     private static volatile  ConnectivityManager.NetworkCallback networkCallback;
+    private static final AtomicBoolean networkCallbackRegistering = new AtomicBoolean();
+    private static volatile long nextNetworkCallbackAttempt;
     private static long lastNetworkCheckTypeTime;
-    private static int lastKnownNetworkType = -1;
+    private static volatile int lastKnownNetworkType = -1;
 
     public static long startTime;
 
@@ -1273,25 +1276,50 @@ public class ApplicationLoader extends Application {
                     connectivityManager = (ConnectivityManager) ApplicationLoader.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE);
                 }
                 currentNetworkInfo = connectivityManager.getActiveNetworkInfo();
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    if (networkCallback == null) {
-                        networkCallback = new ConnectivityManager.NetworkCallback() {
+            } catch (Throwable ignore) {
+
+            }
+        }
+        ensureNetworkCallback(connectivityManager);
+    }
+
+    private static void ensureNetworkCallback(ConnectivityManager manager) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || manager == null || networkCallback != null
+                || SystemClock.elapsedRealtime() < nextNetworkCallbackAttempt
+                || !networkCallbackRegistering.compareAndSet(false, true)) return;
+        if (networkCallback != null) {
+            networkCallbackRegistering.set(false);
+            return;
+        }
+        try {
+            new Thread(() -> {
+                try {
+                    ConnectivityManager.NetworkCallback callback = new ConnectivityManager.NetworkCallback() {
                             @Override
                             public void onAvailable(@NonNull Network network) {
                                 lastKnownNetworkType = -1;
                             }
 
                             @Override
-                            public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities networkCapabilities) {
+                        public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities capabilities) {
                                 lastKnownNetworkType = -1;
                             }
+                        @Override
+                        public void onLost(@NonNull Network network) {
+                            lastKnownNetworkType = -1;
+                        }
                         };
-                        connectivityManager.registerDefaultNetworkCallback(networkCallback);
-                    }
+                    manager.registerDefaultNetworkCallback(callback);
+                    networkCallback = callback;
+                } catch (Exception error) {
+                    nextNetworkCallbackAttempt = SystemClock.elapsedRealtime() + 5000;
+                } finally {
+                    networkCallbackRegistering.set(false);
                 }
-            } catch (Throwable ignore) {
-
-            }
+            }, "network-callback-register").start();
+        } catch (Throwable error) {
+            nextNetworkCallbackAttempt = SystemClock.elapsedRealtime() + 5000;
+            networkCallbackRegistering.set(false);
         }
     }
 

@@ -77,6 +77,7 @@ import androidx.media3.common.C;
 import androidx.media3.exoplayer.ExoPlayer;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.VideoPlaybackFocus;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -352,6 +353,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     private AspectRatioFrameLayout aspectRatioFrameLayout;
     private TextureView videoTextureView;
     private VideoPlayer videoPlayer;
+    private VideoPlaybackFocus pendingVideoAudioFocus;
     private boolean isPlaying;
     private ActionBar actionBar;
     private AnimatorSet currentActionBarAnimation;
@@ -535,9 +537,13 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
 
     private void preparePlayer(File file) {
         if (parentActivity == null) {
+            if (pendingVideoAudioFocus != null) {
+                pendingVideoAudioFocus.release();
+                pendingVideoAudioFocus = null;
+            }
             return;
         }
-        releasePlayer();
+        releasePlayer(true);
         if (videoTextureView == null) {
             aspectRatioFrameLayout = new AspectRatioFrameLayout(parentActivity);
             aspectRatioFrameLayout.setVisibility(View.VISIBLE);
@@ -556,13 +562,13 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                 @Override
                 public void setPlayWhenReady(boolean playWhenReady) {
                     super.setPlayWhenReady(playWhenReady);
-                    playButtonDrawable.setPause(playWhenReady);
+                    playButtonDrawable.setPause(isPlaying());
                 }
 
                 @Override
                 public void play() {
                     super.play();
-                    playButtonDrawable.setPause(true);
+                    playButtonDrawable.setPause(isPlaying());
                 }
 
                 @Override
@@ -571,6 +577,13 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                     playButtonDrawable.setPause(false);
                 }
             };
+            if (videoPlayer.enableTransientAudioFocus(pendingVideoAudioFocus)) {
+                pendingVideoAudioFocus = null;
+            }
+            if (pendingVideoAudioFocus != null) {
+                pendingVideoAudioFocus.release();
+                pendingVideoAudioFocus = null;
+            }
             videoPlayer.setTextureView(videoTextureView);
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
                 @Override
@@ -646,7 +659,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             });
         }
         videoPlayer.preparePlayer(Uri.fromFile(file), "other");
-        videoPlayer.setPlayWhenReady(true);
+        videoPlayer.setPlayWhenReady(videoPlayer.canAutoStartTransientPlayback());
         playButtonDrawable.setPause(true);
     }
 
@@ -702,8 +715,23 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
     };
 
     private void releasePlayer() {
+        releasePlayer(false);
+    }
+
+    private void releasePlayer(boolean keepVideoFocus) {
+        if (!keepVideoFocus && pendingVideoAudioFocus != null) {
+            pendingVideoAudioFocus.release();
+            pendingVideoAudioFocus = null;
+        }
         if (videoPlayer != null) {
             playerRetryPlayCount = 0;
+            if (keepVideoFocus) {
+                VideoPlaybackFocus focus = videoPlayer.detachTransientAudioFocus();
+                if (focus != null) {
+                    if (pendingVideoAudioFocus != null) pendingVideoAudioFocus.release();
+                    pendingVideoAudioFocus = focus;
+                }
+            }
             videoPlayer.releasePlayer(true);
             videoPlayer = null;
         }

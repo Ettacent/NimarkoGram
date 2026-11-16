@@ -435,7 +435,11 @@ public final class PluginsWatchdog {
 
     private boolean isRuntimeStillFrozenOwner(
             String pluginId, PluginsController.PluginRuntimeToken runtimeToken) {
-        for (ExecutionInfo info : executingPlugins.values()) {
+        List<ExecutionInfo> executions;
+        synchronized (executingPlugins) {
+            executions = new ArrayList<>(executingPlugins.values());
+        }
+        for (ExecutionInfo info : executions) {
             if (!Objects.equals(pluginId, info.pluginId)
                     || !Objects.equals(runtimeToken, info.runtimeToken)) {
                 continue;

@@ -1222,6 +1222,10 @@ public class BottomSheet extends Dialog implements BaseFragment.AttachedSheet {
         if (overlay.isOpened()) {
             return;
         }
+        overlay.close(false);
+        if (overlay.isOpened()) {
+            return;
+        }
         if (simpleButtonMenuHost == null) {
             simpleButtonMenuHost = new SimpleButtonMenuHost(overlay, simpleMenuGlass, resourcesProvider);
         }

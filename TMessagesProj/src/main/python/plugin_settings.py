@@ -798,6 +798,10 @@ def set_setting(plugin_id: str, key: str, value: Any):
     _invalidate_java_cache(plugin_id, key)
     return completion
 
+def set_setting_checked(plugin_id: str, key: str, value: Any) -> bool:
+    return isinstance(set_setting(plugin_id, key, value), SettingsWriteCompletion)
+
+
 def clear_settings(plugin_id: str):
     with _lock:
         global _settings_cache
@@ -821,6 +825,10 @@ def clear_settings(plugin_id: str):
             return False
     _invalidate_java_cache(plugin_id)
     return completion
+
+def clear_settings_checked(plugin_id: str) -> bool:
+    return isinstance(clear_settings(plugin_id), SettingsWriteCompletion)
+
 
 def get_all_settings(plugin_id: str) -> Any:
     with _lock:

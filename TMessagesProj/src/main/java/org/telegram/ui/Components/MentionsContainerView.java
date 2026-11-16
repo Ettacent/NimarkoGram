@@ -241,6 +241,7 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
             }
 
         }, resourcesProvider, isStories());
+        adapter.setParentRecyclerView(listView);
         paddedAdapter = new PaddedListAdapter(adapter);
         listView.setAdapter(paddedAdapter);
         listView.setTranslationY(AndroidUtilities.dp(6));

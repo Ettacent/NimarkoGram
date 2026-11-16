@@ -6,6 +6,7 @@ import app.nimarkogram.messenger.utils.AppMotionBlur;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -34,6 +35,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
@@ -295,6 +297,7 @@ public class ReactionsEffectOverlay {
             @Override
             protected void dispatchDraw(Canvas canvas) {
                 if (viewRemoved) return;
+                if (dismissIfChatCovered()) return;
                 if (dismissed) {
                     if (dismissProgress != 1f) {
                         dismissProgress += AndroidUtilities.screenRefreshTime / 150f;
@@ -803,12 +806,39 @@ public class ReactionsEffectOverlay {
         }
     }
 
+    private boolean dismissIfChatCovered() {
+        if (isStories || !(ownerFragment instanceof ChatActivity)
+                || !ArticleViewer.isShowingOver(ownerFragment.getParentActivity())) return false;
+        dismissed = true;
+        if (currentOverlay == this) currentOverlay = null;
+        if (currentShortOverlay == this) currentShortOverlay = null;
+        AndroidUtilities.runOnUIThread(this::removeCurrentView);
+        return true;
+    }
+
+    public static void dismissChatEffects(Activity activity) {
+        if (activity == null) return;
+        ReactionsEffectOverlay first = currentOverlay;
+        ReactionsEffectOverlay second = currentShortOverlay;
+        if (first != null && !first.isStories && first.ownerFragment instanceof ChatActivity
+                && first.ownerFragment.getParentActivity() == activity) {
+            ((ChatActivity) first.ownerFragment).onBrowserVisibilityChanged(true);
+        }
+        if (second != null && !second.isStories && second.ownerFragment instanceof ChatActivity
+                && second.ownerFragment.getParentActivity() == activity
+                && (first == null || first.ownerFragment != second.ownerFragment)) {
+            ((ChatActivity) second.ownerFragment).onBrowserVisibilityChanged(true);
+        }
+    }
     public static void show(BaseFragment baseFragment, ReactionsContainerLayout reactionsLayout, View cell, View fromAnimationView, float x, float y, ReactionsLayoutInBubble.VisibleReaction visibleReaction, int currentAccount, int animationType) {
         if (app.nimarkogram.messenger.AppConfig.disableReactionAnim
                 || app.nimarkogram.messenger.AppConfig.disableReactionsOverlay) {
             return;
         }
         if (cell == null || visibleReaction == null || baseFragment == null || baseFragment.getParentActivity() == null) {
+            return;
+        }
+        if (baseFragment instanceof ChatActivity && ArticleViewer.isShowingOver(baseFragment.getParentActivity())) {
             return;
         }
         boolean animationEnabled = MessagesController.getGlobalMainSettings().getBoolean("view_animations", true);

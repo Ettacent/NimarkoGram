@@ -2900,7 +2900,7 @@ public class StarsController {
                     }
                     return;
                 }
-                getResellingGiftForm(gift, dialogId, whenDone);
+                getResellingGiftForm(gift, dialogId, message, hideMyName, whenDone);
             });
             return;
         }
@@ -2963,7 +2963,7 @@ public class StarsController {
                     }
                     return;
                 }
-                buyResellingGift(form, gift, dialogId, whenDone);
+                buyResellingGift(form, gift, dialogId, message, hideMyName, whenDone);
             });
             return;
         }
@@ -3010,7 +3010,7 @@ public class StarsController {
                     final boolean[] purchased = new boolean[] { false };
                     StarsIntroActivity.StarsNeededSheet sheet = new StarsIntroActivity.StarsNeededSheet(context, currentAccount, resourcesProvider, stars, StarsIntroActivity.StarsNeededSheet.TYPE_STAR_GIFT_BUY, name, () -> {
                         purchased[0] = true;
-                        buyResellingGift(form, gift, dialogId, whenDone);
+                        buyResellingGift(form, gift, dialogId, message, hideMyName, whenDone);
                     }, 0);
                     sheet.setOnDismissListener(d -> {
                         if (whenDone != null && !purchased[0]) {

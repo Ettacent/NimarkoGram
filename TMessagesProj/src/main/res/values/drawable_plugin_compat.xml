@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <item type="drawable" name="drawer_proxy_off">@drawable/pill_proxy_off</item>
+</resources>

@@ -386,8 +386,54 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
 
     private Object[] lastData;
 
+    private RecyclerView parentRecyclerView;
+    private boolean destroyed;
+    private boolean dispatchingAdapterUpdates;
+    private boolean itemsUpdatePosted;
+    private Runnable deferredSearchRunnable;
+    private final Runnable deferredItemsUpdate = () -> {
+        itemsUpdatePosted = false;
+        if (!destroyed) notifyDataSetChanged();
+    };
+
+    public void setParentRecyclerView(RecyclerView recyclerView) {
+        cancelDeferredUpdates();
+        parentRecyclerView = recyclerView;
+    }
+
+    private boolean areAdapterUpdatesBlocked() {
+        return dispatchingAdapterUpdates || parentRecyclerView != null && parentRecyclerView.isComputingLayout();
+    }
+
+    private void cancelDeferredUpdates() {
+        if (deferredSearchRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(deferredSearchRunnable);
+            deferredSearchRunnable = null;
+        }
+        AndroidUtilities.cancelRunOnUIThread(deferredItemsUpdate);
+        itemsUpdatePosted = false;
+    }
     @Override
     public void notifyDataSetChanged() {
+        if (destroyed) return;
+        if (areAdapterUpdatesBlocked()) {
+            if (!itemsUpdatePosted) {
+                itemsUpdatePosted = true;
+                AndroidUtilities.runOnUIThread(deferredItemsUpdate, 16);
+            }
+            return;
+        }
+        AndroidUtilities.cancelRunOnUIThread(deferredItemsUpdate);
+        itemsUpdatePosted = false;
+        dispatchingAdapterUpdates = true;
+        try {
+            dispatchItemsUpdate();
+        } finally {
+            dispatchingAdapterUpdates = false;
+        }
+    }
+
+    private void dispatchItemsUpdate() {
         if (lastItemCount == -1 || lastData == null) {
             if (delegate != null) {
                 delegate.onItemCountUpdate(0, getItemCount());
@@ -398,7 +444,7 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
                 lastData[i] = getItem(i);
             }
         } else {
-            int oldCount = lastItemCount, newCount = getItemCount();
+            int oldCount = lastData.length, newCount = getItemCount();
             boolean hadChanges = oldCount != newCount;
             int min = Math.min(oldCount, newCount);
             Object[] newData = new Object[newCount];
@@ -413,8 +459,8 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
                     notifyItemChanged(i); // divider update
                 }
             }
-            notifyItemRangeRemoved(min, oldCount - min);
-            notifyItemRangeInserted(min, newCount - min);
+            if (oldCount > min) notifyItemRangeRemoved(min, oldCount - min);
+            if (newCount > min) notifyItemRangeInserted(min, newCount - min);
             if (hadChanges && delegate != null) {
                 delegate.onItemCountUpdate(oldCount, newCount);
             }
@@ -466,6 +512,9 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
     }
 
     public void onDestroy() {
+        destroyed = true;
+        cancelDeferredUpdates();
+        parentRecyclerView = null;
         if (locationProvider != null) {
             locationProvider.stop();
         }
@@ -954,7 +1003,21 @@ public class MentionsAdapter extends RecyclerListView.SelectionAdapter implement
     }
 
     public void searchUsernameOrHashtag(CharSequence charSequence, int position, ArrayList<MessageObject> messageObjects, boolean usernameOnly, boolean forSearch) {
+        if (destroyed) return;
         final String text = charSequence == null ? "" : charSequence.toString();
+        if (deferredSearchRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(deferredSearchRunnable);
+            deferredSearchRunnable = null;
+        }
+        if (areAdapterUpdatesBlocked()) {
+            final ArrayList<MessageObject> messages = messageObjects == null ? null : new ArrayList<>(messageObjects);
+            deferredSearchRunnable = () -> {
+                deferredSearchRunnable = null;
+                searchUsernameOrHashtag(text, position, messages, usernameOnly, forSearch);
+            };
+            AndroidUtilities.runOnUIThread(deferredSearchRunnable, 16);
+            return;
+        }
         TLRPC.Chat currentChat = chat;
         TLRPC.User currentUser = user;
         if (parentFragment != null) {

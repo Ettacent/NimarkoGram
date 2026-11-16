@@ -12707,7 +12707,7 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void playReactionAnimation(Integer messageId) {
-        if (fragmentView == null) {
+        if (fragmentView == null || ArticleViewer.isShowingOver(getParentActivity())) {
             return;
         }
         BaseCell cell = findMessageCell(messageId, false);
@@ -18576,6 +18576,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatListView == null || fragmentView == null) {
             return;
         }
+        final boolean chatEffectsAllowed = !ArticleViewer.isShowingOver(getParentActivity());
         int count = chatListView.getChildCount();
         int height = chatListView.getMeasuredHeight();
         int minPositionHolder = Integer.MAX_VALUE;
@@ -18698,7 +18699,7 @@ public class ChatActivity extends BaseFragment implements
                 keyboardOffset = chatActivityEnterView.getEmojiPadding();
             }
 
-            final boolean visibleToBeRead = !BaseFragment.hasSheets(this) && (currentChat == null || !ChatObject.isChannelAndNotMegaGroup(currentChat) || view.getMeasuredHeight() > 0 && top + view.getMeasuredHeight() * (messageCell == null || messageCell.getCurrentPosition() == null ? .80f : 1f) < clipBottomFinal);
+            final boolean visibleToBeRead = chatEffectsAllowed && !BaseFragment.hasSheets(this) && (currentChat == null || !ChatObject.isChannelAndNotMegaGroup(currentChat) || view.getMeasuredHeight() > 0 && top + view.getMeasuredHeight() * (messageCell == null || messageCell.getCurrentPosition() == null ? .80f : 1f) < clipBottomFinal);
 
             final float visibleTop = getServiceTop(view);
             final int visibleBackgroundHeight = getServiceHeight(view);
@@ -18785,7 +18786,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     updatePollVotesMentionButton(true);
                 }
-                if (messageObject != null
+                if (chatEffectsAllowed && messageObject != null
                         && fragmentOpened && openAnimationEnded
                         && (chatListItemAnimator == null
                                 || !chatListItemAnimator.isRunning())
@@ -18812,7 +18813,7 @@ public class ChatActivity extends BaseFragment implements
                     updateReactionsMentionButton(true);
                 }
                 getDownloadController().checkUnviewedDownloads(messageCell.getId(), dialog_id);
-                boolean allowPlayEffect = !app.nimarkogram.messenger.AppConfig.disablePremStickAutoPlay
+                boolean allowPlayEffect = chatEffectsAllowed && !app.nimarkogram.messenger.AppConfig.disablePremStickAutoPlay
                         && (messageObject.getEffect() != null
                             || ((messageObject.messageOwner.media != null && !messageObject.messageOwner.media.nopremium)
                                 || (messageObject.isAnimatedEmojiStickerSingle() && dialog_id > 0)));
@@ -18843,7 +18844,7 @@ public class ChatActivity extends BaseFragment implements
                     maxVisibleId = Math.max(maxVisibleId, messageObject.getId());
                 }
                 hasTopicSeparator = cell.topicSeparator != null;
-                if (messageObject != null && fragmentOpened && openAnimationEnded && (chatListItemAnimator == null || !chatListItemAnimator.isRunning()) && cell.checkUnreadReactions(clipTop, chatListView.getMeasuredHeight() - blurredViewBottomOffset)) {
+                if (chatEffectsAllowed && messageObject != null && fragmentOpened && openAnimationEnded && (chatListItemAnimator == null || !chatListItemAnimator.isRunning()) && cell.checkUnreadReactions(clipTop, chatListView.getMeasuredHeight() - blurredViewBottomOffset)) {
                     reactionsMentionCount--;
                     getMessagesStorage().markMessageReactionsAsRead(getDialogId(), getTopicId(), messageObject.getId());
                     if (reactionsMentionCount <= 0) {
@@ -26882,7 +26883,13 @@ public class ChatActivity extends BaseFragment implements
                                 }
                             }
                             if (chatAdapter != null) {
+                                final int row = b == 0 && !chatAdapter.isFiltered && messageObject.type == MessageObject.TYPE_PHOTO
+                                        ? messages.indexOf(messageObject) : -1;
+                                if (row >= 0) {
+                                    chatAdapter.notifyCommentsChanged(row + chatAdapter.messagesStartRow, 1);
+                                } else {
                                 chatAdapter.updateRowWithMessageObject(messageObject, false, false);
+                                }
                             }
                         }
                     }
@@ -26969,14 +26976,14 @@ public class ChatActivity extends BaseFragment implements
                                 MessageObject messageObject = groupedMessages.messages.get(groupedMessages.messages.size() - 1);
                                 int index = messages.indexOf(messageObject);
                                 if (index >= 0 && !chatAdapter.isFiltered) {
-                                    chatAdapter.notifyItemRangeChanged(index + chatAdapter.messagesStartRow, groupedMessages.messages.size());
+                                    chatAdapter.notifyCommentsChanged(index + chatAdapter.messagesStartRow, groupedMessages.messages.size());
                                 }
                             }
                         }
                     }
                     if (updatedRows != null && !chatAdapter.isFiltered) {
                         for (int b = 0, N = updatedRows.size(); b < N; b++) {
-                            chatAdapter.notifyItemChanged(updatedRows.get(b));
+                            chatAdapter.notifyCommentsChanged(updatedRows.get(b), 1);
                         }
                     }
                 }
@@ -27347,7 +27354,7 @@ public class ChatActivity extends BaseFragment implements
                     for (int i = 0; i < messages.size(); i++) {
                         int messageId = messages.get(i);
                         BaseCell cell = findMessageCell(messageId, true);
-                        if (cell != null && reactionsMentionCount > 0) {
+                        if (cell != null && reactionsMentionCount > 0 && !ArticleViewer.isShowingOver(getParentActivity())) {
                             reactionsMentionCount--;
                             getMessagesStorage().markMessageReactionsAsRead(getDialogId(), getTopicId(), messageId);
                             playReactionAnimation(messageId);
@@ -28186,13 +28193,13 @@ public class ChatActivity extends BaseFragment implements
                     MessageObject messageObject = groupedMessages.messages.get(groupedMessages.messages.size() - 1);
                     int index = messages.indexOf(messageObject);
                     if (index >= 0 && !chatAdapter.isFiltered) {
-                        chatAdapter.notifyItemRangeChanged(index + chatAdapter.messagesStartRow, groupedMessages.messages.size());
+                        chatAdapter.notifyCommentsChanged(index + chatAdapter.messagesStartRow, groupedMessages.messages.size());
                     }
                 }
             }
             if (updatedRows != null && !chatAdapter.isFiltered) {
                 for (int b = 0, N = updatedRows.size(); b < N; b++) {
-                    chatAdapter.notifyItemChanged(updatedRows.get(b));
+                    chatAdapter.notifyCommentsChanged(updatedRows.get(b), 1);
                 }
             }
         }
@@ -34385,6 +34392,12 @@ public class ChatActivity extends BaseFragment implements
                 Math.max(0, maxContainerHeight)};
     }
 
+    private boolean isCurrentTranslationMenuItem(MessageObject owner, ActionBarMenuSubItem item, int index) {
+        return owner != null && selectedObject == owner && scrimPopupWindowItems != null
+                && index >= 0 && index < scrimPopupWindowItems.length
+                && scrimPopupWindowItems[index] == item;
+    }
+
     private boolean createMenu(View v, boolean single, boolean listView, float x, float y, boolean searchGroup, boolean longpress) {
         return createMenu(v, single, listView, x, y, searchGroup, longpress, false);
     }
@@ -35679,6 +35692,9 @@ public class ChatActivity extends BaseFragment implements
                                 app.nimarkogram.messenger.utils.chats.ChatHelper.getTranslationEntities(
                                         message, groupedMessages, messageIdToTranslate[0], finalMessageText);
                         final MessageObject translationSelectedObject = selectedObject;
+                        final boolean translationForwarded = translationSelectedObject != null
+                                && translationSelectedObject.messageOwner != null
+                                && translationSelectedObject.messageOwner.fwd_from != null;
                         Utilities.CallbackReturn<URLSpan, Boolean> onLinkPress = (link) -> {
                             didPressMessageUrl(link, false, translationSelectedObject,
                                     v instanceof ChatMessageCell ? (ChatMessageCell) v : null);
@@ -35691,7 +35707,7 @@ public class ChatActivity extends BaseFragment implements
                             final String fromLang = selectedObject.messageOwner.originalLanguage;
                             cell.setVisibility(View.VISIBLE);
                             cell.setOnClickListener(e -> {
-                                if (selectedObject == null || i >= options.size() || getParentActivity() == null) {
+                                if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i) || i >= options.size() || getParentActivity() == null) {
                                     return;
                                 }
                                 String toLangValue = fromLang != null && fromLang.equals(toLang) ? toLangDefault : toLang;
@@ -35716,11 +35732,11 @@ public class ChatActivity extends BaseFragment implements
                             cell.setVisibility(
                                 fromLang != null && (!fromLang.equals(toLang) || !fromLang.equals(toLangDefault) || fromLang.equals(TranslateController.UNKNOWN_LANGUAGE)) && (
                                     translateEnabled && !RestrictedLanguagesSelectActivity.getRestrictedLanguages().contains(fromLang) ||
-                                    (currentChat != null && (currentChat.has_link || ChatObject.isPublic(currentChat)) || selectedObject.messageOwner.fwd_from != null) && ("uk".equals(fromLang) || "ru".equals(fromLang))
+                                    (currentChat != null && (currentChat.has_link || ChatObject.isPublic(currentChat)) || translationForwarded) && ("uk".equals(fromLang) || "ru".equals(fromLang))
                                 ) ? View.VISIBLE : View.GONE
                             );
                             cell.setOnClickListener(e -> {
-                                if (selectedObject == null || i >= options.size() || getParentActivity() == null) {
+                                if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i) || i >= options.size() || getParentActivity() == null) {
                                     return;
                                 }
 
@@ -35749,10 +35765,11 @@ public class ChatActivity extends BaseFragment implements
                             LanguageDetector.detectLanguage(
                                 finalMessageText.toString(),
                                 (String lang) -> {
+                                    if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i)) return;
                                     fromLang[0] = lang;
                                     if (fromLang[0] != null && (!fromLang[0].equals(toLang) || !fromLang[0].equals(toLangDefault) || fromLang[0].equals(TranslateController.UNKNOWN_LANGUAGE)) && (
                                         translateEnabled && !RestrictedLanguagesSelectActivity.getRestrictedLanguages().contains(fromLang[0]) ||
-                                        (currentChat != null && (currentChat.has_link || ChatObject.isPublic(currentChat)) || selectedObject.messageOwner.fwd_from != null) && ("uk".equals(fromLang[0]) || "ru".equals(fromLang[0]))
+                                        (currentChat != null && (currentChat.has_link || ChatObject.isPublic(currentChat)) || translationForwarded) && ("uk".equals(fromLang[0]) || "ru".equals(fromLang[0]))
                                     )) {
                                         cell.setVisibility(View.VISIBLE);
                                     }
@@ -35763,6 +35780,7 @@ public class ChatActivity extends BaseFragment implements
                                     }
                                 },
                                 (Exception e) -> {
+                                    if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i)) return;
                                     FileLog.e("mlkit: failed to detect language in message");
                                     waitForLangDetection.set(false);
                                     if (onLangDetectionDone.get() != null) {
@@ -35772,7 +35790,7 @@ public class ChatActivity extends BaseFragment implements
                                 }
                             );
                             cell.setOnClickListener(e -> {
-                                if (selectedObject == null || i >= options.size() || getParentActivity() == null) {
+                                if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i) || i >= options.size() || getParentActivity() == null) {
                                     return;
                                 }
                                 String toLangValue = fromLang[0] != null && fromLang[0].equals(toLang) ? toLangDefault : toLang;
@@ -35794,13 +35812,14 @@ public class ChatActivity extends BaseFragment implements
                                 }
                             });
                             cell.postDelayed(() -> {
+                                if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i)) return;
                                 if (onLangDetectionDone.get() != null) {
                                     onLangDetectionDone.getAndSet(null).run();
                                 }
                             }, 250);
                         } else if (translateEnabled) {
                             cell.setOnClickListener(e -> {
-                                if (selectedObject == null || i >= options.size() || getParentActivity() == null) {
+                                if (!isCurrentTranslationMenuItem(translationSelectedObject, cell, i) || i >= options.size() || getParentActivity() == null) {
                                     return;
                                 }
 
@@ -36731,6 +36750,19 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    public void onBrowserVisibilityChanged(boolean opened) {
+        if (opened) {
+            dismissReactionUiForNavigation();
+            if (emojiAnimationsOverlay != null) {
+                emojiAnimationsOverlay.clear();
+                emojiAnimationsOverlay.cancelHintRunnable();
+            }
+        } else if (!paused && !isFinished && !isFinishing()
+                && !ArticleViewer.isShowingOver(getParentActivity())) {
+            invalidateMessagesVisiblePart = true;
+            if (contentView != null) contentView.invalidate();
+        }
+    }
     public void closeMenu(boolean hideDim) {
         scrimPopupWindowHideDimOnDismiss = hideDim;
         if (scrimPopupWindow != null) {
@@ -36819,7 +36851,8 @@ public class ChatActivity extends BaseFragment implements
                 && !paused
                 && !isFinished
                 && !isFinishing()
-                && fragmentView != null;
+                && fragmentView != null
+                && !ArticleViewer.isShowingOver(getParentActivity());
     }
 
     private void showMultipleReactionsPromo(View cell, ReactionsLayoutInBubble.VisibleReaction visibleReaction, int currentChosenReactions) {
@@ -41361,6 +41394,7 @@ public class ChatActivity extends BaseFragment implements
 
     public class ChatActivityAdapter extends RecyclerAnimationScrollHelper.AnimatableAdapter {
 
+        private final Object commentsPayload = new Object();
         private Context mContext;
         private boolean isBot;
         private int rowCount;
@@ -41984,6 +42018,40 @@ public class ChatActivity extends BaseFragment implements
             }
             view.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
             return new RecyclerListView.Holder(view);
+        }
+
+        private void notifyCommentsChanged(int position, int count) {
+            if (!fragmentBeginToShow || ignoreItemAnimation) {
+                chatListView.setItemAnimator(null);
+            } else if (chatListView.getItemAnimator() != chatListItemAnimator) {
+                chatListView.setItemAnimator(chatListItemAnimator);
+            }
+            updateRowsInternal();
+            try {
+                super.notifyItemRangeChanged(position, count, commentsPayload);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        }
+
+        @Override
+        public void onBindViewHolder(RecyclerView.ViewHolder holder, int position, List payloads) {
+            boolean commentsOnly = !payloads.isEmpty();
+            for (Object payload : payloads) {
+                commentsOnly &= payload == commentsPayload;
+            }
+            if (commentsOnly && !isFrozen && !isFiltered && holder.itemView instanceof ChatMessageCell
+                    && position >= messagesStartRow && position < messagesEndRow) {
+                final MessageObject message = ChatActivity.this.messages.get(position - messagesStartRow);
+                final ChatMessageCell cell = (ChatMessageCell) holder.itemView;
+                final MessageObject.GroupedMessages group = message.hasValidGroupId() ? groupedMessagesMap.get(message.getGroupId()) : null;
+                if (cell.getCurrentMessagesGroup() == group
+                        && cell.linkedChatId == (chatInfo != null ? chatInfo.linked_chat_id : 0)
+                        && cell.updateComments(message)) {
+                    return;
+                }
+            }
+            onBindViewHolder(holder, position);
         }
 
         @Override

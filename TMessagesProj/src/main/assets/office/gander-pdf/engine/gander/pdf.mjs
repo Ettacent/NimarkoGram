@@ -6,6 +6,17 @@ import * as officeSearch from "./search-text.mjs";
 import { pageSample, looksLikeDiagram, releaseProbe } from "./night-core.mjs";
 import { NightPipeline } from "./night-client.mjs";
 import { extraPixels as nightExtraPixels } from "./night-protocol.mjs";
+import { RasterCanvasFactory, RasterWorkBudget } from "./raster-canvas.mjs";
+
+var officeRasterFactory = null;
+class OfficeRasterCanvasFactory extends RasterCanvasFactory {
+  constructor(options) {
+    super({ ...options, canRetain: pixels => officeRasterPixels() + pixels <= OFFICE_MAX_PIXELS });
+    officeRasterFactory = this;
+  }
+}
+var officeRasterBudget = new RasterWorkBudget(() => performance.now(), () => officeRenderMoving());
+var officeStopRasterBudget = officeRasterBudget.listen(window, window.visualViewport);
 
 
 
@@ -89,6 +100,7 @@ function officeBaseDimensions(unscaled) {
 
 var officeLostCanvases = new WeakMap();
 function officeTrackCanvas(slot, canvas) {
+  canvas.nimarkoBudget = () => officeRasterBudget.value();
   canvas.addEventListener("contextlost", function () {
     officeLostCanvases.set(canvas, false);
   });
@@ -332,7 +344,7 @@ function officeRasterPixels() {
     s.tile ? s.tile.canvas.width * s.tile.canvas.height : 0) + (
     s.retiring ? s.retiring.canvas.width * s.retiring.canvas.height : 0) + (
     s.pending ? s.pending.canvas.width * s.pending.canvas.height : 0);
-  }, 0) + officeNightPixels() + officePreviewPendingPixels;
+  }, 0) + officeNightPixels() + officePreviewPendingPixels + (officeRasterFactory ? officeRasterFactory.budgetPixels : 0);
 }
 
 var officePreviews = new Map();
@@ -420,6 +432,8 @@ function officePreviewRetain(slot) {
 
 function officeReservePixels(extra, keep) {
   if (officeRasterPixels() + extra <= OFFICE_MAX_PIXELS) return;
+  if (officeRasterFactory) officeRasterFactory.trim();
+  if (officeRasterPixels() + extra <= OFFICE_MAX_PIXELS) return;
   officeFinishReveals();
   if (officeRasterPixels() + extra <= OFFICE_MAX_PIXELS) return;
   if (officePreviewAdmission(extra, keep)) return;
@@ -499,6 +513,7 @@ function officePause(on) {
   if (officeClosed || officePaused === on) return;
   officePaused = on;
   if (on) {
+    officeRasterBudget.clear();
     officeInitialPlacement = null;
     officeNightPipe.cancel();
     officeCancelNavigation();
@@ -515,6 +530,7 @@ function officePause(on) {
       officeCancelText(s);
       shed(s.pending);s.pending = null;
     });
+    if (officeRasterFactory) officeRasterFactory.trim();
   } else {
     if (doc && PAGE_PITCH) {
       officeContinueInitialPage();
@@ -531,6 +547,8 @@ function officeClose() {
   if (officeClosed) return;
   officePause(true);
   officeClosed = true;
+  officeStopRasterBudget();
+  if (officeRasterFactory) { officeRasterFactory.close(); officeRasterFactory = null; }
   officePreviewClear();
   officeNightPipe.close();
   if (officeGeometryObserver) {officeGeometryObserver.disconnect();officeGeometryObserver = null;}
@@ -1119,8 +1137,32 @@ function blank(slot) {
   }
 }
 
+function officePageVisible(slot, bounds) {
+  var rect = officePageRect(slot);
+  return rect.bottom > bounds.top && rect.top < bounds.bottom &&
+    rect.right > bounds.left && rect.left < bounds.right;
+}
+
+function officeYieldPreload(bounds) {
+  if (!officeDidReady || officeRenderMoving() || inFlight < officeNightLimit()) return;
+  var needed = queue.some(function (slot) {return officePageVisible(slot, bounds);}) ||
+    tileQueue.some(function (req) {return req.slot.state === 'drawn' && officePageVisible(req.slot, bounds);});
+  if (!needed) return;
+  slots.forEach(function (slot) {
+    if (!(slot.state === 'drawing' && !slot.navigationCancelled) && !slot.pending) return;
+    if (officePageVisible(slot, bounds)) return;
+    if (slot.state === 'drawing' && !slot.navigationCancelled) unwant(slot);
+    if (slot.pending) {
+      var pending = slot.pending;
+      slot.pending = null;
+      shed(pending);
+    }
+  });
+}
+
 function pump() {
   if (officeClosed || officePaused || !doc) return;
+  officeYieldPreload(window.officePdfVisibleBounds());
 
   {
     while (inFlight < officeNightLimit()) {
@@ -1340,7 +1382,6 @@ function draw(slot) {
     officeMaybeReady();
     scheduleRefine();
   }, function (error) {
-
     if (!officeClosed && !officePaused && error && error.name !== "RenderingCancelledException") window.officePdfFailure(error);
     officeAbandonBaseWork(slot);
   }).finally(function () {
@@ -1489,7 +1530,6 @@ function drawTile(req) {
     }).finally(function () {
       if (nightOutput) {nightOutput.dispose();nightOutput = null;}
     }).catch(function (error) {
-
       var retryLost = slot.pending === tile && officeCanvasLost(canvas, ctx);
       tile.task = null;
       if (slot.pending === tile) slot.pending = null;
@@ -2267,7 +2307,7 @@ function vwOpenDoc() {
     });
     officePdfWorker = new pdfjsLib.PDFWorker({ port: officeNativeWorker });
     var task = officeLoadingTask = pdfjsLib.getDocument(vwWithAssets({ data: buffer,
-      worker: officePdfWorker, password: window.officePdfTakePassword(),
+      CanvasFactory: OfficeRasterCanvasFactory, worker: officePdfWorker, password: window.officePdfTakePassword(),
       isEvalSupported: false, enableXfa: false, stopAtErrors: true,
       useSystemFonts: false, disableAutoFetch: true, disableStream: true }));
     task.onPassword = vwAskPassword;

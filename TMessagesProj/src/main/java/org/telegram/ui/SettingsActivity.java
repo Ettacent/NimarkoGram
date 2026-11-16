@@ -453,6 +453,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
 
         avatarGooey = new ProfileGooeyView(context) {
             @Override
+            public void setGooeyEnabled(boolean enabled) {
+                super.setGooeyEnabled(false);
+            }
+
+            @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 return false;
             }

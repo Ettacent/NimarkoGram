@@ -2257,6 +2257,18 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         registerPluginsMetadataOnly(true);
     }
 
+    private static final class QuarantinedPluginException extends Exception {
+        QuarantinedPluginException() {
+            super("Plugin disabled after a crash");
+        }
+
+        @Override
+        public String getLocalizedMessage() {
+            return Looper.myLooper() == Looper.getMainLooper()
+                    ? LocaleController.getString(R.string.NM_PluginCrashedDisabled)
+                    : super.getLocalizedMessage();
+        }
+    }
     private void registerPluginsMetadataOnly(boolean forceDisabled) {
         PluginsController controller = getPluginsController();
         controller.clearPluginStartupActivations();
@@ -2276,8 +2288,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     plugin.setError(new IOException(
                             "Plugin update recovery is incomplete"));
                 } else if (quarantined) {
-                    plugin.setError(new Exception(LocaleController.getString(
-                            R.string.NM_PluginCrashedDisabled)));
+                    plugin.setError(new QuarantinedPluginException());
                 } else {
                     plugin.setError(null);
                 }
@@ -2481,10 +2492,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                                                     file, pluginId);
                                 }
                                 parsedPlugin.setEnabled(false);
-                                parsedPlugin.setError(new Exception(
-                                        LocaleController.getString(
-                                                R.string
-                                                        .NM_PluginCrashedDisabled)));
+                                parsedPlugin.setError(new QuarantinedPluginException());
                                 getPluginsController().preferences.edit()
                                         .putBoolean(
                                                 "plugin_enabled_" + pluginId,
@@ -6462,7 +6470,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             try {
                 PyObject saved = getPython().getModule("plugin_settings")
-                        .callAttr("set_setting", str, str2, obj);
+                        .callAttr("set_setting_checked", str, str2, obj);
                 if (saved == null || !saved.toBoolean()) {
                     invalidatePluginSettingCache(str, str2);
                     FileLog.e("Plugin setting write was rejected: "
@@ -6497,7 +6505,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
             }
             try {
                 PyObject result = getPython().getModule("plugin_settings")
-                        .callAttr("clear_settings", str);
+                        .callAttr("clear_settings_checked", str);
                 if (result == null || !result.toBoolean()) {
                     FileLog.e("Plugin settings clear was rejected for " + str);
                     return false;

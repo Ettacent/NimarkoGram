@@ -8023,7 +8023,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             if (form == null) return;
             final PaymentFormState initial = new PaymentFormState(currency, form);
 
-            new ResaleBuyTransferAlert(getContext(), resourcesProvider, gift, initial, currentAccount, to, getGiftName(), false, (state, progress) -> {
+            new ResaleBuyTransferAlert(getContext(), resourcesProvider, gift, initial, currentAccount, to, getGiftName(), false, message, hideMyName, (state, progress) -> {
                 progress.init();
                 StarsController.getInstance(currentAccount, state.currency).buyResellingGift(state.form, gift, to, message, hideMyName, (status, err) -> {
                     progress.end();
@@ -8855,6 +8855,8 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
         private final boolean canSwitchToTON;
         private final Theme.ResourcesProvider resourcesProvider;
 
+        private final TLRPC.TL_textWithEntities message;
+        private final boolean hideMyName;
         public final AlertDialog alertDialog;
         private final @Nullable HorizontalRoundTabsLayout currencyTabsView;
         private final TextView textInfoView;
@@ -8879,6 +8881,23 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             boolean withTable,
             Utilities.Callback2<PaymentFormState, Browser.Progress> confirmed
         ) {
+            this(context, resourcesProvider, gift, initialState, currentAccount, dialogId,
+                giftName, withTable, null, true, confirmed);
+        }
+
+        public ResaleBuyTransferAlert(
+            Context context,
+            Theme.ResourcesProvider resourcesProvider,
+            TL_stars.TL_starGiftUnique gift,
+            PaymentFormState initialState,
+            int currentAccount,
+            long dialogId,
+            String giftName,
+            boolean withTable,
+            TLRPC.TL_textWithEntities message,
+            boolean hideMyName,
+            Utilities.Callback2<PaymentFormState, Browser.Progress> confirmed
+        ) {
             this.context = context;
             this.gift = gift;
             this.dialogId = dialogId;
@@ -8888,6 +8907,8 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
             this.resourcesProvider = resourcesProvider;
             this.giftName = giftName;
 
+            this.message = message;
+            this.hideMyName = hideMyName;
             final boolean isTonOnly = gift.resale_ton_only;
             this.canSwitchToTON = !isTonOnly;
 
@@ -9067,7 +9088,7 @@ public class StarGiftSheet extends BottomSheetWithRecyclerListView implements No
                 lastPositiveButtonProgress.init();
 
                 if (loadingForms.add(currency)) {
-                    StarsController.getInstance(currentAccount, currency).getResellingGiftForm(gift, dialogId, form -> {
+                    StarsController.getInstance(currentAccount, currency).getResellingGiftForm(gift, dialogId, message, hideMyName, form -> {
                         if (lastPositiveButtonProgress != null && currency == selectedCurrency) {
                             lastPositiveButtonProgress.end();
                         }

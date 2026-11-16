@@ -89,11 +89,13 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.FourierTransform;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.messenger.VideoPlaybackFocus;
 import org.telegram.messenger.chromecast.ChromecastMedia;
 import org.telegram.messenger.chromecast.ChromecastMediaVariations;
 import org.telegram.messenger.secretmedia.ExtendedDefaultDataSourceFactory;
@@ -203,6 +205,86 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private boolean shouldPauseOther;
     private boolean playingAudioNotified;
     private boolean playbackFinishing;
+    private VideoPlaybackFocus videoAudioFocus;
+    private boolean applyingVideoFocus;
+    private float videoFocusVolume = 1f;
+    private long videoFocusCommand;
+    private final VideoPlaybackFocus.Client videoFocusClient = new VideoPlaybackFocus.Client() {
+        public boolean isCurrent() { return !released && !playbackFinishing && videoAudioFocus != null; }
+        public boolean canPlayAudio() { return MediaController.getInstance().canStartVideoPlayback(); }
+        public void pauseForFocus() {
+            if (!isCurrent()) return;
+            applyingVideoFocus = true;
+            try { pause(); } finally { applyingVideoFocus = false; }
+        }
+        public void resumeForFocus() {
+            if (!isCurrent()) return;
+            applyingVideoFocus = true;
+            try { play(); } finally { applyingVideoFocus = false; }
+        }
+    };
+
+    public boolean usesTransientAudioFocus() { return videoAudioFocus != null; }
+
+    public boolean canAutoStartTransientPlayback() {
+        return videoAudioFocus == null || videoAudioFocus.canAutoStart();
+    }
+
+    public boolean enableTransientAudioFocus(VideoPlaybackFocus previous) {
+        if (released || mixedAudio || customRenderersFactory != null
+                || Looper.myLooper() != Looper.getMainLooper()
+                || looper != null && looper != Looper.getMainLooper()
+                || player != null && player.getApplicationLooper() != Looper.getMainLooper()) return false;
+        if (videoAudioFocus != null) {
+            if (previous != null && previous != videoAudioFocus) previous.release();
+            return true;
+        }
+        videoAudioFocus = previous != null ? previous : new VideoPlaybackFocus();
+        videoAudioFocus.attach(videoFocusClient);
+        if (player != null) {
+            videoFocusVolume = player.getVolume();
+            player.setHandleAudioBecomingNoisy(true);
+            if (isFocusPlaybackRequested()) allowVideoFocusStart();
+        }
+        return true;
+    }
+
+    public VideoPlaybackFocus detachTransientAudioFocus() {
+        VideoPlaybackFocus focus = videoAudioFocus;
+        if (focus != null) focus.detach(videoFocusClient, true);
+        videoAudioFocus = null;
+        return focus;
+    }
+
+    public void stopTransientPlayback() {
+        pause();
+        final VideoPlaybackFocus focus = videoAudioFocus;
+        try {
+            if (player != null) player.stop();
+        } finally {
+            if (focus != null) focus.finish(videoFocusClient);
+        }
+    }
+
+    private boolean isFocusPlaybackRequested() {
+        return player != null && player.getPlayWhenReady()
+                && player.getPlaybackState() != Player.STATE_ENDED && player.getPlaybackState() != Player.STATE_IDLE;
+    }
+
+    private boolean hasFocusAudio() {
+        return !audioDisabled && videoFocusVolume > 0f && (player == null
+                || player.getPlaybackState() != Player.STATE_READY
+                || player.getCurrentTracks().isTypeSelected(C.TRACK_TYPE_AUDIO));
+    }
+
+    private boolean allowVideoFocusStart() {
+        return applyingVideoFocus || videoAudioFocus == null || videoAudioFocus.beforePlay(videoFocusClient, hasFocusAudio());
+    }
+
+    private long beginVideoFocusCommand() {
+        if (videoAudioFocus != null && !applyingVideoFocus) ++videoFocusCommand;
+        return videoFocusCommand;
+    }
     public void markPlaybackFinishing() {
         playbackFinishing = true;
         playingAudioNotified = false;
@@ -251,6 +333,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.playerDidStartPlaying) {
             VideoPlayer p = (VideoPlayer) args[0];
+            if (videoAudioFocus != null && !hasFocusAudio()) return;
             if (p != this && p != concurrentPlaybackPeer && isPlaying() && !allowMultipleInstances) {
                 pause();
             }
@@ -300,6 +383,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             player = builder.build();
             if (customRenderersFactory != null) player.setVolume(customInitialVolume);
 
+            if (videoAudioFocus != null) {
+                player.setVolume(videoFocusVolume);
+                player.setHandleAudioBecomingNoisy(true);
+            }
             player.setAudioAttributes(new AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -1417,6 +1504,17 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             return;
         }
         released = true;
+        if (videoAudioFocus != null) {
+            final VideoPlaybackFocus focus = videoAudioFocus;
+            videoAudioFocus = null;
+            try {
+                if (player != null) player.setPlayWhenReady(false);
+            } catch (Exception error) {
+                FileLog.e(error);
+            } finally {
+                focus.detach(videoFocusClient, false);
+            }
+        }
         if (playerStreamScope != null) playerStreamScope.close();
         activePlayers.remove(playerId);
         audioUpdateHandler.removeCallbacksAndMessages(null);
@@ -1554,6 +1652,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void play() {
+        final long command = beginVideoFocusCommand();
+        if (!allowVideoFocusStart() || command != videoFocusCommand) return;
         mixedPlayWhenReady = true;
         if (mixedAudio) {
             if (!audioPlayerReady || !videoPlayerReady) {
@@ -1575,6 +1675,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void pause() {
+        beginVideoFocusCommand();
+        if (videoAudioFocus != null && !applyingVideoFocus) videoAudioFocus.pause(videoFocusClient);
         mixedPlayWhenReady = false;
         if (player != null) {
             player.setPlayWhenReady(false);
@@ -1606,6 +1708,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void setPlayWhenReady(boolean playWhenReady) {
+        final long command = beginVideoFocusCommand();
+        if (playWhenReady && (!allowVideoFocusStart() || command != videoFocusCommand)) return;
+        if (!playWhenReady && videoAudioFocus != null && !applyingVideoFocus) videoAudioFocus.pause(videoFocusClient);
         mixedPlayWhenReady = playWhenReady;
         if (playWhenReady && mixedAudio) {
             if (!audioPlayerReady || !videoPlayerReady) {
@@ -1646,12 +1751,19 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void setMute(boolean value) {
+        final long command = beginVideoFocusCommand();
+        if (videoAudioFocus != null) {
+            videoFocusVolume = value ? 0f : 1f;
+            if (!value && isFocusPlaybackRequested()) allowVideoFocusStart();
+        }
+        if (command != videoFocusCommand) return;
         if (player != null) {
             player.setVolume(value ? 0.0f : 1.0f);
         }
         if (audioPlayer != null) {
             audioPlayer.setVolume(value ? 0.0f : 1.0f);
         }
+        if (value && videoAudioFocus != null) videoAudioFocus.finish(videoFocusClient);
     }
 
     @Override
@@ -1669,6 +1781,12 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void setVolume(float volume) {
+        final long command = beginVideoFocusCommand();
+        if (videoAudioFocus != null) {
+            videoFocusVolume = Math.max(0f, volume);
+            if (volume > 0f && isFocusPlaybackRequested()) allowVideoFocusStart();
+        }
+        if (command != videoFocusCommand) return;
         if (customRenderersFactory instanceof SourceVolumeController) {
             ((SourceVolumeController) customRenderersFactory).setSourceVolume(volume);
             maybeNotifyPlayingWithAudio();
@@ -1683,6 +1801,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         if (audioPlayer != null) {
             audioPlayer.setVolume(volume);
         }
+        if (volume <= 0f && videoAudioFocus != null) videoAudioFocus.finish(videoFocusClient);
     }
 
     public float getVolume() {
@@ -1812,6 +1931,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         if (released) {
             return;
         }
+        if (videoAudioFocus != null && (playbackState == Player.STATE_ENDED
+                || playbackState == Player.STATE_READY && !hasFocusAudio())) {
+            videoAudioFocus.finish(videoFocusClient);
+        }
         maybeReportPlayerState();
         maybeNotifyPlayingWithAudio();
         if (!videoPlayerReady && playbackState == Player.STATE_READY) {
@@ -1878,6 +2001,11 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 }
                 recoverPlayer(failedPlayer, currentTextureView);
             } else {
+                final VideoPlaybackFocus focus = videoAudioFocus;
+                if (focus != null) {
+                    videoFocusClient.pauseForFocus();
+                    focus.finish(videoFocusClient);
+                }
                 VideoPlayerDelegate currentDelegate = delegate;
                 if (!released && currentDelegate != null) {
                     currentDelegate.onError(this, error);
@@ -2178,6 +2306,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     @Override
     public void onTracksChanged(Tracks tracks) {
         Player.Listener.super.onTracksChanged(tracks);
+        if (videoAudioFocus != null && player != null && player.getPlaybackState() == Player.STATE_READY && !hasFocusAudio()) {
+            videoAudioFocus.finish(videoFocusClient);
+        }
+        if (videoAudioFocus != null && isFocusPlaybackRequested()) allowVideoFocusStart();
         maybeNotifyPlayingWithAudio();
         if (onQualityChangeListener != null) {
             AndroidUtilities.runOnUIThread(onQualityChangeListener);
@@ -2203,6 +2335,14 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     @Override
     public void onVolumeChanged(float volume) {
         maybeNotifyPlayingWithAudio();
+    }
+
+    @Override
+    public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+        if (!playWhenReady && videoAudioFocus != null
+                && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+            videoAudioFocus.pause(videoFocusClient);
+        }
     }
 
     @Override

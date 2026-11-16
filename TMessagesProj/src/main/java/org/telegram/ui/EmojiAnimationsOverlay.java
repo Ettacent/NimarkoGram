@@ -73,6 +73,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     Runnable sentInteractionsRunnable;
 
     Runnable hintRunnable;
+    private int animationGeneration;
     private final static HashSet<String> supportedEmoji = new HashSet<>();
     private final static HashSet<String> excludeEmojiFromPack = new HashSet<>();
 
@@ -126,6 +127,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public void onDetachedFromWindow() {
+        animationGeneration++;
         attached = false;
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.diceStickersDidLoad);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.onEmojiInteractionsReceived);
@@ -141,6 +143,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
 
 
     public void clear() {
+        animationGeneration++;
         for (int i = 0; i < drawingObjects.size(); i++) {
             drawingObjects.get(i).imageReceiver.onDetachedFromWindow();
             if (drawingObjects.get(i).genericEffect != null) {
@@ -148,6 +151,19 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
             }
         }
         drawingObjects.clear();
+    }
+
+    private boolean isChatCoveredByBrowser() {
+        return chatActivity != null && ArticleViewer.isShowingOver(chatActivity.getParentActivity());
+    }
+
+    private void scheduleInteraction(int messageId, int animation, long delay) {
+        final int generation = animationGeneration;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (generation == animationGeneration && !isChatCoveredByBrowser()) {
+                findViewAndShowAnimation(messageId, animation);
+            }
+        }, delay);
     }
 
     public void checkStickerPack() {
@@ -198,7 +214,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 checkStickerPack();
             }
         } else if (id == NotificationCenter.onEmojiInteractionsReceived) {
-            if (chatActivity == null) {
+            if (chatActivity == null || isChatCoveredByBrowser()) {
                 return;
             }
             long dialogId = (long) args[0];
@@ -213,12 +229,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                             JSONObject actionObject = array.getJSONObject(i);
                             int animation = actionObject.optInt("i", 1) - 1;
                             double time = actionObject.optDouble("t", 0.0);
-                            AndroidUtilities.runOnUIThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    findViewAndShowAnimation(messageId, animation);
-                                }
-                            }, (long) (time * 1000));
+                            scheduleInteraction(messageId, animation, (long) (time * 1000));
                         }
                     } catch (JSONException e) {
                         e.printStackTrace();
@@ -239,7 +250,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     private void findViewAndShowAnimation(int messageId, int animation) {
-        if (!attached) {
+        if (!attached || isChatCoveredByBrowser()) {
             return;
         }
         ChatMessageCell bestView = null;
@@ -286,6 +297,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
      */
     public void draw(Canvas canvas, MessageObject suppressedMessage,
             MessageObject.GroupedMessages suppressedGroup) {
+        if (isChatCoveredByBrowser()) {
+            if (!drawingObjects.isEmpty()) clear();
+            cancelHintRunnable();
+            return;
+        }
         if (!drawingObjects.isEmpty()) {
             for (int i = 0; i < drawingObjects.size(); i++) {
                 DrawingObject drawingObject = drawingObjects.get(i);
@@ -497,6 +513,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
 
     public boolean onTapItem(ChatMessageCell view, ChatActivity chatActivity, boolean userTapped) {
         // NimarkoGram: respect "Disable premium-sticker animation".
+        if (isChatCoveredByBrowser()) return false;
         if (app.nimarkogram.messenger.AppConfig.disablePremStickAnim) {
             return false;
         }
@@ -558,6 +575,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public boolean showAnimationForActionCell(ChatActionCell view, TLRPC.Document document, TLRPC.VideoSize videoSize) {
+        if (isChatCoveredByBrowser()) return false;
         if (drawingObjects.size() > 12) {
             return false;
         }
@@ -664,6 +682,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public boolean showAnimationForCell(ChatMessageCell view, int animation, boolean sendTap, boolean sendSeen) {
+        if (isChatCoveredByBrowser()) return false;
         if (view == null || drawingObjects.size() > 12) {
             return false;
         }
@@ -693,6 +712,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
     }
 
     public boolean createDrawingObject(String emoji, int viewId, TLRPC.Document viewDocument, @Nullable MessageObject messageObject, int animation, boolean sendTap, boolean sendSeen, float imageW, float imageH, boolean isOutOwner) {
+        if (isChatCoveredByBrowser()) return false;
         boolean isPremiumSticker = messageObject != null && messageObject.isPremiumSticker();
         boolean isMessageEffect = messageObject != null && messageObject.getEffect() != null;
         if (isMessageEffect || isPremiumSticker || supportedEmoji.contains(emoji)) {

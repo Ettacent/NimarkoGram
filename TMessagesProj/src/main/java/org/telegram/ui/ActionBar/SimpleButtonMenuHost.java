@@ -23,7 +23,7 @@ public class SimpleButtonMenuHost implements MenuOverlayHost {
 
     private View button;
     private boolean shown;
-    private int buttonVisibility = View.VISIBLE;
+    private float buttonAlpha = 1f;
 
     public SimpleButtonMenuHost(SimpleActionBarMenuOverlay overlay, BaseFragmentSimpleGlass glass, Theme.ResourcesProvider resourcesProvider) {
         this.overlay = overlay;
@@ -96,10 +96,10 @@ public class SimpleButtonMenuHost implements MenuOverlayHost {
         }
         this.shown = shown;
         if (shown) {
-            buttonVisibility = button.getVisibility();
-            button.setVisibility(View.INVISIBLE);
-        } else if (button.getVisibility() == View.INVISIBLE) {
-            button.setVisibility(buttonVisibility);
+            buttonAlpha = button.getAlpha();
+            button.setAlpha(0f);
+        } else if (button.getAlpha() == 0f) {
+            button.setAlpha(buttonAlpha);
         }
     }
 

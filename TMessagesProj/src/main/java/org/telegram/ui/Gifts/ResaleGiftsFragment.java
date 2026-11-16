@@ -142,6 +142,11 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         return this;
     }
 
+    @Override
+    public void onFragmentDestroy() {
+        list.cancel();
+        super.onFragmentDestroy();
+    }
     private UniversalRecyclerView listView;
     private View listTopOverlay;
     private FrameLayout clearFiltersContainer;
@@ -262,7 +267,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         final CheckBox2 checkbox = new CheckBox2(context, 24, resourceProvider);
         checkbox.setColor(Theme.key_radioBackgroundChecked, Theme.key_checkboxDisabled, Theme.key_checkboxCheck);
         checkbox.setDrawUnchecked(true);
-        checkbox.setChecked(false, false);
+        checkbox.setChecked(list.starsOnly, false);
         checkbox.setDrawBackgroundAsArc(10);
         checkbox.setTranslationX(dp(4));
         checkbox.setScaleX(0.8f);
@@ -732,6 +737,8 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
             return;
         }
         final ActionBarPopupWindow.ActionBarPopupWindowLayout layout = (ActionBarPopupWindow.ActionBarPopupWindowLayout) options.getLayout();
+        final SimpleActionBarMenuOverlay previous = filterMenuHost.getOpenMenuOverlay();
+        if (previous != null) previous.close(false);
         filterMenuHost.set((FrameLayout) filter.getParent(), filter, overlay);
         options.setOnDismiss(() -> overlay.close(true));
         overlay.setOnClosed(() -> AndroidUtilities.hideKeyboard(layout));
@@ -747,9 +754,12 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         private SimpleActionBarMenuOverlay overlay;
         private boolean shown;
 
+        private float pillAlpha = 1.0f;
         void set(FrameLayout pill, Filter filter, SimpleActionBarMenuOverlay overlay) {
-            if (shown && this.pill != null && this.pill != pill) {
-                this.pill.setVisibility(View.VISIBLE);
+            if (this.pill != pill) {
+                if (shown && this.pill != null) this.pill.setAlpha(pillAlpha);
+                pillAlpha = pill.getAlpha();
+                shown = false;
             }
             this.pill = pill;
             this.filter = filter;
@@ -806,8 +816,15 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
 
         @Override
         public void setMenuOverlay(@Nullable SimpleActionBarMenuOverlay overlay, @Nullable ActionBarMenuItem item) {
+            if (overlay != null && !shown) pillAlpha = pill.getAlpha();
             shown = overlay != null;
-            pill.setVisibility(shown ? View.INVISIBLE : View.VISIBLE);
+            pill.setAlpha(shown ? 0.0f : pillAlpha);
+        }
+
+        @Nullable
+        @Override
+        public BaseFragment getMenuOverlaySourceFragment() {
+            return ResaleGiftsFragment.this;
         }
 
         @Nullable
@@ -1166,11 +1183,13 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         public boolean loading;
         public boolean endReached = false;
         private int reqId = -1;
+        private int requestGeneration;
         public void load() {
             load(false);
         }
         public void load(boolean force) {
             if (loading || !force && endReached) return;
+            final int generation = ++requestGeneration;
             loading = true;
             final TL_stars.getResaleStarGifts req = new TL_stars.getResaleStarGifts();
             req.gift_id = gift_id;
@@ -1225,9 +1244,11 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                     }
                 }
             }
-            reqId = ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+            final int requestId = ConnectionsManager.getInstance(account).sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+                if (generation != requestGeneration) return;
                 reqId = -1;
 
+                loading = false;
                 if (res instanceof TL_stars.resaleStarGifts) {
                     final TL_stars.resaleStarGifts r = (TL_stars.resaleStarGifts) res;
                     MessagesController.getInstance(account).putUsers(r.users, false);
@@ -1247,7 +1268,6 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                     }
                     endReached = gifts.size() >= totalCount || TextUtils.isEmpty(r.next_offset);
                     last_offset = r.next_offset;
-                    loading = false;
                     if (r.attributes != null && !r.attributes.isEmpty()) {
                         modelAttributes.clear();
                         backdropAttributes.clear();
@@ -1278,9 +1298,11 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
                     }
                 }
             }));
+            if (generation == requestGeneration && loading) reqId = requestId;
         }
 
         public void cancel() {
+            requestGeneration++;
             if (reqId >= 0) {
                 ConnectionsManager.getInstance(account).cancelRequest(reqId, true);
                 reqId = -1;
@@ -1291,6 +1313,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         public void reload() {
             cancel();
             last_offset = null;
+            endReached = false;
             gifts.clear();
             load(true);
             if (onUpdate != null) {

@@ -148,11 +148,9 @@ public final class AppMotionBlur implements ViewTreeObserver.OnPreDrawListener,
     public static AppMotionBlur attachWindow(Window window) {
         if (window == null || Build.VERSION.SDK_INT < 31
                 || Looper.myLooper() != Looper.getMainLooper()) return null;
-        View content = window.findViewById(android.R.id.content);
-        if (!(content instanceof ViewGroup)) {
-            window.getDecorView();
-            content = window.findViewById(android.R.id.content);
-        }
+        View decor = window.peekDecorView();
+        if (decor == null) return null;
+        View content = decor.findViewById(android.R.id.content);
         if (!(content instanceof ViewGroup)) return null;
         AppMotionBlur blur = attachRoot((ViewGroup) content);
         Activity owner = findActivity(window.getContext());

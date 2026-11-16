@@ -5994,6 +5994,190 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
     }
 
+    public boolean updateComments(MessageObject messageObject) {
+        if (messageObject == null || messageObject != currentMessageObject || !attachedToWindow || frozen
+                || !transitionParams.wasDraw || !wasLayout || messageObject.type != MessageObject.TYPE_PHOTO
+                || messageObject.isLivePhoto() || !messageObject.isSent() || messageObject.forceUpdate
+                || isMegagroup || isRepliesChat || !hasDiscussion
+                || lastWidth != getParentWidth() || lastHeight != AndroidUtilities.displaySize.y
+                || lastSendState != messageObject.messageOwner.send_state
+                || lastReactions != messageObject.messageOwner.reactions
+                || messageObject.reactionsChanged
+                || !TextUtils.equals(lastPostAuthor, messageObject.messageOwner.post_author)
+                || lastTranslated != messageObject.translated
+                || currentMessagesGroup == null && !TextUtils.equals(currentCaption, messageObject.caption)
+                || photoParentObject != messageObject.photoThumbsObject) {
+            return false;
+        }
+        final MessageObject primary = currentMessagesGroup != null && !currentMessagesGroup.messages.isEmpty()
+                ? currentMessagesGroup.messages.get(0) : messageObject;
+        if (!primary.isLinkedToChat(linkedChatId)) {
+            return false;
+        }
+        final boolean shouldDrawCommentButton = (currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_BOTTOM) != 0)
+                && messageObject.searchType == 0 && !messageObject.isEphemeral();
+        if (drawCommentButton != shouldDrawCommentButton || !drawCommentButton && currentMessagesGroup == null) {
+            return false;
+        }
+        String views = null;
+        if (viewsLayout != null) {
+            final MessageObject timeMessage = getTimeMeasurementMessage(messageObject);
+            final String newViews = LocaleController.formatShortNumber(Math.max(1, timeMessage.messageOwner.views), null);
+            if (!TextUtils.equals(currentViewsString, newViews)) {
+                if (viewsTextWidth != (int) Math.ceil(Theme.chat_timePaint.measureText(newViews))) {
+                    return false;
+                }
+                views = newViews;
+            }
+        } else if (lastViewsCount != messageObject.messageOwner.views) {
+            return false;
+        }
+        if (drawCommentButton) {
+            final int maxWidth = Math.max(totalCommentWidth, commentButtonRect.width() - dp(28));
+            updateCommentLayout(messageObject, maxWidth);
+            if (totalCommentWidth > maxWidth) {
+                return false;
+            }
+        }
+        if (views != null) {
+            currentViewsString = views;
+            viewsLayout = new StaticLayout(views, Theme.chat_timePaint, viewsTextWidth, Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+        }
+        lastViewsCount = messageObject.messageOwner.views;
+        lastRepliesCount = getRepliesCount();
+        accessibilityText = null;
+        messageObject.animateComments = false;
+        invalidate();
+        return true;
+    }
+
+    private void updateCommentLayout(MessageObject messageObject, int maxWidth) {
+        boolean linked = false;
+        if (currentMessagesGroup != null && currentMessagesGroup.messages.size() > 0) {
+            MessageObject object = currentMessagesGroup.messages.get(0);
+            if (object.isLinkedToChat(linkedChatId)) {
+                linked = true;
+            }
+        } else {
+            linked = messageObject.isLinkedToChat(linkedChatId);
+        }
+        if ((hasDiscussion && linked || isRepliesChat && !messageObject.isOutOwner()) && (currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_BOTTOM) != 0) && messageObject.searchType == 0 && !messageObject.isEphemeral()) {
+            int commentCount = getRepliesCount();
+            if (!messageObject.shouldDrawWithoutBackground() && !messageObject.isAnimatedEmoji()) {
+                drawCommentButton = true;
+                int avatarsOffset = 0;
+                String comment;
+                if (commentProgress == null) {
+                    commentProgress = new InfiniteProgress(dp(7));
+                }
+                if (isRepliesChat) {
+                    comment = getString("ViewInChat", R.string.ViewInChat);
+                } else {
+                    if (LocaleController.isRTL) {
+                        comment = commentCount == 0 ? getString("LeaveAComment", R.string.LeaveAComment) : formatPluralString("CommentsCount", commentCount);
+                    } else {
+                        comment = commentCount == 0 ? getString("LeaveAComment", R.string.LeaveAComment) : LocaleController.getPluralString("CommentsNoNumber", commentCount);
+                    }
+                    ArrayList<TLRPC.Peer> recentRepliers = getRecentRepliers();
+                    if (commentCount != 0 && recentRepliers != null && !recentRepliers.isEmpty()) {
+                        createCommentUI();
+                        int size = recentRepliers.size();
+                        for (int a = 0; a < commentAvatarImages.length; a++) {
+                            if (a < size) {
+                                commentAvatarImages[a].setImageCoords(0, 0, dp(24), dp(24));
+                                long id = MessageObject.getPeerId(recentRepliers.get(a));
+                                TLRPC.User user;
+                                TLRPC.Chat chat;
+                                if (DialogObject.isUserDialog(id)) {
+                                    user = MessagesController.getInstance(currentAccount).getUser(id);
+                                    chat = null;
+                                } else if (DialogObject.isChatDialog(id)) {
+                                    user = null;
+                                    chat = MessagesController.getInstance(currentAccount).getChat(-id);
+                                } else {
+                                    user = null;
+                                    chat = null;
+                                }
+                                final int A = a;
+                                post(() -> {
+                                    if (user != null) {
+                                        commentAvatarDrawables[A].setInfo(currentAccount, user);
+                                        commentAvatarImages[A].setForUserOrChat(user, commentAvatarDrawables[A]);
+                                    } else if (chat != null) {
+                                        commentAvatarDrawables[A].setInfo(currentAccount, chat);
+                                        commentAvatarImages[A].setForUserOrChat(chat, commentAvatarDrawables[A]);
+                                    } else {
+                                        commentAvatarDrawables[A].setInfo(id, "", "");
+                                    }
+                                });
+                                commentAvatarImagesVisible[a] = true;
+                                avatarsOffset += a == 0 ? 2 : 17;
+                            } else if (size != 0) {
+                                commentAvatarImages[a].setImageBitmap((Drawable) null);
+                                commentAvatarImagesVisible[a] = false;
+                            }
+                        }
+                    } else if (commentAvatarImages != null) {
+                        for (int a = 0; a < commentAvatarImages.length; a++) {
+                            commentAvatarImages[a].setImageBitmap((Drawable) null);
+                            commentAvatarImagesVisible[a] = false;
+                        }
+                    }
+                }
+                commentWidth = totalCommentWidth = (int) Math.ceil(Theme.chat_commentTextPaint.measureText(comment));
+                commentLayout = new StaticLayout(comment, Theme.chat_commentTextPaint, commentWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+                if (commentCount != 0 && !LocaleController.isRTL) {
+                    drawCommentNumber = true;
+                    if (commentNumberLayout == null) {
+                        commentNumberLayout = new AnimatedNumberLayout(this, Theme.chat_commentTextPaint);
+                        commentNumberLayout.setNumber(commentCount, false);
+                    } else {
+                        commentNumberLayout.setNumber(commentCount, messageObject.animateComments);
+                    }
+                    messageObject.animateComments = false;
+                    commentNumberWidth = commentNumberLayout.getWidth();
+                    totalCommentWidth += commentNumberWidth + dp(4);
+                } else {
+                    drawCommentNumber = false;
+                    if (commentNumberLayout != null) {
+                        commentNumberLayout.setNumber(1, false);
+                    }
+                }
+                totalCommentWidth += dp(70 + avatarsOffset);
+                if (totalCommentWidth > maxWidth) {
+                    int fixedWidth = totalCommentWidth - commentWidth;
+                    if (commentAvatarImagesVisible != null) {
+                        for (int a = commentAvatarImagesVisible.length - 1; a >= 0 && fixedWidth + dp(24) > maxWidth; a--) {
+                            if (commentAvatarImagesVisible[a]) {
+                                commentAvatarImagesVisible[a] = false;
+                                final int offset = a == 0 ? 2 : 17;
+                                avatarsOffset -= offset;
+                                fixedWidth -= dp(offset);
+                            }
+                        }
+                    }
+                    comment = TextUtils.ellipsize(comment, Theme.chat_commentTextPaint,
+                            Math.max(0, maxWidth - fixedWidth), TextUtils.TruncateAt.END).toString();
+                    commentWidth = (int) Math.ceil(Theme.chat_commentTextPaint.measureText(comment));
+                    totalCommentWidth = fixedWidth + commentWidth;
+                    commentLayout = new StaticLayout(comment, Theme.chat_commentTextPaint, commentWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+                }
+            } else {
+                if (!isRepliesChat && commentCount > 0) {
+                    String comment = LocaleController.formatShortNumber(commentCount, null);
+                    commentWidth = totalCommentWidth = (int) Math.ceil(Theme.chat_stickerCommentCountPaint.measureText(comment));
+                    commentLayout = new StaticLayout(comment, Theme.chat_stickerCommentCountPaint, commentWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+                } else {
+                    commentLayout = null;
+                }
+                drawCommentNumber = false;
+                drawSideButton = isRepliesChat ? 2 : 3;
+            }
+        } else {
+            commentLayout = null;
+            drawCommentNumber = false;
+        }
+    }
     private boolean isUserDataChanged() {
         if (currentMessageObject != null && (!hasLinkPreview && !currentMessageObject.linksHidden && MessageObject.getMedia(currentMessageObject.messageOwner) != null && MessageObject.getMedia(currentMessageObject.messageOwner).webpage instanceof TLRPC.TL_webPage)) {
             return true;
@@ -7273,10 +7457,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     boolean isSmall = !messageObject.shouldDrawReactionsInLayout();
                     if (currentPosition != null) {
                         MessageObject primaryMessage = groupedMessages.findPrimaryMessageObject();
+                        if (primaryMessage == null) {
+                            reactionsLayoutInBubble.setMessage(null, false, false, resourcesProvider);
+                        } else {
                         if (!isTag && primaryMessage.messageOwner != null) {
                             isTag = primaryMessage.messageOwner.reactions != null && primaryMessage.messageOwner.reactions.reactions_as_tags;
                         }
-                        reactionsLayoutInBubble.setMessage(groupedMessages.findPrimaryMessageObject(), !messageObject.shouldDrawReactionsInLayout(), isTag, resourcesProvider);
+                            reactionsLayoutInBubble.setMessage(primaryMessage, isSmall, isTag, resourcesProvider);
+                        }
                     } else {
                         reactionsLayoutInBubble.setMessage(messageObject, isSmall, isTag, resourcesProvider);
                     }
@@ -7293,113 +7481,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 }
             }
 
-            boolean linked = false;
-            if (currentMessagesGroup != null && currentMessagesGroup.messages.size() > 0) {
-                MessageObject object = currentMessagesGroup.messages.get(0);
-                if (object.isLinkedToChat(linkedChatId)) {
-                    linked = true;
-                }
-            } else {
-                linked = messageObject.isLinkedToChat(linkedChatId);
-            }
-            if ((hasDiscussion && linked || isRepliesChat && !messageObject.isOutOwner()) && (currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_BOTTOM) != 0) && messageObject.searchType == 0 && !messageObject.isEphemeral()) {
-                int commentCount = getRepliesCount();
-                if (!messageObject.shouldDrawWithoutBackground() && !messageObject.isAnimatedEmoji()) {
-                    drawCommentButton = true;
-                    int avatarsOffset = 0;
-                    String comment;
-                    if (commentProgress == null) {
-                        commentProgress = new InfiniteProgress(dp(7));
-                    }
-                    if (isRepliesChat) {
-                        comment = getString("ViewInChat", R.string.ViewInChat);
-                    } else {
-                        if (LocaleController.isRTL) {
-                            comment = commentCount == 0 ? getString("LeaveAComment", R.string.LeaveAComment) : formatPluralString("CommentsCount", commentCount);
-                        } else {
-                            comment = commentCount == 0 ? getString("LeaveAComment", R.string.LeaveAComment) : LocaleController.getPluralString("CommentsNoNumber", commentCount);
-                        }
-                        ArrayList<TLRPC.Peer> recentRepliers = getRecentRepliers();
-                        if (commentCount != 0 && recentRepliers != null && !recentRepliers.isEmpty()) {
-                            createCommentUI();
-                            int size = recentRepliers.size();
-                            for (int a = 0; a < commentAvatarImages.length; a++) {
-                                if (a < size) {
-                                    commentAvatarImages[a].setImageCoords(0, 0, dp(24), dp(24));
-                                    long id = MessageObject.getPeerId(recentRepliers.get(a));
-                                    TLRPC.User user;
-                                    TLRPC.Chat chat;
-                                    if (DialogObject.isUserDialog(id)) {
-                                        user = MessagesController.getInstance(currentAccount).getUser(id);
-                                        chat = null;
-                                    } else if (DialogObject.isChatDialog(id)) {
-                                        user = null;
-                                        chat = MessagesController.getInstance(currentAccount).getChat(-id);
-                                    } else {
-                                        user = null;
-                                        chat = null;
-                                    }
-                                    final int A = a;
-                                    post(() -> {
-                                        if (user != null) {
-                                            commentAvatarDrawables[A].setInfo(currentAccount, user);
-                                            commentAvatarImages[A].setForUserOrChat(user, commentAvatarDrawables[A]);
-                                        } else if (chat != null) {
-                                            commentAvatarDrawables[A].setInfo(currentAccount, chat);
-                                            commentAvatarImages[A].setForUserOrChat(chat, commentAvatarDrawables[A]);
-                                        } else {
-                                            commentAvatarDrawables[A].setInfo(id, "", "");
-                                        }
-                                    });
-                                    commentAvatarImagesVisible[a] = true;
-                                    avatarsOffset += a == 0 ? 2 : 17;
-                                } else if (size != 0) {
-                                    commentAvatarImages[a].setImageBitmap((Drawable) null);
-                                    commentAvatarImagesVisible[a] = false;
-                                }
-                            }
-                        } else if (commentAvatarImages != null) {
-                            for (int a = 0; a < commentAvatarImages.length; a++) {
-                                commentAvatarImages[a].setImageBitmap((Drawable) null);
-                                commentAvatarImagesVisible[a] = false;
-                            }
-                        }
-                    }
-                    commentWidth = totalCommentWidth = (int) Math.ceil(Theme.chat_commentTextPaint.measureText(comment));
-                    commentLayout = new StaticLayout(comment, Theme.chat_commentTextPaint, commentWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
-                    if (commentCount != 0 && !LocaleController.isRTL) {
-                        drawCommentNumber = true;
-                        if (commentNumberLayout == null) {
-                            commentNumberLayout = new AnimatedNumberLayout(this, Theme.chat_commentTextPaint);
-                            commentNumberLayout.setNumber(commentCount, false);
-                        } else {
-                            commentNumberLayout.setNumber(commentCount, messageObject.animateComments);
-                        }
-                        messageObject.animateComments = false;
-                        commentNumberWidth = commentNumberLayout.getWidth();
-                        totalCommentWidth += commentNumberWidth + dp(4);
-                    } else {
-                        drawCommentNumber = false;
-                        if (commentNumberLayout != null) {
-                            commentNumberLayout.setNumber(1, false);
-                        }
-                    }
-                    totalCommentWidth += dp(70 + avatarsOffset);
-                } else {
-                    if (!isRepliesChat && commentCount > 0) {
-                        String comment = LocaleController.formatShortNumber(commentCount, null);
-                        commentWidth = totalCommentWidth = (int) Math.ceil(Theme.chat_stickerCommentCountPaint.measureText(comment));
-                        commentLayout = new StaticLayout(comment, Theme.chat_stickerCommentCountPaint, commentWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
-                    } else {
-                        commentLayout = null;
-                    }
-                    drawCommentNumber = false;
-                    drawSideButton = isRepliesChat ? 2 : 3;
-                }
-            } else {
-                commentLayout = null;
-                drawCommentNumber = false;
-            }
+            updateCommentLayout(messageObject, Integer.MAX_VALUE);
 
             if (messageObject.type == MessageObject.TYPE_JOINED_CHANNEL) {
                 drawBackground = true;

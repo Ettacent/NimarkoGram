@@ -748,6 +748,9 @@ public class UItem extends AdapterWithDiffUtils.Item {
         }
         return this;
     }
+    public UItem setLinkAlias(String alias, com.exteragram.messenger.preferences.BasePreferencesActivity owner) {
+        return setLinkAlias(alias, (Object) owner);
+    }
     public UItem setLinkAlias(String alias, Object owner) {
         linkAlias = alias;
         if (owner instanceof BaseFragment) searchOwner = (BaseFragment) owner;

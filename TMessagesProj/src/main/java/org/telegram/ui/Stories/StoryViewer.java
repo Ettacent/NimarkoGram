@@ -1858,6 +1858,10 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void cancelSwipeToViews(boolean open, boolean forceRetarget) {
+        if (!isShowing || isClosed || storiesViewPager == null || selfStoryViewsView == null) {
+            cancelSwipeToViewsAnimation();
+            return;
+        }
         if (swipeToViewsAnimator != null) {
             if (swipeToViewsAnimatorOpening == open || !forceRetarget) {
                 return;
@@ -2814,6 +2818,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
     @Override
     public void release() {
+        cancelSwipeToViewsAnimation();
         detachWindowNotifications(windowView);
         if (storiesViewPager != null) storiesViewPager.retire();
         ++viewerGeneration;
@@ -3036,7 +3041,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         if (selfStoryViewsView != null) {
             selfStoryViewsView.setOffset(currentTranslation);
         }
-        final PeerStoriesView peerStoriesView = storiesViewPager.getCurrentPeerView();
+        final PeerStoriesView peerStoriesView = getCurrentPeerView();
         if (peerStoriesView != null) {
             peerStoriesView.invalidate();
         }
@@ -3046,8 +3051,11 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     public void openViews() {
+        if (!isShowing || isClosed || storiesViewPager == null || containerView == null) return;
         checkSelfStoriesView();
+        final int generation = viewerGeneration;
         AndroidUtilities.runOnUIThread(() -> {
+            if (generation != viewerGeneration || !isShowing || isClosed || storiesViewPager == null) return;
             allowSelfStoriesView = true;
             cancelSwipeToViews(true);
         }, 30);

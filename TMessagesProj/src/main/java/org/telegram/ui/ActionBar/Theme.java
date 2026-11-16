@@ -10139,7 +10139,6 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         wallpaper = settings.wallpaper != null ? settings.wallpaper : wallpaper;
         Drawable drawable = settings.wallpaper;
         calcBackgroundColor(drawable, 1);
-        applyChatServiceMessageColor();
         return drawable;
     }
 

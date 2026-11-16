@@ -223,6 +223,7 @@ import org.telegram.ui.Components.TextStyleSpan;
 import org.telegram.ui.Components.TranslateAlert2;
 import org.telegram.ui.Components.TypefaceSpan;
 import org.telegram.ui.Components.VideoPlayer;
+import org.telegram.ui.Components.Reactions.ReactionsEffectOverlay;
 import org.telegram.ui.Components.WebPlayerView;
 import org.telegram.ui.Components.spoilers.SpoilerEffect;
 import org.telegram.ui.Stories.DarkThemeResourceProvider;
@@ -586,6 +587,34 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         return Instance != null;
     }
 
+    public static boolean isShowingOver(Activity activity) {
+        if (activity == null) return false;
+        ArticleViewer viewer = Instance;
+        if (viewer != null && viewer.parentActivity == activity && !viewer.destroyed
+                && viewer.isVisible && !viewer.collapsed) return true;
+        for (ArticleViewer active : activeSheets) {
+            if (active.parentActivity == activity && !active.destroyed
+                    && active.sheet != null && !active.sheet.released) return true;
+        }
+        return false;
+    }
+
+    private void notifyCoveredChats(boolean opened) {
+        if (parentActivity == null) return;
+        BaseFragment host = sheet != null ? sheet.fragment : parentFragment;
+        List<BaseFragment> fragments = host != null && host.getParentLayout() != null
+                ? new ArrayList<>(host.getParentLayout().getFragmentStack()) : Collections.emptyList();
+        if (host instanceof ChatActivity && host.getParentActivity() == parentActivity) {
+            ((ChatActivity) host).onBrowserVisibilityChanged(opened);
+        }
+        for (BaseFragment fragment : fragments) {
+            if (fragment != host && fragment instanceof ChatActivity
+                    && fragment.getParentActivity() == parentActivity) {
+                ((ChatActivity) fragment).onBrowserVisibilityChanged(opened);
+            }
+        }
+        if (opened) ReactionsEffectOverlay.dismissChatEffects(parentActivity);
+    }
     private FontCell[] fontCells = new FontCell[2];
 
     public static class TL_pageBlockRelatedArticlesChild extends TL_iv.PageBlock {
@@ -6119,6 +6148,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
         isVisible = true;
         if (sheet == null) {
+            notifyCoveredChats(true);
             setBannerOverlayVisible(true);
         }
         animationInProgress = 1;
@@ -6461,6 +6491,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
 
     private void onClosed() {
         isVisible = false;
+        if (sheet == null) notifyCoveredChats(false);
         invalidateNavigation(false);
         setBannerOverlayVisible(false);
         for (int i = 0; i < pages.length; i++) {
@@ -6644,6 +6675,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
     public void destroyArticleViewer() {
         destroyed = true;
         isVisible = false;
+        if (sheet == null) notifyCoveredChats(false);
         setBannerOverlayVisible(false);
         unregisterNotificationObservers();
         invalidateNavigation(false);
@@ -16553,6 +16585,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 pages[1].resume();
             }
             activeSheets.add(ArticleViewer.this);
+            notifyCoveredChats(true);
             setBannerOverlayVisible(true);
         }
 
@@ -16643,6 +16676,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
                 onDismissListener = null;
             }
             activeSheets.remove(ArticleViewer.this);
+            notifyCoveredChats(false);
         }
 
         public void dismissInstant() {

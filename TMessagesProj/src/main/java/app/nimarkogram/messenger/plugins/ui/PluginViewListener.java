@@ -62,14 +62,7 @@ public final class PluginViewListener implements
         Boolean result = PluginRuntimeDelegate.call(
                 runtimeToken, () -> {
                     PyObject pythonResult = localCallback.call(view);
-                    if (pythonResult == null) {
-                        return false;
-                    }
-                    
-                    if (pythonResult.toJava(Object.class) == null) {
-                        return true;
-                    }
-                    return pythonResult.toBoolean();
+                    return pythonResult == null || pythonResult.toBoolean();
                 }, null);
         return result != null && result;
     }
