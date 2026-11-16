@@ -119,6 +119,7 @@ public final class BannerRenderer {
     }
 
     private final BannerController ctrl = BannerController.getInstance();
+    private final BannerAudioFocus bannerAudioFocus = new BannerAudioFocus();
     private final FrameDecision decision = new FrameDecision();
 
     private volatile boolean inCall;
@@ -2535,6 +2536,7 @@ public final class BannerRenderer {
                 float initialVolume = curVidSound && !bannerAudioBlocked()
                         ? bannerExpansionVolume() : 0f;
                 player = new VideoPlayer(new BannerAudioRenderersFactory(ApplicationLoader.applicationContext), 0f);
+                player.setCustomAudioFocusDelegate(bannerAudioFocus);
                 player.setVolume(initialVolume);
                 if (outgoingAudioPlayer != null) {
                     outgoingAudioPlayer.setConcurrentPlaybackPeer(player);

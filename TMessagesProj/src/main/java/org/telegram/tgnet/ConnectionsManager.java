@@ -194,7 +194,7 @@ public class ConnectionsManager extends BaseController {
             initEpoch = nativeInitEpoch;
             requestEpoch = connectionUpdateEpoch.incrementAndGet();
         }
-        IpStrategyCoordinator.request(this, initEpoch, requestEpoch, Looper.myLooper() == Looper.getMainLooper());
+        IpStrategyCoordinator.request(this, initEpoch, requestEpoch);
     }
 
     public void discardConnection(int dcId, int connectionType) {
@@ -969,7 +969,7 @@ public class ConnectionsManager extends BaseController {
             initEpoch = nativeInitEpoch;
             requestEpoch = connectionUpdateEpoch.incrementAndGet();
         }
-        IpStrategyCoordinator.request(this, initEpoch, requestEpoch, Looper.myLooper() == Looper.getMainLooper());
+        IpStrategyCoordinator.request(this, initEpoch, requestEpoch);
     }
 
     public void setPushConnectionEnabled(boolean value) {
@@ -1589,13 +1589,12 @@ public class ConnectionsManager extends BaseController {
     private static final class IpSnapshot {
         final long generation;
         final IpFacts facts;
-        final boolean online, fastOnline, slow;
+        final boolean online, slow;
         final int networkType;
-        IpSnapshot(long generation, IpFacts facts, boolean online, boolean fastOnline, int networkType, boolean slow) {
+        IpSnapshot(long generation, IpFacts facts, boolean online, int networkType, boolean slow) {
             this.generation = generation;
             this.facts = facts;
             this.online = online;
-            this.fastOnline = fastOnline;
             this.networkType = networkType;
             this.slow = slow;
         }
@@ -1611,7 +1610,6 @@ public class ConnectionsManager extends BaseController {
         private static final ConnectionsManager[] targets = new ConnectionsManager[UserConfig.MAX_ACCOUNT_COUNT];
         private static final long[] initEpochs = new long[UserConfig.MAX_ACCOUNT_COUNT];
         private static final long[] requestEpochs = new long[UserConfig.MAX_ACCOUNT_COUNT];
-        private static final boolean[] mainRequests = new boolean[UserConfig.MAX_ACCOUNT_COUNT];
         private static volatile IpSnapshot snapshot;
         private static volatile boolean callbackRegistered;
         private static volatile long registrationRetryAt;
@@ -1660,7 +1658,7 @@ public class ConnectionsManager extends BaseController {
             if (changed) queueInvalidation();
         }
 
-        static void request(ConnectionsManager manager, long initEpoch, long requestEpoch, boolean fromMain) {
+        static void request(ConnectionsManager manager, long initEpoch, long requestEpoch) {
             observeNetwork();
             Runnable update = () -> {
                 int account = manager.currentAccount;
@@ -1670,7 +1668,6 @@ public class ConnectionsManager extends BaseController {
                 targets[account] = manager;
                 initEpochs[account] = initEpoch;
                 requestEpochs[account] = requestEpoch;
-                mainRequests[account] = fromMain;
                 observeNetwork();
                 if (!callbackRegistered && !workOutstanding && snapshot != null
                         && SystemClock.elapsedRealtime() >= registrationRetryAt) {
@@ -1714,7 +1711,7 @@ public class ConnectionsManager extends BaseController {
                 if (ready == null) {
                     boolean slow = target.lastNetworkSlow || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
                     synchronized (PUBLICATION_LOCK) {
-                        if (!current(account, target)) continue;
+                        if (!current(account, target) || target.ipAppliedInitEpoch == initEpochs[account]) continue;
                         target.ipAppliedOnline = false;
                         native_setNetworkAvailable(account, false, target.lastNetworkType, slow);
                     }
@@ -1723,7 +1720,7 @@ public class ConnectionsManager extends BaseController {
                 boolean force = target.forceTryIpV6;
                 byte selected = target.getIpStrategy();
                 boolean slow = ready.slow || app.nimarkogram.messenger.AppConfig.slowNetworkMode;
-                boolean online = mainRequests[account] ? ready.fastOnline : ready.online;
+                boolean online = ready.online;
                 if (BuildVars.LOGS_ENABLED) FileLog.d("selected ip strategy " + selected);
                 synchronized (PUBLICATION_LOCK) {
                     if (snapshot != ready || ready.generation != generation.get()
@@ -1763,9 +1760,8 @@ public class ConnectionsManager extends BaseController {
                     try {
                         registerCallback();
                         IpFacts facts = scanInterfaces();
-                        boolean fastOnline = ApplicationLoader.isNetworkOnlineFast();
                         result = new IpSnapshot(requestedGeneration, facts, ApplicationLoader.isNetworkOnlineRealtime(),
-                                fastOnline, ApplicationLoader.getCurrentNetworkType(), ApplicationLoader.isConnectionSlow());
+                                ApplicationLoader.getCurrentNetworkType(), ApplicationLoader.isConnectionSlow());
                     } finally {
                         final IpSnapshot completed = result;
                         UI.post(() -> {

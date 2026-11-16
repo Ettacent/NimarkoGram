@@ -4232,6 +4232,9 @@ void ConnectionsManager::setNetworkAvailable(bool value, int32_t type, bool slow
         if (!networkAvailable) {
             connectionState = ConnectionStateWaitingForNetwork;
         } else {
+            if (connectionState == ConnectionStateWaitingForNetwork) {
+                connectionState = proxyAddress.empty() ? ConnectionStateConnecting : ConnectionStateConnectingViaProxy;
+            }
             for (auto & datacenter : datacenters) {
                 if (datacenter.second->isHandshaking(false)) {
                     datacenter.second->createGenericConnection()->connect();
