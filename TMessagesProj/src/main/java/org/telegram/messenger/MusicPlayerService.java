@@ -353,6 +353,13 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
     }
 
     @SuppressLint("NewApi")
+    private static void addPlaybackAction(java.util.ArrayList<Notification.Action> actions,
+            java.util.ArrayList<Integer> compact, int icon, CharSequence label, PendingIntent intent,
+            boolean inCompactView, boolean isProgress) {
+        if (intent == null && !isProgress) return;
+        if (inCompactView && compact.size() < 3) compact.add(actions.size());
+        actions.add(new Notification.Action.Builder(icon, label, intent).build());
+    }
     private void createNotification(MessageObject messageObject, boolean forBitmap) {
         String contentTitle = messageObject.getMusicTitle();
         String contentText = messageObject.getMusicAuthor();
@@ -380,7 +387,7 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
                 }
             }
         }
-        PendingIntent contentIntent = PendingIntent.getActivity(ApplicationLoader.applicationContext, 0, intent, fixIntentFlags(PendingIntent.FLAG_MUTABLE));
+        PendingIntent contentIntent = TelegramMediaSession.optionalIntent(() -> PendingIntent.getActivity(ApplicationLoader.applicationContext, 0, intent, fixIntentFlags(PendingIntent.FLAG_MUTABLE)));
 
         Notification notification;
         Bitmap albumArt = null;
@@ -436,20 +443,17 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             boolean isPlaying = !MediaController.getInstance().isMessagePaused();
 
-            PendingIntent pendingPrev = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_PREVIOUS).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingStop = PendingIntent.getService(getApplicationContext(), 0, new Intent(this, getClass()).setAction(getPackageName() + ".STOP_PLAYER"), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingPlaypause = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(isPlaying ? NOTIFY_PAUSE : NOTIFY_PLAY).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingNext = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_NEXT).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingSeek = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_SEEK).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingRepeat = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_REPEAT).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
-            PendingIntent pendingShuffle = PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_SHUFFLE).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_CANCEL_CURRENT));
+            PendingIntent pendingPrev = TelegramMediaSession.optionalIntent(() -> PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_PREVIOUS).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
+
+            PendingIntent pendingStop = TelegramMediaSession.optionalIntent(() -> PendingIntent.getService(getApplicationContext(), 0, new Intent(this, getClass()).setAction(getPackageName() + ".STOP_PLAYER"), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
+            PendingIntent pendingPlaypause = TelegramMediaSession.optionalIntent(() -> PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(isPlaying ? NOTIFY_PAUSE : NOTIFY_PLAY).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
+            PendingIntent pendingNext = TelegramMediaSession.optionalIntent(() -> PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_NEXT).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
+            PendingIntent pendingRepeat = TelegramMediaSession.optionalIntent(() -> PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_REPEAT).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
+            PendingIntent pendingShuffle = TelegramMediaSession.optionalIntent(() -> PendingIntent.getBroadcast(getApplicationContext(), 0, new Intent(NOTIFY_SHUFFLE).setComponent(new ComponentName(this, MusicPlayerReceiver.class)), fixIntentFlags(PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT)));
 
             Notification.MediaStyle mediaStyle = new Notification.MediaStyle().setMediaSession((android.media.session.MediaSession.Token) mediaSession.getSessionToken().getToken());
-            if (messageObject.isMusic()) {
-                mediaStyle.setShowActionsInCompactView(0, 1, 2, 3, 4);
-            } else if (messageObject.isVoice() || messageObject.isRoundVideo()) {
-                mediaStyle.setShowActionsInCompactView(0);
-            }
+            java.util.ArrayList<Notification.Action> notificationActions = new java.util.ArrayList<>();
+            java.util.ArrayList<Integer> compactActions = new java.util.ArrayList<>(3);
             Notification.Builder bldr = new Notification.Builder(this);
             bldr.setSmallIcon(R.drawable.player)
                     .setOngoing(isPlaying)
@@ -479,11 +483,11 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
             if (MediaController.getInstance().isDownloadingCurrentMessage()) {
                 playbackState.setState(PlaybackStateCompat.STATE_BUFFERING, 0, 1).setActions(0);
                 if (messageObject.isMusic()) {
-                    bldr.addAction(new Notification.Action.Builder(R.drawable.ic_action_previous, previousDescription, pendingPrev).build());
+                    addPlaybackAction(notificationActions, compactActions, R.drawable.ic_action_previous, previousDescription, pendingPrev, true, false);
                 }
-                bldr.addAction(new Notification.Action.Builder(R.drawable.loading_animation2, LocaleController.getString(R.string.Loading), null).build());
+                addPlaybackAction(notificationActions, compactActions, R.drawable.loading_animation2, LocaleController.getString(R.string.Loading), null, true, true);
                 if (messageObject.isMusic()) {
-                    bldr.addAction(new Notification.Action.Builder(R.drawable.ic_action_next, nextDescription, pendingNext).build());
+                    addPlaybackAction(notificationActions, compactActions, R.drawable.ic_action_next, nextDescription, pendingNext, true, false);
                 }
             } else {
                 long actions = PlaybackStateCompat.ACTION_PLAY_PAUSE | PlaybackStateCompat.ACTION_PLAY | PlaybackStateCompat.ACTION_PAUSE | PlaybackStateCompat.ACTION_SEEK_TO | PlaybackStateCompat.ACTION_SET_REPEAT_MODE | PlaybackStateCompat.ACTION_SET_SHUFFLE_MODE;
@@ -512,21 +516,26 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
                 final String playPauseTitle = isPlaying ? LocaleController.getString(R.string.AccActionPause) : LocaleController.getString(R.string.AccActionPlay);
                 if (messageObject.isMusic()) {
                     int shuffleIcon = SharedConfig.shuffleMusic ? R.drawable.player_new_shuffle : R.drawable.player_new_shuffle_off;
-                    bldr.addAction(new Notification.Action.Builder(shuffleIcon, LocaleController.getString(R.string.ShuffleList), pendingShuffle).build());
-                    bldr.addAction(new Notification.Action.Builder(R.drawable.ic_action_previous, previousDescription, pendingPrev).build());
+                    addPlaybackAction(notificationActions, compactActions, shuffleIcon, LocaleController.getString(R.string.ShuffleList), pendingShuffle, false, false);
+                    addPlaybackAction(notificationActions, compactActions, R.drawable.ic_action_previous, previousDescription, pendingPrev, true, false);
                 }
-                bldr.addAction(new Notification.Action.Builder(isPlaying ? R.drawable.ic_action_pause : R.drawable.ic_action_play, playPauseTitle, pendingPlaypause).build());
+                addPlaybackAction(notificationActions, compactActions, isPlaying ? R.drawable.ic_action_pause : R.drawable.ic_action_play, playPauseTitle, pendingPlaypause, true, false);
                 if (messageObject.isMusic()) {
-                    bldr.addAction(new Notification.Action.Builder(R.drawable.ic_action_next, nextDescription, pendingNext).build());
+                    addPlaybackAction(notificationActions, compactActions, R.drawable.ic_action_next, nextDescription, pendingNext, true, false);
                     int repeatIcon;
                     switch (SharedConfig.repeatMode) {
                         case 1: repeatIcon = R.drawable.player_new_repeatall; break;
                         case 2: repeatIcon = R.drawable.player_new_repeatone; break;
                         default: repeatIcon = R.drawable.player_new_repeat_off; break;
                     }
-                    bldr.addAction(new Notification.Action.Builder(repeatIcon, LocaleController.getString(R.string.RepeatSong), pendingRepeat).build());
+                    addPlaybackAction(notificationActions, compactActions, repeatIcon, LocaleController.getString(R.string.RepeatSong), pendingRepeat, false, false);
                 }
             }
+
+            for (Notification.Action action : notificationActions) bldr.addAction(action);
+            int[] compact = new int[compactActions.size()];
+            for (int n = 0; n < compact.length; n++) compact[n] = compactActions.get(n);
+            mediaStyle.setShowActionsInCompactView(compact);
 
             mediaSession.setPlaybackState(playbackState.build());
             updateRepeatMode();

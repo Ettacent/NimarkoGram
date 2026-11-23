@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 #include "IntroRenderer.h"
 #include <math.h>
 #include <stdlib.h>
@@ -2725,8 +2727,7 @@ JNIEXPORT void Java_org_telegram_messenger_Intro_onSurfaceCreated(JNIEnv *env, j
 
     telegram_sphere = create_textured_rectangle(CSizeMake(150, 150), telegram_sphere_texture);
     telegram_mask = create_textured_rectangle(CSizeMake(200, 150), telegram_mask_texture);
-    telegram_plane = create_textured_rectangle(CSizeMake(82, 74), telegram_plane_texture);
-    telegram_plane.params.anchor = xyzMake(6, -5, 0);
+    telegram_plane = create_textured_rectangle(CSizeMake(100, 100), telegram_plane_texture);
 
     fast_body = create_textured_rectangle(CSizeMake(148, 148), fast_body_texture);
 

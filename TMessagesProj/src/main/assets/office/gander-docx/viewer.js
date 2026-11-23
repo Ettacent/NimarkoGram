@@ -14,6 +14,8 @@
 
   const container = document.getElementById('container');
   const root = document.documentElement;
+  const status = document.getElementById('vw-status');
+  let statusLabels = {};
   const MAX_BYTES = 24 * 1024 * 1024;
   const urls = new Set();
   let paper = null,armInitialReady = null;
@@ -379,10 +381,10 @@
   function fail(code, featureCodes = []) {
     if (!active) return;
     post({ type: 'error', code, renderer: 'gander-docx', fallbackRequired: code === 3, featureCodes });
-    const status = document.getElementById('vw-status');
     status.className = 'vw-status vw-error';
+    status.textContent = (code === 3 ? statusLabels.anotherReader : statusLabels.failed) || '';
+    status.hidden = !status.textContent;
     status.style.display = '';
-    status.textContent = code === 3 ? 'This document needs the original reader.' : 'Could not open this Word document.';
     cancel(false);
   }
   window.vwError = () => {if (active) fail(1);};
@@ -450,6 +452,10 @@
   async function open(message) {
     if (started) return;
     started = active = true;++generation;
+    statusLabels = message.statusLabels || {};
+    status.lang = message.statusLanguage || '';
+    status.textContent = statusLabels.opening || '';
+    status.hidden = !status.textContent;
     paper = OfficeDocxPaper.create({ live: () => active, epoch: () => generation, paused: () => paused || document.hidden,
       source: (image) => active && container.contains(image) ? imageGate.paper(image) : null,
       createURL: (blob) => {const url = createURL(blob);urls.add(url);return url;},

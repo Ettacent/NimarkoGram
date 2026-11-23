@@ -695,7 +695,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             }
         };
         keyboardLinearLayout.addView(slideViewsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 0, 1f));
-        keyboardView = new CustomPhoneKeyboardView(context);
+        keyboardView = new CustomPhoneKeyboardView(context) {
+            @Override public void checkFindEditText() {
+                SlideView page = LoginActivity.this.views[VIEW_PHONE_INPUT];
+                if (page instanceof PhoneView && ((PhoneView) page).bindPhoneKeypad(true) != null) return;
+                super.checkFindEditText();
+            }
+        };
         keyboardView.setViewToFindFocus(slideViewsContainer);
         keyboardLinearLayout.addView(keyboardView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, CustomPhoneKeyboardView.KEYBOARD_HEIGHT_DP));
 
@@ -734,34 +740,18 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         if (savedInstanceState != null) {
             currentViewNum = savedInstanceState.getInt("currentViewNum", 0);
             syncContacts = savedInstanceState.getInt("syncContacts", 1) == 1;
-            if (currentViewNum >= VIEW_CODE_MESSAGE && currentViewNum <= VIEW_CODE_CALL) {
-                int time = savedInstanceState.getInt("open");
-                if (time != 0 && Math.abs(System.currentTimeMillis() / 1000 - time) >= 24 * 60 * 60) {
+            if (currentViewNum != VIEW_PHONE_INPUT && !hasPendingSignInPage(savedInstanceState)) {
                     currentViewNum = VIEW_PHONE_INPUT;
                     savedInstanceState = null;
                     clearCurrentState();
                 }
-            } else if (currentViewNum == VIEW_PASSWORD) {
-                LoginActivityPasswordView view = (LoginActivityPasswordView) views[VIEW_PASSWORD];
-                if (view.currentPassword == null) {
-                    currentViewNum = VIEW_PHONE_INPUT;
-                    savedInstanceState = null;
-                    clearCurrentState();
-                }
-            } else if (currentViewNum == VIEW_RECOVER) {
-                LoginActivityRecoverView view = (LoginActivityRecoverView) views[VIEW_RECOVER];
-                if (view.passwordString == null) {
-                    currentViewNum = VIEW_PHONE_INPUT;
-                    savedInstanceState = null;
-                    clearCurrentState();
-                }
-            }
         }
 
-        floatingButton = new FragmentFloatingButton(context, resourceProvider);
+        floatingButton = createLoginButton(context, resourceProvider);
         floatingButton.setButtonVisible(doneButtonVisible[DONE_TYPE_FLOATING], false);
         floatingAutoAnimator = VerticalPositionAutoAnimator.attach(floatingButton);
-        sizeNotifierFrameLayout.addView(floatingButton, FragmentFloatingButton.createDefaultLayoutParamsBig());
+        sizeNotifierFrameLayout.addView(floatingButton, LayoutHelper.createFrame(56, 56,
+                (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.BOTTOM, 20, 0, 20, 14));
         floatingButton.setOnClickListener(view -> onDoneButtonPressed());
         floatingAutoAnimator.addUpdateListener((animation, value, velocity) -> {
             if (phoneNumberConfirmView != null) {
@@ -877,71 +867,62 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         return /*AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y || AndroidUtilities.isTablet() || */ AndroidUtilities.isAccessibilityTouchExplorationEnabled();
     }
 
+    private static FragmentFloatingButton createLoginButton(Context context, Theme.ResourcesProvider resourcesProvider) {
+        return new FragmentFloatingButton(context, resourcesProvider, Theme.key_featuredStickers_addButton,
+                Theme.key_featuredStickers_addButtonPressed, Theme.key_chats_actionIcon);
+    }
+
+    private boolean animateLoginUi() {
+        return !loginUiDestroyed && SharedConfig.animationsEnabled()
+                && (Build.VERSION.SDK_INT >= 26 ? ValueAnimator.areAnimatorsEnabled()
+                : AndroidUtilities.getAnimatorDurationScale() > 0f);
+    }
     private boolean isCustomKeyboardVisible() {
         return views[currentViewNum].hasCustomKeyboard() && !isCustomKeyboardForceDisabled();
     }
 
     private void setCustomKeyboardVisible(boolean visible, boolean animate) {
-        if (customKeyboardWasVisible == visible && animate) return;
-        customKeyboardWasVisible = visible;
-
-        if (isCustomKeyboardForceDisabled()) {
-            visible = false;
+        if (keyboardView == null) return;
+        final boolean show = visible && !isCustomKeyboardForceDisabled();
+        if (customKeyboardWasVisible == show && animate) return;
+        customKeyboardWasVisible = show;
+        float start = keyboardView.getVisibility() == View.VISIBLE ? keyboardView.getAlpha() : 0f;
+        if (keyboardAnimator != null) {
+            ValueAnimator previous = keyboardAnimator;
+            keyboardAnimator = null;
+            previous.cancel();
         }
-
-        if (visible) {
+        if (show) {
             AndroidUtilities.hideKeyboard(fragmentView);
             AndroidUtilities.requestAltFocusable(getParentActivity(), classGuid);
-            if (animate) {
-                keyboardAnimator = ValueAnimator.ofFloat(0, 1).setDuration(300);
-                keyboardAnimator.setInterpolator(CubicBezierInterpolator.DEFAULT);
-                keyboardAnimator.addUpdateListener(animation -> {
-                    float val = (float) animation.getAnimatedValue();
-                    keyboardView.setAlpha(val);
-                    keyboardView.setTranslationY((1f - val) * AndroidUtilities.dp(CustomPhoneKeyboardView.KEYBOARD_HEIGHT_DP));
-                });
-                keyboardAnimator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationStart(Animator animation) {
-                        keyboardView.setVisibility(View.VISIBLE);
-                    }
-
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        if (keyboardAnimator == animation) {
-                            keyboardAnimator = null;
-                        }
-                    }
-                });
-                keyboardAnimator.start();
-            } else {
-                keyboardView.setVisibility(View.VISIBLE);
-            }
         } else {
             AndroidUtilities.removeAltFocusable(getParentActivity(), classGuid);
-            if (animate) {
-                keyboardAnimator = ValueAnimator.ofFloat(1, 0).setDuration(300);
-                keyboardAnimator.setInterpolator(Easings.easeInOutQuad);
-                keyboardAnimator.addUpdateListener(animation -> {
-                    float val = (float) animation.getAnimatedValue();
-                    keyboardView.setAlpha(val);
-                    keyboardView.setTranslationY((1f - val) * AndroidUtilities.dp(CustomPhoneKeyboardView.KEYBOARD_HEIGHT_DP));
-                });
+        }
+        final float end = show ? 1f : 0f;
+        if (!animate || start == end) {
+            setKeyboardReveal(end);
+            keyboardView.setVisibility(show ? View.VISIBLE : View.GONE);
+            return;
+        }
+        setKeyboardReveal(start);
+        keyboardView.setVisibility(View.VISIBLE);
+        keyboardAnimator = ValueAnimator.ofFloat(start, end).setDuration(Math.max(1, Math.round(300 * Math.abs(end - start))));
+        keyboardAnimator.setInterpolator(show ? CubicBezierInterpolator.DEFAULT : Easings.easeInOutQuad);
+        keyboardAnimator.addUpdateListener(animation -> setKeyboardReveal((float) animation.getAnimatedValue()));
                 keyboardAnimator.addListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        keyboardView.setVisibility(View.GONE);
-
-                        if (keyboardAnimator == animation) {
+            @Override public void onAnimationEnd(Animator animation) {
+                if (keyboardAnimator != animation) return;
                             keyboardAnimator = null;
-                        }
+                setKeyboardReveal(end);
+                keyboardView.setVisibility(show ? View.VISIBLE : View.GONE);
                     }
                 });
                 keyboardAnimator.start();
-            } else {
-                keyboardView.setVisibility(View.GONE);
-            }
-        }
+    }
+
+    private void setKeyboardReveal(float progress) {
+        keyboardView.setAlpha(progress);
+        keyboardView.setTranslationY((1f - progress) * AndroidUtilities.dp(CustomPhoneKeyboardView.KEYBOARD_HEIGHT_DP));
     }
 
     @Override
@@ -1002,7 +983,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
-        setCustomKeyboardVisible(views[currentViewNum].hasCustomKeyboard(), false);
+        setCustomKeyboardVisible(isCustomKeyboardVisible(), false);
         if (phoneNumberConfirmView != null) {
             phoneNumberConfirmView.dismiss();
         }
@@ -1010,21 +991,27 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     @Override
     public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == BasePermissionsActivity.REQUEST_CODE_CALLS) {
+            checkShowPermissions = false;
+            needRequestPermissions = false;
+            if (currentViewNum == VIEW_PHONE_INPUT && views[currentViewNum] instanceof PhoneView) {
+                PhoneView phone = (PhoneView) views[currentViewNum];
+                if (grantResults.length != 0) phone.fillNumber();
+                phone.bindPhoneKeypad(!isPaused() && isLastFragment() && phoneNumberConfirmView == null);
+            }
+            return;
+        }
+        if (requestCode == 6) {
+            boolean completed = permissions.length != 0 && grantResults.length != 0;
+            if (currentViewNum == VIEW_PHONE_INPUT && views[currentViewNum] instanceof PhoneView) {
+                ((PhoneView) views[currentViewNum]).resumeConfirmedNumberAfterPermission(completed);
+            }
+            return;
+        }
         if (permissions.length == 0 || grantResults.length == 0) return;
 
         boolean granted = grantResults[0] == PackageManager.PERMISSION_GRANTED;
-        if (requestCode == 6) {
-            checkPermissions = false;
-            if (currentViewNum == VIEW_PHONE_INPUT) {
-                ((PhoneView)views[currentViewNum]).confirmedNumber = true;
-                views[currentViewNum].onNextPressed(null);
-            }
-        } else if (requestCode == BasePermissionsActivity.REQUEST_CODE_CALLS) {
-            checkShowPermissions = false;
-            if (currentViewNum == VIEW_PHONE_INPUT) {
-                ((PhoneView) views[currentViewNum]).fillNumber();
-            }
-        } else if (requestCode == BasePermissionsActivity.REQUEST_CODE_OPEN_CAMERA) {
+        if (requestCode == BasePermissionsActivity.REQUEST_CODE_OPEN_CAMERA) {
             if (granted) {
                 LoginActivityRegisterView registerView = (LoginActivityRegisterView) views[VIEW_REGISTER];
                 registerView.imageUpdater.openCamera();
@@ -1035,6 +1022,22 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 registerView.post(() -> registerView.imageUpdater.openGallery());
             }
         }
+    }
+
+
+    static boolean hasPendingSignInPage(Bundle state) {
+        if (state == null) return false;
+        final int page = state.getInt("currentViewNum", VIEW_PHONE_INPUT);
+        if (page <= VIEW_PHONE_INPUT || page > VIEW_PAY) return false;
+        if (page >= VIEW_CODE_MESSAGE && page <= VIEW_CODE_CALL) {
+            int time = state.getInt("open");
+            return time == 0 || Math.abs(System.currentTimeMillis() / 1000 - time) < 24 * 60 * 60;
+        }
+        if (page == VIEW_PASSWORD || page == VIEW_RECOVER) {
+            Bundle params = state.getBundle(page == VIEW_PASSWORD ? "passview_params" : "recoveryview_params");
+            return params != null && !TextUtils.isEmpty(params.getString("password"));
+        }
+        return true;
     }
 
     public static Bundle loadCurrentState(boolean newAccount, int currentAccount) {
@@ -1114,18 +1117,31 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
     @Override
     protected void onDialogDismiss(Dialog dialog) {
         if (Build.VERSION.SDK_INT >= 23) {
-            if (dialog == permissionsDialog && !permissionsItems.isEmpty() && getParentActivity() != null) {
+            if (dialog != null && dialog == permissionsDialog) {
+                permissionsDialog = null;
+                if (loginUiDestroyed || currentViewNum != VIEW_PHONE_INPUT || !(views[currentViewNum] instanceof PhoneView) ||
+                        permissionsItems.isEmpty() || getParentActivity() == null) return;
+                PhoneView phone = (PhoneView) views[currentViewNum];
+                if (phone.confirmedForPermission == null || !phone.confirmedForPermission.equals(phone.enteredDigits())) return;
                 try {
                     getParentActivity().requestPermissions(permissionsItems.toArray(new String[0]), 6);
                 } catch (Exception ignore) {
 
+                    phone.confirmedForPermission = null;
                 }
-            } else if (dialog == permissionsShowDialog && !permissionsShowItems.isEmpty() && getParentActivity() != null) {
-                AndroidUtilities.runOnUIThread(() -> needRequestPermissions = false, 200);
+            } else if (dialog != null && dialog == permissionsShowDialog) {
+                permissionsShowDialog = null;
+                needRequestPermissions = false;
+                checkShowPermissions = false;
+                if (!permissionsShowItems.isEmpty() && getParentActivity() != null) {
                 try {
-                    getParentActivity().requestPermissions(permissionsShowItems.toArray(new String[0]), 7);
+                        getParentActivity().requestPermissions(permissionsShowItems.toArray(new String[0]), BasePermissionsActivity.REQUEST_CODE_CALLS);
                 } catch (Exception ignore) {
 
+                        if (currentViewNum == VIEW_PHONE_INPUT && views[currentViewNum] instanceof PhoneView) {
+                            ((PhoneView) views[currentViewNum]).bindPhoneKeypad(!isPaused() && isLastFragment());
+                        }
+                    }
                 }
             }
         }
@@ -1601,7 +1617,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             newView.setParams(params, false);
             setParentActivityTitle(newView.getHeaderName());
             newView.onShow();
-            newView.setX(back ? -AndroidUtilities.displaySize.x : AndroidUtilities.displaySize.x);
+            newView.setTranslationX(back ? -AndroidUtilities.displaySize.x : AndroidUtilities.displaySize.x);
             newView.setVisibility(View.VISIBLE);
 
             final AnimatorSet animation = new AnimatorSet();
@@ -1618,7 +1634,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }
                     outView.setVisibility(View.GONE);
                     outView.onHide();
-                    outView.setX(0);
+                    outView.setTranslationX(0f);
+                    newView.setTranslationX(0f);
                 }
             });
             animation.playTogether(
@@ -1633,8 +1650,10 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             backButtonView.setVisibility(views[page].needBackButton() || newAccount ? View.VISIBLE : View.GONE);
             views[currentViewNum].setVisibility(View.GONE);
             views[currentViewNum].onHide();
+            views[currentViewNum].setTranslationX(0f);
             currentViewNum = page;
             views[page].setParams(params, false);
+            views[page].setTranslationX(0f);
             views[page].setVisibility(View.VISIBLE);
             setParentActivityTitle(views[page].getHeaderName());
             views[page].onShow();
@@ -1818,13 +1837,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             // fresh install gets a verified credential BEFORE its short login-grace window runs out. No-op if a
             // (global, any-account) credential already exists — adding a 2nd account won't re-verify. Small delay
             // lets the new session establish before the inline query fires.
-            final int nmAcc = account;
-        AndroidUtilities.runOnUIThread(() ->
-                app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(nmAcc), 3500);
-        // VoIP uses a separate bot/token/credential. Previously only the data-WS credential was warmed here,
-        // so the first call after a fresh login silently went direct until restart or a settings-toggle tap.
-        AndroidUtilities.runOnUIThread(() ->
-                app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(nmAcc), 5000);
+            app.nimarkogram.messenger.distribution.ClientRelays.onLogin(account);
 
             user = res.user;
         }
@@ -2804,7 +2817,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         return;
                     }
                     TLRPC.TL_nearestDc res = (TLRPC.TL_nearestDc) response;
-                    if (codeField.length() == 0) {
+                    if (!loginUiDestroyed && codeField.length() == 0 && phoneField.length() == 0 && !TextUtils.isEmpty(res.country)) {
                         setCountry(languageMap, res.country.toUpperCase());
                     }
                 }), ConnectionsManager.RequestFlagWithoutLogin | ConnectionsManager.RequestFlagFailOnServerErrors);
@@ -3113,50 +3126,35 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 return;
             }
             cancelAutoLogin();
-            String phoneNumber = "+" + codeField.getText() + " " + phoneField.getText();
             if (!confirmedNumber) {
+                if (phoneNumberConfirmView != null) return;
                 if (AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y && !isCustomKeyboardVisible() && sizeNotifierFrameLayout.measureKeyboardHeight() > AndroidUtilities.dp(20)) {
                     keyboardHideCallback = () -> postDelayed(()-> onNextPressed(code), 200);
                     AndroidUtilities.hideKeyboard(fragmentView);
                     return;
                 }
 
-                phoneNumberConfirmView = new PhoneNumberConfirmView(fragmentView.getContext(), (ViewGroup) fragmentView, floatingButton, phoneNumber, new PhoneNumberConfirmView.IConfirmDialogCallback() {
-                    @Override
-                    public void onFabPressed(PhoneNumberConfirmView confirmView, TransformableLoginButtonView fab) {
-                        onConfirm(confirmView);
-                    }
+                showNumberConfirmation(code);
+                return;
+            } else confirmedNumber = false;
 
-                    @Override
-                    public void onEditPressed(PhoneNumberConfirmView confirmView, TextView editTextView) {
-                        confirmView.dismiss();
-                    }
 
-                    @Override
-                    public void onConfirmPressed(PhoneNumberConfirmView confirmView, TextView confirmTextView) {
-                        onConfirm(confirmView);
-                    }
+            if (phoneNumberConfirmView != null) {
+                phoneNumberConfirmView.dismiss();
+            }
 
-                    @Override
-                    public void onDismiss(PhoneNumberConfirmView confirmView) {
-                        phoneNumberConfirmView = null;
-                    }
+            boolean simcardAvailable = AndroidUtilities.isSimAvailable();
+            boolean allowCall = true;
+            boolean allowCancelCall = true;
+            boolean allowReadCallLog = true;
+            boolean allowReadPhoneNumbers = true;
 
-                    private void onConfirm(PhoneNumberConfirmView confirmView) {
-                        confirmedNumber = true;
-                        currentDoneType = DONE_TYPE_FLOATING;
-                        needShowProgress(0, false);
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && AndroidUtilities.isSimAvailable()) {
-                            boolean allowCall = getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
-                            boolean allowCancelCall = getParentActivity().checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED;
-                            boolean allowReadCallLog = Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getParentActivity().checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
-                            boolean allowReadPhoneNumbers = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED;;
-                            if (codeField != null && "888".equals(codeField.getText())) {
-                                allowCall = true;
-                                allowCancelCall = true;
-                                allowReadCallLog = true;
-                                allowReadPhoneNumbers = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && simcardAvailable) {
+                allowCall = getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
+                allowCancelCall = getParentActivity().checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED;
+                allowReadCallLog = Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getParentActivity().checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    allowReadPhoneNumbers = getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED;
                             }
                             if (checkPermissions) {
                                 permissionsItems.clear();
@@ -3173,6 +3171,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                                     permissionsItems.add(Manifest.permission.READ_PHONE_NUMBERS);
                                 }
                                 if (!permissionsItems.isEmpty()) {
+                        confirmedForPermission = enteredDigits();
                                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                                     if (preferences.getBoolean("firstlogin", true) || getParentActivity().shouldShowRequestPermissionRationale(Manifest.permission.READ_PHONE_STATE) || getParentActivity().shouldShowRequestPermissionRationale(Manifest.permission.READ_CALL_LOG)) {
                                         preferences.edit().putBoolean("firstlogin", false).commit();
@@ -3192,88 +3191,12 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                                         }
                                         builder.setTopAnimation(resId, 46, false, Theme.getColor(Theme.key_dialogTopBackground)); builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
                                         permissionsDialog = showDialog(builder.create());
-                                        confirmedNumber = true;
+                            if (permissionsDialog == null) confirmedForPermission = null;
                                     } else {
                                         try {
                                             getParentActivity().requestPermissions(permissionsItems.toArray(new String[0]), 6);
                                         } catch (Exception e) {
-                                            FileLog.e(e);
-                                        }
-                                    }
-                                    return;
-                                }
-                            }
-                        }
-
-                        confirmView.animateProgress(()->{
-                            confirmView.dismiss();
-                            AndroidUtilities.runOnUIThread(()-> {
-                                onNextPressed(code);
-                                floatingButton.progressView.sync(confirmView.fabButton.progressView);
-                            }, 150);
-                        });
-                    }
-                });
-                phoneNumberConfirmView.show();
-                return;
-            } else confirmedNumber = false;
-
-            if (phoneNumberConfirmView != null) {
-                phoneNumberConfirmView.dismiss();
-            }
-
-            boolean simcardAvailable = AndroidUtilities.isSimAvailable();
-            boolean allowCall = true;
-            boolean allowCancelCall = true;
-            boolean allowReadCallLog = true;
-            boolean allowReadPhoneNumbers = true;
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && simcardAvailable) {
-                allowCall = getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED;
-                allowCancelCall = getParentActivity().checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED;
-                allowReadCallLog = Build.VERSION.SDK_INT < Build.VERSION_CODES.P || getParentActivity().checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    allowReadPhoneNumbers = getParentActivity().checkSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED;
-                }
-                if (checkPermissions) {
-                    permissionsItems.clear();
-                    if (!allowCall) {
-                        permissionsItems.add(Manifest.permission.READ_PHONE_STATE);
-                    }
-                    if (!allowCancelCall) {
-                        permissionsItems.add(Manifest.permission.CALL_PHONE);
-                    }
-                    if (!allowReadCallLog) {
-                        permissionsItems.add(Manifest.permission.READ_CALL_LOG);
-                    }
-                    if (!allowReadPhoneNumbers && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        permissionsItems.add(Manifest.permission.READ_PHONE_NUMBERS);
-                    }
-                    if (!permissionsItems.isEmpty()) {
-                        SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                        if (preferences.getBoolean("firstlogin", true) || getParentActivity().shouldShowRequestPermissionRationale(Manifest.permission.READ_PHONE_STATE) || getParentActivity().shouldShowRequestPermissionRationale(Manifest.permission.READ_CALL_LOG)) {
-                            preferences.edit().putBoolean("firstlogin", false).commit();
-                            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-
-                            builder.setPositiveButton(getString("Continue", R.string.Continue), null);
-                            int resId;
-                            if (!allowCall && (!allowCancelCall || !allowReadCallLog)) {
-                                builder.setMessage(getString("AllowReadCallAndLog", R.string.AllowReadCallAndLog));
-                                resId = R.raw.calls_log;
-                            } else if (!allowCancelCall || !allowReadCallLog) {
-                                builder.setMessage(getString("AllowReadCallLog", R.string.AllowReadCallLog));
-                                resId = R.raw.calls_log;
-                            } else {
-                                builder.setMessage(getString("AllowReadCall", R.string.AllowReadCall));
-                                resId = R.raw.incoming_calls;
-                            }
-                            builder.setTopAnimation(resId, 46, false, Theme.getColor(Theme.key_dialogTopBackground)); builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
-                            permissionsDialog = showDialog(builder.create());
-                            confirmedNumber = true;
-                        } else {
-                            try {
-                                getParentActivity().requestPermissions(permissionsItems.toArray(new String[0]), 6);
-                            } catch (Exception e) {
+                                confirmedForPermission = null;
                                 FileLog.e(e);
                             }
                         }
@@ -3491,9 +3414,101 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             needShowProgress(reqId);
         }
 
+        private String confirmedForPermission;
+        private String enteredDigits() {
+            return PhoneFormat.stripExceptNumbers(codeField.getText().toString() + phoneField.getText());
+        }
+
+        private void resumeConfirmedNumberAfterPermission(boolean completed) {
+            String expected = confirmedForPermission;
+            confirmedForPermission = null;
+            confirmedNumber = completed && expected != null && !loginUiDestroyed && phonePageVisible &&
+                    getParentActivity() != null && isLastFragment() && expected.equals(enteredDigits());
+            if (confirmedNumber) {
+                checkPermissions = false;
+                onNextPressed(null);
+            }
+        }
+
+        private EditText bindPhoneKeypad(boolean requestFocus) {
+            if (loginUiDestroyed || !phonePageVisible || currentViewNum != VIEW_PHONE_INPUT ||
+                    views[VIEW_PHONE_INPUT] != this || keyboardView == null) return null;
+            boolean useNationalNumber = phoneField.isFocused() || !codeField.isFocused() &&
+                    codeField.length() != 0 && countryState == COUNTRY_STATE_NOT_SET_OR_VALID;
+            EditText target = useNationalNumber ? phoneField : codeField;
+            if (requestFocus && !target.isFocused()) target.requestFocus();
+            if (target.getSelectionStart() < 0 || target.getSelectionEnd() < 0) target.setSelection(target.length());
+            keyboardView.setEditText(target);
+            keyboardView.setDispatchBackWhenEmpty(target == phoneField);
+            return target;
+        }
+
+        private PhoneNumberConfirmView showNumberConfirmation(String code) {
+            final String number = "+" + codeField.getText() + " " + phoneField.getText();
+            PhoneNumberConfirmView confirmation = new PhoneNumberConfirmView(fragmentView.getContext(), (ViewGroup) fragmentView,
+                    floatingButton, number, new PhoneNumberConfirmView.IConfirmDialogCallback() {
+                @Override public void onFabPressed(PhoneNumberConfirmView view, TransformableLoginButtonView fab) { confirm(view); }
+                @Override public void onConfirmPressed(PhoneNumberConfirmView view, TextView text) { confirm(view); }
+                @Override public void onEditPressed(PhoneNumberConfirmView view, TextView text) {
+                    if (phoneNumberConfirmView != view) return;
+                    view.dismiss();
+                }
+                @Override public void onDismiss(PhoneNumberConfirmView view) {
+                    if (phoneNumberConfirmView == view) phoneNumberConfirmView = null;
+                }
+
+                private void confirm(PhoneNumberConfirmView view) {
+                    if (phoneNumberConfirmView != view || nextPressed || loginUiDestroyed ||
+                            currentViewNum != VIEW_PHONE_INPUT || views[VIEW_PHONE_INPUT] != PhoneView.this) return;
+                    if (!phonePageVisible) return;
+                    if (!PhoneFormat.stripExceptNumbers(number).equals(enteredDigits())) {
+                        view.dismissImmediately();
+                        return;
+                    }
+                    handOffConfirmedNumber(view, () -> {
+                        confirmedNumber = true;
+                        currentDoneType = DONE_TYPE_FLOATING;
+                        onNextPressed(code);
+                    });
+                }
+            });
+            phoneNumberConfirmView = confirmation;
+            confirmation.show(animateLoginUi());
+            return confirmation;
+        }
+
+        private void handOffConfirmedNumber(PhoneNumberConfirmView view, Runnable submit) {
+            if (view.confirming) return;
+            view.confirming = true;
+            final boolean animate = animateLoginUi();
+            final long generation = autoLoginGeneration;
+            final String number = enteredDigits();
+            java.util.function.BooleanSupplier current = () -> !loginUiDestroyed && !isPaused() &&
+                    isLastFragment() && phonePageVisible && !nextPressed && currentViewNum == VIEW_PHONE_INPUT &&
+                    views[VIEW_PHONE_INPUT] == this && generation == autoLoginGeneration && number.equals(enteredDigits());
+            view.fabButton.setProgressVisible(true, animate);
+            Runnable dismiss = () -> {
+                if (phoneNumberConfirmView != view) return;
+                view.dismiss();
+                if (!current.getAsBoolean()) return;
+                Runnable handoff = () -> {
+                    if (phoneNumberConfirmView != null || !current.getAsBoolean()) return;
+                    submit.run();
+                    if (animate) floatingButton.progressView.sync(view.fabButton.progressView);
+                };
+                if (animate) AndroidUtilities.runOnUIThread(handoff, 150);
+                else handoff.run();
+            };
+            if (animate) AndroidUtilities.runOnUIThread(dismiss, 400);
+            else dismiss.run();
+        }
         private boolean numberFilled;
         public void fillNumber() {
-            if (numberFilled || activityMode != MODE_LOGIN) {
+            if (numberFilled || needRequestPermissions || activityMode != MODE_LOGIN) {
+                return;
+            }
+            if (phoneField.length() != 0) {
+                numberFilled = true;
                 return;
             }
             try {
@@ -3517,16 +3532,17 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             if (!permissionsShowItems.isEmpty()) {
                                 List<String> callbackPermissionItems = new ArrayList<>(permissionsShowItems);
                                 Runnable r = () -> {
+                                    if (phoneField.length() != 0 || loginUiDestroyed) return;
                                     SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                                     if (preferences.getBoolean("firstloginshow", true) || getParentActivity().shouldShowRequestPermissionRationale(Manifest.permission.READ_PHONE_STATE)) {
-                                        preferences.edit().putBoolean("firstloginshow", false).commit();
                                         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
 
                                         builder.setTopAnimation(R.raw.incoming_calls, 46, false, Theme.getColor(Theme.key_dialogTopBackground)); builder.setTopBackgroundColorKey(Theme.key_dialogTopBackground, null);
                                         builder.setPositiveButton(getString("Continue", R.string.Continue), null);
                                         builder.setMessage(getString("AllowFillNumber", R.string.AllowFillNumber));
                                         permissionsShowDialog = showDialog(builder.create(), true, null);
-                                        needRequestPermissions = true;
+                                        needRequestPermissions = permissionsShowDialog != null;
+                                        if (needRequestPermissions) preferences.edit().putBoolean("firstloginshow", false).apply();
                                     } else {
                                         getParentActivity().requestPermissions(callbackPermissionItems.toArray(new String[0]), BasePermissionsActivity.REQUEST_CODE_CALLS);
                                     }
@@ -3542,8 +3558,6 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     }
                     numberFilled = true;
                     if (!newAccount && allowCall && allowReadPhoneNumbers) {
-                        codeField.setAlpha(0);
-                        phoneField.setAlpha(0);
 
                         String number = PhoneFormat.stripExceptNumbers(tm.getLine1Number());
                         String textToSet = null;
@@ -3593,16 +3607,13 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                             }
                         }
 
-                        if (phoneField.length() > 0) {
+                        if (textToSet != null && phoneField.length() > 0) {
                             AnimatorSet set = new AnimatorSet().setDuration(300);
-                            set.playTogether(ObjectAnimator.ofFloat(codeField, View.ALPHA, 1f),
-                                    ObjectAnimator.ofFloat(phoneField, View.ALPHA, 1f));
+                            set.playTogether(ObjectAnimator.ofFloat(codeField, View.ALPHA, 0f, 1f),
+                                    ObjectAnimator.ofFloat(phoneField, View.ALPHA, 0f, 1f));
                             set.start();
 
                             confirmedNumber = true;
-                        } else {
-                            codeField.setAlpha(1);
-                            phoneField.setAlpha(1);
                         }
                     }
                 }
@@ -3615,6 +3626,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         public void onShow() {
             super.onShow();
             phonePageVisible = true;
+            bindPhoneKeypad(!needRequestPermissions && phoneNumberConfirmView == null);
+            if (nextPressed) return;
             final long generation = autoLoginGeneration;
             final int account = currentAccount;
             fillNumber();
@@ -3622,7 +3635,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                 syncContactsBox.setChecked(syncContacts, false);
             }
             AndroidUtilities.runOnUIThread(() -> {
-                if (!isAutoLoginOwner(generation, account)) {
+                if (generation != autoLoginGeneration || account != currentAccount || !canStartAutoLogin()) {
                     return;
                 }
                 if (phoneField != null) {
@@ -3630,16 +3643,8 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                         codeField.clearFocus();
                         phoneField.clearFocus();
                     } else {
-                        if (codeField.length() != 0) {
-                            phoneField.requestFocus();
-                            if (!numberFilled) {
-                                phoneField.setSelection(phoneField.length());
-                            }
-                            showKeyboard(phoneField);
-                        } else {
-                            codeField.requestFocus();
-                            showKeyboard(codeField);
-                        }
+                        EditText target = bindPhoneKeypad(true);
+                        if (target != null) showKeyboard(target);
                     }
                 }
                 if (activityMode == MODE_LOGIN) {
@@ -3652,6 +3657,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
         public void onHide() {
             super.onHide();
             phonePageVisible = false;
+            confirmedForPermission = null;
             cancelAutoLogin();
             requestedFpnv = false;
         }
@@ -3661,6 +3667,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             super.onDestroyActivity();
             fpnvDestroyed = true;
             phonePageVisible = false;
+            confirmedForPermission = null;
             cancelAutoLogin();
         }
 
@@ -9319,6 +9326,10 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         private boolean dismissed;
 
+        private boolean animateTransitions = true;
+        private boolean confirming;
+        private float confirmationProgress;
+        private ValueAnimator showAnimation;
         private PhoneNumberConfirmView(@NonNull Context context, ViewGroup fragmentView, View fabContainer, String numberText, IConfirmDialogCallback callback) {
             super(context);
 
@@ -9327,7 +9338,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             this.callback = callback;
 
             blurredView = new View(getContext());
-            blurredView.setOnClickListener(v -> dismiss());
+            blurredView.setOnClickListener(v -> callback.onEditPressed(this, editTextView));
             addView(blurredView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
             dimmView = new View(getContext());
@@ -9340,7 +9351,7 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             fabTransform.setDrawBackground(false);
 
 
-            fabButton = new FragmentFloatingButton(context, null);
+            fabButton = createLoginButton(context, null);
             fabButton.addView(fabTransform, LayoutHelper.createFrame(56, 56, Gravity.CENTER));
             fabButton.addAdditionalView(fabTransform);
             fabButton.setOnClickListener(v -> callback.onFabPressed(this, fabTransform));
@@ -9393,10 +9404,14 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
         private final PointF pointF = new PointF();
         private void updateFabPosition() {
+            positionFab();
+            requestLayout();
+        }
+
+        private void positionFab() {
             ViewPositionWatcher.computeCoordinatesInParent(fabContainer, fragmentView, pointF);
             fabButton.setTranslationX(pointF.x);
             fabButton.setTranslationY(pointF.y);
-            requestLayout();
         }
 
         private int popupLayoutColor;
@@ -9427,17 +9442,15 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
             popupLayout.layout(popupLayout.getLeft(), popupBottom - height, popupLayout.getRight(), popupBottom);
         }
 
-        private void show() {
-            ValueAnimator anim = ValueAnimator.ofFloat(0, 1).setDuration(250);
-            anim.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationStart(Animator animation) {
+        private void show(boolean animated) {
+            animateTransitions = animated;
                     fabContainer.setVisibility(GONE);
 
                     // TODO: Generify this code, currently it's a clone
                     float scaleFactor = 10;
                     int w = (int) (fragmentView.getMeasuredWidth() / scaleFactor);
                     int h = (int) (fragmentView.getMeasuredHeight() / scaleFactor);
+            if (w > 0 && h > 0) {
                     Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                     Canvas canvas = new Canvas(bitmap);
                     canvas.scale(1.0f / scaleFactor, 1.0f / scaleFactor);
@@ -9445,66 +9458,95 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
                     fragmentView.draw(canvas);
                     Utilities.stackBlurBitmap(bitmap, Math.max(8, Math.max(w, h) / 150));
                     blurredView.setBackground(new BitmapDrawable(getContext().getResources(), bitmap));
-                    blurredView.setAlpha(0.0f);
+            } else {
+                blurredView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            }
                     blurredView.setVisibility(View.VISIBLE);
 
-                    fragmentView.addView(PhoneNumberConfirmView.this);
-                }
+            setConfirmationProgress(animated ? 0f : 1f);
+            fragmentView.addView(this);
+            if (!animated) {
+                focusConfirmation();
+                return;
+            }
+            ValueAnimator anim = ValueAnimator.ofFloat(0, 1).setDuration(250);
+            showAnimation = anim;
+            anim.addListener(new AnimatorListenerAdapter() {
 
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (AndroidUtilities.isAccessibilityTouchExplorationEnabled()) {
-                        fabButton.requestFocus();
-                    }
+                    if (showAnimation == animation) showAnimation = null;
+                    focusConfirmation();
                 }
             });
-            anim.addUpdateListener(animation -> {
-                float val = (float) animation.getAnimatedValue();
-                fabTransform.setProgress(val);
-                blurredView.setAlpha(val);
-                dimmView.setAlpha(val);
-
-                popupLayout.setAlpha(val);
-                float scale = 0.5f + val * 0.5f;
-                popupLayout.setScaleX(scale);
-                popupLayout.setScaleY(scale);
-            });
+            anim.addUpdateListener(animation -> setConfirmationProgress((float) animation.getAnimatedValue()));
             anim.setInterpolator(CubicBezierInterpolator.DEFAULT);
             anim.start();
         }
 
-        private void animateProgress(Runnable callback) {
-            fabButton.setProgressVisible(true, true);
-            AndroidUtilities.runOnUIThread(callback, 400);
+        private void focusConfirmation() {
+            if (!dismissed && AndroidUtilities.isAccessibilityTouchExplorationEnabled()) {
+                        fabButton.requestFocus();
+                    }
+                }
+        private void setConfirmationProgress(float progress) {
+            confirmationProgress = progress;
+            fabTransform.setProgress(progress);
+            blurredView.setAlpha(progress);
+            dimmView.setAlpha(progress);
+            popupLayout.setAlpha(progress);
+            float scale = 0.5f + progress * 0.5f;
+                popupLayout.setScaleX(scale);
+                popupLayout.setScaleY(scale);
+        }
+
+        private void stopConfirmationEntry() {
+            if (showAnimation == null) return;
+            showAnimation.removeAllListeners();
+            showAnimation.removeAllUpdateListeners();
+            showAnimation.cancel();
+            showAnimation = null;
+        }
+
+        private void dismissImmediately() {
+            if (dismissed) return;
+            dismissed = true;
+            stopConfirmationEntry();
+            callback.onDismiss(this);
+            finishDismiss();
+        }
+
+        private void finishDismiss() {
+            AndroidUtilities.removeFromParent(this);
+            for (int i = 0; i < fragmentView.getChildCount(); i++) {
+                View child = fragmentView.getChildAt(i);
+                if (child instanceof PhoneNumberConfirmView && ((PhoneNumberConfirmView) child).fabContainer == fabContainer) {
+                    return;
+                }
+            }
+            fabContainer.setVisibility(VISIBLE);
         }
 
         private void dismiss() {
             if (dismissed) return;
+            if (!animateTransitions || confirmationProgress <= 0f || !isAttachedToWindow()) {
+                dismissImmediately();
+                return;
+            }
             dismissed = true;
 
+            stopConfirmationEntry();
             callback.onDismiss(this);
 
-            ValueAnimator anim = ValueAnimator.ofFloat(1, 0).setDuration(250);
+            ValueAnimator anim = ValueAnimator.ofFloat(confirmationProgress, 0)
+                    .setDuration(Math.max(90, Math.round(250 * confirmationProgress)));
             anim.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
-                    if (getParent() instanceof ViewGroup) {
-                        ((ViewGroup) getParent()).removeView(PhoneNumberConfirmView.this);
-                    }
-                    fabContainer.setVisibility(VISIBLE);
+                    finishDismiss();
                 }
             });
-            anim.addUpdateListener(animation -> {
-                float val = (float) animation.getAnimatedValue();
-                blurredView.setAlpha(val);
-                dimmView.setAlpha(val);
-                fabTransform.setProgress(val);
-                popupLayout.setAlpha(val);
-
-                float scale = 0.5f + val * 0.5f;
-                popupLayout.setScaleX(scale);
-                popupLayout.setScaleY(scale);
-            });
+            anim.addUpdateListener(animation -> setConfirmationProgress((float) animation.getAnimatedValue()));
             anim.setInterpolator(CubicBezierInterpolator.DEFAULT);
             anim.start();
         }

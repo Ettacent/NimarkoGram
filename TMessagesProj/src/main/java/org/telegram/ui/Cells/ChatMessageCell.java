@@ -276,11 +276,11 @@ import me.vkryl.core.BitwiseUtils;
 
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
 import app.nimarkogram.messenger.icons.IconResources;
-import app.nimarkogram.messenger.plugins.xposed.PluginHookBypassTarget;
+import app.nimarkogram.messenger.distribution.ClientHookTarget;
 
 public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate, ImageReceiver.ImageReceiverDelegate,
         DownloadController.FileDownloadProgressListener, TextSelectionHelper.SelectableView,
-        NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target, IMessageCell, ItemOptions.ScrimView, PluginHookBypassTarget, AnimatedEmojiSpan.AccountProvider {
+        NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target, IMessageCell, ItemOptions.ScrimView, ClientHookTarget, AnimatedEmojiSpan.AccountProvider {
     @Override
     public int getEmojiAccount() {
         return currentAccount;
@@ -1406,6 +1406,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     LinkSpanDrawable pressedLink;
     MessageObject.TextLayoutBlock pressedCopyCode;
     int pressedBlock = -1;
+    private MessageObject.TextLayoutBlock pressedQuoteBlock;
+    private MessageObject pressedQuoteOwner;
+    private boolean pressedQuoteCaption;
+    private boolean quoteGestureCanceled;
+    private int pressedQuotePointer;
+    private float pressedQuoteX, pressedQuoteY;
     public LinkSpanDrawable.LinkCollector links = new LinkSpanDrawable.LinkCollector(this);
     int pressedLinkType;
     private ArrayList<LinkPath> urlPathCache = new ArrayList<>();
@@ -2525,6 +2531,136 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return currentMessageObject.type == MessageObject.TYPE_ARTICLE && layout != null
             && layout.blocks.size() == 1 && layout.blocks.get(0) instanceof RichWidgetBlock;
     }
+    private void clearQuoteGesture() {
+        if (pressedQuoteBlock == null) return;
+        ButtonBounce bounce = pressedQuoteBlock.collapsedBounce;
+        if (bounce != null && bounce.getView() == this) bounce.setPressed(false);
+        pressedQuoteBlock = null;
+        pressedQuoteOwner = null;
+        quoteGestureCanceled = false;
+        pressedBlock = -1;
+        cancelCheckLongPress();
+    }
+
+    private float getTextBlockRight(boolean compact) {
+        if (compact) return getCompactRight();
+        float right;
+        if (currentMessagesGroup == null || currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_RIGHT) != 0) {
+            right = getBackgroundDrawableRight() + transitionParams.deltaRight;
+        } else {
+            int end, dWidth;
+            if (AndroidUtilities.isTablet()) {
+                dWidth = AndroidUtilities.getMinTabletSide();
+            } else {
+                dWidth = getParentWidth();
+            }
+            int firstLineWidth = 0;
+            for (int a = 0; a < currentMessagesGroup.posArray.size(); a++) {
+                MessageObject.GroupedMessagePosition position = currentMessagesGroup.posArray.get(a);
+                if (position.minY == 0) {
+                    firstLineWidth += Math.ceil((position.pw + position.leftSpanOffset) / 1000.0f * dWidth);
+                } else {
+                    break;
+                }
+            }
+            if (!mediaBackground && currentMessageObject.isOutOwner()) {
+                end = backgroundDrawableLeft + firstLineWidth - dp(6);
+            } else {
+                end = backgroundDrawableLeft + firstLineWidth;
+            }
+            end -= getExtraTextX() + dp(8 + (isAvatarVisible ? 48 : 0));
+            right = end;
+        }
+        right -= dp(10 + (currentMessageObject.isOutOwner() && !mediaBackground && !drawPinnedBottom ? 6 : 0)) + getExtraTextX();
+        return right;
+    }
+
+    private static int getTextBlockWidth(MessageObject.TextLayoutBlock block, float maxWidth) {
+        return (int) (block.maxRight + dp(24) > maxWidth * .7f ? maxWidth : block.maxRight + dp(24));
+    }
+
+    private int quoteAt(ArrayList<MessageObject.TextLayoutBlock> blocks, float x, float y, float originX) {
+        if (blocks == null || x < 0 || y < 0) return -1;
+        int bottom = 0;
+        for (int i = 0; i < blocks.size(); i++) {
+            MessageObject.TextLayoutBlock block = blocks.get(i);
+            bottom += block.padTop + block.height(transitionParams) + block.padBottom;
+            if (y < bottom) {
+                return block.quoteCollapse && block.collapsedHeight < block.height
+                        && x <= getTextBlockWidth(block, getTextBlockRight(isCompactIn()) - originX) ? i : -1;
+            }
+        }
+        return -1;
+    }
+
+    private boolean checkQuoteGesture(MotionEvent event, boolean caption) {
+        final int action = event.getActionMasked();
+        if (action != MotionEvent.ACTION_DOWN && (pressedQuoteBlock == null || pressedQuoteCaption != caption)) return false;
+        if (action == MotionEvent.ACTION_CANCEL || event.getPointerCount() != 1
+                || currentMessageObject == null || caption && (captionLayout == null || touchedByExpanation)) {
+            boolean claimed = pressedQuoteBlock != null;
+            clearQuoteGesture();
+            return claimed;
+        }
+        if (action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_MOVE && action != MotionEvent.ACTION_UP) return false;
+        final float x = getEventX(event), y = getEventY(event);
+        final ArrayList<MessageObject.TextLayoutBlock> blocks = caption ? captionLayout.textLayoutBlocks : currentMessageObject.textLayoutBlocks;
+        final float originX = caption ? captionX : textX, originY = caption ? captionY : textY;
+        final int hit = pressedLink != null ? -1 : quoteAt(blocks, x - originX, y - originY, originX);
+        final MessageObject.TextLayoutBlock block = hit < 0 ? null : blocks.get(hit);
+        final MessageObject owner = block == null ? null :
+                !caption && block.messageObject != null ? block.messageObject : getPrimaryMessageObject();
+        if (action == MotionEvent.ACTION_DOWN) {
+            clearQuoteGesture();
+            if (block == null || owner == null) return false;
+            pressedBlock = hit;
+            pressedQuoteBlock = block;
+            pressedQuoteOwner = owner;
+            pressedQuoteCaption = caption;
+            pressedQuotePointer = event.getPointerId(0);
+            pressedQuoteX = x;
+            pressedQuoteY = y;
+            if (transitionParams.animateExpandedQuotes) {
+                quoteGestureCanceled = true;
+                disallowLongPress = true;
+                return true;
+            }
+            if (block.collapsedBounce == null || block.collapsedBounce.getView() != this) {
+                block.collapsedBounce = new ButtonBounce(this);
+            }
+            block.collapsedBounce.setPressed(true);
+            return true;
+        }
+        final float dx = x - pressedQuoteX, dy = y - pressedQuoteY;
+        boolean same = !quoteGestureCanceled && hit == pressedBlock && block == pressedQuoteBlock && owner == pressedQuoteOwner
+                && block.collapsedBounce != null && block.collapsedBounce.getView() == this
+                && event.getPointerId(0) == pressedQuotePointer && !transitionParams.animateExpandedQuotes
+                && dx * dx + dy * dy <= AndroidUtilities.touchSlop * AndroidUtilities.touchSlop;
+        for (int i = 0; same && i < event.getHistorySize(); i++) {
+            final float sampleX = x + (event.getHistoricalX(i) - event.getX());
+            final float sampleY = y + (event.getHistoricalY(i) - event.getY());
+            final float sampleDx = sampleX - pressedQuoteX, sampleDy = sampleY - pressedQuoteY;
+            same = sampleDx * sampleDx + sampleDy * sampleDy <= AndroidUtilities.touchSlop * AndroidUtilities.touchSlop
+                    && quoteAt(blocks, sampleX - originX, sampleY - originY, originX) == pressedBlock;
+        }
+        if (action == MotionEvent.ACTION_UP) {
+            clearQuoteGesture();
+        } else if (!same && !quoteGestureCanceled) {
+            quoteGestureCanceled = true;
+            ButtonBounce bounce = pressedQuoteBlock.collapsedBounce;
+            if (bounce != null && bounce.getView() == this) bounce.setPressed(false);
+            cancelCheckLongPress();
+        }
+        if (same && action == MotionEvent.ACTION_UP) {
+            if (block.messageObject == null) block.messageObject = owner;
+            final boolean expand = block.collapsed();
+            owner.expandedQuotes = owner.expandedQuotes == null ? new HashSet<>() : new HashSet<>(owner.expandedQuotes);
+            if (expand) owner.expandedQuotes.add(block.index);
+            else owner.expandedQuotes.remove(block.index);
+            if (delegate != null) delegate.forceUpdate(this, true);
+        }
+        return true;
+    }
     private boolean checkTextBlockMotionEvent(MotionEvent event) {
         if (!(currentMessageObject.type == MessageObject.TYPE_TEXT || currentMessageObject.type == MessageObject.TYPE_EMOJIS || currentMessageObject.type == MessageObject.TYPE_STORY_MENTION) || currentMessageObject.textLayoutBlocks == null || currentMessageObject.textLayoutBlocks.isEmpty() || !(currentMessageObject.messageText instanceof Spannable)) {
             return false;
@@ -2705,65 +2841,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             pressedCopyCode = null;
             resetCodeSelectors();
         }
-        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_UP) {
-            int x = (int) getEventX(event);
-            int y = (int) getEventY(event);
-            if (pressedLink == null && x >= textX && y >= textY && x <= textX + currentMessageObject.textWidth && y <= textY + currentMessageObject.textHeight(transitionParams)) {
-                y -= textY;
-                for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
-                    MessageObject.TextLayoutBlock block = currentMessageObject.textLayoutBlocks.get(a);
-                    if (block.quoteCollapse && block.collapsedHeight < block.height && y >= block.textYOffset(currentMessageObject.textLayoutBlocks, transitionParams) && y < block.textYOffset(currentMessageObject.textLayoutBlocks, transitionParams) + block.padTop + block.height(transitionParams) + block.padBottom) {
-                        pressedBlock = a;
-                        if (block.collapsedBounce == null || block.collapsedBounce.getView() != this) {
-                            block.collapsedBounce = new ButtonBounce(this);
-                        }
-                        block.collapsedBounce.setPressed(event.getAction() == MotionEvent.ACTION_DOWN);
-                        break;
-                    }
-                }
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (pressedBlock != -1) {
-                    for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
-                        MessageObject.TextLayoutBlock block = currentMessageObject.textLayoutBlocks.get(a);
-                        if (a == pressedBlock && !transitionParams.animateExpandedQuotes) {
-                            MessageObject msg = block.messageObject;
-                            if (msg == null) {
-                                msg = block.messageObject = getPrimaryMessageObject();
-                            }
-                            if (msg != null) {
-                                final boolean newCollapsed = !block.collapsed();
-                                msg.expandedQuotes = msg.expandedQuotes == null ? new HashSet<>() : new HashSet<>(msg.expandedQuotes);
-                                if (newCollapsed) {
-                                    msg.expandedQuotes.remove(block.index);
-                                } else {
-                                    msg.expandedQuotes.add(block.index);
-                                }
-                                if (delegate != null) {
-                                    delegate.forceUpdate(this, true);
-                                }
-                            }
-                        }
-                    }
-                }
-                for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
-                    MessageObject.TextLayoutBlock block = currentMessageObject.textLayoutBlocks.get(a);
-                    if (block.collapsedBounce != null) {
-                        block.collapsedBounce.setPressed(false);
-                    }
-                }
-                pressedBlock = -1;
-            }
-        } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
-            for (int a = 0; a < currentMessageObject.textLayoutBlocks.size(); a++) {
-                MessageObject.TextLayoutBlock block = currentMessageObject.textLayoutBlocks.get(a);
-                if (block.collapsedBounce != null) {
-                    block.collapsedBounce.setPressed(false);
-                }
-            }
-            pressedBlock = -1;
-        }
-        return pressedBlock != -1;
+        return checkQuoteGesture(event, false);
     }
 
     public boolean checkCaptionMotionEvent(MotionEvent event) {
@@ -2949,60 +3027,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             pressedCopyCode = null;
             resetCodeSelectors();
         }
-        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_UP) {
-            int x = (int) getEventX(event);
-            int y = (int) getEventY(event);
-            if (pressedLink == null && x >= captionX && y >= captionY && x <= captionX + captionLayout.textWidth && y <= captionY + captionLayout.textHeight(transitionParams)) {
-                y -= captionY;
-                for (int a = 0; a < captionLayout.textLayoutBlocks.size(); a++) {
-                    MessageObject.TextLayoutBlock block = captionLayout.textLayoutBlocks.get(a);
-                    if (block.quoteCollapse && block.collapsedHeight < block.height && y >= block.textYOffset(captionLayout.textLayoutBlocks, transitionParams) && y < block.textYOffset(captionLayout.textLayoutBlocks, transitionParams) + block.padTop + block.height(transitionParams) + block.padBottom) {
-                        pressedBlock = a;
-                        if (block.collapsedBounce == null || block.collapsedBounce.getView() != this) {
-                            block.collapsedBounce = new ButtonBounce(this);
-                        }
-                        block.collapsedBounce.setPressed(event.getAction() == MotionEvent.ACTION_DOWN);
-                        break;
-                    }
-                }
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (pressedBlock != -1) {
-                    for (int a = 0; a < captionLayout.textLayoutBlocks.size(); a++) {
-                        MessageObject.TextLayoutBlock block = captionLayout.textLayoutBlocks.get(a);
-                        if (a == pressedBlock && !transitionParams.animateExpandedQuotes) {
-                            MessageObject msg = getPrimaryMessageObject();
-                            final boolean newCollapsed = !block.collapsed();
-                            msg.expandedQuotes = msg.expandedQuotes == null ? new HashSet<>() : new HashSet<>(msg.expandedQuotes);
-                            if (newCollapsed) {
-                                msg.expandedQuotes.remove(block.index);
-                            } else {
-                                msg.expandedQuotes.add(block.index);
-                            }
-                            if (delegate != null) {
-                                delegate.forceUpdate(this, true);
-                            }
-                        }
-                    }
-                }
-                for (int a = 0; a < captionLayout.textLayoutBlocks.size(); a++) {
-                    MessageObject.TextLayoutBlock block = captionLayout.textLayoutBlocks.get(a);
-                    if (block.collapsedBounce != null) {
-                        block.collapsedBounce.setPressed(false);
-                    }
-                }
-                pressedBlock = -1;
-            }
-        } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
-            for (int a = 0; a < captionLayout.textLayoutBlocks.size(); a++) {
-                MessageObject.TextLayoutBlock block = captionLayout.textLayoutBlocks.get(a);
-                if (block.collapsedBounce != null) {
-                    block.collapsedBounce.setPressed(false);
-                }
-            }
-            pressedBlock = -1;
-        }
-        return pressedBlock != -1;
+        return checkQuoteGesture(event, true);
     }
 
     boolean touchedByExpanation;
@@ -4545,6 +4570,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN || event.getActionMasked() == MotionEvent.ACTION_CANCEL
+                || event.getPointerCount() != 1) clearQuoteGesture();
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
             resetCommentButtonPress();
         } else if (commentTouchTarget != null) {
@@ -4572,6 +4599,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             return true;
         }
         if (isFilteredMessageCollapsed()) {
+            clearQuoteGesture();
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 filterCollapsedPressed = true;
                 setPressed(true);
@@ -4594,6 +4622,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         filterCollapsedPressed = false;
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) lastTouchDownTime = event.getDownTime();
         if (currentMessageObject == null || delegate != null && !delegate.canPerformActions() || animationRunning) {
+            clearQuoteGesture();
             if (currentMessageObject != null && currentMessageObject.richLayout != null
                     && (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL)) {
                 final MotionEvent cancel = MotionEvent.obtain(0, 0, MotionEvent.ACTION_CANCEL, 0, 0, 0);
@@ -4610,7 +4639,12 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
 
         if (checkTextSelection(event)) {
+            clearQuoteGesture();
             return true;
+        }
+
+        if (pressedQuoteBlock != null && event.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            return checkQuoteGesture(event, pressedQuoteCaption);
         }
 
         if (checkRoundSeekbar(event)) {
@@ -6504,6 +6538,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     @Override
     protected void onDetachedFromWindow() {
+        clearQuoteGesture();
         resetCommentButtonPress();
         waveformRefreshPending = false;
         if (selectorDrawable[1] != null) {
@@ -6962,6 +6997,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     public MultiLayoutTypingAnimator botDraftTypingAnimator;
 
     private void setMessageContent(MessageObject messageObject, MessageObject.GroupedMessages groupedMessages, boolean bottomNear, boolean topNear, boolean firstInChat, boolean lastInChatList) {
+        if (currentMessageObject != messageObject || currentMessagesGroup != groupedMessages) clearQuoteGesture();
         pollVisiblePartCalculated = false;
         firstVisiblePollButton = lastVisiblePollButton = -1;
         updateFilteredMessageState(messageObject);
@@ -14751,38 +14787,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
 
         if (firstVisibleBlockNum >= 0) {
-            float right;
-            if (currentMessagesGroup == null || currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_RIGHT) != 0) {
-                right = getBackgroundDrawableRight() + transitionParams.deltaRight;
-            } else {
-                int end, dWidth;
-                if (AndroidUtilities.isTablet()) {
-                    dWidth = AndroidUtilities.getMinTabletSide();
-                } else {
-                    dWidth = getParentWidth();
-                }
-                int firstLineWidth = 0;
-                for (int a = 0; a < currentMessagesGroup.posArray.size(); a++) {
-                    MessageObject.GroupedMessagePosition position = currentMessagesGroup.posArray.get(a);
-                    if (position.minY == 0) {
-                        firstLineWidth += Math.ceil((position.pw + position.leftSpanOffset) / 1000.0f * dWidth);
-                    } else {
-                        break;
-                    }
-                }
-                if (!mediaBackground && currentMessageObject.isOutOwner()) {
-                    end = backgroundDrawableLeft + firstLineWidth - dp(6);
-                } else {
-                    end = backgroundDrawableLeft + firstLineWidth;
-                }
-                end -= getExtraTextX() + dp(8 + (isAvatarVisible ? 48 : 0));
-                right = end;
-            }
-            right -= dp(10 + (currentMessageObject.isOutOwner() && !mediaBackground && !drawPinnedBottom ? 6 : 0)) + getExtraTextX();
-            if (isCompactIn()) {
-                right = getCompactRight();
-            }
-            final float maxWidth = right - textX;
+            final float maxWidth = getTextBlockRight(isCompactIn()) - textX;
             int restore = Integer.MIN_VALUE;
             int oldAlpha = 0;
             int oldLinkColor = Theme.chat_msgTextPaint.linkColor;
@@ -14854,7 +14859,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 }
                 float collapsed = 1f;
                 int blockSpoilersColor = spoilersColor;
-                final int width = (int) (block.maxRight + dp(24) > maxWidth * .7f ? maxWidth : block.maxRight + dp(24));
+                final int width = getTextBlockWidth(block, maxWidth);
                 if (block.quote) {
                     if (quoteLine == null) {
                         quoteLine = new ReplyMessageLine(this);
@@ -19675,35 +19680,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             lastVisibleBlockNum = textLayoutBlocks.size();
         }
 
-        float right;
-        if (currentMessagesGroup == null || currentPosition == null || (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_RIGHT) != 0) {
-            right = getBackgroundDrawableRight() + transitionParams.deltaRight;
-        } else {
-            int end, dWidth;
-            if (AndroidUtilities.isTablet()) {
-                dWidth = AndroidUtilities.getMinTabletSide();
-            } else {
-                dWidth = getParentWidth();
-            }
-            int firstLineWidth = 0;
-            for (int a = 0; a < currentMessagesGroup.posArray.size(); a++) {
-                MessageObject.GroupedMessagePosition position = currentMessagesGroup.posArray.get(a);
-                if (position.minY == 0) {
-                    firstLineWidth += Math.ceil((position.pw + position.leftSpanOffset) / 1000.0f * dWidth);
-                } else {
-                    break;
-                }
-            }
-            if (!mediaBackground && currentMessageObject.isOutOwner()) {
-                end = backgroundDrawableLeft + firstLineWidth - dp(6);
-            } else {
-                end = backgroundDrawableLeft + firstLineWidth;
-            }
-            end -= getExtraTextX() + dp(8 + (isAvatarVisible ? 48 : 0));
-            right = end;
-        }
-        right -= dp(10 + (currentMessageObject.isOutOwner() && !mediaBackground && !drawPinnedBottom ? 6 : 0)) + getExtraTextX();
-        final float maxWidth = right - textX;
+        final float maxWidth = getTextBlockRight(false) - textX;
 
         float blockYOffset = firstVisibleBlockNum >= 0 && firstVisibleBlockNum < textLayoutBlocks.size()
                 ? textLayoutBlocks.get(firstVisibleBlockNum)
@@ -19734,7 +19711,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 textColorKey = Theme.key_windowBackgroundWhiteBlackText;
             }
             float collapsed = 1f;
-            final int width = (int) (block.maxRight + dp(24) > maxWidth * .7f ? maxWidth : block.maxRight + dp(24));
+            final int width = getTextBlockWidth(block, maxWidth);
             if (block.quoteCollapse) {
                 AndroidUtilities.rectTmp.set(0, -block.padTop + dp(block.first ? 3 + 1.66f : 3), width, block.height(transitionParams) + dp(4));
                 AndroidUtilities.rectTmp.offset((block.isRtl() ? rtlOffset - dp(10) : 0), 0);

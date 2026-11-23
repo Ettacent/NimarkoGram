@@ -425,6 +425,7 @@ public class NotificationCenter {
     private final ArrayList<Runnable> delayedRunnables  = new ArrayList<>(10);
     private final ArrayList<Runnable> delayedRunnablesTmp  = new ArrayList<>(10);
     private final ArrayList<DelayedPost> delayedPostsTmp = new ArrayList<>(10);
+    private boolean drainingDelayed, delayedDrainRequested;
     private final ArrayList<PostponeNotificationCallback> postponeCallbackList = new ArrayList<>(10);
 
     private Runnable checkForExpiredNotifications;
@@ -442,12 +443,26 @@ public class NotificationCenter {
         void didReceivedNotification(int id, int account, Object... args);
     }
 
+    boolean hasDeferredNewMessageBatch(ArrayList<MessageObject> messages) {
+        for (int i = delayedPosts.size() - 1; i >= 0; i--) {
+            DelayedPost post = delayedPosts.get(i);
+            if (post.animationBlocked && post.id == didReceiveNewMessages && post.args.length > 1 && post.args[1] == messages) return true;
+        }
+        return false;
+    }
     private static class DelayedPost {
 
         private DelayedPost(int id, Object[] args) {
+            this(id, args, false);
+        }
+
+        private DelayedPost(int id, Object[] args, boolean animationBlocked) {
             this.id = id;
             this.args = args;
+            this.animationBlocked = animationBlocked;
         }
+
+        private final boolean animationBlocked;
 
         private int id;
         private Object[] args;
@@ -602,18 +617,15 @@ public class NotificationCenter {
         if (this.allowedNotifications.size() == 0) {
             return;
         }
-        long minTime = Long.MAX_VALUE;
         long currentTime = SystemClock.elapsedRealtime();
         ArrayList<Integer> expiredIndices = null;
         for (int i = 0; i < allowedNotifications.size(); i++) {
             AllowedNotifications allowedNotification = allowedNotifications.valueAt(i);
-            if (currentTime - allowedNotification.time > 1000) {
+            if (currentTime - allowedNotification.time >= EXPIRE_NOTIFICATIONS_TIME) {
                 if (expiredIndices == null) {
                     expiredIndices = new ArrayList<>();
                 }
                 expiredIndices.add(allowedNotifications.keyAt(i));
-            } else {
-                minTime = Math.min(allowedNotification.time, minTime);
             }
         }
         if (expiredIndices != null) {
@@ -621,9 +633,16 @@ public class NotificationCenter {
                 onAnimationFinish(expiredIndices.get(i));
             }
         }
-        if (minTime != Long.MAX_VALUE) {
-            long time = EXPIRE_NOTIFICATIONS_TIME - (currentTime - minTime);
-            AndroidUtilities.runOnUIThread(() -> checkForExpiredNotifications = this::checkForExpiredNotifications, Math.max(17, time));
+        if (allowedNotifications.size() != 0) {
+            long oldest = Long.MAX_VALUE;
+            for (int i = 0; i < allowedNotifications.size(); i++) {
+                oldest = Math.min(oldest, allowedNotifications.valueAt(i).time);
+            }
+            if (checkForExpiredNotifications != null) {
+                AndroidUtilities.cancelRunOnUIThread(checkForExpiredNotifications);
+            }
+            long delay = Math.max(1, oldest + EXPIRE_NOTIFICATIONS_TIME - SystemClock.elapsedRealtime());
+            AndroidUtilities.runOnUIThread(checkForExpiredNotifications = this::checkForExpiredNotifications, delay);
         }
     }
 
@@ -659,25 +678,46 @@ public class NotificationCenter {
         if (isAnimationInProgress()) {
             return;
         }
+        if (drainingDelayed) {
+            delayedDrainRequested = true;
+            return;
+        }
+        drainingDelayed = true;
+        try {
         if (!delayedPosts.isEmpty()) {
-            delayedPostsTmp.clear();
             delayedPostsTmp.addAll(delayedPosts);
             delayedPosts.clear();
-            for (int a = 0; a < delayedPostsTmp.size(); a++) {
-                DelayedPost delayedPost = delayedPostsTmp.get(a);
-                postNotificationNameInternal(delayedPost.id, true, delayedPost.args);
+                int next = 0;
+                try {
+                    while (next < delayedPostsTmp.size() && !isAnimationInProgress()) {
+                        DelayedPost post = delayedPostsTmp.get(next++);
+                        postNotificationNameInternal(post.id, true, post.args);
+                    }
+                } finally {
+                    if (next < delayedPostsTmp.size()) {
+                        delayedPosts.addAll(0, delayedPostsTmp.subList(next, delayedPostsTmp.size()));
             }
             delayedPostsTmp.clear();
         }
 
-        if (!delayedRunnables.isEmpty()) {
-            delayedRunnablesTmp.clear();
+            }
+            if (!isAnimationInProgress() && !(delayedDrainRequested && !delayedPosts.isEmpty())
+                    && !delayedRunnables.isEmpty()) {
             delayedRunnablesTmp.addAll(delayedRunnables);
             delayedRunnables.clear();
             for (int a = 0; a < delayedRunnablesTmp.size(); a++) {
                 AndroidUtilities.runOnUIThread(delayedRunnablesTmp.get(a));
             }
             delayedRunnablesTmp.clear();
+            }
+        } finally {
+            drainingDelayed = false;
+            if (delayedDrainRequested) {
+                delayedDrainRequested = false;
+                if (!isAnimationInProgress() && (!delayedPosts.isEmpty() || !delayedRunnables.isEmpty())) {
+                    AndroidUtilities.runOnUIThread(this::runDelayedNotifications);
+                }
+            }
         }
     }
 
@@ -708,7 +748,21 @@ public class NotificationCenter {
         AndroidUtilities.runOnUIThread(() -> postNotificationName(id, args));
     }
 
-    public void postNotificationName(final int id, Object... args) {
+    private static Object[] notificationArgs(int id, Object[] supplied) {
+        if (id != updateInterfaces) return supplied;
+        if (supplied == null || supplied.length == 0) return null;
+        if (supplied[0] instanceof Integer) return supplied;
+        if (!(supplied[0] instanceof Long)) return null;
+        long mask = (Long) supplied[0];
+        if (mask < Integer.MIN_VALUE || mask > 0xffffffffL) return null;
+        Object[] copy = supplied.clone();
+        copy[0] = (int) mask;
+        return copy;
+    }
+
+    public void postNotificationName(final int id, Object... supplied) {
+        Object[] args = notificationArgs(id, supplied);
+        if (id == updateInterfaces && args == null) return;
         boolean readInterfaceUpdate = false;
         if (id == updateInterfaces
                 && (isAnimationInProgress() || BuildVars.DEBUG_VERSION)
@@ -736,7 +790,7 @@ public class NotificationCenter {
             long currentTime = SystemClock.elapsedRealtime();
             for (int i = 0; i < allowedNotifications.size(); i++) {
                 AllowedNotifications allowedNotification = allowedNotifications.valueAt(i);
-                if (currentTime - allowedNotification.time > EXPIRE_NOTIFICATIONS_TIME) {
+                if (currentTime - allowedNotification.time >= EXPIRE_NOTIFICATIONS_TIME) {
                     if (expiredIndices == null) {
                         expiredIndices = new ArrayList<>();
                     }
@@ -797,7 +851,9 @@ public class NotificationCenter {
     }
 
     @UiThread
-    public void postNotificationNameInternal(int id, boolean allowDuringAnimation, Object... args) {
+    public void postNotificationNameInternal(int id, boolean allowDuringAnimation, Object... supplied) {
+        final Object[] args = notificationArgs(id, supplied);
+        if (id == updateInterfaces && args == null) return;
         if (BuildVars.DEBUG_VERSION) {
             if (Thread.currentThread() != ApplicationLoader.applicationHandler.getLooper().getThread()) {
                 throw new RuntimeException("postNotificationName allowed only from MAIN thread");
@@ -812,7 +868,7 @@ public class NotificationCenter {
                     }
                 }
             }
-            DelayedPost delayedPost = new DelayedPost(id, args);
+            DelayedPost delayedPost = new DelayedPost(id, args, true);
             delayedPosts.add(delayedPost);
             return;
         }

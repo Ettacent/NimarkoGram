@@ -26,17 +26,14 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
-import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
@@ -51,6 +48,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.DotDividerSpan;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MessageSeenCheckDrawable;
+import org.telegram.ui.Components.Reactions.ReactionsUtils;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.Components.StatusBadgeComponent;
@@ -240,17 +238,8 @@ public class ReactedUserHolderView extends FrameLayout implements Theme.Colorabl
             if (visibleReaction.emojicon != null) {
                 if (reactView != null) {
                     reactView.setAnimatedEmojiDrawable(null);
-                }
-                TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(visibleReaction.emojicon);
-                if (reactView != null) {
-                    if (r != null) {
-                        SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon.thumbs, Theme.key_windowBackgroundGray, 1.0f);
-                        reactView.setImage(ImageLocation.getForDocument(r.center_icon), "40_40_lastreactframe", "webp", svgThumb, r);
-                        hasReactImage = true;
-                    } else {
-                        reactView.setImageDrawable(null);
-                    }
                     reactView.setColorFilter(null);
+                    hasReactImage = ReactionsUtils.bindStandardReactionIcon(reactView.getImageReceiver(), currentAccount, visibleReaction.emojicon, false);
                 }
             } else {
                 AnimatedEmojiDrawable drawable = new AnimatedEmojiDrawable(AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES, currentAccount, visibleReaction.documentId);

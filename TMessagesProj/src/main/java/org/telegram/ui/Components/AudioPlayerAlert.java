@@ -3132,7 +3132,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             o.addIf(!noforwards, R.drawable.msg_stories_save, getString(R.string.AudioSaveTo), () -> o.openSwipeback(o2));
             if (!noforwards && o.getLast() != null)
                 o.getLast().setRightIcon(R.drawable.msg_arrowright);
-            o.addIf(!noforwards, R.drawable.alarm_sleep_solar, getString(R.string.CG_Sleep), () -> {
+            o.addIf(!noforwards, R.drawable.alarm_sleep_solar, getString(R.string.NM_Sleep), () -> {
                 o.dismiss();
                 onSubItemClick(1390);
             });
@@ -3897,7 +3897,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
         presets.add(getString(R.string.AutoDownloadCustom));
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), getResourcesProvider());
-        builder.setTitle(getString(R.string.CG_Sleep));
+        builder.setTitle(getString(R.string.NM_Sleep));
 
         builder.setItems(presets.toArray(new CharSequence[0]), (d, which) -> {
             if (which < presetValues.size()) {
@@ -3906,7 +3906,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             } else {
                 AlertsCreator.createTimePickerDialog(
                         getContext(),
-                        getString(R.string.CG_Sleep),
+                        getString(R.string.NM_Sleep),
                         0,
                         0,
                         12 * 60,
@@ -3940,7 +3940,7 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
                     if (!alarmManager.canScheduleExactAlarms()) {
                         AlertDialog.Builder permBuilder = new AlertDialog.Builder(getContext(), getResourcesProvider());
                         permBuilder.setTopAnimation(R.raw.permission_request_apk, AlertsCreator.PERMISSIONS_REQUEST_TOP_ICON_SIZE, false, Theme.getColor(Theme.key_dialogTopBackground));
-                        permBuilder.setMessage(getString(R.string.CG_Sleep_Permission));
+                        permBuilder.setMessage(getString(R.string.NM_Sleep_Permission));
                         permBuilder.setPositiveButton(getString(R.string.PermissionOpenSettings), (dialog, which) -> {
                             Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
                             intent.setData(Uri.parse("package:" + ApplicationLoader.applicationContext.getPackageName()));
@@ -3987,12 +3987,12 @@ public class AudioPlayerAlert extends BottomSheet implements NotificationCenter.
             }
 
             BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
-                    .createSimpleBulletin(R.raw.done, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_Sleep_Timer, formattedTime)))
+                    .createSimpleBulletin(R.raw.done, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NM_Sleep_Timer, formattedTime)))
                     .show();
         } else {
             if (AppConfig.sleepTimer) {
                 BulletinFactory.of((FrameLayout) containerView, resourcesProvider)
-                        .createSimpleBulletin(R.raw.done, getString(R.string.CG_Sleep_Disabled))
+                        .createSimpleBulletin(R.raw.done, getString(R.string.NM_Sleep_Disabled))
                         .show();
             }
             AppConfig.setSleepTimer(false);

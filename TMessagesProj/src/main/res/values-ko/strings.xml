@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">계속</string>
+    <string name="Retry">다시 시도</string>
     <string name="UseProxyWeb">WEB 프록시</string>
     <string name="UseProxyWebInfo">WEB 프록시는 별도의 WebView에서 HTTPS 페이지를 사용합니다. 프로토콜 스킴이나 경로를 제외한 호스트 이름과 16바이트 MTProxy 비밀 키를 입력하세요. 이 실험적 구현은 앱이 포그라운드에서 실행 중일 때 테스트하기 위한 것으로, 최신 Android System WebView가 필요합니다.</string>
     <string name="NM_Menu_TelegramPlus">모던 메시지 메뉴</string>
@@ -593,7 +597,7 @@
     <string name="DirectShareInfo">안드로이드 공유 메뉴에 최근 대화방을 표시합니다</string>
     <string name="Emoji">이모지</string>
     <string name="LargeEmoji">큰 이모지</string>
-    <string name="TelegramVersion">NimarkoGram for Android %1$s</string>
+    <string name="TelegramVersion">Android용 NimarkoGram %1$s</string>
     <string name="DebugMenu">디버그 메뉴</string>
     <string name="DebugMenuLongPress">디버그 메뉴로 이동하려면 길게 눌러주세요</string>
     <string name="DebugSendLogs">로그 보내기</string>
@@ -1149,7 +1153,7 @@
     <string name="PluginsDisableArtInfo">시작 시 Python AOT 컴파일을 건너뜁니다. 부팅은 빨라지지만 플러그인은 약간 느려집니다.</string>
     <string name="PluginsSafeMode">안전 모드</string>
     <string name="PluginsSafeModeInfo">충돌 후 플러그인 엔진이 안전 모드로 실행 중입니다.</string>
-    <string name="PluginsSafeModeInfo2">모든 플러그인이 비활성화되었습니다. 하나씩 활성화하여 원인을 찾으세요.</string>
+    <string name="PluginsSafeModeInfo2">안전 모드에서는 플러그인이 실행되지 않습니다. 저장된 플러그인 보고서는 계속 확인할 수 있습니다.</string>
     <string name="PluginsDocumentation">문서</string>
     <string name="PluginsTrusted">신뢰할 수 있는 플러그인</string>
     <string name="ForkedByNimarko">Nimarko가 포크함</string>
@@ -1165,7 +1169,7 @@
     <string name="PluginIncompatibleInfo">이 플러그인은 더 최신 버전의 앱이 필요합니다.</string>
     <string name="RestartRequired">재시작 필요</string>
     <string name="LinkCopied">링크가 클립보드에 복사됨</string>
-    <string name="PluginInstalled">플러그인이 설치되었습니다</string>
-    <string name="PluginUpdated">플러그인이 업데이트되었습니다</string>
+    <string name="PluginInstalled">‘%s’ 플러그인을 설치했습니다.</string>
+    <string name="PluginUpdated">‘%s’ 플러그인을 업데이트했습니다.</string>
     <string name="PluginInstallError">플러그인 설치 실패</string>
-<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="EnablePluginsEngine">Enable plugin engine</string><string name="PluginDelete">Delete plugin</string><string name="PluginDeleteInfo">Are you sure you want to delete %s?</string><string name="PluginDisableError">Failed to disable plugin: %s</string><string name="PluginEnableError">Failed to enable plugin: %s</string><string name="PluginEngineNotEnabled">Plugin engine is disabled. Enable it to use %s.</string><string name="PluginHasNoSettings">%s has no settings.</string><string name="PluginInstalledButFailedToEnable">Installed, but failed to enable plugin.</string><string name="PluginNotEnabled">Plugin %s is not enabled.</string><string name="PluginNotFound">Plugin %s not found.</string></resources>
+<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">개발자 모드</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">모든 플러그인 끄기</string><string name="PluginsDisableAllConfirm">켜져 있는 모든 플러그인을 끌까요?</string><string name="PluginsDisabledN">끈 플러그인: %1$d개</string><string name="PluginsRestartEngine">엔진 다시 시작</string><string name="PluginsRestartingEngine">플러그인 엔진을 다시 시작하는 중…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">NimarkoGram에서는 온라인 업데이트가 꺼져 있습니다.</string><string name="PluginsSafeModeOff">안전 모드를 껐습니다.</string><string name="PluginsSafeModeOn">안전 모드가 켜졌습니다. 플러그인은 자동으로 로드되지 않습니다.</string><string name="PluginIsNotRespondingAlert">‘%s’ 플러그인이 응답하지 않습니다</string><string name="EnablePluginsEngine">플러그인 엔진 켜기</string><string name="PluginDelete">플러그인 삭제</string><string name="PluginDeleteInfo">‘%s’를 삭제할까요?</string><string name="PluginDisableError">플러그인을 끄지 못했습니다: %s</string><string name="PluginEnableError">플러그인을 켜지 못했습니다: %s</string><string name="PluginEngineNotEnabled">플러그인 엔진이 꺼져 있습니다. ‘%s’를 사용하려면 켜세요.</string><string name="PluginHasNoSettings">‘%s’에는 설정이 없습니다.</string><string name="PluginInstalledButFailedToEnable">플러그인은 설치됐지만 켜지 못했습니다.</string><string name="PluginNotEnabled">‘%s’ 플러그인이 꺼져 있습니다.</string><string name="PluginNotFound">‘%s’ 플러그인을 찾지 못했습니다.</string></resources>

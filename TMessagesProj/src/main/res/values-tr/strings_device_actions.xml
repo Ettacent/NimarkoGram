@@ -1,0 +1,5 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Oturumlar sonlandırılamadı. Bağlantını kontrol edip tekrar dene.</string>
+</resources>

@@ -172,7 +172,7 @@ public class SessionBottomSheet extends BottomSheet {
             locationItemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View view) {
-                    copyText(session.country);
+                    copyText(session.ip);
                     return true;
                 }
             });

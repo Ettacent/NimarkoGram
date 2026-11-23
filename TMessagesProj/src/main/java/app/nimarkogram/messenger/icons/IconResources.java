@@ -110,6 +110,13 @@ public class IconResources extends Resources {
 
     private NavigationIcons navigationIcons;
 
+    private NavigationIcons callButtonIcons;
+    private static final int[][] CALL_BUTTON_IDS = {{
+            org.telegram.messenger.R.drawable.calls_unmute, org.telegram.messenger.R.drawable.calls_mute_mini,
+            org.telegram.messenger.R.drawable.calls_video, org.telegram.messenger.R.drawable.calls_camera_mini,
+            org.telegram.messenger.R.drawable.calls_speaker, org.telegram.messenger.R.drawable.calls_bluetooth,
+            org.telegram.messenger.R.drawable.msg_photo_switch2, org.telegram.messenger.R.drawable.msg_calls
+    }};
     private boolean iconPreparationQueued;
     private final ArrayList<Runnable> appliedCallbacks = new ArrayList<>();
     public static final class PreparedIcon {
@@ -162,6 +169,36 @@ public class IconResources extends Resources {
     public static PreparedIcon activeAnimatedIcon(int stockId) {
         NavigationIcons icons = activeNavigationIcons();
         return icons == null ? null : icons.getIcon(stockId);
+    }
+    public static IconResources forCallButton(Context context) {
+        Resources res = context.getResources();
+        if (!(res instanceof IconResources)) {
+            Context app = context.getApplicationContext();
+            if (app != null) res = app.getResources();
+        }
+        return res instanceof IconResources ? (IconResources) res : null;
+    }
+
+    public NavigationIcons getCallButtonIcons() {
+        final ReplacementState state = refreshConfiguration();
+        if (state.selection == AppConfig.ICON_REPLACE_NONE) return null;
+        synchronized (backArrowLock) {
+            if (replacementState != state) return null;
+            if (callButtonIcons != null) return callButtonIcons;
+            if (navigationIcons != null) {
+                boolean complete = true;
+                for (int id : CALL_BUTTON_IDS[0]) {
+                    if (navigationIcons.getIcon(id) == null) { complete = false; break; }
+                }
+                if (complete) return callButtonIcons = navigationIcons;
+            }
+        }
+        NavigationIcons loaded = loadNavigationIcons(state, CALL_BUTTON_IDS);
+        synchronized (backArrowLock) {
+            if (replacementState != state) return null;
+            if (callButtonIcons == null) callButtonIcons = loaded;
+            return callButtonIcons;
+        }
     }
     @SuppressWarnings("deprecation")
     public IconResources(Resources wrapped) {
@@ -324,7 +361,6 @@ public class IconResources extends Resources {
     }
 
     private NavigationIcons loadNavigationIcons(ReplacementState state) {
-        SparseArray<PreparedIcon> icons = new SparseArray<>();
         int[] ids = {
                 org.telegram.messenger.R.drawable.ic_ab_back,
                 org.telegram.messenger.R.drawable.ic_close_white,
@@ -347,7 +383,11 @@ public class IconResources extends Resources {
                 org.telegram.messenger.R.drawable.ng_record_delete_body,
                 org.telegram.messenger.R.drawable.ng_record_delete_lid
         };
-        int[][] groups = {ids, AnimatedIconCatalog.drawableIds(), AnimatedCallIcons.drawableIds()};
+        return loadNavigationIcons(state, new int[][] {ids, AnimatedIconCatalog.drawableIds(), AnimatedCallIcons.drawableIds()});
+    }
+
+    private NavigationIcons loadNavigationIcons(ReplacementState state, int[][] groups) {
+        SparseArray<PreparedIcon> icons = new SparseArray<>();
         Set<Integer> visited = new HashSet<>();
         Bitmap pending = null;
         boolean complete = false;
@@ -523,6 +563,7 @@ public class IconResources extends Resources {
             backArrowBitmap = null;
             backArrowBitmapResolved = false;
             navigationIcons = null;
+            callButtonIcons = null;
             appliedCallbacks.clear();
             replacementState = state;
         }

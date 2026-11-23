@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">Davam et</string>
+    <string name="Retry">Yenidən cəhd et</string>
     <string name="UseProxyWeb">WEB proksi</string>
     <string name="UseProxyWebInfo">WEB proksi ayrıca WebView daxilində HTTPS səhifəsindən istifadə edir. Protokol sxemi və yol olmadan host adını və 16 baytlıq MTProxy məxfi açarını daxil edin. Bu eksperimental həll tətbiq ön planda olarkən sınaq üçün nəzərdə tutulub və Android System WebView komponentinin aktual versiyasını tələb edir.</string>
     <string name="NM_Menu_TelegramPlus">Müasir mesaj menyusu</string>
     <string name="NM_Menu_TelegramPlus_Desc">Qruplaşdırılmış əməliyyatlar, yay animasiyaları və interaktiv effektlərlə yığcam Liquid Glass menyusu. Yığcam düzən əlçatan olaraq qalır.</string>
     <!-- NimarkoGram plugin strings ported from exteraGram (values-az) -->
     <string name="Links">Bağlantılar</string>
-    <string name="Preferences">exteraGram tənzimləmələri</string>
+    <string name="Preferences">Tənzimləmələr</string>
     <string name="RestartRequired">Effektiv olmaq üçün Tətbiqi yenidən başladın.</string>
 </resources>

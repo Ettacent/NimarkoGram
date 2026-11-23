@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Não foi possível encerrar as sessões. Verifique sua conexão e tente novamente.</string>
+</resources>

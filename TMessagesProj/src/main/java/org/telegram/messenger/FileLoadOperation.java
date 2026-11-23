@@ -195,6 +195,7 @@ public class FileLoadOperation {
     private String fileName;
     private String storeFileName;
 
+    boolean needsUniqueDocumentName;
     private HashMap<Long, PreloadRange> preloadedBytesRanges;
     private HashMap<Long, Integer> requestedPreloadedBytesRanges;
     private RandomAccessFile preloadStream;
@@ -725,8 +726,7 @@ public class FileLoadOperation {
                 || MessagesController.getInstance(currentAccount).getfileExperimentalParams;
         try {
             wsBypassDownloadProfile =
-                    app.nimarkogram.messenger.wsbypass.WsBypassController
-                            .getInstance().isRunning();
+                    app.nimarkogram.messenger.distribution.ClientRelays.running();
         } catch (Throwable ignored) {
             wsBypassDownloadProfile = false;
         }
@@ -1126,11 +1126,7 @@ public class FileLoadOperation {
         final CountDownLatch countDownLatch = new CountDownLatch(1);
         final File[] result = new File[1];
         if (!postLocalFileTask(new LocalFileTask(() -> {
-            if (state == stateFinished && !preloadFinished && cacheFileFinalReady) {
-                result[0] = cacheFileFinal;
-            } else {
-                result[0] = cacheFileTemp;
-            }
+            result[0] = getCurrentFileFast();
             countDownLatch.countDown();
         }), true, 0)) return null;
         try {
@@ -1142,7 +1138,7 @@ public class FileLoadOperation {
     }
 
     protected File getCurrentFileFast() {
-        if (state == stateFinished && !preloadFinished && cacheFileFinalReady) {
+        if (state == stateFinished && !preloadFinished && (localFilePublished || cacheFileFinalReady)) {
             return cacheFileFinal;
         } else {
             return cacheFileTemp;
@@ -1189,7 +1185,9 @@ public class FileLoadOperation {
         if (totalBytesCount == 0 || ranges == null) {
             return 0;
         }
-        return progress + getDownloadedLengthFromOffsetInternal(ranges, (int) (totalBytesCount * progress), totalBytesCount) / (float) totalBytesCount;
+        long offset = (long) (totalBytesCount * (double) progress);
+        long available = getDownloadedLengthFromOffsetInternal(ranges, offset, totalBytesCount - offset);
+        return Math.min(1f, progress + available / (float) totalBytesCount);
     }
 
     protected long[] getDownloadedLengthFromOffset(final long offset, final long length) {
@@ -1535,7 +1533,7 @@ public class FileLoadOperation {
             }
         }
         leaseLocalFile(cacheFileFinal);
-        boolean finalFileExist = cacheFileFinalReady = cacheFileFinal.exists();
+        boolean finalFileExist = cacheFileFinalReady = !needsUniqueDocumentName && cacheFileFinal.exists();
         if (finalFileExist && (parentObject instanceof TLRPC.TL_theme || (totalBytesCount != 0 && !ungzip && totalBytesCount != cacheFileFinal.length())) && !delegate.isLocallyCreatedFile(cacheFileFinal.toString())) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("debug_loading: delete existing file cause file size mismatch " + cacheFileFinal.getName() + " totalSize=" + totalBytesCount + " existingFileSize=" + cacheFileFinal.length());
@@ -1905,7 +1903,7 @@ public class FileLoadOperation {
                     onFail(false, 1);
         }
         if (deleteFiles) {
-            if (cacheFileFinal != null) {
+            if (cacheFileFinal != null && (!needsUniqueDocumentName || localFilePublished)) {
                 try {
                     if (!cacheFileFinal.delete()) {
                         cacheFileFinal.deleteOnExit();
@@ -2213,15 +2211,16 @@ public class FileLoadOperation {
             }
             final long finalLength = source.length();
             boolean renamed;
+            File reservedDocumentFile = null;
                         if (parentObject instanceof TLRPC.TL_theme) {
                 renamed = copyLocalFileToFinal(source, finalLength);
                         } else {
                             try {
                                 if (pathSaveData != null) {
-                                    synchronized (lockObject) {
+                        synchronized (needsUniqueDocumentName ? localFileIoLock : lockObject) {
                                         cacheFileFinal = new File(storePath, storeFileName);
                                         int count = 1;
-                                        while (cacheFileFinal.exists()) {
+                            while (needsUniqueDocumentName ? !FileLoader.reserveDocumentFile(cacheFileFinal) : cacheFileFinal.exists()) {
                                             int lastDotIndex = storeFileName.lastIndexOf('.');
                                             String newFileName;
                                             if (lastDotIndex > 0) {
@@ -2232,6 +2231,7 @@ public class FileLoadOperation {
                                             cacheFileFinal = new File(storePath, newFileName);
                                             count++;
                                         }
+                            if (needsUniqueDocumentName) reservedDocumentFile = cacheFileFinal;
                                     }
                                 }
                     leaseLocalFile(cacheFileFinal);
@@ -2242,7 +2242,8 @@ public class FileLoadOperation {
                             }
                         }
             renamed = renamed && cacheFileFinal.isFile() && cacheFileFinal.length() == finalLength;
-            if (!renamed && renameRetryCount >= 2 && source.isFile()) {
+            if (!renamed && renameRetryCount >= 2 && source.isFile()
+                    && (!needsUniqueDocumentName || reservedDocumentFile != null)) {
                 try {
                     renamed = copyLocalFileToFinal(source, finalLength)
                             && cacheFileFinal.isFile() && cacheFileFinal.length() == finalLength;
@@ -2252,6 +2253,7 @@ public class FileLoadOperation {
                             }
                         }
             if (!renamed) {
+                if (reservedDocumentFile != null) reservedDocumentFile.delete();
                             if (BuildVars.LOGS_ENABLED) {
                     FileLog.e("unable to rename temp = " + source + " to final = " + cacheFileFinal + " retry = " + renameRetryCount);
                             }
@@ -2356,6 +2358,7 @@ public class FileLoadOperation {
                             onFail(false, 0);
                 return;
             }
+            notifyStreamListeners();
                     if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("finished downloading file to " + finalFile + " time = " + (System.currentTimeMillis() - startTime) + " dc = " + datacenterId + " size = " + AndroidUtilities.formatFileSize(totalBytesCount));
                     }
@@ -3554,6 +3557,9 @@ public class FileLoadOperation {
 
     public boolean isFinished() {
         return state == stateFinished;
+    }
+    boolean isPublishedStreamFile(File path) {
+        return localFilePublished && state == stateFinished && path != null && path.equals(cacheFileFinal);
     }
     private long speedStartTime, speedLastTime, speedBytes;
     private int speedChunks;

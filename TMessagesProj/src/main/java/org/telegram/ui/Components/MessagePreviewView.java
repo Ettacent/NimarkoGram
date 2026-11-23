@@ -390,6 +390,13 @@ public class MessagePreviewView extends FrameLayout {
                 public boolean drawChild(Canvas canvas, View child, long drawingTime) {
                     if (child instanceof ChatMessageCell) {
                         final ChatMessageCell cell = (ChatMessageCell) child;
+                        if (cell.drawBackgroundInParent()) {
+                            canvas.save();
+                            canvas.translate(cell.getX(), cell.getY() + cell.getPaddingTop());
+                            canvas.scale(cell.getScaleX(), cell.getScaleY(), cell.getPivotX(), cell.getPivotY());
+                            cell.drawBackgroundInternal(canvas, true);
+                            canvas.restore();
+                        }
                         boolean r = super.drawChild(canvas, child, drawingTime);
                         cell.drawCheckBox(canvas);
                         canvas.save();
@@ -1574,6 +1581,12 @@ public class MessagePreviewView extends FrameLayout {
             @Override
             public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
                 final ChatMessageCell cell = new ChatMessageCell(parent.getContext(), currentAccount, false, sharedResources, resourcesProvider) {
+                    @Override
+                    public boolean drawBackgroundInParent() {
+                        return currentTab == TAB_FORWARD && getCurrentMessagesGroup() == null
+                                && getTransitionParams().animateBackgroundBoundsInner;
+                    }
+
                     @Override
                     public void invalidate() {
                         super.invalidate();

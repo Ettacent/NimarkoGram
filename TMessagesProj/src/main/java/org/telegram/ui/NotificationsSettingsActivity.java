@@ -163,9 +163,6 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
     private int resetNotificationsSectionRow;
     private int rowCount = 0;
 
-    private boolean updateVibrate;
-    private boolean updateRingtone;
-    private boolean updateRepeatNotifications;
 
     @Override
     public boolean onFragmentCreate() {
@@ -672,7 +669,7 @@ public class NotificationsSettingsActivity extends BaseFragment implements Notif
                         exceptionStories = clearedExceptions(exceptionStories);
                         exceptionAutoStories = clearedExceptions(exceptionAutoStories);
                         if (!isFinished && currentAccount == account) {
-                            if (adapter != null) adapter.notifyDataSetChanged();
+                            if (adapter != null) adapter.notifyItemRangeChanged(0, rowCount);
                             loadExceptions(null);
                             if (UserConfig.selectedAccount == account && getParentActivity() != null) {
                             Toast toast = Toast.makeText(getParentActivity(), getString("ResetNotificationsText", R.string.ResetNotificationsText), Toast.LENGTH_SHORT);
@@ -816,7 +813,6 @@ else if (position == pinnedMessageRow) {
                     key = "vibrate_calls";
                 }
                 showDialog(AlertsCreator.createVibrationSelectDialog(getParentActivity(), 0, 0, key, () -> {
-                    updateVibrate = true;
                     adapter.notifyItemChanged(position);
                 }));
             } else if (position == repeatRow) {
@@ -847,7 +843,6 @@ else if (position == pinnedMessageRow) {
                     }
                     SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
                     preferences.edit().putInt("repeat_messages", minutes).commit();
-                    updateRepeatNotifications = true;
                     adapter.notifyItemChanged(position);
                 });
                 builder.setNegativeButton(getString("Cancel", R.string.Cancel), null);
@@ -902,7 +897,6 @@ else if (position == pinnedMessageRow) {
                     editor.putString("CallsRingtone", "NoSound");
                     editor.putString("CallsRingtonePath", "NoSound");
                 }
-                updateRingtone = true;
             }
             editor.commit();
             adapter.notifyItemChanged(requestCode);
@@ -963,7 +957,7 @@ else if (position == pinnedMessageRow) {
         super.onResume();
         reloadExceptionsIfNeeded();
         if (adapter != null) {
-            adapter.notifyDataSetChanged();
+            adapter.notifyItemRangeChanged(0, rowCount);
         }
     }
 
@@ -989,7 +983,7 @@ else if (position == pinnedMessageRow) {
         if (id == NotificationCenter.notificationsSettingsUpdated && account == currentAccount && !isFinished) {
             exceptionsReloadNeeded = true;
             reloadExceptionsIfNeeded();
-            if (adapter != null) adapter.notifyDataSetChanged();
+            if (adapter != null) adapter.notifyItemRangeChanged(0, rowCount);
         }
     }
 
@@ -1209,7 +1203,7 @@ else if (position == pinnedMessageRow) {
                     } else {
                         builder.append(getString("TapToChange", R.string.TapToChange));
                     }
-                    checkCell.setTextAndValueAndIconAndCheck(text, builder, icon, enabled, iconType, false, position != reactionsRow);
+                    checkCell.setTextAndValueAndIconAndCheck(text, builder, icon, enabled, iconType, false, position != reactionsRow, true);
                     break;
                 }
                 case 4: {
@@ -1223,22 +1217,20 @@ else if (position == pinnedMessageRow) {
                         if (value.equals("NoSound")) {
                             value = getString("NoSound", R.string.NoSound);
                         }
-                        textCell.setTextAndValue(getString("VoipSettingsRingtone", R.string.VoipSettingsRingtone), value, updateRingtone, false);
-                        updateRingtone = false;
+                        textCell.setTextAndValue(getString("VoipSettingsRingtone", R.string.VoipSettingsRingtone), value, false);
                     } else if (position == callsVibrateRow) {
                         int value = preferences.getInt("vibrate_calls", 0);
                         if (value == 0) {
-                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("VibrationDefault", R.string.VibrationDefault), updateVibrate, true);
+                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("VibrationDefault", R.string.VibrationDefault), true);
                         } else if (value == 1) {
-                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("Short", R.string.Short), updateVibrate, true);
+                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("Short", R.string.Short), true);
                         } else if (value == 2) {
-                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("VibrationDisabled", R.string.VibrationDisabled), updateVibrate, true);
+                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("VibrationDisabled", R.string.VibrationDisabled), true);
                         } else if (value == 3) {
-                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("Long", R.string.Long), updateVibrate, true);
+                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("Long", R.string.Long), true);
                         } else if (value == 4) {
-                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("OnlyIfSilent", R.string.OnlyIfSilent), updateVibrate, true);
+                            textCell.setTextAndValue(getString("Vibrate", R.string.Vibrate), getString("OnlyIfSilent", R.string.OnlyIfSilent), true);
                         }
-                        updateVibrate = false;
                     } else if (position == repeatRow) {
                         int minutes = preferences.getInt("repeat_messages", 60);
                         String value;
@@ -1249,8 +1241,7 @@ else if (position == pinnedMessageRow) {
                         } else {
                             value = LocaleController.formatPluralString("Hours", minutes / 60);
                         }
-                        textCell.setTextAndValue(getString("RepeatNotifications", R.string.RepeatNotifications), value, updateRepeatNotifications, false);
-                        updateRepeatNotifications = false;
+                        textCell.setTextAndValue(getString("RepeatNotifications", R.string.RepeatNotifications), value, false);
                     }
                     break;
                 }

@@ -2,7 +2,7 @@
 
 package org.telegram.ui;
 
-import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.messenger.MessagesController.findUpdatesAndRemove;
@@ -326,8 +326,9 @@ public class LinkManager {
         final String fifth  = segments.size() > 4 ? segments.get(4) : null;
 
         if ("nimarko_wl".equalsIgnoreCase(first)) {
-            if (!(getLastFragment() instanceof WlPreferencesActivity)) {
-                presentFragment(new WlPreferencesActivity());
+            if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) return false;
+            if (!ClientRelays.isSettings(getLastFragment(), true)) {
+                presentFragment(ClientRelays.settings(true));
             }
             return true;
         }
@@ -1065,7 +1066,6 @@ public class LinkManager {
 
             if ("pause-music".equalsIgnoreCase(second)) {
                 presentFragment(new ThemeActivity(ThemeActivity.THEME_TYPE_BASIC));
-                scrollTo("pauseOnMediaRow");
                 return true;
             }
             if ("pause-music-on-record".equalsIgnoreCase(second)) {

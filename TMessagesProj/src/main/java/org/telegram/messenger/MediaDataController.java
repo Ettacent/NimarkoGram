@@ -4004,8 +4004,27 @@ public class MediaDataController extends BaseController {
 
     public boolean isSearchCountExact() {
         MessageSearchSession session = messageSearchSession;
-        return !currentMessageSearch(session) || !session.dateHistory
-                || !session.failed && messageSearchOperation == null && messagesSearchEndReached[0] && messagesSearchEndReached[1];
+        if (!currentMessageSearch(session) || !session.dates.isActive()) return true;
+        return !session.failed && (!session.dateHistory
+                || messageSearchOperation == null && messagesSearchEndReached[0] && messagesSearchEndReached[1]);
+    }
+
+    public int getDateSearchAction(int guid) {
+        MessageSearchSession session = messageSearchSession;
+        if (!currentMessageSearch(session) || session.guid != guid || !session.dates.isActive()
+                || messageSearchOperation != null || messagesSearchEndReached[0] && messagesSearchEndReached[1]) {
+            return 0;
+        }
+        if (session.failed) return R.string.Retry;
+        return session.paused ? R.string.Continue : 0;
+    }
+
+    public void continueDateSearch(int guid, boolean jumpToFirstMatch) {
+        messageSearchUi(() -> {
+            if (getDateSearchAction(guid) == 0) return;
+            MessageSearchSession session = messageSearchSession;
+            continueMessageSearch(session, lastReturnedNum, jumpToFirstMatch && searchResultMessages.isEmpty());
+        });
     }
 
     public boolean isCurrentSearchNotification(int guid, Object source) {
@@ -4028,7 +4047,7 @@ public class MediaDataController extends BaseController {
     public void loadMoreSearchMessages(boolean fromList) {
         messageSearchUi(() -> {
             MessageSearchSession session = messageSearchSession;
-            if (!currentMessageSearch(session) || session.failed || loadingMoreSearchMessages || messageSearchOperation != null) return;
+            if (!currentMessageSearch(session) || session.failed || session.paused || loadingMoreSearchMessages || messageSearchOperation != null) return;
             continueMessageSearch(session, lastReturnedNum, false);
         });
     }
@@ -4058,6 +4077,7 @@ public class MediaDataController extends BaseController {
         long navigationRevision;
         boolean failed;
 
+        boolean paused;
         MessageSearchSession(long generation, long dialogId, long mergeDialogId, int guid, long replyMessageId,
                 long selfId, String query, TLRPC.User user, TLRPC.Chat chat,
                 ReactionsLayoutInBubble.VisibleReaction reaction, TLRPC.MessagesFilter filter, MessageSearchDateRange dates, TLRPC.InputPeer from) {
@@ -4449,22 +4469,27 @@ public class MediaDataController extends BaseController {
                         boolean merging = leg == 0 && messagesSearchEndReached[0] && session.mergeDialogId != 0 && !messagesSearchEndReached[1];
                         boolean jumpNow = operation.jump && sameNavigation
                                 && (selectedPosition >= 0 && selectedPosition < searchResultMessages.size()
-                                || !session.dateHistory && !merging && searchResultMessages.isEmpty());
+                                || !session.dates.isActive() && !merging && searchResultMessages.isEmpty());
                         boolean jumpLater = operation.jump && sameNavigation && !jumpNow;
                         lastReturnedNum = searchResultMessages.isEmpty() ? 0 : Math.max(0, Math.min(selectedPosition, searchResultMessages.size() - 1));
-                        boolean pauseEmptyTraversal = session.dateHistory && !messagesSearchEndReached[leg]
-                                && searchServerResultMessages.size() == previousSize && emptyPagesRemaining == 0;
-                        finishMessageSearchOperation(operation, stalled || pauseEmptyTraversal);
+                        boolean emptyHistoryPage = session.dateHistory && searchServerResultMessages.size() == previousSize;
+                        boolean emptyHistoryPageWithMore = emptyHistoryPage && !stalled && !messagesSearchEndReached[leg];
+                        finishMessageSearchOperation(operation, stalled);
+                        if (emptyHistoryPage && merging) {
+                            sendMessageSearch(session, 1, selectedPosition, jumpLater, false);
+                            return;
+                        }
+                        if (emptyHistoryPageWithMore && emptyPagesRemaining > 0) {
+                            sendMessageSearchPage(session, leg, selectedPosition, operation.jump && sameNavigation,
+                                    false, emptyPagesRemaining - 1);
+                            return;
+                        }
+                        session.paused = emptyHistoryPageWithMore;
                         notifyMessageSearch(session, jumpNow);
                         if (!currentMessageSearch(session) || messageSearchOperation != null) return;
                         if (merging) {
                             boolean stillSameNavigation = session.navigationRevision == operation.navigationRevision;
                             sendMessageSearch(session, 1, stillSameNavigation ? operation.position : lastReturnedNum, jumpLater && stillSameNavigation, false);
-                        } else if (session.dateHistory && !stalled && !messagesSearchEndReached[leg]
-                                && searchServerResultMessages.size() == previousSize && emptyPagesRemaining > 0) {
-                            boolean stillSameNavigation = session.navigationRevision == operation.navigationRevision;
-                            sendMessageSearchPage(session, leg, stillSameNavigation ? operation.position : lastReturnedNum,
-                                    jumpLater && stillSameNavigation, false, emptyPagesRemaining - 1);
                         }
                     };
                     if (session.saved) loadReplyMessagesForMessages(objects, session.dialogId, 0, session.replyMessageId, done, session.guid, null);
@@ -4489,9 +4514,13 @@ public class MediaDataController extends BaseController {
         if (!currentMessageSearch(session) || messageSearchOperation != null) return;
         int leg = messagesSearchEndReached[0] ? 1 : 0;
         if (leg == 1 && (session.mergeDialogId == 0 || messagesSearchEndReached[1])) return;
-        session.failed = false;
+        boolean resumingDateSearch = getDateSearchAction(session.guid) != 0;
+        session.failed = session.paused = false;
         loadingMoreSearchMessages = true;
         sendMessageSearch(session, leg, position, jump, false);
+        if (resumingDateSearch && currentMessageSearch(session) && messageSearchOperation != null) {
+            getNotificationCenter().postNotificationName(NotificationCenter.chatSearchResultsLoading, session.guid, session);
+        }
     }
 
     private boolean promoteMessageSearchNavigation(MessageSearchSession session, int position, boolean jump) {
@@ -4506,7 +4535,7 @@ public class MediaDataController extends BaseController {
     private boolean currentMessageSearchJump(MessageSearchOperation operation) {
         return currentMessageSearch(operation) && operation.jump
                 && operation.session.navigationRevision == operation.navigationRevision
-                && (searchResultMessages.isEmpty() ? !operation.session.dateHistory
+                && (searchResultMessages.isEmpty() ? !operation.session.dates.isActive()
                 : operation.position >= 0 && operation.position < searchResultMessages.size());
     }
 
@@ -4562,6 +4591,14 @@ public class MediaDataController extends BaseController {
     }
 
     public void portSavedSearchResults(int guid, ReactionsLayoutInBubble.VisibleReaction reaction, String query, ArrayList<MessageObject> local, ArrayList<MessageObject> loaded, int num, int count, boolean reached) {
+        importSavedSearchResults(guid, reaction, query, local, loaded, num, count, reached, false);
+    }
+
+    public void portSavedSearchResultsAtMessage(int guid, ReactionsLayoutInBubble.VisibleReaction reaction, String query, ArrayList<MessageObject> local, ArrayList<MessageObject> loaded, int messageId, int count, boolean reached) {
+        importSavedSearchResults(guid, reaction, query, local, loaded, messageId, count, reached, true);
+    }
+
+    private void importSavedSearchResults(int guid, ReactionsLayoutInBubble.VisibleReaction reaction, String query, ArrayList<MessageObject> local, ArrayList<MessageObject> loaded, int selection, int count, boolean reached, boolean byMessageId) {
         messageSearchUi(() -> {
             MessageSearchSession session = beginMessageSearch(query == null ? "" : query, getUserConfig().getClientUserId(), 0,
                     guid, 0, null, null, reaction, new TLRPC.TL_inputMessagesFilterEmpty(), MessageSearchDateRange.ALL);
@@ -4571,10 +4608,21 @@ public class MediaDataController extends BaseController {
             for (MessageObject object : loaded) searchServerResultMessagesMap[0].put(object.getId(), object);
             session.offsets[0] = loaded.isEmpty() ? 0 : loaded.get(loaded.size() - 1).getId();
         messagesSearchEndReached[0] = reached;
-            messagesSearchCount[0] = count;
         updateSearchResults();
-            lastReturnedNum = searchResultMessages.isEmpty() ? 0 : Math.max(0, Math.min(num, searchResultMessages.size() - 1));
+            messagesSearchCount[0] = Math.max(count, searchResultMessages.size());
+            if (!byMessageId) {
+                lastReturnedNum = searchResultMessages.isEmpty() ? 0 : Math.max(0, Math.min(selection, searchResultMessages.size() - 1));
             notifyMessageSearch(session, true);
+                return;
+            }
+            for (int i = 0; i < searchResultMessages.size(); i++) {
+                if (searchResultMessages.get(i).getId() == selection) {
+                    lastReturnedNum = i;
+                    notifyMessageSearch(session, true);
+                    return;
+                }
+            }
+            notifyMessageSearch(session, false);
         });
     }
 

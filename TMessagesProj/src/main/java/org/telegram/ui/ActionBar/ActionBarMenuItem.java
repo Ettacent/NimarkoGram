@@ -186,6 +186,16 @@ public class ActionBarMenuItem extends FrameLayout {
         void onHideSubMenu();
     }
 
+    public interface AnchoredDropdownDelegate extends ActionBarSubMenuItemDelegate {
+        @Override default void onShowSubMenu() {}
+        @Override default void onHideSubMenu() {}
+        void onDropdownProgress(float progress);
+    }
+
+    @Nullable AnchoredDropdownDelegate dropdownDelegateFor(AnchoredDropdownPopupWindow source) {
+        return popupWindow == source && subMenuDelegate instanceof AnchoredDropdownDelegate
+                ? (AnchoredDropdownDelegate) subMenuDelegate : null;
+    }
     public interface ActionBarMenuItemDelegate {
         void onItemClick(int id);
     }
@@ -382,7 +392,8 @@ public class ActionBarMenuItem extends FrameLayout {
                         popupWindow.dismiss(allowCloseAnimation);
                     }
                 }
-            } else if (showSubmenuByMove && !overlayShown) {
+            } else if (showSubmenuByMove && !overlayShown
+                    && (!(popupWindow instanceof AnchoredDropdownPopupWindow) || subMenuOpenedByGesture || !isInside(event, 0))) {
                 popupWindow.dismiss();
             }
             if (subMenuOpenedByGesture) {
@@ -1009,7 +1020,8 @@ public class ActionBarMenuItem extends FrameLayout {
         }
     }
     public void toggleSubMenu(View topView, View fromView) {
-        if (topView == null && toggleSubMenuInOverlay()) {
+        final boolean anchoredDropdown = topView == null && subMenuDelegate instanceof AnchoredDropdownDelegate;
+        if (topView == null && !anchoredDropdown && toggleSubMenuInOverlay()) {
             return;
         }
         if (popupWindow == null || !popupWindow.isShowing()) {
@@ -1018,12 +1030,21 @@ public class ActionBarMenuItem extends FrameLayout {
         if (popupLayout == null || parentMenu != null && parentMenu.isActionMode && parentMenu.parentActionBar != null && !parentMenu.parentActionBar.isActionModeShowed()) {
             return;
         }
+        if (anchoredDropdown && (!isEnabled() || popupLayout.getItemsCount() == 0)) {
+            if (popupWindow instanceof AnchoredDropdownPopupWindow && popupWindow.isShowing()) popupWindow.dismiss(false);
+            return;
+        }
         if (showMenuRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(showMenuRunnable);
             showMenuRunnable = null;
         }
         if (popupWindow != null && popupWindow.isShowing()) {
+            if (anchoredDropdown && popupWindow instanceof AnchoredDropdownPopupWindow
+                    && ((AnchoredDropdownPopupWindow) popupWindow).isClosing()) {
+                popupWindow.startAnimation();
+            } else {
             popupWindow.dismiss();
+            }
             return;
         }
 
@@ -1084,8 +1105,9 @@ public class ActionBarMenuItem extends FrameLayout {
             ItemOptions.setGapBackgroundColor(popupLayout, Theme.multAlpha(getThemedColor(Theme.key_actionBarDefaultSubmenuItem), 0.06f));
         }
 
-        popupWindow = new ActionBarPopupWindow(container, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT);
-        if (animationEnabled) {
+        popupWindow = anchoredDropdown ? new AnchoredDropdownPopupWindow(popupLayout, this)
+                : new ActionBarPopupWindow(container, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT);
+        if (anchoredDropdown || animationEnabled) {
             popupWindow.setAnimationStyle(0);
         } else {
             popupWindow.setAnimationStyle(R.style.PopupAnimation);
@@ -1108,7 +1130,12 @@ public class ActionBarMenuItem extends FrameLayout {
             }
             return false;
         });
+        final ActionBarPopupWindow shownPopup = popupWindow;
         popupWindow.setOnDismissListener(() -> {
+            if (shownPopup instanceof AnchoredDropdownPopupWindow) {
+                ((AnchoredDropdownPopupWindow) shownPopup).onWindowGone(popupWindow == shownPopup);
+                if (popupWindow != shownPopup) return;
+            }
             onDismiss();
             if (subMenuDelegate != null) {
                 subMenuDelegate.onHideSubMenu();
@@ -1116,11 +1143,13 @@ public class ActionBarMenuItem extends FrameLayout {
         });
 
        // if (measurePopup) {
+        if (!anchoredDropdown) {
             container.measure(MeasureSpec.makeMeasureSpec(AndroidUtilities.displaySize.x - AndroidUtilities.dp(40), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(AndroidUtilities.displaySize.y, MeasureSpec.AT_MOST));
             if (setMinWidth != null && setMinWidth.getLayoutParams() != null && popupLayout.getSwipeBack() != null) {
                 View mainScrollView = popupLayout.getSwipeBack().getChildAt(0);
                 if (mainScrollView != null && mainScrollView.getMeasuredWidth() > 0) {
                     setMinWidth.getLayoutParams().width = mainScrollView.getMeasuredWidth() + AndroidUtilities.dp(16);
+                }
                 }
             }
             measurePopup = false;
@@ -1538,13 +1567,18 @@ public class ActionBarMenuItem extends FrameLayout {
         }
     }
     public void closeSubMenu() {
+        closeSubMenu(true);
+    }
+
+    public void closeSubMenu(boolean animated) {
         final SimpleActionBarMenuOverlay overlay = getShownSubMenuOverlay();
         if (overlay != null) {
-            overlay.close(true);
+            overlay.close(animated);
             return;
         }
         if (popupWindow != null && popupWindow.isShowing()) {
-            popupWindow.dismiss();
+            if (!animated || popupWindow instanceof AnchoredDropdownPopupWindow && !isEnabled()) popupWindow.dismiss(false);
+            else popupWindow.dismiss();
         }
     }
 
@@ -2215,7 +2249,28 @@ public class ActionBarMenuItem extends FrameLayout {
         updateOrShowPopup(true, true);
     }
 
+    private void dismissAnchoredDropdownOnHide() {
+        if (popupWindow instanceof AnchoredDropdownPopupWindow) {
+            cancelShowMenuByLongPress();
+            popupWindow.dismiss(false);
+        }
+    }
+
+    @Override protected void onDetachedFromWindow() {
+        dismissAnchoredDropdownOnHide();
+        super.onDetachedFromWindow();
+    }
+
+    @Override protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (visibility != VISIBLE) dismissAnchoredDropdownOnHide();
+    }
     private void updateOrShowPopup(boolean show, boolean update) {
+        if (popupWindow instanceof AnchoredDropdownPopupWindow) {
+            if (show) popupLayout.scrollToTop();
+            ((AnchoredDropdownPopupWindow) popupWindow).place(xOffset - dp(8), show);
+            return;
+        }
         int offsetY;
 
         if (parentMenu != null) {

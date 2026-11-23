@@ -118,6 +118,7 @@ import org.telegram.ui.Components.Easings;
 import org.telegram.ui.Components.FilledTabsView;
 import org.telegram.ui.Components.FlickerLoadingView;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.ProfilePreviewTitleView;
 import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.Premium.PremiumFeatureBottomSheet;
 import org.telegram.ui.Components.Premium.PremiumGradient;
@@ -3301,7 +3302,7 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
             this.resourcesProvider = resourcesProvider;
             this.isChannel = dialogId < 0;
 
-            titleView = new SimpleTextView(context) {
+            titleView = new ProfilePreviewTitleView(context) {
                 @Override
                 protected void onAttachedToWindow() {
                     super.onAttachedToWindow();
@@ -3316,12 +3317,9 @@ public class PeerColorActivity extends BaseFragment implements NotificationCente
             };
             botVerificationEmoji = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleView, dp(17));
             statusEmoji = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleView, dp(24));
-            titleView.setLeftDrawableOutside(true);
-            titleView.setRightDrawableOutside(true);
             titleView.setTextColor(0xFFFFFFFF);
             titleView.setTextSize(20);
             titleView.setTypeface(AndroidUtilities.bold());
-            titleView.setWidthWrapContent(true);
             addView(titleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 16, 0, 16, 40.33f));
 
             subtitleView = new SimpleTextView(context);

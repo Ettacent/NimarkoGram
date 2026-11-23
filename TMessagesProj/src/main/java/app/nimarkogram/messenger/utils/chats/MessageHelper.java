@@ -211,10 +211,10 @@ public class MessageHelper extends BaseController {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(getString(R.string.NM_DeleteAllFromSelfBefore));
         builder.setItems(new CharSequence[]{
-                LocaleController.formatPluralString("Days", 1),
-                LocaleController.formatPluralString("Weeks", 1),
-                LocaleController.formatPluralString("Months", 1),
-                getString(R.string.UserRestrictionsCustom)
+                getString(R.string.NM_DeleteCutoffDay),
+                getString(R.string.NM_DeleteCutoffWeek),
+                getString(R.string.NM_DeleteCutoffMonth),
+                getString(R.string.NM_DeleteCutoffCustom)
         }, (dialog1, which) -> {
             switch (which) {
                 case 0:
@@ -275,13 +275,13 @@ public class MessageHelper extends BaseController {
         Bulletin.ButtonLayout buttonLayout;
         if (search) {
             final Bulletin.TwoLineLottieLayout layout = new Bulletin.TwoLineLottieLayout(fragment.getParentActivity(), resourcesProvider);
-            layout.titleTextView.setText(getString(R.string.NM_DeleteAllFromSelfDone));
-            layout.subtitleTextView.setText(LocaleController.formatPluralString("MessagesDeletedHint", count));
+            layout.titleTextView.setText(getString(R.string.NM_DeletePending));
+            layout.subtitleTextView.setText(LocaleController.formatString(R.string.NM_DeletePendingCount, count));
             layout.setTimer();
             buttonLayout = layout;
         } else {
             final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(fragment.getParentActivity(), resourcesProvider);
-            layout.textView.setText(getString(R.string.NM_DeleteAllFromSelfDone));
+            layout.textView.setText(getString(R.string.NM_DeletePending));
             layout.setTimer();
             buttonLayout = layout;
         }

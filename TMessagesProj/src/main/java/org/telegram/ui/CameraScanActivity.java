@@ -638,8 +638,8 @@ public class CameraScanActivity extends BaseFragment {
                     SpannableStringBuilder spanned = new SpannableStringBuilder(text);
 
                     String[] links = new String[] {
-                        LocaleController.getString(R.string.AuthAnotherClientDownloadClientUrl),
-                        LocaleController.getString(R.string.AuthAnotherWebClientUrl)
+                        "https://desktop.telegram.org/",
+                        "https://web.telegram.org/"
                     };
                     for (int i = 0; i < links.length; ++i) {
                         text = spanned.toString();
@@ -884,22 +884,24 @@ public class CameraScanActivity extends BaseFragment {
         points[3].set(bounds.left, bounds.bottom);
     }
 
+    private void setRecognizedPoints(RectF box, PointF[] detected, PointF[] out) {
+        if (detected == null || detected.length != 4 || detected[0] == null || detected[1] == null
+                || detected[2] == null || detected[3] == null) {
+            setPointsFromBounds(box, out);
+        } else {
+            for (int i = 0; i < 4; i++) out[i].set(detected[i]);
+        }
+    }
     private void updateRecognizedBounds(RectF newBounds, PointF[] newPoints) {
+        if (fragmentView == null || newBounds == null) return;
         final long now = SystemClock.elapsedRealtime();
         if (lastBoundsUpdate == 0) {
             // first update = set
             lastBoundsUpdate = now - boundsUpdateDuration;
             bounds.set(newBounds);
             fromBounds.set(newBounds);
-            if (newPoints == null) {
-                setPointsFromBounds(newBounds, fromPoints);
-                setPointsFromBounds(newBounds, points);
-            } else {
-                for (int i = 0; i < 4; i++) {
-                    fromPoints[i].set(newPoints[i].x, newPoints[i].y);
-                    points[i].set(newPoints[i].x, newPoints[i].y);
-                }
-            }
+            setRecognizedPoints(newBounds, newPoints, points);
+            for (int i = 0; i < 4; i++) fromPoints[i].set(points[i]);
         } else {
             // next updates = interpolate
             if (fromBounds != null && now - lastBoundsUpdate < boundsUpdateDuration) {
@@ -920,13 +922,7 @@ public class CameraScanActivity extends BaseFragment {
                 }
             }
             bounds.set(newBounds);
-            if (newPoints == null) {
-                setPointsFromBounds(bounds, points);
-            } else {
-                for (int i = 0; i < 4; ++i) {
-                    points[i].set(newPoints[i].x, newPoints[i].y);
-                }
-            }
+            setRecognizedPoints(bounds, newPoints, points);
             lastBoundsUpdate = now;
         }
         fragmentView.invalidate();
@@ -1235,7 +1231,8 @@ public class CameraScanActivity extends BaseFragment {
     }
 
     private static PointF[] toPointF(Point[] points, int w, int h) {
-        PointF[] out = new PointF[points.length];
+        if (points == null || points.length != 4 || w <= 0 || h <= 0) return null;
+        PointF[] out = new PointF[4];
         for (int i = 0; i < points.length; ++i) {
             out[i] = new PointF(
                 points[i].x / (float) w,

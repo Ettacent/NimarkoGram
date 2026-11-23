@@ -45,6 +45,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
 
     private static final float DEFAULT_VIDEO_ASPECT_RATIO = 0.671f;
     private final SvgHelper.SvgDrawable svgIcon;
+    private final PremiumPreviewPoster poster;
     Paint phoneFrame1 = new Paint(Paint.ANTI_ALIAS_FLAG);
     Paint phoneFrame2 = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -131,16 +132,18 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
 
     private TLRPC.Document document;
 
-    public VideoScreenPreview(Context context, SvgHelper.SvgDrawable svgDrawable, int currentAccount, int type, Theme.ResourcesProvider resourcesProvider) {
+    public VideoScreenPreview(Context context, SvgHelper.SvgDrawable svgDrawable, int currentAccount,
+                              PremiumPreviewFragment.PremiumFeatureData feature, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.currentAccount = currentAccount;
-        this.type = type;
+        final int type = this.type = feature.type;
         this.svgIcon = svgDrawable;
 
+        poster = new PremiumPreviewPoster(context, feature, resourcesProvider);
         phoneFrame1.setColor(Color.BLACK);
         phoneFrame2.setColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_premiumGradient2, resourcesProvider), Color.BLACK, 0.5f));
+        imageReceiver.setCurrentAccount(currentAccount);
         imageReceiver.setLayerNum(Integer.MAX_VALUE);
-        setVideo();
 
         if (type == PremiumPreviewFragment.PREMIUM_FEATURE_UPLOAD_LIMIT) {
             matrixParticlesDrawable = new MatrixParticlesDrawable();
@@ -237,62 +240,74 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
 
         aspectRatioFrameLayout.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         textureView = new TextureView(context);
+        textureView.setAlpha(0f);
         aspectRatioFrameLayout.addView(textureView);
         setWillNotDraw(false);
         addView(aspectRatioFrameLayout);
     }
 
+    private static TLRPC.Document findVideo(TLRPC.TL_help_premiumPromo promo, String section) {
+        if (promo == null || section == null) return null;
+        for (int i = 0, count = Math.min(promo.video_sections.size(), promo.videos.size()); i < count; i++) {
+            if (!section.equals(promo.video_sections.get(i))) continue;
+            TLRPC.Document video = promo.videos.get(i);
+            if (video != null && !(video instanceof TLRPC.TL_documentEmpty) && video.id != 0
+                    && video.dc_id > 0 && video.size > 0 && video.mime_type != null && video.mime_type.startsWith("video/")) {
+                return video;
+            }
+        }
+        return null;
+    }
     private void setVideo() {
-        TLRPC.TL_help_premiumPromo premiumPromo = MediaDataController.getInstance(currentAccount).getPremiumPromo();
-        String typeString = PremiumPreviewFragment.featureTypeToServerString(type);
-        if (premiumPromo != null) {
-            int index = -1;
-            for (int i = 0; i < premiumPromo.video_sections.size(); i++) {
-                if (premiumPromo.video_sections.get(i).equals(typeString)) {
-                    index = i;
+        final TLRPC.TL_help_premiumPromo premiumPromo = MediaDataController.getInstance(currentAccount).getPremiumPromo();
+        final TLRPC.Document video = findVideo(premiumPromo, PremiumPreviewFragment.featureTypeToServerString(type));
+        if (document == video) return;
+        stopVideoPlayer();
+        cancelNextCheck();
+        document = video;
+        file = null;
+        lastFrameTime = 0;
+        aspectRatio = getDocumentAspectRatio(video);
+        videoRotation = 0;
+        attachFileName = null;
+        imageReceiver.setImageBitmap((Drawable) null);
+        roundedBitmapDrawable = null;
+        cellFlickerDrawable = null;
+        invalidate();
+        if (video == null) return;
+
+        for (TLRPC.PhotoSize thumb : video.thumbs) {
+            if (!(thumb instanceof TLRPC.TL_photoStrippedSize)) continue;
+            android.graphics.Bitmap bitmap = ImageLoader.getStrippedPhotoBitmap(thumb.bytes, "b");
+            if (bitmap == null) continue;
+            roundedBitmapDrawable = RoundedBitmapDrawableFactory.create(getResources(), bitmap);
+            CellFlickerDrawable flicker = new CellFlickerDrawable();
+            flicker.repeatProgress = 4f;
+            flicker.progress = 3.5f;
+            flicker.frameInside = true;
+            cellFlickerDrawable = flicker.getDrawableInterface(this, svgIcon);
+            CombinedDrawable thumbDrawable = new CombinedDrawable(roundedBitmapDrawable, cellFlickerDrawable) {
+                @Override
+                public void setBounds(int left, int top, int right, int bottom) {
+                    if (fromTop) super.setBounds(left, (int) (top - roundRadius), right, bottom);
+                    else super.setBounds(left, top, right, (int) (bottom + roundRadius));
+                }
+            };
+            thumbDrawable.setFullsize(true);
+            imageReceiver.setImageBitmap(thumbDrawable);
                     break;
                 }
-            }
-            if (index >= 0) {
-                TLRPC.Document document = premiumPromo.videos.get(index);
-                Drawable drawable = null;
-                for (int i = 0; i < document.thumbs.size(); i++) {
-                    if (document.thumbs.get(i) instanceof TLRPC.TL_photoStrippedSize) {
-                        roundedBitmapDrawable = RoundedBitmapDrawableFactory.create(getResources(), ImageLoader.getStrippedPhotoBitmap(document.thumbs.get(i).bytes, "b"));
-                        CellFlickerDrawable flickerDrawable = new CellFlickerDrawable();
-                        flickerDrawable.repeatProgress = 4f;
-                        flickerDrawable.progress = 3.5f;
-                        flickerDrawable.frameInside = true;
-                        cellFlickerDrawable = flickerDrawable.getDrawableInterface(this, svgIcon);
-                        CombinedDrawable combinedDrawable = new CombinedDrawable(roundedBitmapDrawable, cellFlickerDrawable) {
-                            @Override
-                            public void setBounds(int left, int top, int right, int bottom) {
-                                if (fromTop) {
-                                    super.setBounds(left, (int) (top - roundRadius), right, bottom);
-                                } else {
-                                    super.setBounds(left, top, right, (int) (bottom + roundRadius));
-                                }
-                            }
-                        };
-                        combinedDrawable.setFullsize(true);
-                        drawable = combinedDrawable;
-                    }
-                }
-                attachFileName = FileLoader.getAttachFileName(document);
-                imageReceiver.setImage(null, null, drawable, null, premiumPromo, 1);
-                FileLoader.getInstance(currentAccount).loadFile(document, premiumPromo, FileLoader.PRIORITY_HIGH, 0);
-                this.document = document;
+        attachFileName = FileLoader.getAttachFileName(video);
+        FileLoader.getInstance(currentAccount).loadFile(video, premiumPromo, FileLoader.PRIORITY_HIGH, 0);
                 Utilities.globalQueue.postRunnable(() -> {
-                    File file = FileLoader.getInstance(currentAccount).getPathToAttach(document);
+            File localFile = FileLoader.getInstance(currentAccount).getPathToAttach(video);
                     AndroidUtilities.runOnUIThread(() -> {
-                        if (this.document != document) return;
-                        this.file = file;
+                if (document != video) return;
+                if (file == null || localFile.exists()) file = localFile;
                         checkVideo();
                     });
                 });
 
-            }
-        }
     }
 
     int size;
@@ -462,6 +477,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
         }
         if (!firstFrameRendered) {
             imageReceiver.setImageCoords(AndroidUtilities.rectTmp.left, AndroidUtilities.rectTmp.top, AndroidUtilities.rectTmp.width(), AndroidUtilities.rectTmp.height());
+            poster.draw(canvas, AndroidUtilities.rectTmp, roundRadius, fromTop);
             imageReceiver.draw(canvas);
         }
         super.dispatchDraw(canvas);
@@ -523,9 +539,11 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         attached = true;
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.premiumPromoUpdated);
+        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.fileLoaded);
+        setVideo();
         updateAttachState();
             checkVideo();
-        NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.fileLoaded);
     }
 
     @Override
@@ -535,23 +553,25 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
         cancelNextCheck();
         updateAttachState();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileLoaded);
+        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.premiumPromoUpdated);
         if (helloParticlesDrawable != null) {
             helloParticlesDrawable.recycle();
             helloParticlesDrawable = null;
         }
         stopVideoPlayer();
-        firstFrameRendered = false;
-        textureView.setAlpha(0f);
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
+        if (!attached || account != currentAccount) return;
         if (id == NotificationCenter.fileLoaded) {
             final String path = (String) args[0];
             if (attachFileName != null && attachFileName.equals(path)) {
                 file = (File) args[1];
                 checkVideo();
             }
+        } else if (id == NotificationCenter.premiumPromoUpdated) {
+            setVideo();
         }
     }
 
@@ -596,7 +616,7 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
 
             }
             aspectRatioFrameLayout.setAspectRatio(aspectRatio, videoRotation);
-            videoPlayerBase = new VideoPlayerHolderBase() {
+            videoPlayerBase = new VideoPlayerHolderBase(currentAccount) {
                 @Override
                 public void onStateChanged(boolean playWhenReady, int playbackState) {
                     if (videoPlayerBase != this || released) return;
@@ -630,6 +650,10 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
                     }
                 }
             };
+            final VideoPlayerHolderBase owner = videoPlayerBase;
+            owner.setOnErrorListener(() -> {
+                if (videoPlayerBase == owner) stopVideoPlayer();
+            });
             videoPlayerBase.with(textureView);
             videoPlayerBase.preparePlayer(uri, false, 1f);
             if (!firstFrameRendered) {
@@ -647,7 +671,10 @@ public class VideoScreenPreview extends FrameLayout implements PagerHeaderView, 
         if (textureView != null) {
             textureView.animate().setListener(null);
             textureView.animate().cancel();
+            textureView.setAlpha(0f);
         }
+        firstFrameRendered = false;
+        invalidate();
         if (videoPlayerBase != null) {
             lastFrameTime = videoPlayerBase.getCurrentPosition();
             videoPlayerBase.release(() -> {

@@ -31,7 +31,6 @@ import org.telegram.ui.recyclerview.ChatListItemAnimator;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
@@ -42,7 +41,6 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
-import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
@@ -545,6 +543,7 @@ public class ReactionsLayoutInBubble {
                 reactionButton.detachPreview();
             }
             if (Objects.equals(reactionButton.reaction.hashCode(), scrimViewReaction)) {
+                if (drawOnlyReaction == null) reactionButton.effectBounds.setEmpty();
                 continue;
             }
             if (drawOnlyReaction != null && reactionButton.reaction.hashCode() != drawOnlyReaction) {
@@ -558,12 +557,14 @@ public class ReactionsLayoutInBubble {
                 y = reactionButton.y * animationProgress + reactionButton.animateFromY * (1f - animationProgress);
             }
             float alpha = 1f;
+            float scale = 1f;
             if (animationProgress != 1f && reactionButton.animationType == ANIMATION_TYPE_IN) {
-                float s = 0.5f + 0.5f * animationProgress;
+                scale = 0.5f + 0.5f * animationProgress;
                 alpha = animationProgress;
-                canvas.scale(s, s, totalX + x + reactionButton.width / 2f, totalY + y + reactionButton.height / 2f);
+                canvas.scale(scale, scale, totalX + x + reactionButton.width / 2f, totalY + y + reactionButton.height / 2f);
             }
             reactionButton.draw(canvas, totalX + x, totalY + y, reactionButton.animationType == ANIMATION_TYPE_MOVE ? animationProgress : 1f, alpha, drawOnlyReaction != null, scrimDirection, scrimProgress);
+            if (drawOnlyReaction == null) reactionButton.recordEffectBounds(totalX + x, totalY + y, scale, alpha);
             canvas.restore();
         }
 
@@ -811,6 +812,16 @@ public class ReactionsLayoutInBubble {
         return lastDrawingReactionButtons.get(hash);
     }
 
+    ReactionButton getDrawnEffectButton(VisibleReaction reaction) {
+        for (int i = reactionButtons.size() - 1; i >= 0; i--) {
+            ReactionButton button = reactionButtons.get(i);
+            if (!button.effectBounds.isEmpty() && (button.paid ? reaction.isStar : reaction.isSame(button.reaction))) {
+                return button;
+            }
+        }
+        return null;
+    }
+
     public void setScrimReaction(Integer scrimViewReaction) {
         this.scrimViewReaction = scrimViewReaction;
     }
@@ -931,6 +942,9 @@ public class ReactionsLayoutInBubble {
         VisibleReaction visibleReaction;
         android.graphics.Rect drawingImageRect = new Rect();
 
+        final RectF effectBounds = new RectF();
+        private float paintedBounceScale = 1f;
+        private int paintedWidth;
         public boolean hasName;
         public String name;
 
@@ -1055,12 +1069,7 @@ public class ReactionsLayoutInBubble {
 
                     particles = reuseFrom != null && reuseFrom.particles != null ? reuseFrom.particles : new StarsReactionsSheet.Particles(StarsReactionsSheet.Particles.TYPE_RADIAL, SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_HIGH ? 18 : 8);
                 } else if (visibleReaction.emojicon != null) {
-                    TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(visibleReaction.emojicon);
-                    if (r != null) {
-
-                        SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon, Theme.key_windowBackgroundGray, 1.0f);
-                        imageReceiver.setImage(ImageLocation.getForDocument(r.center_icon), "40_40_lastreactframe", svgThumb, "webp", r, 1);
-                    }
+                    ReactionsUtils.bindStandardReactionIcon(imageReceiver, currentAccount, visibleReaction.emojicon, false);
                 } else if (visibleReaction.documentId != 0) {
                     if (reuseFrom != null && reuseFrom.emojiPresentation != null && reuseFrom.emojiPresentation.isCurrentConfig()
                             && reuseFrom.parentView == parentView && reuseFrom.isSmall == isSmall && reuseFrom.isTag == isTag
@@ -1260,6 +1269,8 @@ public class ReactionsLayoutInBubble {
                 w = (int) (width * progress + animateFromWidth * (1f - progress));
             }
             AndroidUtilities.rectTmp.set(x, y, x + w, y + height);
+            paintedBounceScale = bounceScale;
+            paintedWidth = w;
             if (bounceScale != 1f) {
                 restore = true;
                 canvas.save();
@@ -1393,6 +1404,21 @@ public class ReactionsLayoutInBubble {
             drawingImageRect.set(left, top, left + size, top + size);
         }
 
+        private void recordEffectBounds(float x, float y, float entryScale, float alpha) {
+            if (alpha <= 0f) {
+                effectBounds.setEmpty();
+                return;
+            }
+            effectBounds.set(drawingImageRect);
+            final float cy = y + height / 2f;
+            if (!isSmall && paintedBounceScale != 1f) scaleEffectBounds(x + paintedWidth / 2f, cy, paintedBounceScale);
+            if (entryScale != 1f) scaleEffectBounds(x + width / 2f, cy, entryScale);
+        }
+
+        private void scaleEffectBounds(float cx, float cy, float scale) {
+            effectBounds.set(cx + (effectBounds.left - cx) * scale, cy + (effectBounds.top - cy) * scale,
+                    cx + (effectBounds.right - cx) * scale, cy + (effectBounds.bottom - cy) * scale);
+        }
         private void drawImage(Canvas canvas, Rect bounds, float alpha) {
             ImageReceiver imageReceiver = animatedEmojiDrawable != null && animatedEmojiDrawable.getImageReceiver() != null ? animatedEmojiDrawable.getImageReceiver() : this.imageReceiver;
             if (imageReceiver != null && bounds != null) {
@@ -1581,20 +1607,17 @@ public class ReactionsLayoutInBubble {
                 if (visibleReaction.isStar) {
 
                 } else if (visibleReaction.emojicon != null) {
-                    TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(visibleReaction.emojicon);
-                    if (r != null && r.activate_animation != null) {
-
-                        SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(r.static_icon, Theme.key_windowBackgroundGray, 1.0f);
-                        previewImageReceiver = new ImageReceiver(parent);
-                        previewImageReceiver.setCurrentAccount(currentAccount);
-                        previewImageReceiver.setLayerNum(7);
-                        previewImageReceiver.onAttachedToWindow();
-                        previewImageReceiver.setRoundRadius(dp(14));
-                        previewImageReceiver.setAllowStartLottieAnimation(true);
-                        previewImageReceiver.setAllowStartAnimation(true);
-                        previewImageReceiver.setAutoRepeat(1);
-                        previewImageReceiver.setAllowDecodeSingleFrame(true);
-                        previewImageReceiver.setImage(ImageLocation.getForDocument(r.activate_animation), "140_140", svgThumb, null, r, 1);
+                    ImageReceiver receiver = new ImageReceiver(parent);
+                    receiver.setCurrentAccount(currentAccount);
+                    receiver.setLayerNum(7);
+                    receiver.setRoundRadius(dp(14));
+                    receiver.setAllowStartLottieAnimation(true);
+                    receiver.setAllowStartAnimation(true);
+                    receiver.setAutoRepeat(1);
+                    receiver.setAllowDecodeSingleFrame(true);
+                    if (ReactionsUtils.bindStandardReactionIcon(receiver, currentAccount, visibleReaction.emojicon, true)) {
+                        previewImageReceiver = receiver;
+                        receiver.onAttachedToWindow();
                     }
                 } else if (visibleReaction.documentId != 0) {
                     previewAnimatedEmojiDrawable = new AnimatedEmojiDrawable(AnimatedEmojiDrawable.CACHE_TYPE_ALERT_PREVIEW_LARGE_140, currentAccount, visibleReaction.documentId);
@@ -1810,14 +1833,13 @@ public class ReactionsLayoutInBubble {
 
     public void animateReaction(VisibleReaction reaction) {
         if (reaction.documentId == 0 && animatedReactions.get(reaction) == null) {
+            TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(reaction.emojicon);
+            if (r == null || !ReactionsUtils.hasReactionMedia(r.center_icon)) return;
             ImageReceiver imageReceiver = new ImageReceiver();
             imageReceiver.setCurrentAccount(currentAccount);
             imageReceiver.setParentView(parentView);
             imageReceiver.setUniqKeyPrefix(Integer.toString(animationUniq++));
-            TLRPC.TL_availableReaction r = MediaDataController.getInstance(currentAccount).getReactionsMap().get(reaction.emojicon);
-            if (r != null) {
                 imageReceiver.setImage(ImageLocation.getForDocument(r.center_icon), "40_40_nolimit", null, "tgs", r, 1);
-            }
             imageReceiver.setAutoRepeat(0);
             imageReceiver.onAttachedToWindow();
             animatedReactions.put(reaction, imageReceiver);

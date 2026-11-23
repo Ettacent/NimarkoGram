@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">Працягнуць</string>
+    <string name="Retry">Паўтарыць</string>
     <string name="UseProxyWeb">WEB-проксі</string>
     <string name="UseProxyWebInfo">WEB-проксі выкарыстоўвае HTTPS-старонку ў асобным WebView. Увядзіце імя хоста без схемы і шляху, а таксама 16-байтавы сакрэт MTProxy. Гэта эксперыментальная рэалізацыя для тэставання ў адкрытай праграме. Патрэбна актуальная версія Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">Сучаснае меню паведамленняў</string>
@@ -11,21 +15,21 @@
     <string name="InstallPlugin">Устанавіць</string>
     <string name="Links">Спасылкі</string>
     <string name="PluginDelete">Выдаліць плагін</string>
-    <string name="PluginDeleteInfo">Вы ўпэўненыя, што хочаце выдаліць **%1$s**?</string>
-    <string name="PluginDisableError">Не атрымалася адключыць **%1$s**.</string>
-    <string name="PluginEnableError">Не атрымалася ўключыць **%1$s**.</string>
-    <string name="PluginEngineNotEnabled">Уключыце **рухавік убудоў**, каб адкрыць налады **%1$s**.</string>
-    <string name="PluginHasNoSettings">**%1$s** не мае налад.</string>
-    <string name="PluginInstallError">Не атрымалася ўсталяваць **%1$s**.</string>
-    <string name="PluginInstalled">**%1$s** устаноўлены паспяхова.</string>
-    <string name="PluginInstalledButFailedToEnable">**%1$s** усталяваны, але падчас уключэння адбылася памылка.</string>
+    <string name="PluginDeleteInfo">Выдаліць убудову %s?</string>
+    <string name="PluginDisableError">Не ўдалося выключыць убудову: %s</string>
+    <string name="PluginEnableError">Не ўдалося ўключыць убудову: %s</string>
+    <string name="PluginEngineNotEnabled">Рухавік убудоў выключаны. Уключыце яго, каб выкарыстоўваць %s.</string>
+    <string name="PluginHasNoSettings">У %s няма налад.</string>
+    <string name="PluginInstallError">Не ўдалося ўсталяваць убудову.</string>
+    <string name="PluginInstalled">Убудова %s усталявана.</string>
+    <string name="PluginInstalledButFailedToEnable">Убудова ўсталявана, але ўключыць яе не ўдалося.</string>
     <string name="PluginIsNotResponding">Плагін не адказвае.</string>
     <string name="PluginIsNotRespondingAlert">%1$s не адказвае</string>
     <string name="PluginNoAuthor">Невядомы аўтар</string>
     <string name="PluginNoDescription">Няма апісання.</string>
-    <string name="PluginNotEnabled">Уключыце **сістэму плагінаў**, каб устанавіць **%1$s**.</string>
-    <string name="PluginNotFound">**%1$s** не знойдзены.</string>
-    <string name="PluginUpdated">**%1$s** паспяхова абноўлены.</string>
+    <string name="PluginNotEnabled">Убудова %s выключана.</string>
+    <string name="PluginNotFound">Убудова %s не знойдзена.</string>
+    <string name="PluginUpdated">Убудова %s абноўлена.</string>
     <string name="PluginVersion">Версія</string>
     <string name="Plugins">Плагіны</string>
     <string name="PluginsCompactView">Кампактны выгляд плагінаў</string>
@@ -33,14 +37,14 @@
     <string name="PluginsDisableArtInfo">Адключае ART Profile Saver для прадухілення збояў хукаў плагінаў.</string>
     <string name="PluginsDocumentation">Дакументацыя</string>
     <string name="PluginsEngine">Рухавік плагінаў</string>
-    <string name="PluginsInfo">Вы можаце знайсці плагіны ў @exteraPlugins.</string>
+    <string name="PluginsInfo">Рухавік убудоў дазваляе загружаць скрыпты Python, якія пашыраюць магчымасці праграмы.</string>
     <string name="PluginsNotFound">Плагіны не знойдзены.</string>
     <string name="PluginsSafeMode">Бяспечны рэжым</string>
     <string name="PluginsSafeModeInfo">Рухавік плагінаў адключаны з-за збою. Адключэнне бяспечнага рэжыму можа прывесці да непрадказальных наступстваў.</string>
     <string name="PluginsTrusted">Надзейныя плагіны</string>
-    <string name="Preferences">Налады exteraGram</string>
-    <string name="ResetPluginSettings">Налады **%1$s** былі скінуты.</string>
-    <string name="ResetPluginSettingsInfo">Вы ўпэўнены, што жадаеце скінуць стандартныя налады **%1$s**?</string>
+    <string name="Preferences">Налады</string>
+    <string name="ResetPluginSettings">Налады ўбудовы %s скінуты.</string>
+    <string name="ResetPluginSettingsInfo">Вярнуць усе налады %s да прадвызначаных?</string>
     <string name="RestartRequired">Перазапусціце праграму, каб змены ўступілі ў сілу.</string>
     <string name="UpdatePlugin">Абнавіць</string>
 </resources>

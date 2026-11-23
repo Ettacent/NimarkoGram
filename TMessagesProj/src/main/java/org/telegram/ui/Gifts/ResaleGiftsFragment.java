@@ -166,7 +166,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
 
     private int insetTop;
     private int insetBottom;
-    private float filtersHiddenFactor;
+    private float filtersHiddenFactor = 1.0f;
 
     private static final int FILTER_HEIGHT_DP = 40;
     private static final float LIST_SIDE_DP = 7.33f;
@@ -711,7 +711,6 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
         fireworksOverlay = new FireworksOverlay(getContext());
         fragmentView.addView(fireworksOverlay, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        setFiltersShown(false, false);
 
         return fragmentView;
     }
@@ -855,7 +854,7 @@ public class ResaleGiftsFragment extends BaseFragment implements FactorAnimator.
             return dp(8);
         }
     }
-    private boolean filtersShown = true;
+    private boolean filtersShown;
     private ValueAnimator filtersAnimator;
     private void setFiltersShown(boolean show, boolean animated) {
         if (filtersShown == show) return;

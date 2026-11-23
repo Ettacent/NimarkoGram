@@ -6005,7 +6005,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             if (sendWhenOnlineButton != null) {
                 TLRPC.User user = parentFragment == null ? null : parentFragment.getCurrentUser();
-                if (user != null && !user.bot && !(user.status instanceof TLRPC.TL_userStatusEmpty) && !(user.status instanceof TLRPC.TL_userStatusOnline) && !(user.status instanceof TLRPC.TL_userStatusRecently) && !(user.status instanceof TLRPC.TL_userStatusLastMonth) && !(user.status instanceof TLRPC.TL_userStatusLastWeek)) {
+                if (canOfferSendWhenOnline(user)) {
                     sendWhenOnlineButton.setVisibility(VISIBLE);
                 } else {
                     sendWhenOnlineButton.setVisibility(GONE);
@@ -6262,7 +6262,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         options.setupSelectors();
         if (sendWhenOnlineButton != null) {
             TLRPC.User user = parentFragment == null ? null : parentFragment.getCurrentUser();
-            if (user != null && !user.bot && !(user.status instanceof TLRPC.TL_userStatusEmpty) && !(user.status instanceof TLRPC.TL_userStatusOnline) && !(user.status instanceof TLRPC.TL_userStatusRecently) && !(user.status instanceof TLRPC.TL_userStatusLastMonth) && !(user.status instanceof TLRPC.TL_userStatusLastWeek)) {
+            if (canOfferSendWhenOnline(user)) {
                 sendWhenOnlineButton.setVisibility(VISIBLE);
             } else {
                 sendWhenOnlineButton.setVisibility(GONE);
@@ -9190,6 +9190,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         } else {
             return sendMessageInternal(true, 0, 0, 0, true);
         }
+    }
+
+    private static boolean canOfferSendWhenOnline(TLRPC.User user) {
+        return user != null && !user.bot && user.status instanceof TLRPC.TL_userStatusOffline && user.status.expires > 0;
     }
 
     protected boolean sendMessageInternal(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars, boolean allowConfirm) {

@@ -43,6 +43,7 @@ import java.text.DateFormatSymbols;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import app.nimarkogram.messenger.search.MessageSearchDateRange;
@@ -213,10 +214,11 @@ public final class MessageSearchDateSheet extends BottomSheet {
         PresetRow presetRow = new PresetRow(context);
         for (int index = 0; index < labels.length; index++) {
             final int preset = index;
-            String label = preset < 2 ? LocaleController.getString(labels[preset])
-                    : LocaleController.formatPluralString("Days", preset == 2 ? 7 : 30);
+            String accessibleLabel = LocaleController.getString(labels[preset]);
+            String label = preset < 2 ? accessibleLabel : LocaleController.getString(
+                    preset == 2 ? R.string.NM_SearchDatesQuick7 : R.string.NM_SearchDatesQuick30);
             Choice item = presets[preset] = new Choice(context, label, false, false);
-            item.setContentDescription(LocaleController.getString(labels[preset]));
+            item.setContentDescription(accessibleLabel);
             item.setOnClickListener(v -> select(() -> {
                 draft.preset(System.currentTimeMillis(), preset < 2 ? 1 : preset == 2 ? 7 : 30, preset == 1);
                 selectedPreset = preset;
@@ -261,9 +263,9 @@ public final class MessageSearchDateSheet extends BottomSheet {
         monthPicker.setFormatter(value -> months[value]);
         yearPicker.setMinValue(draft.calendar(draft.minimum).get(Calendar.YEAR));
         yearPicker.setMaxValue(draft.calendar(draft.today).get(Calendar.YEAR));
-        dayPicker.setContentDescriptionCallback(value -> LocaleController.formatString(R.string.NM_SearchDatesDayValue, value));
+        dayPicker.setContentDescriptionCallback(value -> formatNumericWheelLabel(R.string.NM_SearchDatesDayValue, value));
         monthPicker.setContentDescriptionCallback(value -> LocaleController.formatString(R.string.NM_SearchDatesMonthValue, months[value]));
-        yearPicker.setContentDescriptionCallback(value -> LocaleController.formatString(R.string.NM_SearchDatesYearValue, value));
+        yearPicker.setContentDescriptionCallback(value -> formatNumericWheelLabel(R.string.NM_SearchDatesYearValue, value));
         content.addView(wheels, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         errorView = text(LocaleController.getString(R.string.NM_SearchDatesInvalid), 13, false);
@@ -295,6 +297,10 @@ public final class MessageSearchDateSheet extends BottomSheet {
         view.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         ThemeBind.textColor(view, Theme.key_dialogTextBlack, resourcesProvider);
         return view;
+    }
+
+    private static String formatNumericWheelLabel(int resource, int value) {
+        return LocaleController.formatString(resource, String.format(Locale.getDefault(), "%d", value));
     }
 
     private static LinearLayout.LayoutParams weighted(int start, int end) {

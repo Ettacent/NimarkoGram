@@ -26,8 +26,6 @@ public class SearchPhotoPopupWrapper {
 
     private static final String GOOGLE_LENS_PACKAGE = "com.google.android.googlequicksearchbox";
 
-    private static final String SEARCH_PHOTO_INFO_FALLBACK =
-            "Search this image on the web. Results open in your browser.";
 
     public ActionBarMenuSubItem lensItem;
     public ActionBarPopupWindow.ActionBarPopupWindowLayout searchSwipeBackLayout;
@@ -85,8 +83,8 @@ public class SearchPhotoPopupWrapper {
         info.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, new DarkThemeResourceProvider()));
         info.setMovementMethod(LinkMovementMethod.getInstance());
         info.setLinkTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteLinkText, new DarkThemeResourceProvider()));
-        
-        info.setText(SEARCH_PHOTO_INFO_FALLBACK);
+
+        info.setText(LocaleController.getString(R.string.NM_SearchPhotoHint));
         searchSwipeBackLayout.addView(info, LayoutHelper.createLinear(-1, -2, 0.0f, 0, 0, 8, 0, 0));
     }
 

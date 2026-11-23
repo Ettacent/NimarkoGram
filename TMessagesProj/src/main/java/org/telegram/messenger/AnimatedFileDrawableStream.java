@@ -85,12 +85,22 @@ public class AnimatedFileDrawableStream implements FileLoadOperationStream {
                     }
                     if (restart && !reacquireLoadOperation(offset, generation)) return 0;
                     final FileLoadOperation operation;
+                    final FileLoader.StreamRegistration registration;
                     synchronized (sync) {
                         if (canceled || generation != cancellationGeneration) return 0;
                         operation = loadOperation;
+                        registration = streamRegistration;
                     }
-                    if (operation == null) return 0;
+                    if (operation == null || registration == null) return 0;
+                    if (!registration.isAttachedTo(operation)) {
+                        if (registration.canRecover(operation) && reacquireLoadOperation(offset, generation)) continue;
+                        return 0;
+                    }
                     long[] result = operation.getDownloadedLengthFromOffset(offset, readLength);
+                    if (!registration.isAttachedTo(operation)) {
+                        if (registration.canRecover(operation) && reacquireLoadOperation(offset, generation)) continue;
+                        return 0;
+                    }
                     synchronized (sync) {
                         if (canceled || generation != cancellationGeneration || streamOwner.isReaderCancelled()) return 0;
                         availableLength = result[0];

@@ -131,7 +131,10 @@ public class AcceptDeclineView extends View {
         callDrawable = ContextCompat.getDrawable(context, R.drawable.calls_decline).mutate();
         cancelDrawable = ContextCompat.getDrawable(context, R.drawable.ic_close_white).mutate();
         cancelDrawable.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
-        acceptVoiceDrawable = new RLottieDrawable(R.raw.call_accept, dp(48), dp(48), true, null);
+        int voiceIconSize = dp(48);
+        acceptVoiceDrawable = new RLottieDrawable(R.raw.call_accept, voiceIconSize, voiceIconSize, true, null);
+        acceptVoiceDrawable.bindPrivateCallIcons(context);
+        acceptVoiceDrawable.setBounds(0, 0, voiceIconSize, voiceIconSize);
         acceptVoiceDrawable.setAutoRepeat(1);
         acceptVoiceDrawable.setCustomEndFrame(90);
         acceptVoiceDrawable.setMasterParent(this);

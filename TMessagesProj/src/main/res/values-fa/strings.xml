@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">ادامه</string>
+    <string name="Retry">تلاش مجدد</string>
     <string name="UseProxyWeb">پروکسی WEB</string>
     <string name="UseProxyWebInfo">پروکسی WEB از یک صفحهٔ HTTPS در WebView جداگانه استفاده می‌کند. نام میزبان را بدون پیشوند پروتکل یا مسیر، به‌همراه کلید محرمانهٔ ۱۶ بایتی MTProxy وارد کنید. این پیاده‌سازی آزمایشی برای تست هنگام باز بودن برنامه در پیش‌زمینه است و به نسخهٔ به‌روز Android System WebView نیاز دارد.</string>
     <string name="NM_Menu_TelegramPlus">منوی مدرن پیام‌ها</string>
@@ -13,7 +17,7 @@
     <string name="PluginsDisableArtInfo">صرف‌نظر از کامپایل AOT پایتون در راه‌اندازی. بوت سریع‌تر، اما افزونه‌ها کمی کندتر اجرا می‌شوند.</string>
     <string name="PluginsSafeMode">حالت ایمن</string>
     <string name="PluginsSafeModeInfo">موتور افزونه‌ها پس از یک خرابی در حالت ایمن اجرا می‌شود.</string>
-    <string name="PluginsSafeModeInfo2">تمام افزونه‌ها غیرفعال هستند. آن‌ها را یکی‌یکی فعال کنید تا افزونه مشکل‌ساز را پیدا کنید.</string>
+    <string name="PluginsSafeModeInfo2">حالت ایمن از اجرای افزونه‌ها جلوگیری می‌کند. گزارش‌های ذخیره‌شدهٔ افزونه‌ها همچنان در دسترس‌اند.</string>
     <string name="PluginsDocumentation">مستندات</string>
     <string name="PluginsTrusted">افزونه‌های مورد اعتماد</string>
     <string name="ForkedByNimarko">فورک‌شده توسط Nimarko</string>
@@ -29,7 +33,7 @@
     <string name="PluginIncompatibleInfo">این افزونه به نسخه‌ای جدیدتر از برنامه نیاز دارد.</string>
     <string name="RestartRequired">راه‌اندازی مجدد لازم است</string>
     <string name="LinkCopied">لینک به کلیپ‌بورد کپی شد</string>
-    <string name="PluginInstalled">افزونه نصب شد</string>
-    <string name="PluginUpdated">افزونه به‌روز شد</string>
+    <string name="PluginInstalled">افزونهٔ %s نصب شد.</string>
+    <string name="PluginUpdated">افزونهٔ %s به‌روز شد.</string>
     <string name="PluginInstallError">نصب افزونه ناموفق بود</string>
-<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="EnablePluginsEngine">Enable plugin engine</string><string name="PluginDelete">Delete plugin</string><string name="PluginDeleteInfo">Are you sure you want to delete %s?</string><string name="PluginDisableError">Failed to disable plugin: %s</string><string name="PluginEnableError">Failed to enable plugin: %s</string><string name="PluginEngineNotEnabled">Plugin engine is disabled. Enable it to use %s.</string><string name="PluginHasNoSettings">%s has no settings.</string><string name="PluginInstalledButFailedToEnable">Installed, but failed to enable plugin.</string><string name="PluginNotEnabled">Plugin %s is not enabled.</string><string name="PluginNotFound">Plugin %s not found.</string></resources>
+<string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">به‌روزرسانی آنلاین در NimarkoGram غیرفعال است.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">حالت ایمن فعال شد. افزونه‌ها به‌طور خودکار بارگیری نمی‌شوند.</string><string name="PluginIsNotRespondingAlert">افزونهٔ «%s» پاسخ نمی‌دهد</string><string name="EnablePluginsEngine">فعال کردن موتور افزونه‌ها</string><string name="PluginDelete">حذف افزونه</string><string name="PluginDeleteInfo">افزونهٔ %s حذف شود؟</string><string name="PluginDisableError">افزونه غیرفعال نشد: %s</string><string name="PluginEnableError">افزونه فعال نشد: %s</string><string name="PluginEngineNotEnabled">موتور افزونه‌ها خاموش است. برای استفاده از %s آن را روشن کنید.</string><string name="PluginHasNoSettings">%s تنظیمی ندارد.</string><string name="PluginInstalledButFailedToEnable">افزونه نصب شد اما فعال نشد.</string><string name="PluginNotEnabled">افزونهٔ %s غیرفعال است.</string><string name="PluginNotFound">افزونهٔ %s پیدا نشد.</string></resources>

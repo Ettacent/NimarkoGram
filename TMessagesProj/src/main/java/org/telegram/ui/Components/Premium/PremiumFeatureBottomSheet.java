@@ -880,7 +880,7 @@ public class PremiumFeatureBottomSheet extends BottomSheet implements Notificati
         } else if (featureData.type == PremiumPreviewFragment.PREMIUM_FEATURE_APPLICATION_ICONS) {
             return new PremiumAppIconsPreviewView(context, resourcesProvider);
         }
-        return new VideoScreenPreview(context, svgIcon, currentAccount, featureData.type, resourcesProvider);
+        return new VideoScreenPreview(context, svgIcon, currentAccount, featureData, resourcesProvider);
     }
 
     @Override

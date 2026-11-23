@@ -990,6 +990,80 @@ public class ViewPagerFixed extends FrameLayout {
         }
     }
 
+    public int getSelectionForRebind() {
+        return viewPages[1] != null && (isManualScrolling() || tabsAnimationInProgress && !backAnimation)
+                ? nextPosition : currentPosition;
+    }
+
+    public void rebindCurrentPage(int position) {
+        stopPageAnimations();
+        final int oldPosition = currentPosition;
+        final View oldPage = viewPages[0];
+        if (viewPages[1] != null) {
+            if (viewTypes[1] == adapter.getItemViewType(position)) {
+                viewPages[0] = viewPages[1];
+                viewPages[1] = oldPage;
+                final int oldType = viewTypes[0];
+                viewTypes[0] = viewTypes[1];
+                viewTypes[1] = oldType;
+            }
+            viewsByType.put(viewTypes[1], viewPages[1]);
+            removeView(viewPages[1]);
+            viewPages[1] = null;
+        }
+
+        currentPosition = position;
+        nextPosition = -1;
+        currentProgress = 1f;
+        updateViewForIndex(0);
+        setTranslationX(viewPages[0], 0);
+
+        for (int i = viewsByType.size() - 1; i >= 0; i--) {
+            final int type = viewsByType.keyAt(i);
+            int page = 0;
+            while (page < adapter.getItemCount() && adapter.getItemViewType(page) != type) {
+                page++;
+            }
+            if (page == adapter.getItemCount()) {
+                viewsByType.removeAt(i);
+            }
+        }
+        if (tabsView != null) {
+            tabsView.setEnabled(true);
+            fillTabs(false);
+            tabsView.selectTab(position, position, 1f);
+        }
+        onItemSelected(viewPages[0], oldPage, position, oldPosition);
+        onTabAnimationUpdateInternal(true);
+        notificationsLocker.unlock();
+    }
+
+    public void releasePageAnimations() {
+        stopPageAnimations();
+        notificationsLocker.unlock();
+    }
+
+    private void stopPageAnimations() {
+        if (manualScrolling != null) {
+            manualScrolling.removeAllListeners();
+            manualScrolling.removeAllUpdateListeners();
+            manualScrolling.cancel();
+            manualScrolling = null;
+        }
+        if (tabsAnimation != null) {
+            tabsAnimation.removeAllListeners();
+            tabsAnimation.cancel();
+            tabsAnimation = null;
+        }
+        tabsAnimationInProgress = false;
+        startedTracking = false;
+        maybeStartTracking = false;
+        additionalOffset = 0;
+        if (velocityTracker != null) {
+            velocityTracker.recycle();
+            velocityTracker = null;
+        }
+    }
     protected void onItemSelected(View currentPage, View oldPage, int position, int oldPosition) {
 
     }

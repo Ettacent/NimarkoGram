@@ -9,10 +9,13 @@ import android.content.SharedPreferences;
 import android.content.pm.InstallSourceInfo;
 import android.content.pm.PackageInfo;
 import android.net.ConnectivityManager;
+import android.net.IpPrefix;
+import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
+import android.net.RouteInfo;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Handler;
@@ -77,6 +80,7 @@ import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.TimeZone;
@@ -525,7 +529,7 @@ public class ConnectionsManager extends BaseController {
 
     private interface ManagedResponseCallback {
         void run(TLObject response, TLRPC.TL_error error,
-                app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer);
+                app.nimarkogram.messenger.distribution.ClientPlugins.Lease producer);
     }
 
     private static final class RequestCancellation {
@@ -547,11 +551,11 @@ public class ConnectionsManager extends BaseController {
     }
     private static final class ManagedRequestDelegate implements RequestDelegate {
         final ManagedResponseCallback callback;
-        final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner;
+        final RequestDelegate owner;
 
         final RequestCancellation cancellation;
         ManagedRequestDelegate(ManagedResponseCallback callback,
-                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner,
+                RequestDelegate owner,
                 RequestCancellation cancellation) {
             this.callback = callback;
             this.owner = owner;
@@ -579,21 +583,18 @@ public class ConnectionsManager extends BaseController {
     }
 
     private static void runManagedResponse(RequestDelegate callback, TLObject response,
-            TLRPC.TL_error error, app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer) {
+            TLRPC.TL_error error, app.nimarkogram.messenger.distribution.ClientPlugins.Lease producer) {
         if (callback instanceof ManagedRequestDelegate) {
             ((ManagedRequestDelegate) callback).callback.run(response, error, producer);
-        } else if (callback instanceof app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) {
-            ((app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) callback)
-                    .runWithResponseLease(response, error, producer);
-        } else {
+        } else if (!app.nimarkogram.messenger.distribution.ClientPlugins.dispatchWithLease(callback, response, error, producer)) {
             callback.run(response, error);
         }
     }
 
     private static void runManagedResponseWithResources(RequestDelegate callback,
             TLObject response, TLRPC.TL_error error) {
-        app.nimarkogram.messenger.plugins.utils.ManagedResponseLease producer = response == null
-                ? null : new app.nimarkogram.messenger.plugins.utils.ManagedResponseLease(response);
+        app.nimarkogram.messenger.distribution.ClientPlugins.Lease producer = response == null
+                ? null : new app.nimarkogram.messenger.distribution.ClientPlugins.Lease(response);
         Throwable bodyFailure = null;
         try {
             runManagedResponse(callback, response, error, producer);
@@ -605,18 +606,17 @@ public class ConnectionsManager extends BaseController {
         }
     }
 
-    private static app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate managedRequestOwner(RequestDelegate callback) {
+    private static RequestDelegate managedRequestOwner(RequestDelegate callback) {
         if (callback instanceof ManagedRequestDelegate) {
             return ((ManagedRequestDelegate) callback).owner;
         }
-        return callback instanceof app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate
-                ? (app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate) callback : null;
+        return app.nimarkogram.messenger.distribution.ClientPlugins.requestOwner(callback);
     }
 
     private static void cancelManagedRequestCallback(RequestDelegate callback) {
-        app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate owner = managedRequestOwner(callback);
+        RequestDelegate owner = managedRequestOwner(callback);
         try {
-            if (owner != null) owner.cancel();
+            if (owner != null) app.nimarkogram.messenger.distribution.ClientPlugins.cancelOwner(owner);
         } finally {
             RequestCancellation cancellation = requestCancellation(callback);
             if (cancellation != null) cancellation.cancel();
@@ -627,9 +627,15 @@ public class ConnectionsManager extends BaseController {
         // NimarkoGram: pre-request plugin hook
         TLObject hookedObject = objectIn;
         String requestName = "";
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
+            if (objectIn == null) {
+                completeCancelledDialogsRequest(null, onCompleteIn);
+                return;
+            }
+        } else {
         try {
             requestName = objectIn != null ? objectIn.getClass().getSimpleName() : "";
-            TLObject pre = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+                TLObject pre = app.nimarkogram.messenger.distribution.ClientPlugins
                     .executePreRequestHook(requestName, currentAccount, objectIn);
             if (pre == null) {
                 completeCancelledDialogsRequest(objectIn, onCompleteIn);
@@ -640,15 +646,20 @@ public class ConnectionsManager extends BaseController {
             FileLog.e("nimarko: pre-request hook threw", t);
         }
         // NimarkoGram: wrap onComplete with post-request hook (only when caller actually passed a callback)
+        }
         final RequestDelegate userOnComplete = onCompleteIn;
         final String finalRequestName = requestName;
         final TLObject object = hookedObject;
-        final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner = managedRequestOwner(userOnComplete);
+        final RequestDelegate releaseOwner = managedRequestOwner(userOnComplete);
         final RequestCancellation cancellation = requestCancellation(userOnComplete);
         final ManagedResponseCallback postHookCallback = (userOnComplete == null) ? null : (response, error, producer) -> {
+            if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
+                runManagedResponse(userOnComplete, response, error, producer);
+                return;
+            }
             try {
-                app.nimarkogram.messenger.plugins.hooks.PluginsHooks.PostRequestResult post =
-                        app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+                app.nimarkogram.messenger.distribution.ClientPlugins.Post post =
+                        app.nimarkogram.messenger.distribution.ClientPlugins
                                 .executePostRequestHook(finalRequestName, currentAccount, response, error);
                 if (post != null) {
                     response = post.response;
@@ -821,11 +832,11 @@ public class ConnectionsManager extends BaseController {
         public final RequestDelegateInternal onComplete;
         public final QuickAckDelegate onQuickAck;
         public final WriteToSocketDelegate onWriteToSocket;
-        public final app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner;
+        public final RequestDelegate releaseOwner;
         public final RequestCancellation cancellation;
         public volatile Runnable onCancelled;
         public RequestCallbacks(RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
-                app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner, RequestCancellation cancellation) {
+                RequestDelegate releaseOwner, RequestCancellation cancellation) {
             this.onComplete = onComplete;
             this.onQuickAck = onQuickAck;
             this.onWriteToSocket = onWriteToSocket;
@@ -835,7 +846,7 @@ public class ConnectionsManager extends BaseController {
     }
 
     private RequestCallbacks listen(int requestToken, RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket,
-            app.nimarkogram.messenger.plugins.utils.PythonRequestDelegate releaseOwner, RequestCancellation cancellation) {
+            RequestDelegate releaseOwner, RequestCancellation cancellation) {
         RequestCallbacks callbacks = new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket, releaseOwner, cancellation);
         requestCallbacks.put(requestToken, callbacks);
 //        FileLog.d("{rc} listen(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
@@ -859,7 +870,7 @@ public class ConnectionsManager extends BaseController {
             if (callbacks != null) {
             try {
                 if (callbacks.releaseOwner != null) {
-                    callbacks.releaseOwner.cancel();
+                    app.nimarkogram.messenger.distribution.ClientPlugins.cancelOwner(callbacks.releaseOwner);
                 }
             } finally {
                 try {
@@ -1025,7 +1036,7 @@ public class ConnectionsManager extends BaseController {
             nativeInitEpoch = NATIVE_INIT_EPOCHS.incrementAndGet(currentAccount);
         }
         lastNetworkType = ApplicationLoader.getCurrentNetworkType();
-        native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, false, lastNetworkType, SharedConfig.measureDevicePerformanceClass());
+        native_init(currentAccount, version, layer, apiId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, logPath, regId, cFingerprint, installer, packageId, timezoneOffset, userId, userPremium, enablePushConnection, false, lastNetworkType, SharedConfig.getNetworkPerformanceClass());
         synchronized (IpStrategyCoordinator.PUBLICATION_LOCK) {
             nativeInitialized = nativeInitEpoch == NATIVE_INIT_EPOCHS.get(currentAccount);
         }
@@ -1323,10 +1334,17 @@ public class ConnectionsManager extends BaseController {
     }
 
     public static void onLogout(final int currentAccount) {
+        if (currentAccount < 0 || currentAccount >= UserConfig.MAX_ACCOUNT_COUNT) {
+            return;
+        }
+        final AccountInstance accountInstance = AccountInstance.getInstance(currentAccount);
+        final long loginSession = app.nimarkogram.messenger.notifications.InAppNotifications.session(currentAccount);
+        final long userId = accountInstance.getUserConfig().getClientUserId();
+        if (userId == 0) {
+            return;
+        }
         AndroidUtilities.runOnUIThread(() -> {
-            AccountInstance accountInstance = AccountInstance.getInstance(currentAccount);
-            if (accountInstance.getUserConfig().getClientUserId() != 0) {
-                accountInstance.getUserConfig().clearConfig();
+            if (app.nimarkogram.messenger.notifications.InAppNotifications.isCurrent(currentAccount, userId, loginSession)) {
                 accountInstance.getMessagesController().performLogout(0);
             }
         });
@@ -1613,6 +1631,12 @@ public class ConnectionsManager extends BaseController {
         private static volatile IpSnapshot snapshot;
         private static volatile boolean callbackRegistered;
         private static volatile long registrationRetryAt;
+        private static Network callbackNetwork;
+        private static NetworkCapabilities lastCapabilities;
+        private static int availabilityCaps = -1;
+        private static LinkRoute lastLinkRoute;
+        private static long probingGeneration = -1;
+        private static boolean refreshAfterProbe;
         private static boolean workOutstanding;
         private static long workRetryAt;
         private static final AtomicReference<NetworkInfo> observedInfo = new AtomicReference<>(ApplicationLoader.currentNetworkInfo);
@@ -1626,17 +1650,92 @@ public class ConnectionsManager extends BaseController {
         private static final ConnectivityManager.NetworkCallback CALLBACK = new ConnectivityManager.NetworkCallback() {
             @Override public void onAvailable(Network network) { invalidate(); }
             @Override public void onLost(Network network) { invalidate(); }
-            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) { invalidate(); }
-            @Override public void onLinkPropertiesChanged(Network network, LinkProperties properties) { invalidate(); }
+            @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) { invalidateCapabilities(network, caps); }
+            @Override public void onLinkPropertiesChanged(Network network, LinkProperties properties) { invalidateLink(network, properties); }
         };
 
+        private static final class LinkRoute {
+            final String iface;
+            final HashSet<LinkAddress> addresses;
+            final HashSet<RouteInfo> routes;
+            final IpPrefix nat64;
+
+            LinkRoute(LinkProperties properties) {
+                iface = properties.getInterfaceName();
+                addresses = new HashSet<>(properties.getLinkAddresses());
+                routes = new HashSet<>(properties.getRoutes());
+                nat64 = Build.VERSION.SDK_INT >= 30 ? properties.getNat64Prefix() : null;
+            }
+
+            boolean matches(LinkRoute other) {
+                return other != null && Objects.equals(iface, other.iface)
+                        && addresses.equals(other.addresses) && routes.equals(other.routes)
+                        && Objects.equals(nat64, other.nat64);
+            }
+        }
         static {
             WORKER.allowCoreThreadTimeOut(true);
         }
 
         private static void invalidate() {
             synchronized (PUBLICATION_LOCK) {
+                callbackNetwork = null;
+                availabilityCaps = -1;
+                lastLinkRoute = null;
+                lastCapabilities = null;
                 generation.incrementAndGet();
+            }
+            queueInvalidation();
+        }
+
+        private static boolean observeCallbackNetworkLocked(Network network) {
+            if (network.equals(callbackNetwork)) return true;
+            callbackNetwork = network;
+            availabilityCaps = -1;
+            lastCapabilities = null;
+            lastLinkRoute = null;
+            return false;
+        }
+
+        private static void refreshLocked(boolean sameRoute) {
+            if (sameRoute && probingGeneration == generation.get()) {
+                refreshAfterProbe = true;
+            } else {
+                generation.incrementAndGet();
+            }
+        }
+
+        private static void invalidateLink(Network network, LinkProperties properties) {
+            if (network == null || properties == null) {
+                invalidate();
+                return;
+            }
+            observeNetwork();
+            LinkRoute route = new LinkRoute(properties);
+            synchronized (PUBLICATION_LOCK) {
+                boolean same = observeCallbackNetworkLocked(network) && route.matches(lastLinkRoute);
+                lastLinkRoute = route;
+                lastCapabilities = null;
+                refreshLocked(same);
+            }
+            queueInvalidation();
+        }
+
+        private static void invalidateCapabilities(Network network, NetworkCapabilities capabilities) {
+            if (network == null || capabilities == null) {
+                invalidate();
+                return;
+            }
+            observeNetwork();
+            NetworkCapabilities copy = new NetworkCapabilities(capabilities);
+            int flags = (copy.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ? 1 : 0)
+                    | (Build.VERSION.SDK_INT >= 28 && copy.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED) ? 2 : 0);
+            synchronized (PUBLICATION_LOCK) {
+                boolean same = observeCallbackNetworkLocked(network);
+                if (same && copy.equals(lastCapabilities)) return;
+                lastCapabilities = copy;
+                refreshLocked(same && flags == availabilityCaps);
+                availabilityCaps = flags;
             }
             queueInvalidation();
         }
@@ -1726,6 +1825,7 @@ public class ConnectionsManager extends BaseController {
                     if (snapshot != ready || ready.generation != generation.get()
                             || !current(account, target) || target.forceTryIpV6 != force
                             || target.connectionUpdateEpoch.get() != requestEpochs[account]) continue;
+                    if (!online && target.ipAppliedOnline && refreshAfterProbe && probingGeneration == ready.generation) continue;
                     native_setIpStrategy(account, selected);
                     native_setNetworkAvailable(account, online, ready.networkType, slow);
                     target.lastNetworkType = ready.networkType;
@@ -1752,7 +1852,11 @@ public class ConnectionsManager extends BaseController {
                 if (current(account, targets[account])) { needed = true; break; }
             }
             if (!needed) return;
-            final long requestedGeneration = generation.get();
+            final long requestedGeneration;
+            synchronized (PUBLICATION_LOCK) {
+                probingGeneration = requestedGeneration = generation.get();
+                refreshAfterProbe = false;
+            }
             workOutstanding = true;
             try {
                 WORKER.execute(() -> {
@@ -1765,7 +1869,6 @@ public class ConnectionsManager extends BaseController {
                     } finally {
                         final IpSnapshot completed = result;
                         UI.post(() -> {
-                            workOutstanding = false;
                             observeNetwork();
                             boolean retry = false;
                             synchronized (PUBLICATION_LOCK) {
@@ -1775,12 +1878,28 @@ public class ConnectionsManager extends BaseController {
                                 }
                             }
                             if (retry) retryWork();
+                            try {
                             reconcile();
+                            } finally {
+                                synchronized (PUBLICATION_LOCK) {
+                                    if (refreshAfterProbe && requestedGeneration == generation.get()) {
+                                        generation.incrementAndGet();
+                                        snapshot = null;
+                                    }
+                                    probingGeneration = -1;
+                                    refreshAfterProbe = false;
+                                }
+                                workOutstanding = false;
                             ensureWork();
+                            }
                         });
                     }
                 });
             } catch (Throwable ignored) {
+                synchronized (PUBLICATION_LOCK) {
+                    probingGeneration = -1;
+                    refreshAfterProbe = false;
+                }
                 workOutstanding = false;
                 retryWork();
             }
@@ -1855,12 +1974,38 @@ public class ConnectionsManager extends BaseController {
             addresses.add(address);
         }
 
+        private static ArrayList<String> ipv4Answers(JSONObject response) {
+            ArrayList<String> result = new ArrayList<>();
+            JSONArray answers = response.optJSONArray("Answer");
+            if (answers == null || response.optInt("Status", -1) != 0) return result;
+            for (int i = 0; i < answers.length(); i++) {
+                JSONObject record = answers.optJSONObject(i);
+                if (record == null || record.optInt("type", -1) != 1) continue;
+                String ip = record.optString("data", "");
+                if (android.system.Os.inet_pton(android.system.OsConstants.AF_INET, ip) != null && !result.contains(ip)) {
+                    result.add(ip);
+                }
+            }
+            return result;
+        }
+
+        private static ArrayList<String> systemAddresses(InetAddress[] resolved) {
+            ArrayList<String> v4 = new ArrayList<>(), v6 = new ArrayList<>();
+            for (InetAddress address : resolved) {
+                String ip = address.getHostAddress();
+                ArrayList<String> list;
+                if (address instanceof Inet4Address) list = v4;
+                else if (address instanceof Inet6Address && ip != null && ip.indexOf('%') < 0) list = v6;
+                else continue;
+                if (ip != null && !list.contains(ip)) list.add(ip);
+            }
+            return v4.isEmpty() ? v6 : v4;
+        }
         protected ResolvedDomain doInBackground(Void... voids) {
             ByteArrayOutputStream outbuf = null;
             InputStream httpConnectionStream = null;
-            boolean done = false;
             try {
-                URL downloadUrl = new URL("https://www.google.com/resolve?name=" + currentHostName + "&type=A");
+                URL downloadUrl = new URL("https://www.google.com/resolve?name=" + android.net.Uri.encode(currentHostName) + "&type=A");
                 URLConnection httpConnection = downloadUrl.openConnection();
                 httpConnection.addRequestProperty("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 10_0 like Mac OS X) AppleWebKit/602.1.38 (KHTML, like Gecko) Version/10.0 Mobile/14A5297c Safari/602.1");
                 httpConnection.addRequestProperty("Host", "dns.google.com");
@@ -1883,19 +2028,8 @@ public class ConnectionsManager extends BaseController {
                     }
                 }
 
-                JSONObject jsonObject = new JSONObject(new String(outbuf.toByteArray()));
-                if (jsonObject.has("Answer")) {
-                    JSONArray array = jsonObject.getJSONArray("Answer");
-                    int len = array.length();
-                    if (len > 0) {
-                        ArrayList<String> addresses = new ArrayList<>(len);
-                        for (int a = 0; a < len; a++) {
-                            addresses.add(array.getJSONObject(a).getString("data"));
-                        }
-                        return new ResolvedDomain(addresses, SystemClock.elapsedRealtime());
-                    }
-                }
-                done = true;
+                ArrayList<String> resolved = ipv4Answers(new JSONObject(outbuf.toString("UTF-8")));
+                if (!resolved.isEmpty()) return new ResolvedDomain(resolved, SystemClock.elapsedRealtime());
             } catch (Throwable e) {
                 FileLog.e(e, false);
             } finally {
@@ -1914,15 +2048,11 @@ public class ConnectionsManager extends BaseController {
 
                 }
             }
-            if (!done) {
-                try {
-                    InetAddress address = InetAddress.getByName(currentHostName);
-                    ArrayList<String> addresses = new ArrayList<>(1);
-                    addresses.add(address.getHostAddress());
-                    return new ResolvedDomain(addresses, SystemClock.elapsedRealtime());
+            try {
+                ArrayList<String> resolved = systemAddresses(InetAddress.getAllByName(currentHostName));
+                if (!resolved.isEmpty()) return new ResolvedDomain(resolved, SystemClock.elapsedRealtime());
                 } catch (Exception e) {
                     FileLog.e(e, false);
-                }
             }
             return null;
         }

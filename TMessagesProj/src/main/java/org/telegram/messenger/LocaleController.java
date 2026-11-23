@@ -705,6 +705,18 @@ public class LocaleController {
         languages.add(localeInfo);
         languagesDict.put(localeInfo.shortName, localeInfo);
 
+        registerBuiltinLanguage("Français", "French", "fr");
+        registerBuiltinLanguage("Bahasa Indonesia", "Indonesian", "id");
+        registerBuiltinLanguage("日本語", "Japanese", "ja");
+        registerBuiltinLanguage("Türkçe", "Turkish", "tr");
+        registerBuiltinLanguage("हिन्दी", "Hindi", "hi");
+        registerBuiltinLanguage("Azərbaycan dili", "Azerbaijani", "az");
+        registerBuiltinLanguage("Беларуская", "Belarusian", "be");
+        registerBuiltinLanguage("فارسی", "Persian", "fa", true);
+        registerBuiltinLanguage("עברית", "Hebrew", "he", true);
+        registerBuiltinLanguage("Norsk bokmål", "Norwegian Bokmål", "nb");
+        registerBuiltinLanguage("Polski", "Polish", "pl");
+        registerBuiltinLanguage("Oʻzbekcha", "Uzbek", "uz");
         registerBuiltinChineseLanguages();
         loadOtherLanguages();
         if (remoteLanguages.isEmpty()) {
@@ -758,7 +770,7 @@ public class LocaleController {
             SharedPreferences preferences = MessagesController.getGlobalMainSettings();
             String lang = preferences.getString("language", null);
             if (lang != null) {
-                currentInfo = getLanguageFromDict(lang);
+                currentInfo = getLanguageWithAlias(lang);
                 if (currentInfo == null) {
                     Locale savedLocale = parseUiLocale(lang.startsWith("local_") ? lang.substring(6) : lang);
                     if (savedLocale != null && "zh".equals(savedLocale.getLanguage())) {
@@ -815,6 +827,21 @@ public class LocaleController {
         return new String(emoji);
     }
 
+    private void registerBuiltinLanguage(String name, String nameEnglish, String code) {
+        registerBuiltinLanguage(name, nameEnglish, code, false);
+    }
+
+    private void registerBuiltinLanguage(String name, String nameEnglish, String code, boolean rtl) {
+        LocaleInfo info = new LocaleInfo();
+        info.name = name;
+        info.nameEnglish = nameEnglish;
+        info.shortName = info.pluralLangCode = code;
+        info.builtIn = true;
+        info.isRtl = rtl;
+        languages.add(info);
+        languagesDict.put(info.shortName, info);
+    }
+
     private void registerBuiltinChineseLanguages() {
         LocaleInfo simplified = new LocaleInfo();
         simplified.name = "简体中文";
@@ -848,9 +875,17 @@ public class LocaleController {
         }
         LocaleInfo info = locale == null ? null : getLanguageFromDict(locale.toLanguageTag());
         if (info == null && locale != null) {
-            info = getLanguageFromDict(locale.getLanguage());
+            info = getLanguageWithAlias(locale.getLanguage());
         }
         return info != null ? info : getLanguageFromDict("en");
+    }
+
+    private LocaleInfo getLanguageWithAlias(String key) {
+        LocaleInfo info = getLanguageFromDict(key);
+        if (info != null || key == null) {
+            return info;
+        }
+        return getLanguageFromDict(getLocaleAlias(key.toLowerCase(Locale.ROOT)));
     }
 
     public LocaleInfo getLanguageFromDict(String key) {
@@ -1434,6 +1469,17 @@ public class LocaleController {
         return Locale.ENGLISH;
     }
 
+    private Locale resolveAppliedUiLocale(LocaleInfo localeInfo, boolean override) {
+        Locale selected = resolveUiLocale(localeInfo);
+        if (!override && languageOverride == null && systemDefaultLocale != null
+                && localeInfo == getLanguageForSystemLocale(systemDefaultLocale)) {
+            String asset = LocalizationUtils.getLocalizationAsset(selected);
+            if (asset != null && asset.equals(LocalizationUtils.getLocalizationAsset(systemDefaultLocale))) {
+                return systemDefaultLocale;
+            }
+        }
+        return selected;
+    }
     public int applyLanguage(LocaleInfo localeInfo, boolean override, boolean init, final int currentAccount) {
         return applyLanguage(localeInfo, override, init, false, false, currentAccount, null);
     }
@@ -1477,7 +1523,7 @@ public class LocaleController {
             }
         }
         try {
-            Locale newLocale = resolveUiLocale(localeInfo);
+            Locale newLocale = resolveAppliedUiLocale(localeInfo, override);
             if (override) {
                 languageOverride = localeInfo.shortName;
 
@@ -1603,7 +1649,6 @@ public class LocaleController {
             case "Page4Title":
             case "Page5Title":
             case "Page6Title":
-            case "exteraAppName":
                 return true;
             default:
                 return false;
@@ -1617,12 +1662,11 @@ public class LocaleController {
                 || res == R.string.AppNameBeta || res == R.string.NoChats
                 || res == R.string.Page1Title || res == R.string.Page2Title
                 || res == R.string.Page3Title || res == R.string.Page4Title
-                || res == R.string.Page5Title || res == R.string.Page6Title
-                || res == R.string.exteraAppName);
+                || res == R.string.Page5Title || res == R.string.Page6Title);
     }
 
     public static String getServerString(String key) {
-        String value = isNimarkoBrandedKey(key) ? null : getInstance().localizationExternal.getByResName(key);
+        String value = isNimarkoBrandedKey(key) ? null : getInstance().getExternalUiString(key, 0);
         if (value == null) {
             value = getInstance().getLocalizedString(key);
         }
@@ -1830,6 +1874,11 @@ public class LocaleController {
             FileLog.e(e);
             if (res != 0) {
                 try {
+                    if (isBackfilledTelegramLabel(key, res)) {
+                        LocaleController lc = getInstance();
+                        String builtIn = lc.getLocalizedString(key, res);
+                        if (builtIn != null) return String.format(lc.currentLocale != null ? lc.currentLocale : Locale.getDefault(), builtIn, args);
+                    }
                     return String.format(ApplicationLoader.applicationContext.getString(res), args);
                 } catch (Exception ignore) {}
             }
@@ -2238,30 +2287,21 @@ public class LocaleController {
             return;
         }
         clearStringResourceIdCache();
+        boolean previous24HourFormat = is24HourFormat;
         is24HourFormat = DateFormat.is24HourFormat(ApplicationLoader.applicationContext);
+        Locale previousSystemLocale = systemDefaultLocale;
         systemDefaultLocale = newConfig.locale;
         if (languageOverride != null) {
             LocaleInfo toSet = currentLocaleInfo;
             currentLocaleInfo = null;
             applyLanguage(toSet, false, false, UserConfig.selectedAccount);
         } else {
-            Locale newLocale = newConfig.locale;
-            if (newLocale != null) {
-                String d1 = newLocale.getDisplayName();
-                String d2 = currentLocale.getDisplayName();
-                if (d1 != null && d2 != null && !d1.equals(d2)) {
+            LocaleInfo next = getLanguageForSystemLocale(systemDefaultLocale);
+            if (systemDefaultLocale != null
+                    && (next != currentLocaleInfo || !Objects.equals(previousSystemLocale, systemDefaultLocale))) {
+                applyLanguage(next, false, false, UserConfig.selectedAccount);
+            } else if (previous24HourFormat != is24HourFormat) {
                     recreateFormatters();
-                }
-                currentLocale = newLocale;
-                if (currentLocaleInfo != null && !TextUtils.isEmpty(currentLocaleInfo.pluralLangCode)) {
-                    currentPluralRules = allRules.get(currentLocaleInfo.pluralLangCode);
-                }
-                if (currentPluralRules == null) {
-                    currentPluralRules = allRules.get(currentLocale.getLanguage());
-                    if (currentPluralRules == null) {
-                        currentPluralRules = allRules.get("en");
-                    }
-                }
             }
         }
         String newSystemLocale = getSystemLocaleStringIso639();
@@ -3658,11 +3698,20 @@ public class LocaleController {
                     saveOtherLanguages();
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.suggestedLangpack);
                     if (applyCurrent) {
-                        applyLanguage(currentLocaleInfo, true, false, currentAccount);
+                        reapplyAfterRemoteLanguageList(currentAccount);
                     }
                 });
             }
         }, ConnectionsManager.RequestFlagWithoutLogin);
+    }
+
+    private void reapplyAfterRemoteLanguageList(int account) {
+        if (currentLocaleInfo == null) {
+            return;
+        }
+        LocaleInfo info = languageOverride == null
+                ? getLanguageForSystemLocale(systemDefaultLocale) : currentLocaleInfo;
+        applyLanguage(info, false, false, account);
     }
 
     private static class LangpackRequest {
@@ -4995,11 +5044,11 @@ public class LocaleController {
             if (dateDay == day && year == dateYear) {
                 int diff = (int) (ConnectionsManager.getInstance(UserConfig.selectedAccount).getCurrentTime() - date / 1000) / 60;
                 if (diff < 1) {
-                    return LocaleController.getString(R.string.CG_LastSeenNow);
+                    return LocaleController.getString(R.string.NM_LastSeenNow);
                 } else if (diff < 60) {
-                    return LocaleController.formatPluralString("CG_LastSeenMinutes", diff);
+                    return LocaleController.formatPluralString("NM_LastSeenMinutes", diff);
                 } else {
-                    return LocaleController.formatPluralString("CG_LastSeenHours", (int) Math.floor(diff / 60.0f));
+                    return LocaleController.formatPluralString("NM_LastSeenHours", (int) Math.floor(diff / 60.0f));
                 }
             } else if (dateDay + 1 == day && year == dateYear) {
                 if (madeShorter != null) {
@@ -5090,19 +5139,41 @@ public class LocaleController {
         return getLocalizedString(key, getStringResId(key));
     }
 
+    private static boolean isBackfilledTelegramLabel(String key, int res) {
+        return res == R.string.CreateGroupWith || "CreateGroupWith".equals(key)
+                || res == R.string.ReplyDialogChannelDirect || "ReplyDialogChannelDirect".equals(key)
+                || res == R.string.ReplyDialogChannelDirectHint || "ReplyDialogChannelDirectHint".equals(key);
+    }
+
+    private String getExternalUiString(String key, @StringRes int res) {
+        Context context = ApplicationLoader.applicationContext;
+        String external = localizationExternal.getByResNameOrResId(context, key, res);
+        if (external == null || !isBackfilledTelegramLabel(key, res)) return external;
+        String text = external.trim();
+        if (text.isEmpty()) return null;
+        if (currentLocale == null || "en".equals(currentLocale.getLanguage())) return external;
+        checkLocalizationInternal();
+        String english = localizationInternalDefault.getByResNameOrResId(context, key, res);
+        if (english == null) return external;
+        boolean groupName = res == R.string.CreateGroupWith || "CreateGroupWith".equals(key);
+        if (!english.equalsIgnoreCase(text) && !(groupName && english.replace("%1$s", "%s").equalsIgnoreCase(text))) {
+            return external;
+        }
+        String translated = localizationInternal.getByResNameOrResId(context, key, res);
+        return translated == null || translated.equals(english) ? external : translated;
+    }
     @Nullable
     private String getStringV2(String key, @StringRes int stringRes, String fallback) {
-        final Context context = ApplicationLoader.applicationContext;
         String value;
 
         final boolean forceLocal = isNimarkoBrandedString(key, stringRes) || isNimarkoBrandedKey(fallback);
         if (BuildVars.USE_CLOUD_STRINGS && !forceLocal) {
-            value = localizationExternal.getByResNameOrResId(context, key, stringRes);
+            value = getExternalUiString(key, stringRes);
             if (value != null) {
                 return value;
             }
 
-            value = localizationExternal.getByResName(fallback);
+            value = getExternalUiString(fallback, 0);
             if (value != null) {
                 return value;
             }

@@ -20,6 +20,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.res.Resources;
 import android.database.DataSetObserver;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -52,6 +53,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
+import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
@@ -115,6 +117,8 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
     private int lastPage = 0;
     private boolean justCreated = false;
     private boolean startPressed = false;
+    private NotificationCenter.NotificationCenterDelegate startLanguageObserver;
+    private AlertDialog startLanguageDialog;
     private Drawable logoDrawable;
     private CharSequence[] titles;
     private String[] messages;
@@ -208,39 +212,32 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         darkThemeDrawable.beginApplyLayerColors();
         darkThemeDrawable.commitApplyLayerColors();
 
-        darkThemeDrawable.setCustomEndFrame(Theme.getCurrentTheme().isDark() ? darkThemeDrawable.getFramesCount() - 1 : 0);
-        darkThemeDrawable.setCurrentFrame(Theme.getCurrentTheme().isDark() ? darkThemeDrawable.getFramesCount() - 1 : 0, false);
-        themeIconView.setContentDescription(LocaleController.getString(Theme.getCurrentTheme().isDark() ? R.string.AccDescrSwitchToDayTheme : R.string.AccDescrSwitchToNightTheme));
+        final boolean dark = Theme.isCurrentThemeDark();
+        darkThemeDrawable.setCustomEndFrame(dark ? darkThemeDrawable.getFramesCount() - 1 : 0);
+        darkThemeDrawable.setCurrentFrame(dark ? darkThemeDrawable.getFramesCount() - 1 : 0, false);
+        themeIconView.setContentDescription(LocaleController.getString(dark ? R.string.AccDescrSwitchToDayTheme : R.string.AccDescrSwitchToNightTheme));
 
         themeIconView.setAnimation(darkThemeDrawable);
         themeFrameLayout.setOnClickListener(v -> {
             if (DialogsActivity.switchingTheme) return;
+            final boolean toDark = !Theme.isCurrentThemeDark();
+            darkThemeDrawable.setCustomEndFrame(toDark ? darkThemeDrawable.getFramesCount() - 1 : 0);
+            themeIconView.playAnimation();
+            themeIconView.setContentDescription(LocaleController.getString(toDark ? R.string.AccDescrSwitchToDayTheme : R.string.AccDescrSwitchToNightTheme));
             DialogsActivity.switchingTheme = true;
 
-            String dayThemeName = "Blue";
-            String nightThemeName = "Night";
-
-            Theme.ThemeInfo themeInfo;
-            boolean toDark;
-            if (toDark = !Theme.isCurrentThemeDark()) {
-                themeInfo = Theme.getTheme(nightThemeName);
-            } else {
-                themeInfo = Theme.getTheme(dayThemeName);
-            }
+            Theme.ThemeInfo themeInfo = Theme.getTheme(toDark ? "Night" : "Blue");
 
             Theme.selectedAutoNightType = Theme.AUTO_NIGHT_TYPE_NONE;
             Theme.saveAutoNightThemeConfig();
             Theme.cancelAutoNightThemeCallbacks();
 
-            darkThemeDrawable.setCustomEndFrame(toDark ? darkThemeDrawable.getFramesCount() - 1 : 0);
-            themeIconView.playAnimation();
 
             int[] pos = new int[2];
             themeIconView.getLocationInWindow(pos);
             pos[0] += themeIconView.getMeasuredWidth() / 2;
             pos[1] += themeIconView.getMeasuredHeight() / 2;
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.needSetDayNightTheme, themeInfo, false, pos, -1, toDark, themeIconView);
-            themeIconView.setContentDescription(LocaleController.getString(toDark ? R.string.AccDescrSwitchToDayTheme : R.string.AccDescrSwitchToNightTheme));
         });
 
         frameLayout2 = new FrameLayout(context);
@@ -252,7 +249,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             @Override
             public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                 if (eglThread == null && surface != null) {
-                    eglThread = new EGLThread(surface);
+                    eglThread = new EGLThread(surface, textureView.getResources());
                     eglThread.setSurfaceTextureSize(width, height);
                     eglThread.postRunnable(()->{
                         float time = (System.currentTimeMillis() - currentDate) / 1000.0f;
@@ -383,8 +380,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             }
             startPressed = true;
 
-            presentFragment(new LoginActivity().setIntroView(frameContainerView, startMessagingButton), true);
-            destroyed = true;
+            startMessaging();
         });
 
         bottomPages = new BottomPagesView(context, viewPager, 6);
@@ -404,20 +400,20 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             loaderDialog.setCanCancel(false);
             loaderDialog.showDelayed(1000);
 
-            NotificationCenter.getGlobalInstance().addObserver(new NotificationCenter.NotificationCenterDelegate() {
-                @Override
-                public void didReceivedNotification(int id, int account, Object... args) {
-                    if (id == NotificationCenter.reloadInterface) {
-                        loaderDialog.dismiss();
+            startLanguageDialog = loaderDialog;
 
-                        NotificationCenter.getGlobalInstance().removeObserver(this, id);
+            final Activity owner = getParentActivity();
+            startLanguageObserver = (id, account, args) -> {
+                clearStartLanguageObserver();
                         AndroidUtilities.runOnUIThread(()->{
-                            presentFragment(new LoginActivity().setIntroView(frameContainerView, startMessagingButton), true);
-                            destroyed = true;
-                        }, 100);
+                    if (getParentActivity() == owner) {
+                        startMessaging();
+                    } else {
+                        startPressed = false;
                     }
-                }
-            }, NotificationCenter.reloadInterface);
+                        }, 100);
+            };
+            NotificationCenter.getGlobalInstance().addObserver(startLanguageObserver, NotificationCenter.reloadInterface);
             LocaleController.getInstance().applyLanguage(localeInfo, true, false, currentAccount);
         });
 
@@ -437,6 +433,27 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         return fragmentView;
     }
 
+    private void startMessaging() {
+        Activity owner = getParentActivity();
+        if (destroyed || isFinished || isPaused() || !isLastFragment() || owner == null ||
+                owner.isFinishing() || owner.isDestroyed()) {
+            startPressed = false;
+            return;
+        }
+        if (presentFragment(new LoginActivity().setIntroView(frameContainerView, startMessagingButton), true)) {
+            destroyed = true;
+        } else {
+            startPressed = false;
+        }
+    }
+
+    private void clearStartLanguageObserver() {
+        if (startLanguageObserver == null) return;
+        NotificationCenter.getGlobalInstance().removeObserver(startLanguageObserver, NotificationCenter.reloadInterface);
+        startLanguageObserver = null;
+        startLanguageDialog.dismiss();
+        startLanguageDialog = null;
+    }
     @SuppressLint("SourceLockedOrientationActivity")
     @Override
     public void onResume() {
@@ -469,6 +486,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         destroyed = true;
+        clearStartLanguageObserver();
         AndroidUtilities.cancelRunOnUIThread(reloadGlTexturesRunnable);
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.suggestedLangpack);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.configLoaded);
@@ -641,11 +659,39 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         }
     }
 
+    static Bitmap createWelcomeMark(Resources resources) {
+        Drawable mark = VectorDrawableCompat.create(resources, R.drawable.nm_intro_brand_mark, null);
+        if (mark == null) throw new Resources.NotFoundException("Missing NimarkoGram welcome mark");
+        int side = mark.getIntrinsicWidth();
+        Bitmap texture = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888);
+        mark.setBounds(0, 0, side, side);
+        mark.draw(new Canvas(texture));
+        return texture;
+    }
+
+    static Bitmap createWelcomeDisc(int side) {
+        Bitmap texture = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(ThemeColors.TELEGRAM_COLOR);
+        new Canvas(texture).drawCircle(side * .5f, side * .5f, side * .5f, paint);
+        return texture;
+    }
+
+    static Bitmap createWelcomeMask(int width, int height, int background) {
+        Bitmap texture = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(texture);
+        canvas.drawColor(background);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
+        canvas.drawCircle(width * .5f, height * .5f, height * .5f, paint);
+        return texture;
+    }
     public class EGLThread extends DispatchQueue {
 
         private final static int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
         private final static int EGL_OPENGL_ES2_BIT = 4;
         private SurfaceTexture surfaceTexture;
+        private final Resources introResources;
         private EGL10 egl10;
         private EGLDisplay eglDisplay;
         private EGLConfig eglConfig;
@@ -657,20 +703,17 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         private float maxRefreshRate;
         private long lastDrawFrame;
 
-        private final GenericProvider<Void, Bitmap> telegramMaskProvider = v -> {
-            int size = dp(ICON_HEIGHT_DP);
-            Bitmap bm = Bitmap.createBitmap(dp(ICON_WIDTH_DP), size, Bitmap.Config.ARGB_8888);
-            Canvas c = new Canvas(bm);
-            c.drawColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
-            c.drawCircle(bm.getWidth() / 2f, bm.getHeight() / 2f, size / 2f, paint);
-            return bm;
-        };
+        private final GenericProvider<Void, Bitmap> telegramMaskProvider = v -> createWelcomeMask(
+                dp(ICON_WIDTH_DP), dp(ICON_HEIGHT_DP), Theme.getColor(Theme.key_windowBackgroundWhite));
 
         public EGLThread(SurfaceTexture surface) {
+            this(surface, ApplicationLoader.applicationContext.getResources());
+        }
+
+        private EGLThread(SurfaceTexture surface, Resources resources) {
             super("EGLThread");
             surfaceTexture = surface;
+            introResources = resources;
         }
 
         private boolean initGL() {
@@ -768,7 +811,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
                 return false;
             }
 
-            GLES20.glGenTextures(23, textures, 0);
+            GLES20.glGenTextures(textures.length, textures, 0);
             loadTexture(R.drawable.intro_fast_arrow_shadow, 0);
             loadTexture(R.drawable.intro_fast_arrow, 1);
             loadTexture(R.drawable.intro_fast_body, 2);
@@ -790,16 +833,8 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
             loadTexture(R.drawable.intro_powerful_star, 18);
             loadTexture(R.drawable.intro_private_door, 19);
             loadTexture(R.drawable.intro_private_screw, 20);
-            loadTexture(R.drawable.intro_tg_plane, 21);
-            loadTexture(v -> {
-                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(ThemeColors.TELEGRAM_COLOR);
-                int size = dp(ICON_HEIGHT_DP);
-                Bitmap bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-                Canvas c = new Canvas(bm);
-                c.drawCircle(size / 2f, size / 2f, size / 2f, paint);
-                return bm;
-            }, 22);
+            loadTexture(v -> createWelcomeMark(introResources), 21);
+            loadTexture(v -> createWelcomeDisc(dp(ICON_HEIGHT_DP)), 22);
             loadTexture(telegramMaskProvider, 23);
 
             updateTelegramTextures();
@@ -904,7 +939,7 @@ public class IntroActivity extends BaseFragment implements NotificationCenter.No
         }
 
         private void loadTexture(int resId, int index, int tintColor, boolean rebind) {
-            Drawable drawable = getParentActivity().getResources().getDrawable(resId);
+            Drawable drawable = introResources.getDrawable(resId, null);
             if (drawable instanceof BitmapDrawable) {
                 if (rebind) {
                     GLES20.glDeleteTextures(1, textures, index);

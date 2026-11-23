@@ -10,7 +10,6 @@ import android.view.View;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.UItem;
@@ -29,8 +28,7 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
     public enum PreferenceItem {
         COMPACT_VIEW,
         SAFE_MODE,
-        PLUGINS_DISABLE_ART_OPTS,
-        DOCUMENTATION;
+        PLUGINS_DISABLE_ART_OPTS;
 
         public int getId() {
             return ordinal() + 1;
@@ -67,10 +65,6 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
                 : LocaleController.getString(R.string.PluginsSafeModeInfo2)));
 
         items.add(UItem.asHeader(LocaleController.getString(R.string.Links)));
-        UItem docButton = UItem.asButton(PreferenceItem.DOCUMENTATION.getId(),
-                LocaleController.getString(R.string.PluginsDocumentation));
-        docButton.iconResId = R.drawable.menu_intro;
-        items.add(docButton);
 
         SpannableString spannableString;
         String string = LocaleController.getString(R.string.PluginsPoweredBy);
@@ -122,9 +116,5 @@ public class PluginsInfoActivity extends BasePreferencesActivity {
             }
         }
 
-        if (preferenceItem == PreferenceItem.DOCUMENTATION) {
-            Browser.openUrl(getParentActivity(), "https://plugins.exteragram.app/");
         }
     }
-
-}

@@ -258,7 +258,7 @@ public class FileUploadOperation {
                 currentUploadRequetsCount = 0;
                 Arrays.fill(uploadRequestsPerConnection, 0);
                 lastSavedPartNum = 0;
-                uploadFirstPartLater = false;
+                uploadFirstPartLater = estimatedSize != 0 && !isEncrypted;
                 cachedResults.clear();
 
                 operationGuid++;
@@ -575,6 +575,7 @@ public class FileUploadOperation {
                 }
 
                 if (isEncrypted) {
+                    fingerprint = 0;
                     try {
                         java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
                         byte[] arr = new byte[64];

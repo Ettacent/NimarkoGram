@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp" android:height="100dp"
+    android:viewportWidth="704" android:viewportHeight="704" android:autoMirrored="false">
+    <group android:translateX="583.798" android:translateY="100.957">
+        <path android:pathData="@string/nm_brand_plane_body_path"
+            android:fillColor="@color/nm_intro_paper_fold"
+            android:strokeColor="@color/nm_intro_paper_fold" android:strokeWidth="7" android:strokeAlpha="0.9"/>
+        <path android:pathData="@string/nm_brand_plane_wing_path"
+            android:fillColor="#FFFFFFFF"/>
+    </group>
+</vector>

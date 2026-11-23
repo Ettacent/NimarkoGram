@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">सेशन खत्म नहीं हो सके। अपना कनेक्शन जाँचें और फिर कोशिश करें।</string>
+</resources>

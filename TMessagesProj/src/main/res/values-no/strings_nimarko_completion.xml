@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Fjern fra hurtiglager</string>
+    <string name="NM_ClearedFromCache">Fjernet fra hurtigbufferen</string>
+    <string name="NM_CopyCallback">Kopier callback-data</string>
+    <string name="NM_CopyID">Kopier bruker-ID</string>
+    <string name="NM_CopyInlineQuery">Kopier innebygd søk</string>
+    <string name="NM_CopyPhoto">Kopier bilde</string>
+    <string name="NM_CopyPhotoAsSticker">Kopier bildet som klistremerke</string>
+    <string name="NM_CopyReportDetails">Kopier rapportdetaljer</string>
+    <string name="NM_CopySetId">Kopier pakke-ID</string>
+    <string name="NM_CopyTitle">Kopier tittel</string>
+    <string name="NM_Copy_Coordinates">Koordinater</string>
+    <string name="NM_DoNotRemindAgain">Ikke minn meg på dette igjen</string>
+    <string name="NM_ExportSettings">Eksporter innstillinger</string>
+    <string name="NM_FoldersTypeIcons">Bare ikoner</string>
+    <string name="NM_FoldersTypeIconsTitles">Ikoner og navn</string>
+    <string name="NM_FoldersTypeTitles">Bare navn</string>
+    <string name="NM_GetEmojiPack">Hent emoji</string>
+    <string name="NM_ImportSettings">Importer innstillinger</string>
+    <string name="NM_ImportSettingsAlert">Overskrive innstillingene? Import av innstillinger fra ukjente kilder kan føre til at appen slutter å fungere.</string>
+    <string name="NM_OpenEmojiPack">Trykk for å hente emojien</string>
+    <string name="NM_OpenStickerPack">Trykk for å hente klistremerket</string>
+    <string name="NM_PasskeyInfo2">Denne funksjonen virker bare med passordbehandlere som lar deg administrere tillitsinnstillinger for apper med særskilte rettigheter, som **Bitwarden** og **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Ingen brukbar påloggingsinformasjon er tilgjengelig.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Prøv en annen passordbehandler, for eksempel **Bitwarden** eller **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Passordbehandleren støttes ikke</string>
+    <string name="NM_PhotoCopied">Bildet er kopiert til utklippstavlen.</string>
+    <string name="NM_ProfileBackground">Bruk profilbakgrunnen</string>
+    <string name="NM_QRLoginMessage">Skann QR-koden med en annen enhet for å logge inn.</string>
+    <string name="NM_QRLoginTitle">Innlogging med QR-kode</string>
+    <string name="NM_ReportDetailsCopied">Rapportdetaljene ble kopiert til utklippstavlen.</string>
+    <string name="NM_RestartToApply">Start appen på nytt for at endringene skal tre i kraft.</string>
+    <string name="NM_SafeStars_buy_Telegram">Kjøp stjerner via Telegram</string>
+    <string name="NM_SaveSticker">Lagre klistremerke</string>
+    <string name="NM_SendPhotoAsSticker">Send som klistremerke</string>
+    <string name="NM_SortByDate">Sorter etter meldingsdato</string>
+    <string name="NM_SwipeToUnarchive">Sveip til venstre for å fjerne fra arkivet</string>
+    <string name="NM_SwitchedToAccount">Byttet til **%1$s**</string>
+    <string name="NM_TranslationLanguage">Oversettelsesspråk</string>
+</resources>

@@ -1,0 +1,5 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Не вдалося завершити сеанси. Перевірте з’єднання і спробуйте ще раз.</string>
+</resources>

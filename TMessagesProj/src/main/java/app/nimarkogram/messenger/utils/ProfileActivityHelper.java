@@ -344,13 +344,13 @@ public class ProfileActivityHelper extends BaseController {
         TLRPC.User user = getMessagesController().getUser(userID);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("ID: ").append(userID);
+        sb.append(LocaleController.formatString(R.string.NM_ProfileInfo_Id, Long.toString(userID)));
 
         sb.append('\n').append(AppExtra.getProfileDC(currentAccount, user, null));
 
         AppExtra.RegistrationInfo regInfo = AppExtra.resolveRegistrationInfo(baseFragment, userID);
         if (regInfo.unixTimestamp > 0L) {
-            sb.append("\nRegistered: ").append(regInfo.formattedDate);
+            sb.append('\n').append(LocaleController.formatString(R.string.NM_ProfileInfo_Registered, regInfo.formattedDate));
             if (!regInfo.dayOfWeek.isEmpty()) {
                 sb.append(" (").append(regInfo.dayOfWeek).append(')');
             }
@@ -358,7 +358,7 @@ public class ProfileActivityHelper extends BaseController {
                 sb.append(" — ").append(regInfo.relativeYearsAgo);
             }
         } else if (regInfo.rawTelegramMonth != null) {
-            sb.append("\nRegistered: ").append(regInfo.rawTelegramMonth);
+            sb.append('\n').append(LocaleController.formatString(R.string.NM_ProfileInfo_Registered, regInfo.rawTelegramMonth));
         }
 
         String pattern = LastSeenTracker.getPatternHint(currentAccount, userID);
@@ -367,9 +367,9 @@ public class ProfileActivityHelper extends BaseController {
         }
 
         if (user != null) {
-            sb.append("\n\nPremium: ").append(user.premium);
-            sb.append("\nVerified: ").append(user.verified);
-            sb.append("\nBot: ").append(user.bot);
+            sb.append("\n\n").append(LocaleController.formatString(R.string.NM_ProfileInfo_Premium, localizedBoolean(user.premium)));
+            sb.append('\n').append(LocaleController.formatString(R.string.NM_ProfileInfo_Verified, localizedBoolean(user.verified)));
+            sb.append('\n').append(LocaleController.formatString(R.string.NM_ProfileInfo_Bot, localizedBoolean(user.bot)));
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(
@@ -380,6 +380,9 @@ public class ProfileActivityHelper extends BaseController {
         builder.setMessage(sb);
         builder.setPositiveButton(getString(R.string.OK), null);
         baseFragment.showDialog(builder.create());
+    }
+    private static String localizedBoolean(boolean value) {
+        return getString(value ? R.string.NM_ProfileInfo_Yes : R.string.NM_ProfileInfo_No);
     }
 
     public void showRestrictionReason(BaseFragment baseFragment, TLRPC.Chat chat) {
@@ -395,7 +398,7 @@ public class ProfileActivityHelper extends BaseController {
         if (formatted != null && formatted.length() > 0) {
             builder.setMessage(formatted);
         } else {
-            builder.setMessage("Chat or channel is not restricted.");
+            builder.setMessage(getString(R.string.NM_Restriction_NotRestricted));
         }
 
         builder.setPositiveButton(getString(R.string.OK), null);
@@ -410,9 +413,9 @@ public class ProfileActivityHelper extends BaseController {
         StringBuilder sb = new StringBuilder();
 
         for (TLRPC.RestrictionReason reason : reasons) {
-            sb.append("Platform: ").append(reason.platform)
-                    .append("\nReason: ").append(reason.reason)
-                    .append("\nText: ").append(reason.text)
+            sb.append(LocaleController.formatString(R.string.NM_Restriction_Platform, reason.platform))
+                    .append('\n').append(LocaleController.formatString(R.string.NM_Restriction_Reason, reason.reason))
+                    .append('\n').append(LocaleController.formatString(R.string.NM_Restriction_Text, reason.text))
                     .append("\n\n");
         }
 

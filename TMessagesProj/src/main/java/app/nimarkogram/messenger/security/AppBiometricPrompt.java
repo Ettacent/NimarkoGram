@@ -42,7 +42,7 @@ public class AppBiometricPrompt {
 
     private static BiometricPrompt.PromptInfo createPromptInfo(boolean allowSystem) {
         BiometricPrompt.PromptInfo.Builder builder = new BiometricPrompt.PromptInfo.Builder();
-        builder.setTitle(getString(R.string.exteraAppName));
+        builder.setTitle(getString(R.string.AppName));
         if (allowSystem) {
             builder.setDeviceCredentialAllowed(true);
         } else {

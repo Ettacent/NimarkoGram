@@ -9,18 +9,16 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.MediaDataController;
-import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.RLottieDrawable;
 
@@ -66,9 +64,11 @@ public class ReactionImageHolder {
         }
         if (currentReaction.emojicon != null) {
             TLRPC.TL_availableReaction defaultReaction = MediaDataController.getInstance(currentAccount).getReactionsMap().get(currentReaction.emojicon);
-            if (defaultReaction != null) {
-                SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(defaultReaction.select_animation, Theme.key_windowBackgroundWhiteGrayIcon, 0.2f);
-                imageReceiver.setImage(ImageLocation.getForDocument(defaultReaction.select_animation), filter, null, null, svgThumb, 0, "tgs", currentReaction, 0);
+            Drawable fallback = ReactionsUtils.standardEmojiFallback(currentReaction.emojicon);
+            if (defaultReaction != null && ReactionsUtils.hasReactionMedia(defaultReaction.select_animation)) {
+                imageReceiver.setImage(ImageLocation.getForDocument(defaultReaction.select_animation), filter, null, null, fallback, 0, "tgs", currentReaction, 0);
+            } else {
+                imageReceiver.setImageBitmap(fallback);
 //                imageReceiver.setAllowStartAnimation(false);
 //                imageReceiver.setAutoRepeatCount(1);
             }
@@ -89,7 +89,7 @@ public class ReactionImageHolder {
         if (reaction == null) return;
         if (reaction.emojicon != null) {
             TLRPC.TL_availableReaction defaultReaction = MediaDataController.getInstance(currentAccount).getReactionsMap().get(reaction.emojicon);
-            if (defaultReaction != null) {
+            if (defaultReaction != null && ReactionsUtils.hasReactionMedia(defaultReaction.select_animation)) {
                 FileLoader.getInstance(currentAccount).loadFile(defaultReaction.select_animation, reaction, FileLoader.PRIORITY_LOW, 0);
             }
         } else {
@@ -122,7 +122,7 @@ public class ReactionImageHolder {
         }
         if (imageReceiver == null) return false;
         if (!imageReceiver.hasImageSet()) return false;
-        if (!imageReceiver.hasImageLoaded()) return false;
+        if (!imageReceiver.hasImageLoaded()) return currentReaction != null && currentReaction.emojicon != null && imageReceiver.hasStaticThumb();
         RLottieDrawable rLottieDrawable = imageReceiver.getLottieAnimation();
         if (rLottieDrawable != null) {
             if (rLottieDrawable.isGeneratingCache()) {

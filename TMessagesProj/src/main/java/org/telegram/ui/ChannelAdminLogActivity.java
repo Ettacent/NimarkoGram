@@ -10,6 +10,7 @@
 
 package org.telegram.ui;
 
+import app.nimarkogram.messenger.distribution.ClientUpdates;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.messenger.MessageObject.replaceWithLink;
@@ -3030,15 +3031,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
                     @Override
                     public void didPressAppUpdateButton() {
-                        if (ApplicationLoader.isStandaloneBuild()) {
-                            if (LaunchActivity.instance != null) {
-                                LaunchActivity.instance.checkAppUpdate(true, null);
-                            }
-                        } else if (BuildVars.isHuaweiStoreApp()) {
-                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-                        } else {
-                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
-                        }
+                        ClientUpdates.openFromContext(getContext());
                     }
 
                     @Override
@@ -3521,15 +3514,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 cell.setDelegate(new ChatMessageCell.ChatMessageCellDelegate() {
                     @Override
                     public void didPressAppUpdateButton() {
-                        if (ApplicationLoader.isStandaloneBuild()) {
-                            if (LaunchActivity.instance != null) {
-                                LaunchActivity.instance.checkAppUpdate(true, null);
-                            }
-                        } else if (BuildVars.isHuaweiStoreApp()) {
-                            Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-                        } else {
-                            Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
-                        }
+                        ClientUpdates.openFromContext(getContext());
                     }
                 });
                 view = cell;

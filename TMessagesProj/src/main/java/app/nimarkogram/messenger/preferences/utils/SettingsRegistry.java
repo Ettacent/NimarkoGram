@@ -19,25 +19,25 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 
-import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 import app.nimarkogram.messenger.preferences.MainPreferencesActivity;
 
 public class SettingsRegistry {
 
     public static class Entry {
-         
+
         public int guid;
-         
+
         public Class<?> fragmentClass;
-         
+
         public CharSequence title;
-         
+
         public CharSequence subtext;
-         
+
         public String alias;
-         
+
         public int itemId;
-         
+
         boolean explicitAlias;
 
         public Entry() {}
@@ -99,9 +99,9 @@ public class SettingsRegistry {
     }
 
     public final Map<String, Entry> entriesStringAlias = new AliasesView();
-     
+
     public final Map<Integer, Entry> preparedEntries = new PreparedView();
-     
+
     public static final Map<Class<?>, Boolean> ayuCategories = new HashMap<>();
 
     private volatile boolean entriesCreated = false;
@@ -137,17 +137,19 @@ public class SettingsRegistry {
             addBuiltIn("nimarko_chats", MainPreferencesActivity.ID_CHATS, R.string.NM_Cat_Chats);
             addBuiltIn("nimarko_camera", MainPreferencesActivity.ID_CAMERA, R.string.NM_Cat_Camera);
             addBuiltIn("nimarko_privacy", MainPreferencesActivity.ID_PRIVACY, R.string.NM_Cat_Privacy);
-            if (PluginsController.isPluginEngineSupported()) {
+            if (ClientPlugins.supported()) {
                 addBuiltIn("nimarko_plugins", MainPreferencesActivity.ID_PLUGINS, R.string.Plugins);
             }
             addBuiltIn("nimarko_media", MainPreferencesActivity.ID_NIMARKO_MEDIA, R.string.NM_DownloadMedia);
             addBuiltIn("nimarko_banners", MainPreferencesActivity.ID_BANNERS, R.string.NM_BAN_Title);
-            addBuiltIn("nimarko_wsbypass", MainPreferencesActivity.ID_WSBYPASS, R.string.NM_WSB_Title);
+            if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) addBuiltIn("nimarko_wsbypass", MainPreferencesActivity.ID_WSBYPASS, R.string.NM_WSB_Title);
             addBuiltIn("nimarko_textanim", MainPreferencesActivity.ID_TEXTANIM, R.string.NM_TA_Title);
             addBuiltIn("nimarko_infocards", MainPreferencesActivity.ID_PILLSTACK, R.string.NM_CARDS_Title);
             addBuiltIn("nimarko_debug", MainPreferencesActivity.ID_DEBUG, R.string.NM_HUB_Debug);
             addBuiltIn("nimarko_restart", MainPreferencesActivity.ID_RESTART, R.string.NM_HUB_Restart);
+            if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
             addBuiltIn("nimarko_updates", MainPreferencesActivity.ID_UPDATES, R.string.UP_CheckForUpdates);
+            }
             entriesCreated = true;
         }
     }
@@ -156,7 +158,7 @@ public class SettingsRegistry {
         if (item == null) {
             return false;
         }
-        
+
         return item.id != 0 || !TextUtils.isEmpty(item.text);
     }
 
@@ -173,7 +175,7 @@ public class SettingsRegistry {
             RegistryState current = registryState;
             LinkedHashMap<String, Entry> aliases = new LinkedHashMap<>(current.aliases);
             HashMap<Integer, Entry> prepared = new HashMap<>(current.prepared);
-            
+
             Iterator<Map.Entry<String, Entry>> iterator = aliases.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<String, Entry> candidate = iterator.next();
@@ -218,7 +220,7 @@ public class SettingsRegistry {
                     return;
                 }
             }
-            
+
             String alias = deriveSearchKey(item);
             if (TextUtils.isEmpty(alias)) {
                 return;

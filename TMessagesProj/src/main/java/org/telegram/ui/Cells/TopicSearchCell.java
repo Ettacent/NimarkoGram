@@ -4,6 +4,8 @@ package org.telegram.ui.Cells;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -15,9 +17,11 @@ import androidx.annotation.NonNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
+import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.Forum.ForumUtilities;
 import org.telegram.ui.Components.LayoutHelper;
@@ -29,9 +33,37 @@ public class TopicSearchCell extends FrameLayout implements Theme.Colorable {
     TLRPC.TL_forumTopic topic;
     public boolean drawDivider;
 
+    private final int searchAccount;
+    private final Theme.ResourcesProvider resourcesProvider;
     public TopicSearchCell(@NonNull Context context) {
+        this(context, -1, null);
+    }
+
+    public TopicSearchCell(@NonNull Context context, int account, Theme.ResourcesProvider resourcesProvider) {
         super(context);
-        backupImageView = new BackupImageView(context);
+        this.searchAccount = account;
+        this.resourcesProvider = resourcesProvider;
+        backupImageView = account < 0 ? new BackupImageView(context) : new BackupImageView(context) {
+            private final Rect bounds = new Rect();
+            private Drawable placeholder;
+
+            @Override protected void onDraw(Canvas canvas) {
+                AnimatedEmojiDrawable emoji = getAnimatedEmojiDrawable();
+                if (emoji == null) {
+                    super.onDraw(canvas);
+                    return;
+                }
+                bounds.set(0, 0, getWidth(), getHeight());
+                if (emoji.getImageReceiver() == null || !emoji.getImageReceiver().hasReadyImage()) {
+                    if (placeholder == null) placeholder = Theme.getThemedDrawable(getContext(), R.drawable.msg_topics,
+                            Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider));
+                    placeholder.setBounds(bounds);
+                    placeholder.draw(canvas);
+                }
+                emoji.drawForTopicSearch(canvas, bounds, this);
+            }
+        };
+        if (account >= 0) backupImageView.getImageReceiver().setCurrentAccount(account);
 
         textView = new TextView(context);
         ThemeBind.textColor(textView, Theme.key_windowBackgroundWhiteBlackText);
@@ -54,13 +86,26 @@ public class TopicSearchCell extends FrameLayout implements Theme.Colorable {
     }
 
     public void setTopic(TLRPC.TL_forumTopic topic) {
+        setTopic(topic, topic.searchQuery);
+    }
+
+    public void setTopic(TLRPC.TL_forumTopic topic, String query) {
         this.topic = topic;
-        if (TextUtils.isEmpty(topic.searchQuery)) {
+        if (TextUtils.isEmpty(query)) {
             textView.setText(AndroidUtilities.removeDiacritics(topic.title));
         } else {
-            textView.setText(AndroidUtilities.highlightText(AndroidUtilities.removeDiacritics(topic.title), topic.searchQuery, null));
+            textView.setText(AndroidUtilities.highlightText(AndroidUtilities.removeDiacritics(topic.title), query, resourcesProvider));
         }
-        ForumUtilities.setTopicIcon(backupImageView, topic);
+        if (searchAccount >= 0 && topic.id != 1 && topic.icon_emoji_id != 0) {
+            AnimatedEmojiDrawable emoji = AnimatedEmojiDrawable.make(searchAccount, AnimatedEmojiDrawable.CACHE_TYPE_FORUM_TOPIC, topic.icon_emoji_id);
+            emoji.setColorFilter(Theme.getAnimatedEmojiColorFilter(resourcesProvider));
+            if (backupImageView.getAnimatedEmojiDrawable() != emoji) {
+                backupImageView.setImageDrawable(null);
+                backupImageView.setAnimatedEmojiDrawable(emoji);
+            }
+        } else {
+            ForumUtilities.setTopicIcon(backupImageView, topic, false, false, resourcesProvider);
+        }
         if (backupImageView != null && backupImageView.getImageReceiver() != null && backupImageView.getImageReceiver().getDrawable() instanceof ForumUtilities.GeneralTopicDrawable) {
             ((ForumUtilities.GeneralTopicDrawable) backupImageView.getImageReceiver().getDrawable()).setColor(Theme.getColor(Theme.key_chats_archiveBackground));
         }

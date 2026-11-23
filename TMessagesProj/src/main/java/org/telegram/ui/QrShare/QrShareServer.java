@@ -143,6 +143,7 @@ final class QrShareServer implements NotificationCenter.NotificationCenterDelega
             if (contactToken == null) {
                 requestContactToken();
             } else {
+                view.setLinks(contactToken.url, link.caption, false);
                 view.setLinkExpires(contactToken.expires);
             }
         }

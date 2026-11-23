@@ -585,6 +585,9 @@ public class AlertsCreator {
                     case "SCHEDULE_TOO_MUCH":
                         showSimpleToast(fragment, LocaleController.getString(R.string.MessageScheduledLimitReached));
                         break;
+                    case "SCHEDULE_STATUS_PRIVATE":
+                        showSimpleToast(fragment, LocaleController.getString(R.string.NM_ScheduledOnlineStatusHidden));
+                        break;
                 }
             }
         } else if (request instanceof TLRPC.TL_messages_importChatInvite) {
@@ -748,7 +751,13 @@ public class AlertsCreator {
         builder.setMessage(text);
         builder.setPositiveButton(LocaleController.getString(R.string.OK), null);
         if (updateApp) {
-            builder.setNegativeButton(LocaleController.getString(R.string.UpdateApp), (dialog, which) -> Browser.openUrl(context, BuildVars.PLAYSTORE_APP_URL));
+            builder.setNegativeButton(LocaleController.getString(R.string.UpdateApp), (dialog, which) -> {
+                if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY || ApplicationLoader.isStandaloneBuild()) {
+                    app.nimarkogram.messenger.distribution.ClientUpdates.openFromContext(context);
+                } else {
+                    Browser.openUrl(context, BuildVars.PLAYSTORE_APP_URL);
+                }
+            });
         }
         return builder.show();
     }

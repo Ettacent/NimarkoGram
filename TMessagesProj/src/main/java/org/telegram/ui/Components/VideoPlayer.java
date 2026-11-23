@@ -179,7 +179,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         concurrentPlaybackPeer = peer;
     }
 
-    private boolean triedReinit;
+    private volatile int sourceGeneration;
+    private int reinitializedGeneration = -1;
 
     private Uri currentUri;
 
@@ -198,6 +199,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private ArrayList<VideoUri> manifestUris;
     private Uri videoUri, audioUri;
     private String videoType, audioType;
+    private long videoByteOffset;
     private boolean loopingMediaSource;
     private boolean looping;
     private int repeatCount;
@@ -207,6 +209,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     private boolean playbackFinishing;
     private VideoPlaybackFocus videoAudioFocus;
     private boolean applyingVideoFocus;
+    private boolean videoPausedByUser;
     private float videoFocusVolume = 1f;
     private long videoFocusCommand;
     private final VideoPlaybackFocus.Client videoFocusClient = new VideoPlaybackFocus.Client() {
@@ -286,7 +289,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public boolean canAutoStartTransientPlayback() {
-        return videoAudioFocus == null || videoAudioFocus.canAutoStart();
+        return videoAudioFocus == null || !videoPausedByUser && videoAudioFocus.canAutoStart();
     }
 
     public boolean enableTransientAudioFocus(VideoPlaybackFocus previous) {
@@ -337,7 +340,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     private boolean allowVideoFocusStart() {
-        return applyingVideoFocus || videoAudioFocus == null || videoAudioFocus.beforePlay(videoFocusClient, hasFocusAudio());
+        return videoAudioFocus == null || !videoPausedByUser
+                && (applyingVideoFocus || videoAudioFocus.beforePlay(videoFocusClient, hasFocusAudio()));
     }
 
     private long beginVideoFocusCommand() {
@@ -514,6 +518,11 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void preparePlayerLoop(Uri videoUri, String videoType, Uri audioUri, String audioType) {
+        sourceGeneration++;
+        preparePlayerLoop(videoUri, videoType, audioUri, audioType, true);
+    }
+
+    private void preparePlayerLoop(Uri videoUri, String videoType, Uri audioUri, String audioType, boolean resetPosition) {
         this.videoQualities = null;
         this.videoQualityToSelect = null;
         this.videoUri = videoUri;
@@ -547,9 +556,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                 mediaSource2 = mediaSource;
             }
         }
-        player.setMediaSource(mediaSource1, true);
+        player.setMediaSource(mediaSource1, resetPosition);
         player.prepare();
-        audioPlayer.setMediaSource(mediaSource2, true);
+        audioPlayer.setMediaSource(mediaSource2, resetPosition);
         audioPlayer.prepare();
         activePlayers.add(playerId);
     }
@@ -589,10 +598,16 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     }
 
     public void preparePlayer(Uri uri, String type, int priority, long videoByteOffset) {
+        sourceGeneration++;
+        preparePlayer(uri, type, videoByteOffset, true);
+    }
+
+    private void preparePlayer(Uri uri, String type, long videoByteOffset, boolean resetPosition) {
         this.videoQualities = null;
         this.videoQualityToSelect = null;
         this.videoUri = uri;
         this.videoType = type;
+        this.videoByteOffset = videoByteOffset;
         this.audioUri = null;
         this.audioType = null;
         this.loopingMediaSource = false;
@@ -606,11 +621,16 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         isStreaming = scheme != null && !scheme.startsWith("file");
         ensurePlayerCreated();
         MediaSource mediaSource = mediaSourceFromUri(uri, videoByteOffset, type);
-        player.setMediaSource(mediaSource, true);
+        player.setMediaSource(mediaSource, resetPosition);
         player.prepare();
     }
 
     public void preparePlayer(ArrayList<Quality> qualities, Quality select) {
+        sourceGeneration++;
+        prepareQualities(qualities, select);
+    }
+
+    private void prepareQualities(ArrayList<Quality> qualities, Quality select) {
         this.videoQualities = qualities;
         this.videoQualityToSelect = select;
         this.videoUri = null;
@@ -923,6 +943,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         if (player == null) return;
 
         final boolean lastPlaying = player.isPlaying();
+        final long focusCommandAtSelection = videoFocusCommand;
         final long lastPosition = player.getCurrentPosition();
         if (!start) {
             fallbackPosition = lastPosition;
@@ -992,7 +1013,8 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             if (!start) {
                 player.seekTo(lastPosition);
                 if (lastPlaying) {
-                    player.play();
+                    if (videoAudioFocus == null) player.play();
+                    else if (focusCommandAtSelection == videoFocusCommand && canAutoStartTransientPlayback()) play();
                 }
             }
             if (onQualityChangeListener != null) {
@@ -1726,6 +1748,10 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
         return true;
     }
 
+    public final void playByUser() {
+        videoPausedByUser = false;
+        play();
+    }
     public void play() {
         final long command = beginVideoFocusCommand();
         if (!allowVideoFocusStart() || command != videoFocusCommand) return;
@@ -1748,6 +1774,17 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             audioPlayer.setPlayWhenReady(true);
         }
         updateCustomAudioFocus();
+    }
+
+    public final void pauseByUser() {
+        final VideoPlaybackFocus focus = videoAudioFocus;
+        if (focus != null && (hasFocusAudio() || focus.hasLease(videoFocusClient))) {
+            videoPausedByUser = true;
+            autoplay = false;
+            focus.pause(videoFocusClient);
+        }
+        pause();
+        if (focus != null && focus == videoAudioFocus) focus.releasePaused(videoFocusClient);
     }
 
     public void pause() {
@@ -2050,8 +2087,9 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
     @Override
     public void onPlayerError(PlaybackException error) {
         final ExoPlayer failedPlayer = player;
+        final int generation = sourceGeneration;
         AndroidUtilities.runOnUIThread(() -> {
-            if (released || failedPlayer == null || player != failedPlayer) {
+            if (released || failedPlayer == null || player != failedPlayer || generation != sourceGeneration) {
                 return;
             }
             Throwable cause = error.getCause();
@@ -2068,17 +2106,17 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                         if (!videoQualities.contains(videoQualityToSelect)) {
                             videoQualityToSelect = null;
                         }
-                        recoverPlayer(failedPlayer, null);
+                        recoverPlayer(failedPlayer, null, generation);
                         return;
                     }
                 }
             }
             TextureView currentTextureView = textureView;
-            if (!triedReinit && currentTextureView != null
+            if (reinitializedGeneration != generation && currentTextureView != null
                     && player != null
                     && (cause instanceof MediaCodecRenderer.DecoderInitializationException
                     || cause instanceof SurfaceNotValidException)) {
-                triedReinit = true;
+                reinitializedGeneration = generation;
                 ViewParent textureParent = currentTextureView.getParent();
                 if (textureParent instanceof ViewGroup) {
                     ViewGroup parent = (ViewGroup) textureParent;
@@ -2086,7 +2124,7 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
                     parent.removeView(currentTextureView);
                     parent.addView(currentTextureView, i);
                 }
-                recoverPlayer(failedPlayer, currentTextureView);
+                recoverPlayer(failedPlayer, currentTextureView, generation);
             } else {
                 final VideoPlaybackFocus focus = videoAudioFocus;
                 if (focus != null) {
@@ -2105,25 +2143,26 @@ public class VideoPlayer implements Player.Listener, VideoListener, AnalyticsLis
             }
         });
     }
-    private void recoverPlayer(ExoPlayer failedPlayer, TextureView failedTextureView) {
+    private void recoverPlayer(ExoPlayer failedPlayer, TextureView failedTextureView, int generation) {
         Runnable recover = () -> {
-            if (released || player != failedPlayer
+            if (released || player != failedPlayer || generation != sourceGeneration
                     || failedTextureView != null && textureView != failedTextureView) {
                 return;
             }
-            boolean playWhenReady = mixedAudio ? mixedPlayWhenReady : failedPlayer.getPlayWhenReady();
             if (failedTextureView != null) {
                 failedPlayer.clearVideoTextureView(failedTextureView);
                 failedPlayer.setVideoTextureView(failedTextureView);
             }
             if (videoQualities != null) {
-                preparePlayer(videoQualities, videoQualityToSelect);
+                prepareQualities(videoQualities, videoQualityToSelect);
             } else if (loopingMediaSource) {
-                preparePlayerLoop(videoUri, videoType, audioUri, audioType);
+                preparePlayerLoop(videoUri, videoType, audioUri, audioType, false);
             } else {
-                preparePlayer(videoUri, videoType);
+                preparePlayer(videoUri, videoType, videoByteOffset, false);
             }
-            setPlayWhenReady(playWhenReady);
+            if (!released && player == failedPlayer && generation == sourceGeneration) {
+                setPlayWhenReady(mixedAudio ? mixedPlayWhenReady : failedPlayer.getPlayWhenReady());
+            }
         };
         Looper applicationLooper = failedPlayer.getApplicationLooper();
         if (Looper.myLooper() == applicationLooper) {

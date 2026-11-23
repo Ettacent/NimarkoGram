@@ -2,5 +2,6 @@
 <!-- Modifications Copyright (C) 2026 Ettacent -->
 
 <resources>
+    <item type="drawable" name="drawer_proxy_on">@drawable/pill_proxy</item>
     <item type="drawable" name="drawer_proxy_off">@drawable/pill_proxy_off</item>
 </resources>

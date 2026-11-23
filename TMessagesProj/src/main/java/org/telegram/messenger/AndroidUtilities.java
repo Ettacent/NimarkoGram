@@ -4458,6 +4458,7 @@ public class AndroidUtilities {
             }
             if (realMimeType != null && realMimeType.equals("application/vnd.android.package-archive")) {
                 if (restrict) return true;
+                if (BuildConfig.NIMARKO_PLAY) return false;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ApplicationLoader.applicationContext.getPackageManager().canRequestPackageInstalls()) {
                     AlertsCreator.createApkRestrictedDialog(activity, resourcesProvider).show();
                     return true;
@@ -4502,10 +4503,10 @@ public class AndroidUtilities {
         if (!app.nimarkogram.messenger.documents.DocumentViewer.isSourceCurrent(source, activity, owner)) return true;
         final boolean protectedDocument = app.nimarkogram.messenger.documents.DocumentViewer.isProtected(source, activity);
         try {
-            if (!protectedDocument && app.nimarkogram.messenger.plugins.PluginsController.isPlugin(message)) {
+            if (!protectedDocument && app.nimarkogram.messenger.distribution.ClientPlugins.isPlugin(message)) {
                 org.telegram.ui.ActionBar.BaseFragment fragment = org.telegram.ui.LaunchActivity.getLastFragment();
                 if (fragment != null) {
-                    app.nimarkogram.messenger.plugins.PluginsController.getInstance().showInstallDialog(fragment, message);
+                    app.nimarkogram.messenger.distribution.ClientPlugins.showInstallDialog(fragment, message);
                     return true;
                 }
             }
@@ -4521,14 +4522,7 @@ public class AndroidUtilities {
         }
         String mimeType = message.type == MessageObject.TYPE_FILE || message.type == MessageObject.TYPE_TEXT ? message.getMimeType() : null;
         try {
-            if (!protectedDocument && com.chaquo.python.Python.isStarted() && f != null) {
-                com.chaquo.python.PyObject consumed = com.chaquo.python.Python.getInstance()
-                        .getModule("file_utils")
-                        .callAttr("_dispatch_open_from_java", f.getAbsolutePath(),
-                                message.getFileName(), mimeType);
-                boolean handled = consumed != null && consumed.toBoolean();
-                if (handled) return true;
-            }
+            if (!protectedDocument && app.nimarkogram.messenger.distribution.ClientPlugins.openFile(f, message.getFileName(), mimeType)) return true;
         } catch (Throwable t) {
             FileLog.e("nimarko: file-hook dispatch failed", t);
         }

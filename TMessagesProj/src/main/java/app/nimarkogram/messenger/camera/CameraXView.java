@@ -424,6 +424,10 @@ public class CameraXView extends BaseCameraView {
         return recordingSession != null;
     }
 
+    public boolean isRecordingTo(File file) {
+        RecordingSession session = recordingSession;
+        return session != null && session.file == file && !session.stopRequested && !session.finalizing;
+    }
     private boolean isRecordingCaptureActive() {
         return recordingSession != null && !recordingSession.finalizing;
     }

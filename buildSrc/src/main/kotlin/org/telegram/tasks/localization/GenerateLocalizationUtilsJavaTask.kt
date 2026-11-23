@@ -103,6 +103,15 @@ abstract class GenerateLocalizationUtilsJavaTask : DefaultTask() {
 
                 for (tag in languageTags) {
                     if (!tag.contains('-')) {
+                        val alternate = when (tag) {
+                            "id" -> "in"
+                            "iw" -> "he"
+                            "no" -> "nb"
+                            else -> null
+                        }
+                        if (alternate != null && alternate !in languageTags) {
+                            java.appendLine("            case \"$alternate\":")
+                        }
                         java.append("            case \"")
                         java.append(escapeJavaString(tag))
                         java.append("\": return \"")

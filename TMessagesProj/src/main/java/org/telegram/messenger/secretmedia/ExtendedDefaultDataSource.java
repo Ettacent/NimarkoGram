@@ -35,6 +35,7 @@ import org.telegram.messenger.FileStreamLoadOperation;
 
 import org.telegram.messenger.FileLoader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -164,9 +165,12 @@ public final class ExtendedDefaultDataSource implements DataSource {
 
     @Override
     public void addTransferListener(TransferListener transferListener) {
+        if (transferListeners.contains(transferListener)) return;
         baseDataSource.addTransferListener(transferListener);
         transferListeners.add(transferListener);
         maybeAddListenerToDataSource(fileDataSource, transferListener);
+        maybeAddListenerToDataSource(encryptedFileDataSource, transferListener);
+        maybeAddListenerToDataSource(streamLoadOperation, transferListener);
         maybeAddListenerToDataSource(assetDataSource, transferListener);
         maybeAddListenerToDataSource(contentDataSource, transferListener);
         maybeAddListenerToDataSource(rtmpDataSource, transferListener);
@@ -179,18 +183,28 @@ public final class ExtendedDefaultDataSource implements DataSource {
         Assertions.checkState(dataSource == null);
         Uri uri = dataSpec.uri;
         if ("mtproto".equals(uri.getScheme())) {
-            final long docId = Long.parseLong(dataSpec.uri.toString().substring("mtproto:".length()));
+            final long docId;
+            try {
+                docId = Long.parseLong(uri.getSchemeSpecificPart());
+            } catch (NumberFormatException e) {
+                throw new IOException("Invalid media reference", e);
+            }
+            if (mtprotoUris == null) throw new FileNotFoundException("Media reference is unavailable");
+            synchronized (mtprotoUris) {
             uri = mtprotoUris.get(docId);
+            }
+            if (uri == null) throw new FileNotFoundException("Media reference is unavailable");
             dataSpec = dataSpec.buildUpon().setUri(uri).build();
         }
         // Choose the correct source for the scheme.
         String scheme = uri.getScheme();
         if (Util.isLocalFileUri(uri)) {
             String uriPath = uri.getPath();
-            if (uriPath != null && uriPath.startsWith("/android_asset/")) {
+            if (uriPath == null) throw new FileNotFoundException("Missing local media path");
+            if (uriPath.startsWith("/android_asset/")) {
                 dataSource = getAssetDataSource();
             } else {
-                if (uri.getPath().endsWith(".enc")) {
+                if (uriPath.endsWith(".enc")) {
                     dataSource = getEncryptedFileDataSource();
                 } else {
                     dataSource = getFileDataSource();

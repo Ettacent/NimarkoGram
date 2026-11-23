@@ -176,6 +176,8 @@ public class NotificationsCheckCell extends FrameLayout {
     }
 
     public void setTextAndValueAndIconAndCheck(CharSequence text, CharSequence value, int iconResId, boolean checked, int iconType, boolean multiline, boolean divider, boolean animated) {
+        animated = animated && isAttachedToWindow() && isShown() && !isMultiline
+                && TextUtils.equals(text, textView.getText()) && SettingsValueTransition.motionEnabled();
         textView.setText(text);
         if (imageView != null) {
             imageView.setImageResource(iconResId);

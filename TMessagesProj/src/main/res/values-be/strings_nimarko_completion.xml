@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Выдаліць з кэша</string>
+    <string name="NM_ClearedFromCache">Выдалена з кэша</string>
+    <string name="NM_CopyCallback">Скапіяваць звесткі зваротнага выкліку</string>
+    <string name="NM_CopyID">Скапіяваць ID карыстальніка</string>
+    <string name="NM_CopyInlineQuery">Скапіяваць убудаваны запыт</string>
+    <string name="NM_CopyPhoto">Скапіяваць фота</string>
+    <string name="NM_CopyPhotoAsSticker">Скапіяваць фота як стыкер</string>
+    <string name="NM_CopyReportDetails">Скапіяваць дэталі скаргі</string>
+    <string name="NM_CopySetId">Скапіяваць ID набору</string>
+    <string name="NM_CopyTitle">Скапіяваць загаловак</string>
+    <string name="NM_Copy_Coordinates">Каардынаты</string>
+    <string name="NM_DoNotRemindAgain">Больш не нагадваць</string>
+    <string name="NM_ExportSettings">Экспартаваць налады</string>
+    <string name="NM_FoldersTypeIcons">Толькі значкі</string>
+    <string name="NM_FoldersTypeIconsTitles">Значкі і назвы</string>
+    <string name="NM_FoldersTypeTitles">Толькі назвы</string>
+    <string name="NM_GetEmojiPack">Атрымаць эмодзі</string>
+    <string name="NM_ImportSettings">Імпартаваць налады</string>
+    <string name="NM_ImportSettingsAlert">Перазапісаць налады? Імпарт налад з невядомых крыніц можа парушыць працу праграмы.</string>
+    <string name="NM_OpenEmojiPack">Націсніце, каб атрымаць эмодзі</string>
+    <string name="NM_OpenStickerPack">Націсніце, каб атрымаць стыкер</string>
+    <string name="NM_PasskeyInfo2">Функцыя працуе толькі з менеджарамі пароляў, якія дазваляюць кіраваць наладамі даверу для праграм з асаблівымі правамі, напрыклад **Bitwarden** і **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Няма прыдатных уліковых даных.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Паспрабуйце іншы менеджар пароляў, напрыклад **Bitwarden** або **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Менеджар пароляў не падтрымліваецца</string>
+    <string name="NM_PhotoCopied">Фота скапіявана ў буфер абмену.</string>
+    <string name="NM_ProfileBackground">Ужыць фон профілю</string>
+    <string name="NM_QRLoginMessage">Адсканіруйце QR-код іншай прыладай, каб увайсці.</string>
+    <string name="NM_QRLoginTitle">Уваход праз QR-код</string>
+    <string name="NM_ReportDetailsCopied">Дэталі скаргі скапіяваны ў буфер абмену.</string>
+    <string name="NM_RestartToApply">Перазапусціце праграму, каб змены ўступілі ў сілу.</string>
+    <string name="NM_SafeStars_buy_Telegram">Купіць зоркі праз Telegram</string>
+    <string name="NM_SaveSticker">Захаваць стыкер</string>
+    <string name="NM_SendPhotoAsSticker">Адправіць як стыкер</string>
+    <string name="NM_SortByDate">Сартаваць па даце паведамлення</string>
+    <string name="NM_SwipeToUnarchive">Правядзіце ўлева, каб вярнуць з архіва</string>
+    <string name="NM_SwitchedToAccount">Вы перайшлі ў акаўнт **%1$s**</string>
+    <string name="NM_TranslationLanguage">Мова перакладу</string>
+</resources>

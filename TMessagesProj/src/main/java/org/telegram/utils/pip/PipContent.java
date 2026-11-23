@@ -43,6 +43,9 @@ public interface PipContent {
 
     void pause();
 
+    default void pauseForAppBackground() {
+        pause();
+    }
     long getDuration();
 
     long getCurrentPosition();

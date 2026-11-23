@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Видалити з кешу</string>
+    <string name="NM_ClearedFromCache">Видалено з кешу</string>
+    <string name="NM_CopyCallback">Копіювати дані зворотного виклику</string>
+    <string name="NM_CopyID">Скопіювати ID користувача</string>
+    <string name="NM_CopyInlineQuery">Копіювати вбудований запит</string>
+    <string name="NM_CopyPhoto">Копіювати фото</string>
+    <string name="NM_CopyPhotoAsSticker">Копіювати фото як наліпку</string>
+    <string name="NM_CopyReportDetails">Скопіювати деталі скарги</string>
+    <string name="NM_CopySetId">Скопіювати ID набору</string>
+    <string name="NM_CopyTitle">Копіювати заголовок</string>
+    <string name="NM_Copy_Coordinates">Координати</string>
+    <string name="NM_DoNotRemindAgain">Більше не нагадувати</string>
+    <string name="NM_ExportSettings">Експортувати налаштування</string>
+    <string name="NM_FoldersTypeIcons">Лише значки</string>
+    <string name="NM_FoldersTypeIconsTitles">Значки й назви</string>
+    <string name="NM_FoldersTypeTitles">Лише назви</string>
+    <string name="NM_GetEmojiPack">Отримати емодзі</string>
+    <string name="NM_ImportSettings">Імпортувати налаштування</string>
+    <string name="NM_ImportSettingsAlert">Перезаписати налаштування? Імпорт налаштувань із невідомих джерел може порушити роботу застосунку.</string>
+    <string name="NM_OpenEmojiPack">Торкніться, щоб отримати емодзі</string>
+    <string name="NM_OpenStickerPack">Торкніться, щоб отримати наліпку</string>
+    <string name="NM_PasskeyInfo2">Ця функція працює лише з менеджерами паролів, які дають змогу керувати налаштуваннями довіри для застосунків з особливими правами, наприклад **Bitwarden** і **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Немає придатних облікових даних.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Спробуйте інший менеджер паролів, наприклад **Bitwarden** або **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Менеджер паролів не підтримується</string>
+    <string name="NM_PhotoCopied">Фото скопійовано в буфер обміну.</string>
+    <string name="NM_ProfileBackground">Застосувати тло профілю</string>
+    <string name="NM_QRLoginMessage">Відскануйте QR-код іншим пристроєм, щоб увійти.</string>
+    <string name="NM_QRLoginTitle">Вхід за QR-кодом</string>
+    <string name="NM_ReportDetailsCopied">Деталі скарги скопійовано в буфер обміну.</string>
+    <string name="NM_RestartToApply">Потрібен перезапуск</string>
+    <string name="NM_SafeStars_buy_Telegram">Купити зірки через Telegram</string>
+    <string name="NM_SaveSticker">Зберегти наліпку</string>
+    <string name="NM_SendPhotoAsSticker">Надіслати як наліпку</string>
+    <string name="NM_SortByDate">Сортувати за датою повідомлення</string>
+    <string name="NM_SwipeToUnarchive">Проведіть ліворуч, щоб повернути з архіву</string>
+    <string name="NM_SwitchedToAccount">Ви перемкнулися на обліковий запис **%1$s**</string>
+    <string name="NM_TranslationLanguage">Мова перекладу</string>
+</resources>

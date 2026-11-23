@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">キャッシュから削除</string>
+    <string name="NM_ClearedFromCache">キャッシュから削除しました</string>
+    <string name="NM_CopyCallback">コールバックデータをコピー</string>
+    <string name="NM_CopyID">ユーザーIDをコピー</string>
+    <string name="NM_CopyInlineQuery">インラインクエリをコピー</string>
+    <string name="NM_CopyPhoto">写真をコピー</string>
+    <string name="NM_CopyPhotoAsSticker">写真をステッカーとしてコピー</string>
+    <string name="NM_CopyReportDetails">通報の詳細をコピー</string>
+    <string name="NM_CopySetId">パックIDをコピー</string>
+    <string name="NM_CopyTitle">タイトルをコピー</string>
+    <string name="NM_Copy_Coordinates">座標</string>
+    <string name="NM_DoNotRemindAgain">今後は通知しない</string>
+    <string name="NM_ExportSettings">設定をエクスポート</string>
+    <string name="NM_FoldersTypeIcons">アイコンのみ</string>
+    <string name="NM_FoldersTypeIconsTitles">アイコンとタイトル</string>
+    <string name="NM_FoldersTypeTitles">タイトルのみ</string>
+    <string name="NM_GetEmojiPack">絵文字を入手</string>
+    <string name="NM_ImportSettings">設定をインポート</string>
+    <string name="NM_ImportSettingsAlert">設定を上書きしますか？信頼できない提供元から設定を読み込むと、アプリが正常に動作しなくなることがあります。</string>
+    <string name="NM_OpenEmojiPack">タップして絵文字を入手</string>
+    <string name="NM_OpenStickerPack">タップしてステッカーを入手</string>
+    <string name="NM_PasskeyInfo2">この機能は、特権アプリの信頼設定をユーザーが管理できるパスワードマネージャー（**Bitwarden** や **KeePassDX** など）でのみ使えます。</string>
+    <string name="NM_PasskeyNoCredentialAvailable">利用できる認証情報がありません。</string>
+    <string name="NM_PasskeyUnsupportedMessage">**Bitwarden** や **KeePassDX** など、別のパスワードマネージャーをお試しください。</string>
+    <string name="NM_PasskeyUnsupportedTitle">非対応のパスワードマネージャー</string>
+    <string name="NM_PhotoCopied">写真をクリップボードにコピーしました。</string>
+    <string name="NM_ProfileBackground">プロフィールの背景を適用</string>
+    <string name="NM_QRLoginMessage">別の端末でQRコードを読み取ってログインしてください。</string>
+    <string name="NM_QRLoginTitle">QRコードでログイン</string>
+    <string name="NM_ReportDetailsCopied">通報の詳細をクリップボードにコピーしました。</string>
+    <string name="NM_RestartToApply">変更を有効にするには、アプリを再起動してください。</string>
+    <string name="NM_SafeStars_buy_Telegram">Telegram でスターを購入</string>
+    <string name="NM_SaveSticker">ステッカーを保存</string>
+    <string name="NM_SendPhotoAsSticker">ステッカーとして送信</string>
+    <string name="NM_SortByDate">メッセージの日付順に並べ替え</string>
+    <string name="NM_SwipeToUnarchive">左にスワイプしてアーカイブを解除</string>
+    <string name="NM_SwitchedToAccount">**%1$s** に切り替えました</string>
+    <string name="NM_TranslationLanguage">翻訳言語</string>
+</resources>

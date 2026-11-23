@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">세션을 종료하지 못했습니다. 연결을 확인한 후 다시 시도하세요.</string>
+</resources>

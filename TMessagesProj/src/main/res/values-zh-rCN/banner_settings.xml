@@ -5,4 +5,9 @@
     <string name="NM_BAN_SelectHint">选择不超过 8 MB 的照片或视频。所选文件将自动提交审核，通过后所有人可见。</string>
     <string name="NM_BAN_AutoStatus">此页面打开时会自动更新状态。</string>
     <string name="NM_BAN_AccountChanged">账号已更改，请重新选择文件。</string>
+    <string name="NM_BAN_SubmitChecking">未能确认上传结果，正在查询状态…</string>
+    <string name="NM_BAN_SubmitPendingOnServer">已有横幅正在审核，无需重复提交。</string>
+    <string name="NM_BAN_SubmitApprovedOnServer">个人资料中已有审核通过的横幅，请先查看，再决定是否重新提交。</string>
+    <string name="NM_BAN_SubmitUnconfirmed">未能确认此次上传。请先查看横幅状态，再决定是否重试。</string>
+    <string name="NM_BAN_SubmitRefused">服务器拒绝了此次提交。</string>
 </resources>

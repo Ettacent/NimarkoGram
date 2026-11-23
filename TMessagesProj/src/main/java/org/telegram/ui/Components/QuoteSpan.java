@@ -434,7 +434,7 @@ public class QuoteSpan implements LeadingMarginSpan {
         boolean hasPressed = false;
         for (Block block : blocks) {
             final QuoteCollapseButton button = block.span.collapseButton;
-            final boolean hit = block.hasButton() && block.collapseButtonBounds.contains(ev.getX(), ev.getY() - scrollY);
+            final boolean hit = block.hasButton() && block.collapseButtonBounds != null && block.collapseButtonBounds.contains(ev.getX(), ev.getY() - scrollY);
             if (ev.getAction() == MotionEvent.ACTION_DOWN) {
                 if (button != null) {
                     button.setPressed(hit);

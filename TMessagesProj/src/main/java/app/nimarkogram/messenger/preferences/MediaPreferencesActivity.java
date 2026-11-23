@@ -14,6 +14,7 @@ import android.view.View;
 
 import java.util.ArrayList;
 
+import java.util.Locale;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.UItem;
@@ -21,6 +22,7 @@ import org.telegram.ui.Components.UniversalAdapter;
 
 import app.nimarkogram.messenger.AppConfig;
 
+import app.nimarkogram.messenger.media.MediaDownloader.Platform;
 public class MediaPreferencesActivity extends BasePreferencesActivity {
 
     private static final int ID_AUTO_DOWNLOAD = 100;
@@ -38,10 +40,22 @@ public class MediaPreferencesActivity extends BasePreferencesActivity {
         return LocaleController.getString(R.string.NM_DownloadMedia);
     }
 
+    static String platformList(boolean play, Locale locale) {
+        String lang = locale == null ? "" : locale.getLanguage();
+        String separator = "ja".equals(lang) || "zh".equals(lang) ? "、"
+                : "ar".equals(lang) || "fa".equals(lang) ? "، " : ", ";
+        StringBuilder text = new StringBuilder();
+        for (Platform provider : Platform.values()) {
+            if (play && provider == Platform.YOUTUBE) continue;
+            if (text.length() > 0) text.append(separator);
+            text.append(provider.displayName);
+        }
+        return text.toString();
+    }
     @Override
     public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
         String supportedPlatforms = LocaleController.getString(R.string.NM_NM_SupportedPlatforms)
-                + "\n" + LocaleController.getString(R.string.NM_NM_PlatformsList);
+                + "\n" + platformList(org.telegram.messenger.BuildConfig.NIMARKO_PLAY, LocaleController.getInstance().getCurrentLocale());
         items.add(UItem.asHeader(ID_HEADER_DOWNLOADS,
                 LocaleController.getString(R.string.NM_SettingsSectionDownloads)));
         items.add(UItem.asButtonCheck(ID_AUTO_DOWNLOAD,
@@ -56,7 +70,7 @@ public class MediaPreferencesActivity extends BasePreferencesActivity {
                     .setChecked(AppConfig.mediaSendChoice));
         }
         items.add(UItem.asShadow(ID_SHADOW_AUTO, null));
-        if (AppConfig.nimarkoMediaAuto && !AppConfig.mediaSendChoice) {
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY && AppConfig.nimarkoMediaAuto && !AppConfig.mediaSendChoice) {
             items.add(UItem.asHeader(ID_HEADER_FORMAT,
                     LocaleController.getString(R.string.NM_NM_YtFormat)));
             items.add(UItem.asCheck(ID_YT_ASK,

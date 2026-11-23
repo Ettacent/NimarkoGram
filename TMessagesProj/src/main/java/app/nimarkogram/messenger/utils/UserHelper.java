@@ -1,4 +1,3 @@
-
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -121,11 +120,11 @@ public class UserHelper extends BaseController {
                     final CharSequence formattedDate;
                     switch (type) {
                         case "TYPE_APPROX" ->
-                                formattedDate = LocaleController.formatString(R.string.CG_RegistrationDateApproximately, formatDateTime(timestamp, true));
+                                formattedDate = LocaleController.formatString(R.string.NM_RegistrationDateApproximately, formatDateTime(timestamp, true));
                         case "TYPE_NEWER" ->
-                                formattedDate = LocaleController.formatString(R.string.CG_RegistrationDateNewer, formatDateTime(timestamp, true));
+                                formattedDate = LocaleController.formatString(R.string.NM_RegistrationDateNewer, formatDateTime(timestamp, true));
                         case "TYPE_OLDER" ->
-                                formattedDate = LocaleController.formatString(R.string.CG_RegistrationDateOlder, formatDateTime(timestamp, true));
+                                formattedDate = LocaleController.formatString(R.string.NM_RegistrationDateOlder, formatDateTime(timestamp, true));
                         default -> formattedDate = formatDateTime(timestamp, true);
                     }
                     if (!isCurrentOwner(ownerUserId)) {
@@ -160,18 +159,18 @@ public class UserHelper extends BaseController {
         CharSequence formattedDate = formattedDates.get(dateKey(getUserConfig().getClientUserId(), userID));
 
         if (!telegram && formattedDate == null) {
-            dateInfo = getString(R.string.CG_RegistrationDateFailed);
+            dateInfo = getString(R.string.NM_RegistrationDateFailed);
         } else if (telegram) {
             dateInfo = AndroidUtilities.replaceTags(
                     LocaleController.formatString(
-                            R.string.CG_RegistrationDate, name,
+                            R.string.NM_RegistrationDate, name,
                             telegramDate
                     )
             );
         } else {
             dateInfo = AndroidUtilities.replaceTags(
                     LocaleController.formatString(
-                            R.string.CG_RegistrationDate, name,
+                            R.string.NM_RegistrationDate, name,
                             formattedDate
                     )
             );

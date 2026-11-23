@@ -47,6 +47,8 @@ import androidx.webkit.WebViewRenderProcessClient;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Components.blur3.capture.IBlur3Hash;
 
@@ -746,6 +748,13 @@ public final class OfficeDocumentView extends FrameLayout {
                 JSONObject open = colors(command("open"));
                 open.put("format", format).put("index", initialIndex).put("allowCopy", allowCopy)
                         .put("motionEnabled", motionEnabled()).put("nativeGestures", target.nativeGestures);
+                Locale uiLocale = LocaleController.getInstance().getCurrentLocale();
+                open.put("statusLanguage", (uiLocale == null ? Locale.getDefault() : uiLocale).toLanguageTag());
+                open.put("statusLabels", new JSONObject()
+                        .put("opening", LocaleController.getString(R.string.NM_DocStatusOpening))
+                        .put("failed", LocaleController.getString(R.string.NM_DocOpenError))
+                        .put("anotherReader", LocaleController.getString(R.string.NM_DocStatusAnotherReader))
+                        .put("nativePdf", LocaleController.getString(R.string.NM_DocStatusNativePdf)));
                 if (target.domReader && !target.nativeGestures) open.put("gestureMode", "xlsx-local-v1");
                 if ("pdf".equals(format) && target.password != null) open.put("password", target.password);
                 target.password = null;
@@ -1579,6 +1588,10 @@ public final class OfficeDocumentView extends FrameLayout {
         try { send(command("protection").put("allowCopy", value)); } catch (JSONException ignored) {}
     }
     public void stopScrolling() {
+        stopScrolling(false);
+    }
+
+    void stopScrolling(boolean forPause) {
         requireMain();
         cancelNativeZoom();
         WebView view = webView;
@@ -1589,7 +1602,7 @@ public final class OfficeDocumentView extends FrameLayout {
             dispatchTouchEvent(cancel);
             view.onTouchEvent(cancel);
             view.flingScroll(0, 0);
-            view.evaluateJavascript("window.OfficeViewer && window.OfficeViewer.stopScrolling && window.OfficeViewer.stopScrolling();", null);
+            view.evaluateJavascript("window.OfficeViewer && window.OfficeViewer.stopScrolling && window.OfficeViewer.stopScrolling(" + forPause + ");", null);
         } catch (RuntimeException | LinkageError e) {
             fail(session, ERROR_WEBVIEW);
         } finally {

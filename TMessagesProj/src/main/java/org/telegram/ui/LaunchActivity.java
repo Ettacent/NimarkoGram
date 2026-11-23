@@ -1240,7 +1240,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private BaseFragment getClientNotActivatedFragment() {
-        if (LoginActivity.loadCurrentState(false, currentAccount).getInt("currentViewNum", 0) != 0) {
+        if (LoginActivity.hasPendingSignInPage(LoginActivity.loadCurrentState(false, currentAccount))) {
             return new LoginActivity();
         }
         return new IntroActivity();
@@ -1418,13 +1418,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         try { app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onAccountSwitched(account); } catch (Throwable ignored) {}
         // NimarkoGram: the new account may live on a different DC (e.g. RU DC2 <-> asian DC5), so re-decide
         // the relay region for the process-global bypass rather than keeping the previous account's pick.
-        app.nimarkogram.messenger.wsbypass.RelayRegion.invalidate();
-        // Keep both independently-issued relay credentials warm for the newly selected account. The calls are
-        // single-flight and no-op while their existing credential is still fresh.
-        AndroidUtilities.runOnUIThread(() ->
-                app.nimarkogram.messenger.wsbypass.WsRelayAuth.prefetchAsync(account), 500);
-        AndroidUtilities.runOnUIThread(() ->
-                app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(account), 1000);
+        app.nimarkogram.messenger.distribution.ClientRelays.onAccountSwitch(account);
 
         checkCurrentAccount();
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.activeAccountChanged, account);
@@ -1962,7 +1956,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         // NimarkoGram: tapping the OTA download notification opens the app on the update sheet (progress /
         // install / cancel) so the user never has to force-kill to retry. Doesn't consume the intent.
-        if (!rejectedAccount && intent.getBooleanExtra("nm_open_update", false)) {
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY && !rejectedAccount && intent.getBooleanExtra("nm_open_update", false)) {
             intent.removeExtra("nm_open_update");
             AndroidUtilities.runOnUIThread(() -> {
                 try {
@@ -1970,18 +1964,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     // lastUpdate is a process-lifetime static; after a low-memory kill it's null even
                     // though the notification (and its persisted Update fields) survived. Rehydrate it
                     // from prefs so the deep-link still opens the sheet instead of doing nothing.
-                    app.nimarkogram.messenger.updater.AppUpdater.Update update =
-                            app.nimarkogram.messenger.updater.AppUpdater.getOrRestoreLastUpdate();
-                    if (last != null && update != null) {
-                        app.nimarkogram.messenger.updater.UpdaterSheet.showAlert(last, true, update);
-                    }
+                    app.nimarkogram.messenger.distribution.ClientUpdates.openNotification(last);
                 } catch (Throwable ignore) {}
             }, 350);
         }
         if (!rejectedAccount && AndroidUtilities.handleProxyIntent(this, intent, true)) {
             return true;
         }
-        if (!rejectedAccount && app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance().dispatchIntent(intent)) {
+        if (!rejectedAccount && app.nimarkogram.messenger.distribution.ClientPlugins.dispatchIntent(intent)) {
             return true;
         }
         if (intent == null || !Intent.ACTION_MAIN.equals(intent.getAction())) {
@@ -3381,7 +3371,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             } else {
                                 try (Cursor cursor = getContentResolver().query(intent.getData(), null, null, null, null)) {
                                     if (cursor != null) {
-                                        if (cursor.moveToFirst()) {
+                                        if (cursor.moveToFirst() && (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY ||
+                                                org.telegram.messenger.AndroidContactIdentity.ownsMime(
+                                                        cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Data.MIMETYPE))))) {
                                             long userId = cursor.getLong(cursor.getColumnIndex(ContactsContract.Data.DATA4));
                                             int accountId = Utilities.parseInt(cursor.getString(cursor.getColumnIndex(ContactsContract.RawContacts.ACCOUNT_NAME)));
                                             for (int a = -1; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
@@ -3395,9 +3387,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                             NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                                             push_user_id = userId;
                                             String mimeType = cursor.getString(cursor.getColumnIndex(ContactsContract.Data.MIMETYPE));
-                                            if (TextUtils.equals(mimeType, "vnd.android.cursor.item/vnd.org.telegram.messenger.android.call")) {
+                                            if (TextUtils.equals(mimeType, org.telegram.messenger.AndroidContactIdentity.CALL)) {
                                                 audioCallUser = true;
-                                            } else if (TextUtils.equals(mimeType, "vnd.android.cursor.item/vnd.org.telegram.messenger.android.call.video")) {
+                                            } else if (TextUtils.equals(mimeType, org.telegram.messenger.AndroidContactIdentity.VIDEO_CALL)) {
                                                 videoCallUser = true;
                                             }
                                         }
@@ -3408,7 +3400,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                             }
                         }
                     }
-                } else if (intent.getAction().equals("org.telegram.messenger.OPEN_ACCOUNT")) {
+                } else if (intent.getAction().equals(org.telegram.messenger.AndroidContactIdentity.OPEN_ACCOUNT)) {
                     open_settings = 1;
                 } else if (intent.getAction().equals("new_dialog")) {
                     open_new_dialog = 1;
@@ -6881,6 +6873,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
 
     private boolean firstAppUpdateCheck = true;
     public void checkAppUpdate(boolean force, Browser.Progress progress) {
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY || ApplicationLoader.isStandaloneBuild()) {
+            if (progress != null) progress.end();
+            if (force) app.nimarkogram.messenger.distribution.ClientUpdates.openFromContext(this);
+            return;
+        }
         if (!ApplicationLoader.isStandaloneBuild() && !ApplicationLoader.isBetaBuild()) {
             return;
         }
@@ -7142,16 +7139,14 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         final IntentPaneSnapshot main = new IntentPaneSnapshot(actionBarLayout);
         final IntentPaneSnapshot right = new IntentPaneSnapshot(rightActionBarLayout);
         final IntentPaneSnapshot layers = new IntentPaneSnapshot(layersActionBarLayout);
-        final app.nimarkogram.messenger.plugins.intents.IntentsController intents =
-                app.nimarkogram.messenger.plugins.intents.IntentsController.getInstance();
-        final long dispatch = intents.getDispatchSequence();
+        final long dispatch = app.nimarkogram.messenger.distribution.ClientPlugins.dispatchSequence();
         final boolean handled = handleIntent(intent, true, false, false, progress, true, openedTelegram);
         final boolean changed = currentAccount != previousAccount || UserConfig.selectedAccount != selectedAccount
                 || !main.matches(actionBarLayout) || !right.matches(rightActionBarLayout) || !layers.matches(layersActionBarLayout);
         final boolean security = isPasscodeBlockingContent() || SharedConfig.appLocked || SharedConfig.isWaitingForPasscodeEnter
                 || AndroidUtilities.needShowPasscode() || passcodeSaveIntent != savedPasscode
                 || passcodeSaveIntentIsNew != savedPasscodeNew || passcodeSaveIntentIsRestore != savedPasscodeRestore;
-        final boolean pluginRan = intents.getDispatchSequence() != dispatch;
+        final boolean pluginRan = app.nimarkogram.messenger.distribution.ClientPlugins.dispatchSequence() != dispatch;
         final boolean dismiss = handled || changed || security || pluginRan || webviewShareAPIDoneListener != null;
         if (dismiss) dismissOriginal.run();
     }
@@ -7943,8 +7938,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         app.nimarkogram.messenger.notifications.InAppNotifications.onPause(this);
         // NimarkoGram plugin engine event hook.
         try {
-            app.nimarkogram.messenger.plugins.PluginsController.getInstance()
-                    .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_PAUSE);
+            app.nimarkogram.messenger.distribution.ClientPlugins.event("app_pause");
         } catch (Throwable ignored) {}
         // NimarkoGram: extend "Auto pause video" to MediaController-driven
         // playback — voice messages + round videos. Telegram keeps these
@@ -8044,8 +8038,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         try { app.nimarkogram.messenger.security.AppBiometricPrompt.onAppBackgrounded(); } catch (Throwable ignore) {}
         // NimarkoGram plugin engine event hook.
         try {
-            app.nimarkogram.messenger.plugins.PluginsController.getInstance()
-                    .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_STOP);
+            app.nimarkogram.messenger.distribution.ClientPlugins.event("app_stop");
         } catch (Throwable ignored) {}
         isStarted = false;
         PipCoordinator.getInstance().onActivityStop(this);
@@ -8309,15 +8302,13 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         if (flagSecureReason != null) flagSecureReason.invalidate();
         // NimarkoGram plugin engine event hook.
         try {
-            app.nimarkogram.messenger.plugins.PluginsController.getInstance()
-                    .executeOnAppEvent(app.nimarkogram.messenger.plugins.PluginsConstants.APP_RESUME);
+            app.nimarkogram.messenger.distribution.ClientPlugins.event("app_resume");
         } catch (Throwable ignored) {}
         WidgetMedia.onAppPaused(false);
         isResumed = true;
         // NimarkoGram: OTA auto-check once per launch (gated on "Check on launch").
         try {
-            AndroidUtilities.runOnUIThread(() ->
-                    app.nimarkogram.messenger.updater.AppUpdater.checkOnLaunch(LaunchActivity.getLastFragment()), 2500);
+            app.nimarkogram.messenger.distribution.ClientUpdates.onResume();
         } catch (Throwable ignored) {}
         PipCoordinator.getInstance().onActivityResume(this);
         if (onResumeStaticCallback != null) {
@@ -8340,7 +8331,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         try { app.nimarkogram.messenger.banners.BannerRenderer.getInstance().onAppResume(); } catch (Throwable ignore) {}
         // NimarkoGram: clear ws-bypass fail/blacklist backoff and restart a dead listener after a
         // network change (Wi-Fi<->cellular/doze/VPN). This is the only caller of onAppResume().
-        try { app.nimarkogram.messenger.wsbypass.WsBypassController.getInstance().onAppResume(); } catch (Throwable ignore) {}
+        try { app.nimarkogram.messenger.distribution.ClientRelays.onResume(); } catch (Throwable ignore) {}
         MessagesController.getInstance(currentAccount).sortDialogsAfterResume();
         showLanguageAlert(false);
         Utilities.stageQueue.postRunnable(() -> {
@@ -8395,7 +8386,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         if (UserConfig.getInstance(UserConfig.selectedAccount).unacceptedTermsOfService != null) {
             showTosActivity(UserConfig.selectedAccount, UserConfig.getInstance(UserConfig.selectedAccount).unacceptedTermsOfService);
-        } else if (SharedConfig.pendingAppUpdate != null && SharedConfig.pendingAppUpdate.can_not_skip) {
+        } else if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY && !ApplicationLoader.isStandaloneBuild()
+                && SharedConfig.pendingAppUpdate != null && SharedConfig.pendingAppUpdate.can_not_skip) {
             showUpdateActivity(UserConfig.selectedAccount, SharedConfig.pendingAppUpdate, true);
         }
         checkAppUpdate(false, null);

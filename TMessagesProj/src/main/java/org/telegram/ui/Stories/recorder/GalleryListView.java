@@ -77,6 +77,7 @@ import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AdjustPanLayoutHelper;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeBind;
+import org.telegram.ui.Components.AlbumTitleChevron;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CheckBox2;
@@ -115,7 +116,7 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
     public final ActionBar actionBar;
 
     private final TextView dropDown;
-    private final Drawable dropDownDrawable;
+    private final AlbumTitleChevron albumChevron;
     private final ActionBarMenuItem dropDownContainer;
     private final ActionBarMenuItem searchItem;
 
@@ -325,21 +326,17 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
         };
         dropDownContainer.setSubMenuOpenSide(1);
         actionBar.addView(dropDownContainer, 0, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, AndroidUtilities.isTablet() ? 64 : 56, 0, 40, 0));
-        dropDownContainer.setOnClickListener(view -> dropDownContainer.toggleSubMenu());
 
         dropDown = new TextView(context);
         dropDown.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        dropDown.setGravity(Gravity.LEFT);
         dropDown.setSingleLine(true);
         dropDown.setLines(1);
         dropDown.setMaxLines(1);
         dropDown.setEllipsize(TextUtils.TruncateAt.END);
         dropDown.setTextColor(0xFFFFFFFF);
         dropDown.setTypeface(AndroidUtilities.bold());
-        dropDownDrawable = context.getResources().getDrawable(R.drawable.ic_arrow_drop_down).mutate();
-        dropDownDrawable.setColorFilter(new PorterDuffColorFilter(0xFFFFFFFF, PorterDuff.Mode.MULTIPLY));
-        dropDown.setCompoundDrawablePadding(AndroidUtilities.dp(4));
-        dropDown.setPadding(0, AndroidUtilities.statusBarHeight, AndroidUtilities.dp(10), 0);
+        albumChevron = new AlbumTitleChevron(dropDown, dropDownContainer);
+        albumChevron.setTopInset(AndroidUtilities.statusBarHeight);
         dropDownContainer.addView(dropDown, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 16, 0, 0, 0));
 
         searchContainer = new FrameLayout(context);
@@ -462,6 +459,7 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
 
             @Override
             public void onSearchExpand() {
+                dropDownContainer.closeSubMenu(false);
                 if (animatorSet != null) {
                     animatorSet.cancel();
                 }
@@ -726,7 +724,7 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
         lp.topMargin = AndroidUtilities.statusBarHeight + ActionBar.getCurrentActionBarHeight();
         lp.rightMargin = 0;
         lp.bottomMargin = AndroidUtilities.navigationBarHeight;
-        dropDown.setPadding(0, AndroidUtilities.statusBarHeight, AndroidUtilities.dp(10), 0);
+        albumChevron.setTopInset(AndroidUtilities.statusBarHeight);
         dropDown.setTextSize(!AndroidUtilities.isTablet() && AndroidUtilities.displaySize.x > AndroidUtilities.displaySize.y ? 18 : 20);
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
     }
@@ -844,10 +842,7 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
         if (!drafts.isEmpty()) {
             dropDownAlbums.add(dropDownAlbums.isEmpty() ? 0 : 1, draftsAlbum);
         }
-        if (dropDownAlbums.isEmpty()) {
-            dropDown.setCompoundDrawablesWithIntrinsicBounds(null, null, null, null);
-        } else {
-            dropDown.setCompoundDrawablesWithIntrinsicBounds(null, null, dropDownDrawable, null);
+        boolean hasItems = false;
             for (int a = 0, N = dropDownAlbums.size(); a < N; a++) {
                 MediaController.AlbumEntry album = dropDownAlbums.get(a);
                 AlbumButton button;
@@ -861,12 +856,13 @@ public class GalleryListView extends FrameLayout implements NotificationCenter.N
                     button = new AlbumButton(getContext(), album.coverPhoto, album.bucketName, photoEntries.size(), resourcesProvider);
                 }
                 dropDownContainer.getPopupLayout().addView(button);
+            hasItems = true;
                 button.setOnClickListener(e -> {
                     selectAlbum(album, false);
                     dropDownContainer.closeSubMenu();
                 });
             }
-        }
+        albumChevron.setAvailable(hasItems);
     }
 
     private void selectAlbum(MediaController.AlbumEntry album, boolean scrollAnimated) {

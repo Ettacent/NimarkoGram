@@ -2145,7 +2145,15 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
         private void setReaction(ReactionsLayoutInBubble.VisibleReaction react, int position) {
             updateSelected(react, false);
-            if (currentReaction != null && currentReaction.equals(react)) {
+            boolean enterAnimation = react.isStar;
+            if (!enterAnimation && react.emojicon != null && (showCustomEmojiReaction() || allReactionsIsDefault)
+                    && LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS)) {
+                TLRPC.TL_availableReaction available = MediaDataController.getInstance(currentAccount).getReactionsMap().get(react.emojicon);
+                enterAnimation = available != null && ReactionsUtils.hasReactionMedia(available.appear_animation)
+                        && ReactionsUtils.hasReactionMedia(available.select_animation);
+            }
+            enterAnimation &= type != TYPE_STICKER_SET_EMOJI && !react.isEffect;
+            if (currentReaction != null && currentReaction.equals(react) && hasEnterAnimation == enterAnimation) {
                 this.position = position;
                 updateImage(react);
                 return;
@@ -2165,10 +2173,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
             resetAnimation();
             currentReaction = react;
-            hasEnterAnimation = currentReaction.isStar || (currentReaction.emojicon != null && (showCustomEmojiReaction() || allReactionsIsDefault)) && LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS);
-            if (type == TYPE_STICKER_SET_EMOJI || currentReaction.isEffect) {
-                hasEnterAnimation = false;
-            }
+            hasEnterAnimation = enterAnimation;
             if (currentReaction.isStar || currentReaction.emojicon != null) {
                 updateImage(react);
 
@@ -2237,26 +2242,32 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 //                }
             } else if (currentReaction.emojicon != null) {
                 TLRPC.TL_availableReaction defaultReaction = MediaDataController.getInstance(currentAccount).getReactionsMap().get(currentReaction.emojicon);
-                if (defaultReaction != null) {
-                    SvgHelper.SvgDrawable svgThumb = DocumentObject.getSvgThumb(defaultReaction.activate_animation, Theme.key_windowBackgroundWhiteGrayIcon, 0.2f);
-                    if (!LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS) || type == TYPE_STICKER_SET_EMOJI) {
-                        if (SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_LOW || type == TYPE_STICKER_SET_EMOJI) {
-                            loopImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), "60_60_firstframe", null, null, hasEnterAnimation ? null : svgThumb, 0, "tgs", currentReaction, 0);
-                        } else {
-                            enterImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.appear_animation), ReactionsUtils.APPEAR_ANIMATION_FILTER, null, null, svgThumb, 0, "tgs", react, 0);
-                            loopImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), "60_60_firstframe", null, null, hasEnterAnimation ? null : svgThumb, 0, "tgs", currentReaction, 0);
-                        }
+                if (defaultReaction != null && ReactionsUtils.hasReactionMedia(defaultReaction.select_animation)) {
+                    String emoji = currentReaction.emojicon;
+                    if (hasEnterAnimation && ReactionsUtils.hasReactionMedia(defaultReaction.appear_animation)) {
+                        enterImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.appear_animation), ReactionsUtils.APPEAR_ANIMATION_FILTER, null, null, ReactionsUtils.standardEmojiFallback(emoji), 0, "tgs", react, 0);
                     } else {
-                        enterImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.appear_animation), ReactionsUtils.APPEAR_ANIMATION_FILTER, null, null, svgThumb, 0, "tgs", react, 0);
-                        loopImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), ReactionsUtils.SELECT_ANIMATION_FILTER, null, null, hasEnterAnimation ? null : svgThumb, 0, "tgs", currentReaction, 0);
+                        enterImageView.getImageReceiver().setImageBitmap(ReactionsUtils.standardEmojiFallback(emoji));
                     }
+                    String filter = LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS)
+                            ? ReactionsUtils.SELECT_ANIMATION_FILTER : "60_60_firstframe";
+                    loopImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), filter, null, null, ReactionsUtils.standardEmojiFallback(emoji), 0, "tgs", currentReaction, 0);
                     if (enterImageView.getImageReceiver().getLottieAnimation() != null) {
                         enterImageView.getImageReceiver().getLottieAnimation().setCurrentFrame(0, false, true);
                     }
-                    pressedBackupImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), ReactionsUtils.SELECT_ANIMATION_FILTER, null, null, svgThumb, 0, "tgs", react, 0);
+                    pressedBackupImageView.getImageReceiver().setImage(ImageLocation.getForDocument(defaultReaction.select_animation), ReactionsUtils.SELECT_ANIMATION_FILTER, null, null, ReactionsUtils.standardEmojiFallback(emoji), 0, "tgs", react, 0);
 
                     preloadImageReceiver.setAllowStartLottieAnimation(false);
+                    if (ReactionsUtils.hasReactionMedia(defaultReaction.around_animation)) {
                     MediaDataController.getInstance(currentAccount).preloadImage(preloadImageReceiver, ImageLocation.getForDocument(defaultReaction.around_animation), ReactionsEffectOverlay.getFilterForAroundAnimation());
+                    } else {
+                        preloadImageReceiver.clearImage();
+                    }
+                } else {
+                    enterImageView.getImageReceiver().setImageBitmap(ReactionsUtils.standardEmojiFallback(currentReaction.emojicon));
+                    loopImageView.getImageReceiver().setImageBitmap(ReactionsUtils.standardEmojiFallback(currentReaction.emojicon));
+                    pressedBackupImageView.getImageReceiver().setImageBitmap(ReactionsUtils.standardEmojiFallback(currentReaction.emojicon));
+                    preloadImageReceiver.clearImage();
                 }
                 if (lockIconView != null) {
                     lockIconView.setImageReceiver(loopImageView.getImageReceiver());

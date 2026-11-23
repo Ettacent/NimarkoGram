@@ -82,6 +82,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
     private LinearLayout premiumLayout;
 
     private long chosen;
+    private boolean keepChosenOnTagUpdate;
     private final ArrayList<Item> oldItems = new ArrayList<>();
     private final ArrayList<Item> items = new ArrayList<>();
     private boolean shownPremiumLayout;
@@ -138,6 +139,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
 
     public void setChosen(ReactionsLayoutInBubble.VisibleReaction visibleReaction, boolean notify) {
         if (visibleReaction == null) {
+            keepChosenOnTagUpdate = false;
             chosen = 0;
             if (notify) {
                 setFilter(null);
@@ -148,14 +150,20 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
         for (int i = 0; i < items.size(); i++) {
             SearchTagsList.Item item = items.get(i);
             if (visibleReaction.hash == item.reaction.hash) {
+                keepChosenOnTagUpdate = false;
                 chosen = item.hash();
                 if (notify) {
                     setFilter(item.reaction);
                 }
                 adapter.notifyDataSetChanged();
                 listView.scrollToPosition(i);
-                break;
+                return;
             }
+        }
+        if (!notify) {
+            keepChosenOnTagUpdate = true;
+            chosen = visibleReaction.hash;
+            adapter.notifyDataSetChanged();
         }
     }
 
@@ -283,6 +291,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
             if (!setFilter(chosen == hash ? null : items.get(position).reaction)) {
                 return;
             }
+            keepChosenOnTagUpdate = false;
             for (int i = 0; i < listView.getChildCount(); i++) {
                 View child = listView.getChildAt(i);
                 if (child == view) {
@@ -560,6 +569,7 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
     }
 
     public void clear() {
+        keepChosenOnTagUpdate = false;
         listView.forAllChild(view2 -> {
             if (view2 instanceof TagButton) {
                 ((TagButton) view2).setChosen(false, true);
@@ -627,7 +637,8 @@ public class SearchTagsList extends FrameLayout implements NotificationCenter.No
             }
         }
 
-        if (!hasChosen && chosen != 0) {
+        if (hasChosen) keepChosenOnTagUpdate = false;
+        if (!hasChosen && chosen != 0 && !keepChosenOnTagUpdate) {
             chosen = 0;
             setFilter(null);
         }

@@ -77,6 +77,8 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
     public int loadedCount;
     public int flickerCount;
 
+    private int dateAction;
+    private static final int VIEW_DATE_ACTION = 3;
     private final int currentAccount;
     private final Theme.ResourcesProvider resourcesProvider;
     private int searchType;
@@ -108,11 +110,12 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
     };
 
     public void searchStories(String query, boolean instant) {
-        if (TextUtils.equals(storiesListQuery, query)) return;
+        String tquery = query == null ? "" : query.trim();
+        String key = tquery.startsWith("#") || tquery.startsWith("$") ? tquery : null;
+        if (TextUtils.equals(storiesListQuery, key)) return;
 
         String hashtag = null, username = null;
-        String tquery = query.trim();
-        if (tquery.charAt(0) == '$' || tquery.charAt(0) == '#') {
+        if (key != null) {
             int atIndex = tquery.indexOf('@');
             if (atIndex >= 0) {
                 hashtag = tquery.substring(0, atIndex);
@@ -127,10 +130,12 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
         AndroidUtilities.cancelRunOnUIThread(loadStories);
         if (storiesList != null) {
             storiesList.cancel();
+            storiesList = null;
         }
 
+        storiesListQuery = key;
+
         if (!TextUtils.isEmpty(hashtag)) {
-            storiesListQuery = query;
             storiesList = new StoriesController.SearchStoriesList(currentAccount, username, hashtag);
             if (instant) {
                 loadStories.run();
@@ -175,10 +180,15 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
         final int oldLoadedCount = loadedCount;
         final int oldFlickerCount = flickerCount;
 
+        final int oldDateAction = dateAction;
         loadedCount = searchResultMessages.size();
+        dateAction = searchType == 0 && loadedCount > 0 && fragment != null
+                ? MediaDataController.getInstance(currentAccount).getDateSearchAction(fragment.getClassGuid()) : 0;
         if (searchType != 0) {
             boolean hasMore = !HashtagSearchController.getInstance(currentAccount).isEndReached(searchType);
             flickerCount = hasMore && loadedCount != 0 ? Utilities.clamp(HashtagSearchController.getInstance(currentAccount).getCount(searchType) - loadedCount, 3, 0) : 0;
+        } else if (dateAction != 0) {
+            flickerCount = 0;
         } else {
             boolean hasMore = !MediaDataController.getInstance(currentAccount).searchEndReached();
             flickerCount = hasMore && loadedCount != 0 ? Utilities.clamp(MediaDataController.getInstance(currentAccount).getSearchCount() - loadedCount, 3, 0) : 0;
@@ -186,7 +196,7 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
 
         final int newItemsCount = getItemCount();
 
-        if (oldItemsCount < newItemsCount) {
+        if (oldDateAction == 0 && dateAction == 0 && oldItemsCount < newItemsCount) {
             if (oldFlickerCount > 0) notifyItemRangeChanged(oldItemsCount - oldFlickerCount, oldFlickerCount);
             notifyItemRangeInserted(oldItemsCount, newItemsCount - oldItemsCount);
         } else {
@@ -196,7 +206,11 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
 
     @Override
     public int getItemCount() {
-        return (containsStories ? 1 : 0) + searchResultMessages.size() + flickerCount;
+        return (containsStories ? 1 : 0) + searchResultMessages.size() + flickerCount + (dateAction == 0 ? 0 : 1);
+    }
+
+    public boolean isDateActionRow(int position) {
+        return dateAction != 0 && position == getItemCount() - 1;
     }
 
     public Object getItem(int i) {
@@ -241,7 +255,7 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
 
     @Override
     public boolean isEnabled(RecyclerView.ViewHolder holder) {
-        return holder.getItemViewType() == 0 || holder.getItemViewType() == 2;
+        return holder.getItemViewType() == 0 || holder.getItemViewType() == 2 || holder.getItemViewType() == VIEW_DATE_ACTION;
     }
 
     @Override
@@ -259,6 +273,14 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
                 break;
             case 2:
                 view = new StoriesView(mContext, resourcesProvider);
+                break;
+            case VIEW_DATE_ACTION:
+                TextView action = new TextView(mContext);
+                action.setGravity(Gravity.CENTER);
+                action.setMinHeight(dp(48));
+                action.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+                ThemeBind.textColor(action, Theme.key_windowBackgroundWhiteBlueText, resourcesProvider);
+                view = action;
                 break;
         }
         view.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
@@ -331,11 +353,14 @@ public class MessagesSearchAdapter extends RecyclerListView.SelectionAdapter imp
             });
         } else if (holder.getItemViewType() == 2) {
             ((StoriesView) holder.itemView).set(storiesList);
+        } else if (holder.getItemViewType() == VIEW_DATE_ACTION) {
+            ((TextView) holder.itemView).setText(LocaleController.getString(dateAction));
         }
     }
 
     @Override
     public int getItemViewType(int i) {
+        if (isDateActionRow(i)) return VIEW_DATE_ACTION;
         if (containsStories) {
             i--;
             if (i == -1)

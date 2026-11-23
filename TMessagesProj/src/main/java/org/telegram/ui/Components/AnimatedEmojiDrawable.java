@@ -703,16 +703,19 @@ public class AnimatedEmojiDrawable extends Drawable {
         if (holders != null && !holders.isEmpty()) return true;
         if (views == null || views.isEmpty()) return true;
         for (int i = 0; i < views.size(); i++) {
-            View view = views.get(i);
-            boolean presented = view != null;
-            while (view != null && presented) {
-                presented = view.getVisibility() == View.VISIBLE && view.getAlpha() > 0f;
+            if (isPresentedHost(views.get(i))) return true;
+        }
+        return false;
+    }
+
+    private static boolean isPresentedHost(View view) {
+        if (view == null) return false;
+        while (view != null) {
+            if (view.getVisibility() != View.VISIBLE || view.getAlpha() <= 0f) return false;
                 ViewParent parent = view.getParent();
                 view = parent instanceof View ? (View) parent : null;
             }
-            if (presented) return true;
-        }
-        return false;
+        return true;
     }
 
     public void setupDocument(TLRPC.Document document) {
@@ -970,6 +973,15 @@ public class AnimatedEmojiDrawable extends Drawable {
         }
     }
 
+    public void drawForTopicSearch(Canvas canvas, Rect bounds, View host) {
+        if (imageReceiver != null && !isPresentedHost(host) && imageReceiver.hasReadyImage()) {
+            imageReceiver.setImageCoords(bounds);
+            imageReceiver.setAlpha(1f);
+            imageReceiver.drawWithoutLoadFade(canvas);
+        } else {
+            draw(canvas, bounds, 1f);
+        }
+    }
     public void draw(Canvas canvas, Rect drawableBounds, float alpha) {
         if (imageReceiver == null) {
             if (alpha > 0) {

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import org.telegram.tgnet.TLObject;
@@ -128,6 +130,7 @@ public class ImageLocation {
         if (photoSize instanceof TLRPC.TL_photoStrippedSize || photoSize instanceof TLRPC.TL_photoPathSize) {
             ImageLocation imageLocation = new ImageLocation();
             imageLocation.photoSize = photoSize;
+            imageLocation.photoId = photo != null ? photo.id : 0;
             return imageLocation;
         } else if (photoSize == null || photo == null) {
             return null;
@@ -462,7 +465,14 @@ public class ImageLocation {
             return secureDocument.secureFile.dc_id + "_" + secureDocument.secureFile.id;
         } else if (photoSize instanceof TLRPC.TL_photoStrippedSize || photoSize instanceof TLRPC.TL_photoPathSize) {
             if (photoSize.bytes.length > 0) {
-                return getStrippedKey(parentObject, fullObject == null ? this : fullObject, photoSize);
+                String key = getStrippedKey(parentObject, fullObject == null ? this : fullObject, photoSize);
+                if (photoId != 0 && photoSize instanceof TLRPC.TL_photoStrippedSize && parentObject instanceof MessageObject) {
+                    MessageObject message = (MessageObject) parentObject;
+                    if (message.type == MessageObject.TYPE_PHOTO && message.messageOwner != null && message.messageOwner.post) {
+                        return key + "_photo" + photoId;
+                    }
+                }
+                return key;
             }
         } else if (location != null) {
             return location.volume_id + "_" + location.local_id;

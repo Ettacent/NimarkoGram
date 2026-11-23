@@ -7,10 +7,8 @@ import app.nimarkogram.messenger.infocards.InfoCardsConfig;
 import app.nimarkogram.messenger.banners.BannerConfig;
 import app.nimarkogram.messenger.banners.BannerController;
 import app.nimarkogram.messenger.camera.CameraXUtils;
-import app.nimarkogram.messenger.plugins.ui.PluginsInfoActivity;
 import app.nimarkogram.messenger.utils.VibrateUtils;
-import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
-import app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 import android.os.Build;
 import android.text.TextUtils;
 
@@ -31,7 +29,7 @@ import java.util.Locale;
 import java.io.File;
 import java.text.Normalizer;
 import app.nimarkogram.messenger.AppConfig;
-import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 
 final class SettingsSearchIndex {
 
@@ -143,8 +141,8 @@ final class SettingsSearchIndex {
                     && transliteratedSearchText != null) {
                 return;
             }
-            normalizedSearchText = normalize(source);
-            transliteratedSearchText = normalize(
+            normalizedSearchText = normalizeForMatching(source);
+            transliteratedSearchText = normalizeForMatching(
                     LocaleController.getInstance().getTranslitString(normalizedSearchText));
             indexedSource = source;
         }
@@ -160,12 +158,12 @@ final class SettingsSearchIndex {
                 R.drawable.msg_settings_solar);
         page(entries, guid, SCREEN_APPEARANCE, R.string.NM_Cat_Appearance, R.string.NM_SettingsSummaryAppearance,
                 R.drawable.msg_theme_solar);
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) addPrivacyPage(entries, guid);
         page(entries, guid, SCREEN_CHATS, R.string.NM_Cat_Chats, R.string.NM_SettingsSummaryChats,
                 R.drawable.msg_msgbubble3_solar);
         page(entries, guid, SCREEN_CAMERA, R.string.NM_Cat_Camera, R.string.NM_SettingsSummaryCamera,
                 R.drawable.camera_solar);
-        page(entries, guid, SCREEN_PRIVACY, R.string.NM_Cat_Privacy, R.string.NM_SettingsSummaryPrivacy,
-                R.drawable.msg_secret_solar);
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) addPrivacyPage(entries, guid);
         page(entries, guid, SCREEN_PLUGINS, R.string.Plugins, R.string.NM_SettingsSummaryPlugins,
                 R.drawable.msg_plugins);
         page(entries, guid, SCREEN_MEDIA, R.string.NM_DownloadMedia, R.string.NM_SettingsSummaryMedia,
@@ -430,10 +428,9 @@ final class SettingsSearchIndex {
 
         rows(entries, guid, SCREEN_PLUGIN_SETTINGS, R.drawable.msg_plugins,
                 R.string.Plugins, R.string.PluginsEngine,
-                PluginsInfoActivity.PreferenceItem.COMPACT_VIEW.getId(), R.string.PluginsCompactView,
-                PluginsInfoActivity.PreferenceItem.SAFE_MODE.getId(), R.string.PluginsSafeMode,
-                PluginsInfoActivity.PreferenceItem.PLUGINS_DISABLE_ART_OPTS.getId(), R.string.PluginsDisableArt,
-                PluginsInfoActivity.PreferenceItem.DOCUMENTATION.getId(), R.string.PluginsDocumentation);
+                ClientPlugins.compactId(), R.string.PluginsCompactView,
+                ClientPlugins.safeModeId(), R.string.PluginsSafeMode,
+                ClientPlugins.artId(), R.string.PluginsDisableArt);
         rows(entries, guid, SCREEN_MESSAGES_PROFILES, R.drawable.msg_customize,
                 R.string.NM_ProfileReplyBackground, R.string.NM_MP_CustomizeMessage,
                 MessagesAndProfilesPreferencesActivity.SETTING_SHOW_SECONDS, R.string.NM_MP_ShowSeconds,
@@ -452,10 +449,15 @@ final class SettingsSearchIndex {
 
         rows(entries, guid, SCREEN_MEDIA, R.drawable.msg_download_solar,
                 R.string.NM_DownloadMedia, 0,
-                100, R.string.NM_NM_AutoDownload,
+                100, R.string.NM_NM_AutoDownload);
+        rows(entries, guid, SCREEN_MEDIA, R.drawable.msg_download_solar,
+                R.string.NM_DownloadMedia, R.string.NM_NM_YtFormat,
                 101, R.string.NM_NM_YtAsk,
                 102, R.string.NM_NM_FormatVideo,
                 103, R.string.NM_NM_FormatAudio);
+        row(entries, guid, SCREEN_MEDIA, 104, R.string.NM_MediaSendChoiceSetting,
+                R.string.NM_MediaSendChoiceDescription, R.drawable.msg_download_solar,
+                R.string.NM_DownloadMedia, R.string.NM_SettingsSectionDownloads);
         row(entries, guid, SCREEN_TEXT_ANIMATION, 200, R.string.NM_TA_Master, R.string.NM_TA_Master_Desc,
                 R.drawable.msg_edit_solar, R.string.NM_TA_Title, R.string.NM_TA_HeaderMain);
         rows(entries, guid, SCREEN_TEXT_ANIMATION, R.drawable.msg_edit_solar,
@@ -586,12 +588,12 @@ final class SettingsSearchIndex {
 
     static List<Entry> search(String query, int account) {
         ArrayList<Entry> result = new ArrayList<>();
-        String normalizedQuery = normalize(query);
+        String normalizedQuery = normalizeForMatching(query);
         String[] queryTokens = TextUtils.isEmpty(normalizedQuery)
                 ? new String[0] : normalizedQuery.split("\\s+");
         String[] transliteratedTokens = new String[queryTokens.length];
         for (int i = 0; i < queryTokens.length; i++) {
-            transliteratedTokens[i] = normalize(LocaleController.getInstance().getTranslitString(queryTokens[i]));
+            transliteratedTokens[i] = normalizeForMatching(LocaleController.getInstance().getTranslitString(queryTokens[i]));
         }
         for (Entry entry : ENTRIES) {
             if (!isAvailable(entry, account)) {
@@ -604,15 +606,20 @@ final class SettingsSearchIndex {
         return result;
     }
 
+    private static void addPrivacyPage(ArrayList<Entry> entries, int[] guid) {
+        page(entries, guid, SCREEN_PRIVACY, R.string.NM_Cat_Privacy, R.string.NM_SettingsSummaryPrivacy, R.drawable.msg_secret_solar);
+    }
     static boolean isAvailable(Entry entry) {
         return isAvailable(entry, UserConfig.selectedAccount);
     }
 
     static boolean isAvailable(Entry entry, int account) {
         if (entry == null) return false;
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY &&
+                (entry.screen == SCREEN_BYPASS || entry.screen == SCREEN_WHITELIST || entry.screen == ACTION_UPDATES)) return false;
         int id = entry.itemId;
         if (entry.screen == SCREEN_PLUGINS || entry.screen == SCREEN_PLUGIN_SETTINGS) {
-            return PluginsController.isPluginEngineSupported();
+            return ClientPlugins.supported();
         }
         if (id == 0) return true;
         switch (entry.screen) {
@@ -651,8 +658,12 @@ final class SettingsSearchIndex {
                 if (id != 1) return AppConfig.showMainTabs;
                 break;
             case SCREEN_MEDIA:
-                if (id == 101) return AppConfig.nimarkoMediaAuto;
-                if (id == 102 || id == 103) return AppConfig.nimarkoMediaAuto && !AppConfig.nimarkoMediaYtAsk;
+                if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY && id >= 101 && id <= 103) return false;
+                if (id == 104) return AppConfig.nimarkoMediaAuto;
+                if (id == 101) return AppConfig.nimarkoMediaAuto && !AppConfig.mediaSendChoice;
+                if (id == 102 || id == 103) {
+                    return AppConfig.nimarkoMediaAuto && !AppConfig.mediaSendChoice && !AppConfig.nimarkoMediaYtAsk;
+                }
                 break;
             case SCREEN_TEXT_ANIMATION:
                 if (id != 200) return AppConfig.nimarkoTextAnim;
@@ -743,10 +754,10 @@ final class SettingsSearchIndex {
         if (owner instanceof BannerPreferencesActivity) return SCREEN_BANNERS;
         if (owner instanceof DebugPreferencesActivity) return SCREEN_ADVANCED;
         if (owner instanceof RecentEmojisStickersPreferencesActivity) return SCREEN_RECENT;
-        if (owner instanceof WsBypassPreferencesActivity) return SCREEN_BYPASS;
+        if (ClientRelays.isSettings(owner, false)) return SCREEN_BYPASS;
         if (owner instanceof InfoCardsPreferencesActivity) return SCREEN_INFO_CARDS;
-        if (owner instanceof WlPreferencesActivity) return SCREEN_WHITELIST;
-        if (owner instanceof PluginsInfoActivity) return SCREEN_PLUGIN_SETTINGS;
+        if (ClientRelays.isSettings(owner, true)) return SCREEN_WHITELIST;
+        if (ClientPlugins.infoScreen(owner)) return SCREEN_PLUGIN_SETTINGS;
         return 0;
     }
 
@@ -950,6 +961,23 @@ final class SettingsSearchIndex {
         return result.toString();
     }
 
+    static String normalizeForMatching(String value) {
+        String source = normalize(value);
+        StringBuilder folded = null;
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            boolean omit = (c >= '\u064B' && c <= '\u0652') || c == '\u0670'
+                    || (c == '\u0307' && i > 0 && source.charAt(i - 1) == 'i');
+            char mapped = c == '\u2018' || c == '\u2019' || c == '\u02BB' || c == '\u02BC' ? '\'' : c;
+            if (folded == null && (omit || mapped != c)) {
+                folded = new StringBuilder(source.length()).append(source, 0, i);
+            }
+            if (folded != null && !omit) {
+                folded.append(mapped);
+            }
+        }
+        return folded == null ? source : folded.toString().trim();
+    }
     private SettingsSearchIndex() {
     }
 }

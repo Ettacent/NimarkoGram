@@ -121,7 +121,6 @@ public class DataSettingsActivity extends BaseFragment {
 
     private boolean updateVoipUseLessData;
 
-    private boolean updateStorageUsageAnimated;
     private boolean storageUsageLoading;
     private long storageUsageSize;
 
@@ -218,10 +217,8 @@ public class DataSettingsActivity extends BaseFragment {
         };
         AndroidUtilities.runOnUIThread(fireLoading, 100);
 
-        final long start = System.currentTimeMillis();
         CacheControlActivity.calculateTotalSize(size -> {
             AndroidUtilities.cancelRunOnUIThread(fireLoading);
-            updateStorageUsageAnimated = updateStorageUsageAnimated || (System.currentTimeMillis() - start) > 120;
             storageUsageSize = size;
             storageUsageLoading = false;
             if (listAdapter != null && storageUsageRow >= 0) {
@@ -665,12 +662,11 @@ public class DataSettingsActivity extends BaseFragment {
                     if (position == storageUsageRow) {
                         if (storageUsageLoading) {
                             textCell.setTextAndValueAndColorfulIcon(LocaleController.getString(R.string.StorageUsage), "", false, R.drawable.msg_filled_storageusage, 0xFF4F85F6, 0xFF3568E8, false);
-                            textCell.setDrawLoading(true, 45, updateStorageUsageAnimated);
+                            textCell.setDrawLoading(true, 45, true);
                         } else {
                             textCell.setTextAndValueAndColorfulIcon(LocaleController.getString(R.string.StorageUsage), storageUsageSize <= 0 ? "" : AndroidUtilities.formatFileSize(storageUsageSize), true, R.drawable.msg_filled_storageusage, 0xFF4F85F6, 0xFF3568E8, false);
-                            textCell.setDrawLoading(false, 45, updateStorageUsageAnimated);
+                            textCell.setDrawLoading(false, 45, true);
                         }
-                        updateStorageUsageAnimated = false;
                     } else if (position == dataUsageRow) {
                         StatsController statsController = StatsController.getInstance(currentAccount);
                         long size = (

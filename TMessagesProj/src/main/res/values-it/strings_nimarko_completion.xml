@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Rimuovi dalla cache</string>
+    <string name="NM_ClearedFromCache">Rimosso dalla cache</string>
+    <string name="NM_CopyCallback">Copia dati del callback</string>
+    <string name="NM_CopyID">Copia ID utente</string>
+    <string name="NM_CopyInlineQuery">Copia la query in linea</string>
+    <string name="NM_CopyPhoto">Copia foto</string>
+    <string name="NM_CopyPhotoAsSticker">Copia foto come sticker</string>
+    <string name="NM_CopyReportDetails">Copia i dettagli della segnalazione</string>
+    <string name="NM_CopySetId">Copia ID del pacchetto</string>
+    <string name="NM_CopyTitle">Copia titolo</string>
+    <string name="NM_Copy_Coordinates">Coordinate</string>
+    <string name="NM_DoNotRemindAgain">Non ricordarmelo più</string>
+    <string name="NM_ExportSettings">Esporta impostazioni</string>
+    <string name="NM_FoldersTypeIcons">Solo icone</string>
+    <string name="NM_FoldersTypeIconsTitles">Icone e titoli</string>
+    <string name="NM_FoldersTypeTitles">Solo titoli</string>
+    <string name="NM_GetEmojiPack">Ottieni emoji</string>
+    <string name="NM_ImportSettings">Importa impostazioni</string>
+    <string name="NM_ImportSettingsAlert">Sovrascrivere le impostazioni? L’importazione di impostazioni da fonti sconosciute può compromettere il funzionamento dell’app.</string>
+    <string name="NM_OpenEmojiPack">Tocca per ottenere l’emoji</string>
+    <string name="NM_OpenStickerPack">Tocca per ottenere lo sticker</string>
+    <string name="NM_PasskeyInfo2">Questa funzione è compatibile solo con i gestori di password che consentono di gestire le impostazioni di attendibilità per le app con privilegi speciali, come **Bitwarden** e **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Non è disponibile alcuna credenziale utilizzabile.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Prova un altro gestore di password, come **Bitwarden** o **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Gestore di password non supportato</string>
+    <string name="NM_PhotoCopied">Foto copiata negli appunti.</string>
+    <string name="NM_ProfileBackground">Applica lo sfondo del profilo</string>
+    <string name="NM_QRLoginMessage">Scansiona il codice QR con un altro dispositivo per accedere.</string>
+    <string name="NM_QRLoginTitle">Accesso tramite codice QR</string>
+    <string name="NM_ReportDetailsCopied">Dettagli della segnalazione copiati negli appunti.</string>
+    <string name="NM_RestartToApply">Riavvio necessario</string>
+    <string name="NM_SafeStars_buy_Telegram">Compra stelle tramite Telegram</string>
+    <string name="NM_SaveSticker">Salva sticker</string>
+    <string name="NM_SendPhotoAsSticker">Invia come sticker</string>
+    <string name="NM_SortByDate">Ordina per data del messaggio</string>
+    <string name="NM_SwipeToUnarchive">Scorri verso sinistra per rimuovere dall’archivio</string>
+    <string name="NM_SwitchedToAccount">Ora usi l’account **%1$s**</string>
+    <string name="NM_TranslationLanguage">Lingua della traduzione</string>
+</resources>

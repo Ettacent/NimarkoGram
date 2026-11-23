@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">إزالة من ذاكرة التخزين المؤقت</string>
+    <string name="NM_ClearedFromCache">تمت الإزالة من ذاكرة التخزين المؤقت</string>
+    <string name="NM_CopyCallback">نسخ بيانات الاستدعاء</string>
+    <string name="NM_CopyID">نسخ معرّف المستخدم</string>
+    <string name="NM_CopyInlineQuery">نسخ الاستعلام المضمّن</string>
+    <string name="NM_CopyPhoto">نسخ الصورة</string>
+    <string name="NM_CopyPhotoAsSticker">نسخ الصورة كملصق</string>
+    <string name="NM_CopyReportDetails">نسخ تفاصيل البلاغ</string>
+    <string name="NM_CopySetId">نسخ معرّف الحزمة</string>
+    <string name="NM_CopyTitle">نسخ العنوان</string>
+    <string name="NM_Copy_Coordinates">الإحداثيات</string>
+    <string name="NM_DoNotRemindAgain">عدم التذكير مجددًا</string>
+    <string name="NM_ExportSettings">تصدير الإعدادات</string>
+    <string name="NM_FoldersTypeIcons">أيقونات فقط</string>
+    <string name="NM_FoldersTypeIconsTitles">أيقونات وعناوين</string>
+    <string name="NM_FoldersTypeTitles">عناوين فقط</string>
+    <string name="NM_GetEmojiPack">الحصول على الرموز التعبيرية</string>
+    <string name="NM_ImportSettings">استيراد الإعدادات</string>
+    <string name="NM_ImportSettingsAlert">هل تريد استبدال الإعدادات؟ قد يؤدي استيراد إعدادات من مصادر غير معروفة إلى توقف التطبيق عن العمل.</string>
+    <string name="NM_OpenEmojiPack">اضغط للحصول على الرمز التعبيري</string>
+    <string name="NM_OpenStickerPack">اضغط للحصول على الملصق</string>
+    <string name="NM_PasskeyInfo2">لا تعمل هذه الميزة إلا مع تطبيقات إدارة كلمات المرور التي تتيح للمستخدم إدارة إعدادات الثقة للتطبيقات ذات الصلاحيات الخاصة، مثل **Bitwarden** و**KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">لا تتوفر بيانات اعتماد مناسبة.</string>
+    <string name="NM_PasskeyUnsupportedMessage">جرّب تطبيقًا آخر لإدارة كلمات المرور مثل **Bitwarden** أو **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">تطبيق إدارة كلمات المرور غير مدعوم</string>
+    <string name="NM_PhotoCopied">تم نسخ الصورة إلى الحافظة.</string>
+    <string name="NM_ProfileBackground">تطبيق خلفية الملف الشخصي</string>
+    <string name="NM_QRLoginMessage">امسح رمز QR بجهاز آخر لتسجيل الدخول.</string>
+    <string name="NM_QRLoginTitle">تسجيل الدخول برمز QR</string>
+    <string name="NM_ReportDetailsCopied">تم نسخ تفاصيل البلاغ إلى الحافظة.</string>
+    <string name="NM_RestartToApply">يجب إعادة التشغيل</string>
+    <string name="NM_SafeStars_buy_Telegram">شراء النجوم عبر Telegram</string>
+    <string name="NM_SaveSticker">حفظ الملصق</string>
+    <string name="NM_SendPhotoAsSticker">إرسال كملصق</string>
+    <string name="NM_SortByDate">الترتيب حسب تاريخ الرسالة</string>
+    <string name="NM_SwipeToUnarchive">اسحب لليسار لإلغاء الأرشفة</string>
+    <string name="NM_SwitchedToAccount">تم التبديل إلى **%1$s**</string>
+    <string name="NM_TranslationLanguage">لغة الترجمة</string>
+</resources>

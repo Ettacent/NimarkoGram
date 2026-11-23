@@ -1411,11 +1411,13 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
                 }
             };
             searchRunnable2 = serverSearch;
+            final boolean ordinaryChatSearch = dialogsType == DialogsActivity.DIALOGS_TYPE_DEFAULT && forumDialogId == 0;
             Utilities.searchQueue.postRunnable(searchRunnable = () -> {
                 if (!isCurrentSearch(searchId)) return;
                 searchDialogsInternal(query, searchId, dialogIds);
-                AndroidUtilities.runOnUIThread(serverSearch);
-            }, 300);
+                if (!ordinaryChatSearch) AndroidUtilities.runOnUIThread(serverSearch);
+            }, ordinaryChatSearch ? 80 : 300);
+            if (ordinaryChatSearch) AndroidUtilities.runOnUIThread(serverSearch, 300);
 
             final String finalHashtag = hashtag;
 
@@ -2471,6 +2473,10 @@ public class DialogsSearchAdapter extends RecyclerListView.SelectionAdapter {
 
     public int getCurrentItemCount() {
         return currentItemCount;
+    }
+
+    public int getSearchGeneration() {
+        return searchGeneration;
     }
 
     public void filterRecent(String query) {

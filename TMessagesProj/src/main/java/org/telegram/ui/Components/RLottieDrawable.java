@@ -13,6 +13,7 @@ package org.telegram.ui.Components;
 import static org.telegram.messenger.AndroidUtilities.readRes;
 
 import android.app.Activity;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -65,6 +66,7 @@ import app.nimarkogram.messenger.icons.AnimatedCallIcons;
 import app.nimarkogram.messenger.icons.AnimatedIconCatalog;
 import app.nimarkogram.messenger.icons.AnimatedIconRenderer;
 import app.nimarkogram.messenger.icons.AnimatedIconSpec;
+import app.nimarkogram.messenger.icons.IconResources;
 public class RLottieDrawable extends BitmapDrawable implements Animatable, BitmapsCache.Cacheable {
 
     public boolean skipFrameUpdate;
@@ -151,6 +153,7 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
 
     private AnimatedIconSpec packIconSpec;
     private AnimatedIconRenderer[] packIconRenderers;
+    private IconResources callIconResources;
     private volatile long packLayerColor;
     private volatile long packLaterLayerColor;
     private ColorFilter packDefaultColorFilter;
@@ -1171,11 +1174,29 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
         drawInternal(canvas, paint, false, 0, 0);
     }
 
+    public final void bindPrivateCallIcons(Context context) {
+        callIconResources = IconResources.forCallButton(context);
+        if (callIconResources != null) callIconResources.getCallButtonIcons();
+    }
+
+    public final boolean hasPrivateCallArtwork() {
+        if (callIconResources == null || packIconSpec == null) return false;
+        IconResources.NavigationIcons icons = callIconResources.getCallButtonIcons();
+        if (icons == null) return false;
+        for (int id : packIconSpec.icons) {
+            if (icons.getIcon(Math.abs(id)) == null) return false;
+        }
+        return true;
+    }
     public final void drawInternal(Canvas canvas, Paint overridePaint, boolean drawInBackground, long time, int threadIndex) {
-        if (!canLoadFrames() || destroyWhenDone) {
+        if (destroyWhenDone || isRecycled) {
             return;
         }
-        if (!drawInBackground) {
+        final boolean localCall = !drawInBackground && callIconResources != null;
+        final IconResources.NavigationIcons callIcons = localCall ? callIconResources.getCallButtonIcons() : null;
+        final boolean canLoad = canLoadFrames();
+        if (!canLoad && callIcons == null) return;
+        if (!drawInBackground && canLoad) {
             updateCurrentFrame(time, false);
         }
 
@@ -1186,25 +1207,31 @@ public class RLottieDrawable extends BitmapDrawable implements Animatable, Bitma
             return;
         }
 
-        if (isInvalid || renderingBitmap == null) {
+        if ((isInvalid || renderingBitmap == null) && callIcons == null) {
             return;
         }
 
         if (packIconSpec != null) {
             final int displayedFrame;
             synchronized (packIconRenderers) {
-                if (isInvalid || renderingBitmap == null) return;
+                if (isInvalid || renderingBitmap == null) {
+                    if (callIcons == null) return;
+                    displayedFrame = currentFrame;
+                } else {
                 displayedFrame = renderingFrame;
+                }
             }
             if (!drawInBackground) rect.set(getBounds());
             long color = packIconSpec.usesLaterColor(displayedFrame) ? packLaterLayerColor : packLayerColor;
             boolean explicitFilter = paint.getColorFilter() != null && paint.getColorFilter() != packDefaultColorFilter;
             if (explicitFilter) color = 0;
             boolean sourceForeground = explicitFilter || paint.getShader() != null || (color & 0x100000000L) != 0;
-            if (packIconRenderers[drawInBackground ? threadIndex + 1 : 0].draw(canvas, packIconSpec,
+            IconResources.NavigationIcons artwork = localCall ? callIcons : IconResources.activeNavigationIcons();
+            if (packIconRenderers[drawInBackground ? threadIndex + 1 : 0].draw(artwork, canvas, packIconSpec,
                     displayedFrame, getFramesCount(), rect, paint, color, sourceForeground)) return;
         }
 
+        if (callIcons != null && (!canLoad || isInvalid || renderingBitmap == null)) return;
         float scaleX, scaleY;
         boolean needScale;
         if (!drawInBackground) {

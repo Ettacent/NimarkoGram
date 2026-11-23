@@ -474,7 +474,9 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         if (holder.itemView instanceof ChatMessageCell) {
             chatMessageCell = ((ChatMessageCell) holder.itemView);
             fromX += (int) chatMessageCell.getAnimationOffsetX();
-            if (chatMessageCell.getTransitionParams().lastTopOffset != chatMessageCell.getTopMediaOffset()) {
+            MessageObject message = chatMessageCell.getMessageObject();
+            if ((message == null || !message.previewForward)
+                    && chatMessageCell.getTransitionParams().lastTopOffset != chatMessageCell.getTopMediaOffset()) {
                 fromY += chatMessageCell.getTransitionParams().lastTopOffset - chatMessageCell.getTopMediaOffset();
             }
         } else if (holder.itemView instanceof ChatActionCell) {

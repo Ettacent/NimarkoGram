@@ -29,6 +29,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.view.OneShotPreDrawListener;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -114,6 +115,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
     private boolean searchResultsEntering;
     private boolean searchEmptyRevealReady = true;
     private Runnable searchEmptyRevealRunnable;
+    private OneShotPreDrawListener searchEmptyRevealLayout;
     private int searchEmptyRevealGeneration;
     private boolean attached;
 
@@ -167,7 +169,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
     int currentAccount = UserConfig.selectedAccount;
 
-    private boolean lastSearchScrolledToTop;
+    private int positionedSearchGeneration;
     DialogsActivity parent;
 
     String lastSearchString;
@@ -196,6 +198,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
 
         itemAnimator = new DefaultItemAnimator() {
             private boolean replacingSearchSections;
+            private final HashSet<RecyclerView.ViewHolder> fadingMoves = new HashSet<>();
             @Override
             public void runPendingAnimations() {
                 replacingSearchSections = hasSectionRows(mPendingRemovals)
@@ -225,6 +228,63 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             protected long getAddAnimationDelay(long removeDuration, long moveDuration, long changeDuration) {
                 return 0;
             }
+            @Override
+            public boolean animateRemove(RecyclerView.ViewHolder holder, ItemHolderInfo info) {
+                boolean wasAppearing = isAppearing(holder);
+                float alpha = holder.itemView.getAlpha();
+                boolean queued = super.animateRemove(holder, info);
+                if (queued && wasAppearing) holder.itemView.setAlpha(alpha);
+                return queued;
+            }
+
+            private boolean isAppearing(RecyclerView.ViewHolder holder) {
+                return mPendingAdditions.contains(holder) || mAddAnimations.contains(holder) || fadingMoves.contains(holder);
+            }
+
+            @Override
+            public boolean animateAdd(RecyclerView.ViewHolder holder) {
+                boolean wasLeaving = mPendingRemovals.contains(holder) || mRemoveAnimations.contains(holder);
+                float alpha = holder.itemView.getAlpha();
+                boolean queued = super.animateAdd(holder);
+                if (queued && wasLeaving) holder.itemView.setAlpha(alpha);
+                return queued;
+            }
+
+            @Override
+            public boolean animateMove(RecyclerView.ViewHolder holder, ItemHolderInfo info, int fromX, int fromY, int toX, int toY) {
+                boolean wasAppearing = isAppearing(holder);
+                if (wasAppearing && !fadingMoves.contains(holder) &&
+                        fromX + (int) holder.itemView.getTranslationX() == toX && fromY + (int) holder.itemView.getTranslationY() == toY) {
+                    dispatchMoveFinished(holder);
+                    return false;
+                }
+                float alpha = holder.itemView.getAlpha();
+                boolean queued = super.animateMove(holder, info, fromX, fromY, toX, toY);
+                if (queued && wasAppearing && alpha < 1f) {
+                    holder.itemView.setAlpha(alpha);
+                    fadingMoves.add(holder);
+                }
+                return queued;
+            }
+
+            @Override
+            protected void beforeAnimateMoveImpl(RecyclerView.ViewHolder holder) {
+                if (fadingMoves.contains(holder)) holder.itemView.animate().alpha(1f);
+            }
+
+            @Override
+            public void onMoveFinished(RecyclerView.ViewHolder holder) {
+                if (fadingMoves.remove(holder)) holder.itemView.setAlpha(1f);
+                super.onMoveFinished(holder);
+            }
+
+            @Override
+            public void endAnimations() {
+                for (RecyclerView.ViewHolder holder : mPendingRemovals) holder.itemView.setAlpha(1f);
+                super.endAnimations();
+                if (!isRunning()) dispatchAnimationsFinished();
+            }
+
             @Override
             public boolean animateChange(RecyclerView.ViewHolder oldHolder, RecyclerView.ViewHolder newHolder,
                     ItemHolderInfo info, int fromX, int fromY, int toX, int toY) {
@@ -261,11 +321,15 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                 int itemCount = getCurrentItemCount();
                 ArrayList<SearchRow> nextRows = snapshotSearchRows(this);
                 ArrayList<SearchRow> previousRows = searchRows;
+                final int generation = getSearchGeneration();
+                final boolean headChanged = previousRows == null || nextRows == null || previousRows.isEmpty() ||
+                        nextRows.isEmpty() || !previousRows.get(0).key.equals(nextRows.get(0).key);
+                final boolean anchorStart = shouldAnchorSearchStart(generation, headChanged);
                 if (searchListView != null && searchListView.isAttachedToWindow()
                         && SharedConfig.animationsEnabled() && previousRows != null
                         && !previousRows.isEmpty() && nextRows != null && nextRows.isEmpty()) {
                     deferSearchEmptyReveal();
-                } else if (nextRows != null && !nextRows.isEmpty()) {
+                } else if (nextRows == null || !nextRows.isEmpty()) {
                     cancelSearchEmptyReveal();
                 }
                 if (canAnimateSearchRows()
@@ -312,10 +376,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
                     }
                 }
                 searchRows = nextRows;
-                if (!lastSearchScrolledToTop && searchListView != null) {
-                    searchListView.scrollToPosition(0);
-                    lastSearchScrolledToTop = true;
-                }
+                if (anchorStart && generation == getSearchGeneration() && getItemCount() > 0) anchorSearchStart(generation);
                 if (getItemCount() == 0 && itemCount != 0 && !isSearching()) {
                     emptyView.showProgress(false, false);
                 }
@@ -478,6 +539,7 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             @Override
             public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
                 if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    positionedSearchGeneration = dialogsSearchAdapter.getSearchGeneration();
                     AndroidUtilities.hideKeyboard(fragment.getParentActivity().getCurrentFocus());
                 }
             }
@@ -896,7 +958,6 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
             hashtagEmptyView.setKeyboardHeight(keyboardSize, false);
         } else if (view == searchContainer) {
             if (dialogId == 0 && communityId == 0 && minDate == 0 && maxDate == 0 || forumDialogId != 0) {
-                lastSearchScrolledToTop = false;
                 dialogsSearchAdapter.searchDialogs(query, includeFolder ? 1 : 0, true);
                 dialogsSearchAdapter.setFiltersDelegate(filteredSearchViewDelegate, false);
                 noMediaFiltersSearchView.animate().setListener(null).cancel();
@@ -1680,6 +1741,26 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         if (!isAttachedToWindow() || !isShown() || getAlpha() < 1f) return false;
         return searchListView != null && searchListView.isAttachedToWindow();
     }
+    private boolean shouldAnchorSearchStart(int generation, boolean headChanged) {
+        if (searchListView == null || searchLayoutManager == null) return false;
+        if (searchListView.getScrollState() == RecyclerView.SCROLL_STATE_DRAGGING) {
+            positionedSearchGeneration = generation;
+            return false;
+        }
+        if (generation != positionedSearchGeneration) return true;
+        if (!headChanged || searchListView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE ||
+                searchLayoutManager.hasPendingScrollPosition()) return false;
+        View first = searchLayoutManager.findViewByPosition(0);
+        return first != null && searchLayoutManager.getDecoratedTop(first) >= searchListView.getPaddingTop()
+                && searchLayoutManager.findFirstVisibleItemPosition() == 0;
+    }
+
+    private void anchorSearchStart(int generation) {
+        if (searchListView.getScrollState() == RecyclerView.SCROLL_STATE_SETTLING) searchListView.stopScroll();
+        panelScrollAnchors.remove(searchListView);
+        searchLayoutManager.scrollToPositionWithOffset(0, 0);
+        positionedSearchGeneration = generation;
+    }
     private void scheduleSearchResultsEntrance() {
         if (!canAnimateSearchRows()
                 || !searchListView.isShown() || !SharedConfig.animationsEnabled()) {
@@ -1781,28 +1862,46 @@ public class SearchViewPager extends ViewPagerFixed implements FilteredSearchVie
         }
     }
     private void deferSearchEmptyReveal() {
-        final int generation = ++searchEmptyRevealGeneration;
-        if (searchEmptyRevealRunnable != null) {
-            searchListView.removeCallbacks(searchEmptyRevealRunnable);
-        }
+        cancelSearchEmptyReveal();
+        final int generation = searchEmptyRevealGeneration;
         searchEmptyRevealReady = false;
         searchEmptyRevealRunnable = () -> {
             if (generation != searchEmptyRevealGeneration) {
                 return;
             }
             searchEmptyRevealRunnable = null;
-            searchEmptyRevealReady = true;
-            if (searchListView.isAttachedToWindow()) {
-                searchListView.checkIfEmpty();
+            if (searchListView.hasPendingAdapterUpdates() && searchListView.isShown()) {
+                searchEmptyRevealLayout = OneShotPreDrawListener.add(searchListView, () -> {
+                    searchEmptyRevealLayout = null;
+                    finishSearchEmptyAfterAnimations(generation);
+                });
+            } else {
+                finishSearchEmptyAfterAnimations(generation);
             }
         };
         searchListView.postDelayed(searchEmptyRevealRunnable, SEARCH_EMPTY_REVEAL_DELAY_MS);
+    }
+
+    private void finishSearchEmptyAfterAnimations(int generation) {
+        if (generation != searchEmptyRevealGeneration) return;
+        RecyclerView.ItemAnimator animator = searchListView.getItemAnimator();
+        Runnable reveal = () -> {
+            if (generation != searchEmptyRevealGeneration || !searchListView.isAttachedToWindow()) return;
+            searchEmptyRevealReady = true;
+            searchListView.checkIfEmpty();
+        };
+        if (animator == null || !SharedConfig.animationsEnabled()) reveal.run();
+        else animator.isRunning(reveal::run);
     }
     private void cancelSearchEmptyReveal() {
         searchEmptyRevealGeneration++;
         if (searchEmptyRevealRunnable != null && searchListView != null) {
             searchListView.removeCallbacks(searchEmptyRevealRunnable);
             searchEmptyRevealRunnable = null;
+        if (searchEmptyRevealLayout != null) {
+            searchEmptyRevealLayout.removeListener();
+            searchEmptyRevealLayout = null;
+        }
         }
         searchEmptyRevealReady = true;
     }

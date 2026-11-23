@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -51,7 +53,7 @@ public class ShutterButton extends View {
 
     private Runnable longPressed = new Runnable() {
         public void run() {
-            if (delegate != null) {
+            if (pressed && delegate != null) {
                 if (!delegate.shutterLongPressed()) {
                     processRelease = false;
                 }
@@ -153,21 +155,34 @@ public class ShutterButton extends View {
         setMeasuredDimension(AndroidUtilities.dp(84), AndroidUtilities.dp(84));
     }
 
+    private void clearPendingPress() {
+        AndroidUtilities.cancelRunOnUIThread(longPressed);
+        pressed = false;
+        processRelease = false;
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        clearPendingPress();
+        super.onDetachedFromWindow();
+    }
     @Override
     public boolean onTouchEvent(MotionEvent motionEvent) {
         float x = motionEvent.getX();
         float y = motionEvent.getY();
         switch (motionEvent.getAction()) {
             case MotionEvent.ACTION_DOWN:
+                AndroidUtilities.cancelRunOnUIThread(longPressed);
                 AndroidUtilities.runOnUIThread(longPressed, LONG_PRESS_TIME);
                 pressed = true;
                 processRelease = true;
                 setHighlighted(true);
                 break;
             case MotionEvent.ACTION_UP:
+                boolean release = processRelease;
+                clearPendingPress();
                 setHighlighted(false);
-                AndroidUtilities.cancelRunOnUIThread(longPressed);
-                if (processRelease) {
+                if (release) {
                     delegate.shutterReleased();
                 }
                 break;
@@ -185,8 +200,9 @@ public class ShutterButton extends View {
                 }
                 break;
             case MotionEvent.ACTION_CANCEL:
+                clearPendingPress();
                 setHighlighted(false);
-                pressed = false;
+                break;
         }
         return true;
     }

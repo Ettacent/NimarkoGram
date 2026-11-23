@@ -137,6 +137,8 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
     private int noOtherSessionsRow;
     private int qrCodeRow;
     private int qrCodeDividerRow;
+    private DeviceSessionScope deviceAction;
+    private int devicePageGeneration;
     private int rowCount;
     private int ttlHeaderRow;
     @Keep
@@ -182,6 +184,8 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
     @Override
     public void onFragmentDestroy() {
         sessionsLoadGeneration++;
+        devicePageGeneration++;
+        deviceAction = null;
         loading = false;
         if (repeatLoadRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(repeatLoadRunnable);
@@ -335,7 +339,8 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 builder.setNegativeButton(getString(R.string.Cancel), null);
                 showDialog(builder.create());
             } else if (position == terminateAllSessionsRow) {
-                if (getParentActivity() == null) {
+                final DeviceSessionScope scope = new DeviceSessionScope();
+                if (!scope.isCurrent() || deviceAction != null) {
                     return;
                 }
                 if (bots != null && !bots.isEmpty()) {
@@ -361,39 +366,18 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                         formatSpannable(R.string.AlsoTerminateChatbot, chatbots),
                         getString(R.string.Terminate),
                         alsoTerminate -> {
+                            if (!terminateOtherDeviceSessions(scope)) return;
                             if (alsoTerminate != null && alsoTerminate && bots != null && !bots.isEmpty()) {
                                 final TL_account.updateConnectedBot req = new TL_account.updateConnectedBot();
-                                req.bot = MessagesController.getInstance(currentAccount).getInputUser(bots.get(0).bot_id);
+                                req.bot = MessagesController.getInstance(scope.account).getInputUser(bots.get(0).bot_id);
                                 req.deleted = true;
                                 req.recipients = new TL_account.TL_inputBusinessBotRecipients();
-                                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (res, err) -> {
+                                ConnectionsManager.getInstance(scope.account).sendRequest(req, (res, err) -> {
                                     AndroidUtilities.runOnUIThread(() -> {
-                                        BusinessChatbotController.getInstance(currentAccount).invalidate(true);
+                                        if (scope.isCurrent()) BusinessChatbotController.getInstance(scope.account).invalidate(true);
                                     });
                                 });
                             }
-                            ConnectionsManager.getInstance(currentAccount).sendRequest(new TLRPC.TL_auth_resetAuthorizations(), (response, error) -> {
-                                AndroidUtilities.runOnUIThread(() -> {
-                                    if (getParentActivity() == null) {
-                                        return;
-                                    }
-                                    if (error == null && response instanceof TLRPC.TL_boolTrue) {
-                                        BulletinFactory.of(SessionsActivity.this).createSimpleBulletin(R.raw.contact_check, getString(R.string.AllSessionsTerminated)).show();
-                                        loadSessions(false);
-                                    }
-                                });
-
-                                for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                                    UserConfig userConfig = UserConfig.getInstance(a);
-                                    if (!userConfig.isClientActivated()) {
-                                        continue;
-                                    }
-                                    userConfig.registeredForPush = false;
-                                    userConfig.saveConfig(false);
-                                    MessagesController.getInstance(a).registerForPush(SharedConfig.pushType, SharedConfig.pushString);
-                                    ConnectionsManager.getInstance(a).setUserId(userConfig.getClientUserId());
-                                }
-                            });
                         },
                         resourceProvider
                     );
@@ -411,29 +395,9 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                     buttonText = getString(R.string.Disconnect);
                 }
                 builder.setPositiveButton(buttonText, (dialogInterface, i) -> {
+                    if (!scope.isCurrent()) return;
                     if (currentType == 0) {
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(new TLRPC.TL_auth_resetAuthorizations(), (response, error) -> {
-                            AndroidUtilities.runOnUIThread(() -> {
-                                if (getParentActivity() == null) {
-                                    return;
-                                }
-                                if (error == null && response instanceof TLRPC.TL_boolTrue) {
-                                    BulletinFactory.of(SessionsActivity.this).createSimpleBulletin(R.raw.contact_check, getString(R.string.AllSessionsTerminated)).show();
-                                    loadSessions(false);
-                                }
-                            });
-
-                            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-                                UserConfig userConfig = UserConfig.getInstance(a);
-                                if (!userConfig.isClientActivated()) {
-                                    continue;
-                                }
-                                userConfig.registeredForPush = false;
-                                userConfig.saveConfig(false);
-                                MessagesController.getInstance(a).registerForPush(SharedConfig.pushType, SharedConfig.pushString);
-                                ConnectionsManager.getInstance(a).setUserId(userConfig.getClientUserId());
-                            }
-                        });
+                        terminateOtherDeviceSessions(scope);
                     } else {
                         TL_account.resetWebAuthorizations req = new TL_account.resetWebAuthorizations();
                         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
@@ -638,25 +602,112 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
     }
 
 
+    private final class DeviceSessionScope {
+        final int account = currentAccount;
+        final long userId = getUserConfig().getClientUserId();
+        final long login = app.nimarkogram.messenger.notifications.InAppNotifications.session(account);
+        final int page = devicePageGeneration;
+
+        boolean isCurrent() {
+            return page == devicePageGeneration && getParentActivity() != null && isSessionUiCurrent(account, userId, login);
+        }
+    }
+
+    private void notifyTerminateRow() {
+        if (listAdapter != null && terminateAllSessionsRow >= 0) listAdapter.notifyItemChanged(terminateAllSessionsRow);
+    }
+
+    private boolean beginDeviceAction(DeviceSessionScope scope) {
+        if (deviceAction != null || !scope.isCurrent()) return false;
+        deviceAction = scope;
+        notifyTerminateRow();
+        return true;
+    }
+
+    private boolean finishDeviceAction(DeviceSessionScope scope) {
+        if (deviceAction != scope) return false;
+        deviceAction = null;
+        if (!scope.isCurrent()) return false;
+        notifyTerminateRow();
+        return true;
+    }
+
+    private boolean terminateOtherDeviceSessions(DeviceSessionScope scope) {
+        if (!beginDeviceAction(scope)) return false;
+        ConnectionsManager manager = ConnectionsManager.getInstance(scope.account);
+        int id = manager.sendRequest(new TLRPC.TL_auth_resetAuthorizations(), (response, error) -> {
+            final boolean success = error == null && response instanceof TLRPC.TL_boolTrue;
+            final String errorText = error == null ? "" : error.text;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!finishDeviceAction(scope)) return;
+                if (!success) {
+                    showDeviceActionFailure(errorText);
+                    return;
+                }
+                BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, getString(R.string.AllSessionsTerminated)).show();
+                sessionsLoadGeneration++;
+                loading = false;
+                sessions.clear();
+                passwordSessions.clear();
+                updateRows();
+                if (listAdapter != null) listAdapter.notifyDataSetChanged();
+                loadSessions(true);
+                {
+                    for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                        UserConfig cfg = UserConfig.getInstance(a);
+                        if (!cfg.isClientActivated()) continue;
+                        cfg.registeredForPush = false;
+                        cfg.saveConfig(false);
+                        MessagesController.getInstance(a).registerForPush(SharedConfig.pushType, SharedConfig.pushString);
+                        ConnectionsManager.getInstance(a).setUserId(cfg.getClientUserId());
+                    }
+                }
+            });
+        }, ConnectionsManager.RequestFlagFailOnServerErrors);
+        manager.bindRequestToGuid(id, classGuid);
+        return true;
+    }
+
+    private void showDeviceActionFailure(String error) {
+        int label = R.string.NM_DeviceTerminateFailed;
+        BulletinFactory.of(this).createErrorBulletin(getString(label)).show();
+    }
     private void showSessionBottomSheet(TLRPC.TL_authorization authorization, boolean isCurrentSession) {
         if (authorization == null) {
             return;
         }
+        final DeviceSessionScope scope = new DeviceSessionScope();
+        final long selectedHash = authorization.hash;
+        if (!scope.isCurrent()) return;
         final SessionBottomSheet bottomSheet = new SessionBottomSheet(this, authorization, isCurrentSession, new SessionBottomSheet.Callback() {
             @Override
             public void onSessionTerminated(TLRPC.TL_authorization authorization) {
+                if (isCurrentSession || (authorization.flags & 1) != 0 || selectedHash == 0 ||
+                        selectedHash != authorization.hash || !beginDeviceAction(scope)) return;
                 TL_account.resetAuthorization req = new TL_account.resetAuthorization();
-                req.hash = authorization.hash;
-                ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                    if (error == null) {
-                        sessions.remove(authorization);
-                        passwordSessions.remove(authorization);
-                        updateRows();
-                        if (listAdapter != null) {
-                            listAdapter.notifyDataSetChanged();
+                req.hash = selectedHash;
+                ConnectionsManager manager = ConnectionsManager.getInstance(scope.account);
+                int id = manager.sendRequest(req, (response, error) -> {
+                    final boolean success = error == null && response instanceof TLRPC.TL_boolTrue;
+                    final String errorText = error == null ? "" : error.text;
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (!finishDeviceAction(scope)) return;
+                        if (!success) {
+                            showDeviceActionFailure(errorText);
+                            return;
                         }
-                    }
-                }));
+                        sessionsLoadGeneration++;
+                        loading = false;
+                        sessions.removeIf(item -> item instanceof TLRPC.TL_authorization &&
+                                ((TLRPC.TL_authorization) item).hash == req.hash);
+                        passwordSessions.removeIf(item -> item instanceof TLRPC.TL_authorization &&
+                                ((TLRPC.TL_authorization) item).hash == req.hash);
+                        updateRows();
+                        if (listAdapter != null) listAdapter.notifyDataSetChanged();
+                        loadSessions(true);
+                    });
+                }, ConnectionsManager.RequestFlagFailOnServerErrors);
+                manager.bindRequestToGuid(id, classGuid);
             }
         });
         bottomSheet.show();
@@ -720,6 +771,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 if (error == null && response instanceof TL_account.authorizations) {
                     sessions.clear();
                     passwordSessions.clear();
+                    currentSession = null;
                     TL_account.authorizations res = (TL_account.authorizations) response;
                     for (int a = 0, N = res.authorizations.size(); a < N; a++) {
                         TLRPC.TL_authorization authorization = res.authorizations.get(a);
@@ -926,7 +978,11 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int position = holder.getAdapterPosition();
-            return position == terminateAllSessionsRow || position >= otherSessionsStartRow && position < otherSessionsEndRow || position >= botSessionsStartRow && position < botSessionsEndRow || position >= passwordSessionsStartRow && position < passwordSessionsEndRow || position == currentSessionRow && currentSession != null || position == ttlRow;
+            return position >= 0 && (position == terminateAllSessionsRow && deviceAction == null ||
+                    position >= otherSessionsStartRow && position < otherSessionsEndRow ||
+                    position >= botSessionsStartRow && position < botSessionsEndRow ||
+                    position >= passwordSessionsStartRow && position < passwordSessionsEndRow ||
+                    position == currentSessionRow && currentSession != null || position == ttlRow);
         }
 
         @Override
@@ -1180,7 +1236,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 textView.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
                 spanned.replace(index2, index2 + 1, "");
                 spanned.replace(index1, index1 + 1, "");
-                spanned.setSpan(new URLSpanNoUnderline(getString(R.string.AuthAnotherClientDownloadClientUrl)), index1, index2 - 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                spanned.setSpan(new URLSpanNoUnderline("https://desktop.telegram.org/"), index1, index2 - 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
 
             text = spanned.toString();
@@ -1191,7 +1247,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 textView.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
                 spanned.replace(index2, index2 + 1, "");
                 spanned.replace(index1, index1 + 1, "");
-                spanned.setSpan(new URLSpanNoUnderline(getString(R.string.AuthAnotherWebClientUrl)), index1, index2 - 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                spanned.setSpan(new URLSpanNoUnderline("https://web.telegram.org/"), index1, index2 - 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
 
             textView.setText(spanned);

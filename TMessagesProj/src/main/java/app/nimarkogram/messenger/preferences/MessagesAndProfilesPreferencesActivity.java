@@ -1,4 +1,3 @@
-
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /**
@@ -61,6 +60,7 @@ import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
+import androidx.core.view.ViewCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -95,7 +95,6 @@ import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.CubicBezierInterpolator;
-import org.telegram.ui.Components.FilledTabsView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.Premium.PremiumGradient;
 import org.telegram.ui.Components.RecyclerListView;
@@ -115,6 +114,7 @@ import java.util.Locale;
 
 import app.nimarkogram.messenger.AppConfig;
 
+import app.nimarkogram.messenger.utils.AppExtra;
 public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     static final int SETTING_SHOW_SECONDS = 1;
@@ -138,7 +138,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     // no equivalent custom emoji asset, so the fallback is "no override".
     private static final long NIMARKO_EMOJI_ID_FALLBACK = 0L;
 
-    private FrameLayout contentView;
+    private MessageProfileLayout contentView;
     private ColoredActionBar colorBar;
 
     private final int PAGE_MESSAGE = 0;
@@ -153,7 +153,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     private class Page extends FrameLayout {
 
-        private ProfilePreview profilePreview;
+        private ProfilePreviewCard profileCard;
 
         private RecyclerListView listView;
         private RecyclerView.Adapter listAdapter;
@@ -200,6 +200,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         private final int VIEW_TYPE_CHANNEL = 5;
         private final int VIEW_TYPE_SHADOW = 6;
 
+        private final int VIEW_TYPE_PROFILE_PREVIEW = 7;
         private final int type;
         public Page(Context context, int type) {
             super(context);
@@ -233,13 +234,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 }
             }
 
-            listView = new RecyclerListView(getContext(), getResourceProvider()) {
-                @Override
-                protected void onMeasure(int widthSpec, int heightSpec) {
-                    super.onMeasure(widthSpec, heightSpec);
-                }
-
-            };
+            listView = new RecyclerListView(getContext(), getResourceProvider());
+            listView.setClipToPadding(false);
             ((DefaultItemAnimator) listView.getItemAnimator()).setSupportsChangeAnimations(false);
             listView.setLayoutManager(new LinearLayoutManager(getContext()));
             listView.setAdapter(listAdapter = new RecyclerListView.SelectionAdapter() {
@@ -296,6 +292,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                         case VIEW_TYPE_CHANNEL:
                             view = new ProfileChannelCell(MessagesAndProfilesPreferencesActivity.this);
                             break;
+                        case VIEW_TYPE_PROFILE_PREVIEW:
+                            view = new ProfilePreviewCard(getContext());
+                            break;
                         case VIEW_TYPE_SHADOW:
                         default: {
                             view = new ShadowSectionCell(getContext());
@@ -308,6 +307,10 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 @Override
                 public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
                     switch (getItemViewType(position)) {
+                        case VIEW_TYPE_PROFILE_PREVIEW:
+                            profileCard = (ProfilePreviewCard) holder.itemView;
+                            profileCard.bind(selectedColor, selectedEmoji);
+                            break;
                         case VIEW_TYPE_HEADER: {
                             HeaderCell headerCell = (HeaderCell) holder.itemView;
                             headerCell.setText("");
@@ -365,23 +368,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                             final TLRPC.User me = getUserConfig().getCurrentUser();
 
                             if (position == idDcPreviewRow) {
-                                StringBuilder sb = new StringBuilder();
-                                if (me != null && me.photo != null && me.photo.dc_id > 0) {
-                                    sb = new StringBuilder();
-                                    sb.append("DC: ");
-                                    sb.append(me.photo.dc_id);
-                                    sb.append(", ");
-                                    sb.append(getDCName(me.photo.dc_id));
-                                    sb.append(", ");
-                                    sb.append(getDCGeo(me.photo.dc_id));
-                                } else {
-                                    sb.append("DC: ");
-                                    sb.append(getString(R.string.NumberUnknown));
-                                }
                                 DecimalFormat df = new DecimalFormat("#,###", new DecimalFormatSymbols(Locale.US) {{ setGroupingSeparator(' '); }});
                                 long previewId = me != null ? me.id : getUserConfig().getClientUserId();
-                                detailCell.setTextAndValue("ID: " + (previewId != 0
-                                        ? df.format(previewId) : getString(R.string.NumberUnknown)), sb, false);
+                                detailCell.setTextAndValue(LocaleController.formatString(R.string.NM_ProfileInfo_Id,
+                                                previewId != 0 ? df.format(previewId) : getString(R.string.NM_ProfileInfo_Unknown)),
+                                        AppExtra.previewDCLabel(AppExtra.resolveDcId(currentAccount, me, null)), false);
 
                                 Drawable drawable = ContextCompat.getDrawable(detailCell.getContext(), R.drawable.msg_calendar2);
                                 detailCell.setImage(drawable);
@@ -398,11 +389,11 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                                         ? getMessagesController().getUserFull(me.id) : null;
                                 if (meFull != null && meFull.birthday != null) {
                                     String date = UserInfoActivity.birthdayString(meFull.birthday);
-                                    detailCell.setTextAndValue(date, getString(R.string.ProfileBirthday), false);
+                                    detailCell.setTextAndValue(date, getString(R.string.NM_ProfilePreviewBirthday), false);
                                 } else {
                                     final int age = Period.between(LocalDate.of(2022, 1, 15), LocalDate.now()).getYears();
-                                    String date = LocaleController.formatPluralString("ProfileBirthdayValueYear", age, birthdayString());
-                                    detailCell.setTextAndValue(date, getString(R.string.ProfileBirthday), false);
+                                    String date = LocaleController.formatString(R.string.NM_ProfilePreviewBirthdayAge, birthdayString(), age);
+                                    detailCell.setTextAndValue(date, getString(R.string.NM_ProfilePreviewBirthday), false);
                                 }
                                 detailCell.textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, getResourceProvider()));
 
@@ -438,9 +429,15 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 }
 
                 @Override
+                public void onViewRecycled(@NonNull RecyclerView.ViewHolder holder) {
+                    if (holder.itemView == profileCard) profileCard = null;
+                    super.onViewRecycled(holder);
+                }
+
+                @Override
                 public int getItemViewType(int position) {
                     if (position == previewRow) {
-                        return VIEW_TYPE_MESSAGE;
+                        return type == PAGE_PROFILE ? VIEW_TYPE_PROFILE_PREVIEW : VIEW_TYPE_MESSAGE;
                     }
                     if (position == infoHeaderRow || position == headerRow) {
                         return VIEW_TYPE_HEADER;
@@ -492,20 +489,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     AppConfig.toggleDisablePremiumStatuses();
                     setSwitchChecked(view, AppConfig.disablePremiumStatuses);
 
-                    if (!AppConfig.disablePremiumStatuses) {
-                        profilePage.profilePreview.titleView.setRightDrawable(profilePage.profilePreview.statusEmoji);
-                        profilePage.profilePreview.statusEmoji.play();
-                        profilePage.profilePreview.subtitleView.setText(getString(R.string.Online));
-                    } else {
-                        profilePage.profilePreview.titleView.setRightDrawable((Drawable) null);
-                        String tgPremium = AppConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
-                        profilePage.profilePreview.subtitleView.setText(getString(R.string.Online) + tgPremium);
-                    }
-                    // NG nick-truncation fix: setRightDrawable re-lays out the title against its STALE
-                    // measured width (widthWrapContent sized it for the previous badge state), so when the
-                    // status badge re-appears there's no room and the name ellipsizes to "Ett…". Force a real
-                    // re-measure so wrap-content re-expands to fit name + badge.
-                    profilePage.profilePreview.titleView.requestLayout();
+                    if (profilePage.profileCard != null) profilePage.profileCard.preview.updatePremiumStatus(true);
 
                     updateMessages();
                     if (type == PAGE_PROFILE) {
@@ -581,11 +565,9 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     if (type == PAGE_PROFILE && colorBar != null) {
                         colorBar.setColor(currentAccount, selectedColor, true);
                     }
-                    if (profilePreview != null) {
-                        profilePreview.setColor(selectedColor, true);
-                    }
-                    if (profilePage != null && profilePage.profilePreview != null && messagePage != null) {
-                        profilePage.profilePreview.overrideAvatarColor(messagePage.selectedColor);
+                    if (profileCard != null) {
+                        profileCard.setColor(selectedColor, true);
+                        profileCard.preview.overrideAvatarColor(messagePage.selectedColor);
                     }
                 } else if (position == profileEmojiSwitchRow) {
                     AppConfig.toggleProfileBackgroundEmoji();
@@ -601,8 +583,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                     if (type == PAGE_PROFILE) {
                         messagePage.updateMessages();
                     }
-                    if (profilePreview != null) {
-                        profilePreview.setEmoji(selectedEmoji, true);
+                    if (profileCard != null) {
+                        profileCard.preview.setEmoji(selectedEmoji, true);
                     }
                 }
             });
@@ -616,17 +598,10 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             itemAnimator.setSupportsChangeAnimations(false);
             listView.setItemAnimator(itemAnimator);
 
-            if (type == PAGE_PROFILE) {
-                profilePreview = new ProfilePreview(getContext(), currentAccount, resourceProvider);
-                profilePreview.setColor(selectedColor, false);
-                profilePreview.setEmoji(selectedEmoji, false);
-                addView(profilePreview, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL));
-            }
 
             updateColors();
             updateRows();
 
-            setWillNotDraw(false);
         }
 
         private void bindSwitch(NotificationsCheckCell cell, int titleRes, int descriptionRes,
@@ -641,27 +616,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
         }
 
-        private int actionBarHeight;
-
-        @Override
-        protected void dispatchDraw(@NonNull Canvas canvas) {
-            super.dispatchDraw(canvas);
-            if (getParentLayout() != null) {
-                getParentLayout().drawHeaderShadow(canvas, actionBarHeight);
-            }
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            if (type == PAGE_MESSAGE) {
-                actionBarHeight = ActionBar.getCurrentActionBarHeight() + AndroidUtilities.statusBarHeight;
-                ((MarginLayoutParams) listView.getLayoutParams()).topMargin = actionBarHeight;
-            } else {
-                actionBarHeight = dp(230) + AndroidUtilities.statusBarHeight;
-                ((MarginLayoutParams) listView.getLayoutParams()).topMargin = actionBarHeight;
-                profilePreview.getLayoutParams().height = actionBarHeight;
-            }
-            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        private void setBottomInset(int bottom) {
+            listView.setPadding(listView.getPaddingLeft(), listView.getPaddingTop(), listView.getPaddingRight(), bottom);
         }
 
         private void updateRows() {
@@ -694,6 +650,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
             if (type == PAGE_PROFILE) {
                 // Channel preview
+                previewRow = addRow(18);
+                addRow(19);
                 if (AppConfig.profileChannelPreview) {
                     channelPreviewRow = addRow(20);
                     channelPreviewDivisorRow = addRow(21);
@@ -729,7 +687,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 }
                 // Business preview
 
-                profilePreviewDivisorRow = addRow(27);
+                if (infoHeaderRow >= 0) profilePreviewDivisorRow = addRow(27);
                 headerRow = addRow(28);
                 channelPreviewSwitchRow = addRow(29);
                 showDcIdSwitchRow = addRow(30);
@@ -854,8 +812,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             if (messagesCellPreview != null) {
                 messagesCellPreview.invalidate();
             }
-            if (profilePreview != null) {
-                profilePreview.setColor(selectedColor, false);
+            if (type == PAGE_PROFILE) {
+                if (profileCard != null) profileCard.bind(selectedColor, selectedEmoji);
                 AndroidUtilities.forEachViews(listView, view -> {
                     if (view instanceof ProfileChannelCell) {
                         ((ProfileChannelCell) view).updateColors();
@@ -950,8 +908,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     private ViewPagerFixed viewPager;
     private ImageView backButton;
-    private FrameLayout actionBarContainer;
-    private FilledTabsView tabsView;
+    private MessageProfileLayout.Tabs tabsView;
     private View initialSettingScrollHost;
     private Runnable initialSettingScroll;
 
@@ -968,124 +925,84 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     @Override
     public View createView(Context context) {
         cancelInitialSettingScroll();
-        messagePage = new Page(context, PAGE_MESSAGE);
-        profilePage = new Page(context, PAGE_PROFILE);
+        setHasOwnBackground(true);
 
         actionBar.setCastShadows(false);
         actionBar.setVisibility(View.GONE);
         actionBar.setAllowOverlayTitle(false);
 
-        FrameLayout frameLayout = new FrameLayout(context) {
-            @Override
-            protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                if (actionBarContainer != null) {
-                    actionBarContainer.getLayoutParams().height = ActionBar.getCurrentActionBarHeight();
-                    ((MarginLayoutParams) actionBarContainer.getLayoutParams()).topMargin = AndroidUtilities.statusBarHeight;
-                }
-                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-            }
-        };
-        frameLayout.setFitsSystemWindows(true);
+        actionBar.setAddToContainer(false);
 
         colorBar = new ColoredActionBar(context, resourceProvider) {
+            private int lastButtonColor;
+
             @Override
             protected void onUpdateColor() {
+                if (colorBar != this) return;
                 updateLightStatusBar();
-                updateActionBarButtonsColor();
-                if (tabsView != null) {
-                    tabsView.setBackgroundColor(getTabsViewBackgroundColor());
+                int color = getActionBarButtonColor();
+                if (backButton != null && color != lastButtonColor) {
+                    lastButtonColor = color;
+                    backButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
                 }
-            }
-
-            private int lastBtnColor = 0;
-            public void updateActionBarButtonsColor() {
-                final int btnColor = getActionBarButtonColor();
-                if (lastBtnColor != btnColor) {
-                    if (backButton != null) {
-                        lastBtnColor = btnColor;
-                        backButton.setColorFilter(new PorterDuffColorFilter(btnColor, PorterDuff.Mode.SRC_IN));
-                    }
+                if (tabsView != null) {
+                    updateTabColors(tabsView);
                 }
             }
         };
-        if (profilePage != null) {
-            colorBar.setColor(currentAccount, profilePage.selectedColor, false);
-        }
-        frameLayout.addView(colorBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL));
-
+        messagePage = new Page(context, PAGE_MESSAGE);
+        profilePage = new Page(context, PAGE_PROFILE);
+        colorBar.setColor(currentAccount, profilePage.selectedColor, false);
         viewPager = new ViewPagerFixed(context) {
             @Override
             public void onTabAnimationUpdate(boolean manual) {
-                tabsView.setSelected(viewPager.getPositionAnimated());
-                colorBar.setProgressToGradient(viewPager.getPositionAnimated());
+                if (viewPager != this || tabsView == null) return;
+                float position = getPositionVisibility(PAGE_PROFILE);
+                tabsView.setPosition(position);
+                colorBar.setProgressToGradient(position);
             }
         };
-        viewPager.setAdapter(new ViewPagerFixed.Adapter() {
-            @Override
-            public int getItemCount() {
-                return 2;
-            }
-
-            @Override
-            public View createView(int viewType) {
-                if (viewType == PAGE_MESSAGE) return messagePage;
-                if (viewType == PAGE_PROFILE) return profilePage;
-                return null;
-            }
-
-            @Override
-            public int getItemViewType(int position) {
-                return position;
-            }
-
-            @Override
-            public void bindView(View view, int position, int viewType) {
-
-            }
-        });
-        frameLayout.addView(viewPager, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
-
-        actionBarContainer = new FrameLayout(context);
-        frameLayout.addView(actionBarContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.FILL_HORIZONTAL));
-
-        tabsView = new FilledTabsView(context);
-        tabsView.setTabs(
-                getString(R.string.Message),
-                getString(R.string.UserColorTabProfile)
-        );
-        tabsView.onTabSelected(tab -> {
-            if (viewPager != null) {
-                viewPager.scrollToPosition(tab);
-            }
-        });
-        actionBarContainer.addView(tabsView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 40, Gravity.CENTER));
-
-        if (startAtProfile) {
-            viewPager.setPosition(1);
-            if (tabsView != null) {
-                tabsView.setSelected(1);
-            }
-            if (colorBar != null) {
-                colorBar.setProgressToGradient(1f);
-                updateLightStatusBar();
-            }
-        }
+        FrameLayout controls = new FrameLayout(context);
+        tabsView = new MessageProfileLayout.Tabs(context, getString(R.string.Message), getString(R.string.UserColorTabProfile),
+                tab -> viewPager.scrollToPosition(tab));
+        controls.addView(tabsView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER, 54, 0, 54, 0));
 
         backButton = new ImageView(context);
         backButton.setScaleType(ImageView.ScaleType.CENTER);
-        backButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarWhiteSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
+        backButton.setContentDescription(getString(R.string.AccDescrGoBack));
+        backButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarDefaultSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
         backButton.setImageResource(R.drawable.ic_ab_back);
-        backButton.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         backButton.setOnClickListener(v -> {
-            if (onBackPressed(true)) {
-                finishFragment();
-            }
+            if (onBackPressed(true)) finishFragment();
         });
-        actionBarContainer.addView(backButton, LayoutHelper.createFrame(54, 54, Gravity.LEFT | Gravity.CENTER_VERTICAL));
+        controls.addView(backButton, LayoutHelper.createFrame(54, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.CENTER_VERTICAL));
+
+        contentView = new MessageProfileLayout(context, colorBar, controls, viewPager);
+        fragmentView = contentView;
+        contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
+        contentView.setDividerColor(getThemedColor(Theme.key_divider));
+        viewPager.setAdapter(new ViewPagerFixed.Adapter() {
+            @Override
+            public int getItemCount() { return 2; }
+
+            @Override
+            public View createView(int viewType) { return viewType == PAGE_PROFILE ? profilePage : messagePage; }
+
+            @Override
+            public int getItemViewType(int position) { return position; }
+
+            @Override
+            public void bindView(View view, int position, int viewType) {}
+        });
+        if (startAtProfile) viewPager.setPosition(PAGE_PROFILE);
+        tabsView.setPosition(viewPager.getCurrentPosition());
+        colorBar.setProgressToGradient(viewPager.getCurrentPosition());
 
         colorBar.updateColors();
 
-        fragmentView = contentView = frameLayout;
+        onInsets(mSystemInsets.left, mSystemInsets.top, mSystemInsets.right, mSystemInsets.bottom);
+        ViewCompat.setOnApplyWindowInsetsListener(contentView, this::onInsetsInternal);
+        ViewCompat.requestApplyInsets(contentView);
         if (initialSettingId != 0) {
             final View openingView = contentView;
             final Page targetPage = startAtProfile ? profilePage : messagePage;
@@ -1127,6 +1044,13 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     @Override
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         return SimpleThemeDescription.createThemeDescriptions(this::updateColors,
+                Theme.key_actionBarDefault,
+                Theme.key_actionBarDefaultTitle,
+                Theme.key_actionBarDefaultIcon,
+                Theme.key_actionBarDefaultSelector,
+                Theme.key_divider,
+                Theme.key_windowBackgroundWhiteBlueText,
+                Theme.key_windowBackgroundWhiteBlueIcon,
                 Theme.key_windowBackgroundWhite,
                 Theme.key_windowBackgroundWhiteBlackText,
                 Theme.key_windowBackgroundWhiteGrayText2,
@@ -1146,6 +1070,8 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
     @SuppressLint("NotifyDataSetChanged")
     private void updateColors() {
         contentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
+        contentView.setDividerColor(getThemedColor(Theme.key_divider));
+        backButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_actionBarDefaultSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
         messagePage.updateColors();
         profilePage.updateColors();
         if (colorBar != null) {
@@ -1162,7 +1088,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         public ColoredActionBar(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context);
             this.resourcesProvider = resourcesProvider;
-            defaultColor = Theme.getColor(Theme.key_actionBarDefault, resourcesProvider);
+            defaultColor = Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider);
             setColor(-1, -1, false);
         }
 
@@ -1216,6 +1142,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
         @Override
         protected void dispatchDraw(@NonNull Canvas canvas) {
+            if (getWidth() == 0 || getHeight() == 0) return;
             final int color1 = color1Animated.set(this.color1);
             final int color2 = color2Animated.set(this.color2);
             if (backgroundGradient == null || backgroundGradientColor1 != color1 || backgroundGradientColor2 != color2 || backgroundGradientWidth != getWidth() || backgroundGradientHeight != getHeight()) {
@@ -1240,39 +1167,85 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
         }
 
-        protected boolean ignoreMeasure;
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, ignoreMeasure ? heightMeasureSpec : MeasureSpec.makeMeasureSpec(AndroidUtilities.statusBarHeight + dp(230), MeasureSpec.EXACTLY));
-        }
 
         public void updateColors() {
-            defaultColor = Theme.getColor(Theme.key_actionBarDefault, resourcesProvider);
+            defaultColor = Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider);
             onUpdateColor();
             invalidate();
         }
 
         public int getColor() {
-            return ColorUtils.blendARGB(Theme.getColor(Theme.key_actionBarDefault, resourcesProvider), ColorUtils.blendARGB(color1Animated.get(), color2Animated.get(), .75f), progressToGradient);
+            return ColorUtils.blendARGB(defaultColor, ColorUtils.blendARGB(color1Animated.get(), color2Animated.get(), .75f), progressToGradient);
+        }
+
+        void updateTabColors(MessageProfileLayout.Tabs tabs) {
+            int header = ColorUtils.setAlphaComponent(getColor(), 255);
+            int track = Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider);
+            int pill = defaultColor;
+            int normal = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider);
+            int selected = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
+            if (!isDefault && progressToGradient > 0f) {
+                int profileColor = ColorUtils.blendARGB(color1Animated.get(), color2Animated.get(), .75f);
+                int tint = AndroidUtilities.computePerceivedBrightness(profileColor) > .721f
+                        ? Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon, resourcesProvider)
+                        : Theme.adaptHSV(profileColor, .08f, -.08f);
+                tint = MessageProfileLayout.Tabs.tabInk(tint, Color.WHITE);
+                track = ColorUtils.blendARGB(track, tint, progressToGradient);
+                pill = ColorUtils.blendARGB(pill, Color.WHITE, progressToGradient);
+                normal = ColorUtils.blendARGB(normal, Color.WHITE, progressToGradient);
+                selected = ColorUtils.blendARGB(selected, tint, progressToGradient);
+            }
+            track = ColorUtils.compositeColors(track, header);
+            tabs.setColors(track, ColorUtils.compositeColors(pill, track), normal, selected);
         }
 
         public int getActionBarButtonColor() {
-            return ColorUtils.blendARGB(Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), isDefault ? Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider) : Color.WHITE, progressToGradient);
+            return MessageProfileLayout.readableColor(Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider), getColor());
+        }
+    }
+
+    private class ProfilePreviewCard extends FrameLayout {
+        private final ColoredActionBar backdrop;
+        private final ProfilePreview preview;
+
+        ProfilePreviewCard(Context context) {
+            super(context);
+            setLayoutParams(new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, dp(184)));
+            setBackground(Theme.createRoundRectDrawable(dp(16), Color.TRANSPARENT));
+            setClipToOutline(true);
+            backdrop = new ColoredActionBar(context, resourceProvider);
+            backdrop.setProgressToGradient(1f);
+            addView(backdrop, LayoutHelper.createFrameMatchParent());
+            preview = new ProfilePreview(context, currentAccount, resourceProvider);
+            addView(preview, LayoutHelper.createFrameMatchParent());
         }
 
-        public int getTabsViewBackgroundColor() {
-            return (
-                ColorUtils.blendARGB(
-                    AndroidUtilities.computePerceivedBrightness(Theme.getColor(Theme.key_actionBarDefault, resourcesProvider)) > .721f ?
-                        Theme.getColor(Theme.key_actionBarDefaultIcon, resourcesProvider) :
-                        Theme.adaptHSV(Theme.getColor(Theme.key_actionBarDefault, resourcesProvider), +.08f, -.08f),
-                    AndroidUtilities.computePerceivedBrightness(ColorUtils.blendARGB(color1Animated.get(), color2Animated.get(), .75f)) > .721f ?
-                        Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon, resourcesProvider) :
-                        Theme.adaptHSV(ColorUtils.blendARGB(color1Animated.get(), color2Animated.get(), .75f), +.08f, -.08f),
-                    progressToGradient
-                )
-            );
+        void setColor(int colorId, boolean animated) {
+            MessagesController.PeerColors colors = getMessagesController().profilePeerColors;
+            MessagesController.PeerColor color = colorId < 0 || colors == null ? null : colors.getColor(colorId);
+            backdrop.setColor(color, animated);
+            preview.setColor(color, animated);
+        }
+
+        void bind(int color, long emoji) {
+            setColor(color, false);
+            preview.setEmoji(emoji, false);
+            if (messagePage != null) preview.overrideAvatarColor(messagePage.selectedColor);
+            preview.updatePremiumStatus(false);
+        }
+    }
+
+    static class PreviewNameRow extends SimpleTextView {
+        PreviewNameRow(Context context) {
+            super(context);
+            setWidthWrapContent(true);
+            setRightDrawableOutside(true);
+            setOutsideRightDrawableTextClipInset(0);
+        }
+
+        @Override
+        protected int getOutsideRightDrawablesStartX(int textOffsetX) {
+            return Math.max(0, getMeasuredWidth() - getRightDrawablesWidth());
         }
     }
 
@@ -1297,7 +1270,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             this.previewAccount = currentAccount;
             this.previewUser = UserConfig.getInstance(currentAccount).getCurrentUser();
 
-            titleView = new SimpleTextView(context) {
+            titleView = new PreviewNameRow(context) {
                 @Override
                 protected void onAttachedToWindow() {
                     super.onAttachedToWindow();
@@ -1311,14 +1284,10 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
                 }
             };
             statusEmoji = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(titleView, dp(24));
-            titleView.setLeftDrawableOutside(true);
-            titleView.setRightDrawableOutside(true);
-            if (!AppConfig.disablePremiumStatuses) titleView.setRightDrawable(statusEmoji);
             titleView.setRightDrawableOnClick(v -> statusEmoji.play());
             titleView.setTextColor(0xFFFFFFFF);
             titleView.setTextSize(20);
             titleView.setTypeface(AndroidUtilities.bold());
-            titleView.setWidthWrapContent(true);
             addView(titleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM, 16, 0, 16, 40.33f));
 
             subtitleView = new SimpleTextView(context);
@@ -1356,10 +1325,20 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
             }
 
             titleView.setText(title);
-            String tgPremium = AppConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
-            subtitleView.setText(getString(R.string.Online) + tgPremium);
+            updatePremiumStatus(false);
 
             setWillNotDraw(false);
+        }
+
+        void updatePremiumStatus(boolean animate) {
+            Drawable badge = AppConfig.disablePremiumStatuses ? null : statusEmoji;
+            if (titleView.getRightDrawable() != badge) {
+                titleView.setRightDrawable(badge);
+                titleView.requestLayout();
+            }
+            if (animate && badge != null) statusEmoji.play();
+            String suffix = AppConfig.disablePremiumStatuses ? " | " + getString(R.string.TelegramPremium) : "";
+            subtitleView.setText(getString(R.string.Online) + suffix);
         }
 
         public void overrideAvatarColor(int colorId) {
@@ -1408,11 +1387,6 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         }
 
         private MessagesController.PeerColor peerColor;
-        public void setColor(int colorId, boolean animated) {
-            MessagesController.PeerColors peerColors = getMessagesController().profilePeerColors;
-            MessagesController.PeerColor peerColor = peerColors == null ? null : peerColors.getColor(colorId);
-            setColor(peerColor, animated);
-        }
 
         public void setColor(MessagesController.PeerColor peerColor, boolean animated) {
             this.peerColor = peerColor;
@@ -1536,7 +1510,7 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
         if (colorBar == null) {
             return super.isLightStatusBar();
         }
-        return ColorUtils.calculateLuminance(colorBar.getColor()) > 0.7f;
+        return MessageProfileLayout.readableColor(Color.WHITE, colorBar.getColor()) == Color.BLACK;
     }
 
     public void updateLightStatusBar() {
@@ -1551,30 +1525,21 @@ public class MessagesAndProfilesPreferencesActivity extends BaseFragment {
 
     @Override
     public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public boolean drawEdgeNavigationBar() {
         return false;
     }
 
     // ---- DC name / geo (inlined from CG CGResourcesHelper.getDCName/getDCGeo) ----
 
-    private static String getDCName(int dc) {
-        switch (dc) {
-            case 1: return "Pluto";
-            case 2: return "Venus";
-            case 3: return "Aurora";
-            case 4: return "Vesta";
-            case 5: return "Flora";
-            default: return getString(R.string.NumberUnknown);
-        }
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        if (contentView != null) contentView.setSafeArea(left, top, right);
+        if (messagePage != null) messagePage.setBottomInset(bottom);
+        if (profilePage != null) profilePage.setBottomInset(bottom);
     }
 
-    private static String getDCGeo(int dcId) {
-        switch (dcId) {
-            case 1:
-            case 3: return getString(R.string.NM_Settings_DCMiami);
-            case 2:
-            case 4: return getString(R.string.NM_Settings_DCAmsterdam);
-            case 5: return getString(R.string.NM_Settings_DCSingapore);
-            default: return getString(R.string.NumberUnknown);
-        }
-    }
 }

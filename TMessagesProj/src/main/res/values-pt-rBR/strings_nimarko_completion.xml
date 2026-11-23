@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Remover do cache</string>
+    <string name="NM_ClearedFromCache">Removido do cache</string>
+    <string name="NM_CopyCallback">Copiar dados de callback</string>
+    <string name="NM_CopyID">Copiar ID de usuário</string>
+    <string name="NM_CopyInlineQuery">Copiar consulta inline</string>
+    <string name="NM_CopyPhoto">Copiar foto</string>
+    <string name="NM_CopyPhotoAsSticker">Copiar foto como sticker</string>
+    <string name="NM_CopyReportDetails">Copiar detalhes da denúncia</string>
+    <string name="NM_CopySetId">Copiar ID do pacote</string>
+    <string name="NM_CopyTitle">Copiar título</string>
+    <string name="NM_Copy_Coordinates">Coordenadas</string>
+    <string name="NM_DoNotRemindAgain">Não lembrar novamente</string>
+    <string name="NM_ExportSettings">Exportar configurações</string>
+    <string name="NM_FoldersTypeIcons">Apenas ícones</string>
+    <string name="NM_FoldersTypeIconsTitles">Ícones e nomes</string>
+    <string name="NM_FoldersTypeTitles">Apenas nomes</string>
+    <string name="NM_GetEmojiPack">Obter emoji</string>
+    <string name="NM_ImportSettings">Importar configurações</string>
+    <string name="NM_ImportSettingsAlert">Substituir as configurações? Importar configurações de fontes desconhecidas pode fazer com que o app pare de funcionar.</string>
+    <string name="NM_OpenEmojiPack">Toque para obter o emoji</string>
+    <string name="NM_OpenStickerPack">Toque para obter a figurinha</string>
+    <string name="NM_PasskeyInfo2">Este recurso só funciona com gerenciadores de senhas que permitem gerenciar as configurações de confiança para apps com privilégios especiais, como **Bitwarden** e **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Não há credenciais adequadas disponíveis.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Experimente outro gerenciador de senhas, como **Bitwarden** ou **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Gerenciador de senhas não compatível</string>
+    <string name="NM_PhotoCopied">Foto copiada para a área de transferência.</string>
+    <string name="NM_ProfileBackground">Aplicar plano de fundo do perfil</string>
+    <string name="NM_QRLoginMessage">Escaneie o código QR com outro dispositivo para entrar.</string>
+    <string name="NM_QRLoginTitle">Entrar com código QR</string>
+    <string name="NM_ReportDetailsCopied">Detalhes da denúncia copiados para a área de transferência.</string>
+    <string name="NM_RestartToApply">Reinicialização necessária</string>
+    <string name="NM_SafeStars_buy_Telegram">Comprar Estrelas pelo Telegram</string>
+    <string name="NM_SaveSticker">Salvar figurinha</string>
+    <string name="NM_SendPhotoAsSticker">Enviar como figurinha</string>
+    <string name="NM_SortByDate">Ordenar pela data da mensagem</string>
+    <string name="NM_SwipeToUnarchive">Deslize para a esquerda para desarquivar</string>
+    <string name="NM_SwitchedToAccount">Você mudou para a conta **%1$s**</string>
+    <string name="NM_TranslationLanguage">Idioma da tradução</string>
+</resources>

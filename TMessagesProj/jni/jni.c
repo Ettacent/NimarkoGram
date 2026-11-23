@@ -145,6 +145,66 @@ JNIEXPORT void Java_org_telegram_messenger_Utilities_aesCtrDecryptionByteArray(J
     (*env)->ReleaseByteArrayElements(env, buffer, bufferBuff, 0);
 }
 
+JNIEXPORT void Java_org_telegram_messenger_Utilities_aesCtrDecryptionByteArrayAtOffset(JNIEnv *env, jclass class, jbyteArray buffer, jbyteArray key, jbyteArray iv, jint offset, jint length, jlong fileOffset) {
+    if (buffer == NULL || key == NULL || iv == NULL || offset < 0 || length < 0 || fileOffset < 0
+            || (*env)->GetArrayLength(env, buffer) - offset < length
+            || (*env)->GetArrayLength(env, key) != 32 || (*env)->GetArrayLength(env, iv) != AES_BLOCK_SIZE) {
+        jclass exception = (*env)->FindClass(env, "java/lang/IllegalArgumentException");
+        if (exception != NULL) {
+            (*env)->ThrowNew(env, exception, "Invalid encrypted cache CTR range, key or IV");
+        }
+        return;
+    }
+    if (length == 0) {
+        return;
+    }
+
+    uint8_t keyBytes[32];
+    uint8_t ivBytes[AES_BLOCK_SIZE];
+    (*env)->GetByteArrayRegion(env, key, 0, sizeof(keyBytes), (jbyte *) keyBytes);
+    if ((*env)->ExceptionCheck(env)) {
+        return;
+    }
+    (*env)->GetByteArrayRegion(env, iv, 0, sizeof(ivBytes), (jbyte *) ivBytes);
+    if ((*env)->ExceptionCheck(env)) {
+        return;
+    }
+    jbyte *bufferBytes = (*env)->GetByteArrayElements(env, buffer, NULL);
+    if (bufferBytes == NULL) {
+        return;
+    }
+
+    AES_KEY aesKey;
+    AES_set_encrypt_key(keyBytes, 256, &aesKey);
+    uint8_t *data = (uint8_t *) bufferBytes + offset;
+    const uint64_t counterSpan = (UINT64_C(1) << 32) * AES_BLOCK_SIZE;
+    uint64_t offsetInSpan = (uint64_t) fileOffset % counterSpan;
+    while (length > 0) {
+        uint32_t block = (uint32_t) (offsetInSpan / AES_BLOCK_SIZE);
+        uint8_t counter[AES_BLOCK_SIZE];
+        memcpy(counter, ivBytes, sizeof(counter));
+        counter[12] = (uint8_t) (block >> 24);
+        counter[13] = (uint8_t) (block >> 16);
+        counter[14] = (uint8_t) (block >> 8);
+        counter[15] = (uint8_t) block;
+
+        uint8_t count[AES_BLOCK_SIZE] = {0};
+        unsigned int num = 0;
+        size_t skip = (size_t) (offsetInSpan % AES_BLOCK_SIZE);
+        if (skip != 0) {
+            uint8_t discarded[AES_BLOCK_SIZE] = {0};
+            AES_ctr128_encrypt(discarded, discarded, skip, &aesKey, counter, count, &num);
+        }
+        uint64_t remainingInSpan = counterSpan - offsetInSpan;
+        size_t chunk = (uint64_t) length < remainingInSpan ? (size_t) length : (size_t) remainingInSpan;
+        AES_ctr128_encrypt(data, data, chunk, &aesKey, counter, count, &num);
+        data += chunk;
+        length -= (jint) chunk;
+        offsetInSpan = 0;
+    }
+    (*env)->ReleaseByteArrayElements(env, buffer, bufferBytes, 0);
+}
+
 JNIEXPORT void Java_org_telegram_messenger_Utilities_aesCbcEncryptionByteArray(JNIEnv *env, jclass class, jbyteArray buffer, jbyteArray key, jbyteArray iv, jint offset, jint length, jint fileOffset, jint encrypt) {
     unsigned char *bufferBuff = (unsigned char *) (*env)->GetByteArrayElements(env, buffer, NULL);
     unsigned char *keyBuff = (unsigned char *) (*env)->GetByteArrayElements(env, key, NULL);

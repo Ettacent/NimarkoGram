@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Keshdan o‘chirish</string>
+    <string name="NM_ClearedFromCache">Keshdan olib tashlandi</string>
+    <string name="NM_CopyCallback">Qayta chaqiruv ma’lumotlarini nusxalash</string>
+    <string name="NM_CopyID">Foydalanuvchi ID raqamini nusxalash</string>
+    <string name="NM_CopyInlineQuery">Ichki so‘rovni nusxalash</string>
+    <string name="NM_CopyPhoto">Suratni nusxalash</string>
+    <string name="NM_CopyPhotoAsSticker">Suratni stiker qilib nusxalash</string>
+    <string name="NM_CopyReportDetails">Shikoyat tafsilotlarini nusxalash</string>
+    <string name="NM_CopySetId">To‘plam ID raqamini nusxalash</string>
+    <string name="NM_CopyTitle">Sarlavhani nusxalash</string>
+    <string name="NM_Copy_Coordinates">Koordinatalar</string>
+    <string name="NM_DoNotRemindAgain">Boshqa eslatilmasin</string>
+    <string name="NM_ExportSettings">Sozlamalarni eksport qilish</string>
+    <string name="NM_FoldersTypeIcons">Faqat belgilar</string>
+    <string name="NM_FoldersTypeIconsTitles">Belgilar va nomlar</string>
+    <string name="NM_FoldersTypeTitles">Faqat nomlar</string>
+    <string name="NM_GetEmojiPack">Emoji olish</string>
+    <string name="NM_ImportSettings">Sozlamalarni import qilish</string>
+    <string name="NM_ImportSettingsAlert">Sozlamalar almashtirilsinmi? Noma’lum manbalardan sozlamalarni import qilish ilovaning ishlamay qolishiga olib kelishi mumkin.</string>
+    <string name="NM_OpenEmojiPack">Emojini olish uchun bosing</string>
+    <string name="NM_OpenStickerPack">Stikerni olish uchun bosing</string>
+    <string name="NM_PasskeyInfo2">Bu funksiya faqat maxsus ruxsatga ega ilovalar uchun ishonch sozlamalarini boshqarishga imkon beradigan **Bitwarden** va **KeePassDX** kabi parol menejerlarida ishlaydi.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Kirish uchun mos hisob ma’lumotlari mavjud emas.</string>
+    <string name="NM_PasskeyUnsupportedMessage">**Bitwarden** yoki **KeePassDX** kabi boshqa parol menejerini sinab ko‘ring.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Parol menejeri qo‘llab-quvvatlanmaydi</string>
+    <string name="NM_PhotoCopied">Surat almashish buferiga nusxalandi.</string>
+    <string name="NM_ProfileBackground">Profil fonini qo‘llash</string>
+    <string name="NM_QRLoginMessage">Kirish uchun QR kodni boshqa qurilma bilan skanerlang.</string>
+    <string name="NM_QRLoginTitle">QR kod orqali kirish</string>
+    <string name="NM_ReportDetailsCopied">Shikoyat tafsilotlari almashish buferiga nusxalandi.</string>
+    <string name="NM_RestartToApply">Kuchga kirishi uchun ilovani qayta ishga tushiring.</string>
+    <string name="NM_SafeStars_buy_Telegram">Telegram orqali yulduzlar xarid qilish</string>
+    <string name="NM_SaveSticker">Stikerni saqlash</string>
+    <string name="NM_SendPhotoAsSticker">Stiker sifatida yuborish</string>
+    <string name="NM_SortByDate">Xabar sanasi bo‘yicha saralash</string>
+    <string name="NM_SwipeToUnarchive">Arxivdan chiqarish uchun chapga suring</string>
+    <string name="NM_SwitchedToAccount">**%1$s** hisobiga o‘tildi</string>
+    <string name="NM_TranslationLanguage">Tarjima tili</string>
+</resources>

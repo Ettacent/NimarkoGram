@@ -241,7 +241,7 @@ public final class PipCoordinator {
             if (this.activity != activity) return;
             if (!isRegistered(session)) continue;
             if (session.state == PipSession.STATE_FLOATING && session.floating != null && !session.floating.isOverlay()) {
-                session.content.pause();
+                session.content.pauseForAppBackground();
                 session.invalidate();
             }
         }

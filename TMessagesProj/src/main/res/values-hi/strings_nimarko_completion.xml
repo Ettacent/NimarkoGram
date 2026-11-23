@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">कैश से हटाएँ</string>
+    <string name="NM_ClearedFromCache">कैश से हटा दिया गया</string>
+    <string name="NM_CopyCallback">कॉलबैक डेटा कॉपी करें</string>
+    <string name="NM_CopyID">यूज़र आईडी कॉपी करें</string>
+    <string name="NM_CopyInlineQuery">इनलाइन क्वेरी कॉपी करें</string>
+    <string name="NM_CopyPhoto">फ़ोटो कॉपी करें</string>
+    <string name="NM_CopyPhotoAsSticker">फ़ोटो स्टिकर के तौर पर कॉपी करें</string>
+    <string name="NM_CopyReportDetails">रिपोर्ट का विवरण कॉपी करें</string>
+    <string name="NM_CopySetId">पैक की आईडी कॉपी करें</string>
+    <string name="NM_CopyTitle">शीर्षक कॉपी करें</string>
+    <string name="NM_Copy_Coordinates">निर्देशांक</string>
+    <string name="NM_DoNotRemindAgain">फिर याद न दिलाएँ</string>
+    <string name="NM_ExportSettings">सेटिंग एक्सपोर्ट करें</string>
+    <string name="NM_FoldersTypeIcons">सिर्फ़ आइकन</string>
+    <string name="NM_FoldersTypeIconsTitles">आइकन और नाम</string>
+    <string name="NM_FoldersTypeTitles">सिर्फ़ नाम</string>
+    <string name="NM_GetEmojiPack">इमोजी पाएँ</string>
+    <string name="NM_ImportSettings">सेटिंग इंपोर्ट करें</string>
+    <string name="NM_ImportSettingsAlert">क्या मौजूदा सेटिंग बदलनी हैं? अनजान स्रोतों से सेटिंग इम्पोर्ट करने पर ऐप काम करना बंद कर सकता है।</string>
+    <string name="NM_OpenEmojiPack">इमोजी पाने के लिए टैप करें</string>
+    <string name="NM_OpenStickerPack">स्टिकर पाने के लिए टैप करें</string>
+    <string name="NM_PasskeyInfo2">यह सुविधा सिर्फ़ **Bitwarden** और **KeePassDX** जैसे पासवर्ड मैनेजर के साथ काम करती है, जो विशेषाधिकार वाले ऐप्स की भरोसे से जुड़ी सेटिंग प्रबंधित करने देते हैं।</string>
+    <string name="NM_PasskeyNoCredentialAvailable">साइन इन करने के लिए कोई उपयुक्त क्रेडेंशियल नहीं है।</string>
+    <string name="NM_PasskeyUnsupportedMessage">**Bitwarden** या **KeePassDX** जैसा कोई दूसरा पासवर्ड मैनेजर आज़माएँ।</string>
+    <string name="NM_PasskeyUnsupportedTitle">यह पासवर्ड मैनेजर समर्थित नहीं है</string>
+    <string name="NM_PhotoCopied">फ़ोटो क्लिपबोर्ड में कॉपी हो गई।</string>
+    <string name="NM_ProfileBackground">प्रोफ़ाइल की पृष्ठभूमि लगाएँ</string>
+    <string name="NM_QRLoginMessage">साइन इन करने के लिए किसी दूसरे डिवाइस से QR कोड स्कैन करें।</string>
+    <string name="NM_QRLoginTitle">QR कोड से साइन इन</string>
+    <string name="NM_ReportDetailsCopied">रिपोर्ट का विवरण क्लिपबोर्ड में कॉपी हो गया।</string>
+    <string name="NM_RestartToApply">रीस्टार्ट करना होगा</string>
+    <string name="NM_SafeStars_buy_Telegram">Telegram से स्टार खरीदें</string>
+    <string name="NM_SaveSticker">स्टिकर सेव करें</string>
+    <string name="NM_SendPhotoAsSticker">स्टिकर के रूप में भेजें</string>
+    <string name="NM_SortByDate">मैसेज की तारीख के अनुसार क्रम लगाएँ</string>
+    <string name="NM_SwipeToUnarchive">आर्काइव से हटाने के लिए बाईं ओर स्वाइप करें</string>
+    <string name="NM_SwitchedToAccount">अब **%1$s** खाता चुना गया है</string>
+    <string name="NM_TranslationLanguage">अनुवाद की भाषा</string>
+</resources>

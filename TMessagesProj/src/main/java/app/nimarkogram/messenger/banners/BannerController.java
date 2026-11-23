@@ -114,6 +114,7 @@ public final class BannerController {
     private final Map<CacheKey, Long> existsTimes = new ConcurrentHashMap<>();
     private final Set<Scope> statusFetching = ConcurrentHashMap.newKeySet();
     private final Set<Scope> moderationSending = ConcurrentHashMap.newKeySet();
+    private volatile Scope checkingSubmission;
     private final Set<Scope> settingsRefreshing = ConcurrentHashMap.newKeySet();
     private Scope settingsRefreshOwner;
     private long settingsRefreshAfter;
@@ -218,6 +219,10 @@ public final class BannerController {
         Scope owner = currentScope;
         return owner != null && moderationSending.contains(owner);
     }
+    public boolean isCheckingSubmission() {
+        Scope owner = currentScope;
+        return owner != null && owner == checkingSubmission;
+    }
     public boolean isStatusRefreshing() {
         Scope owner = currentScope;
         return owner != null && settingsRefreshing.contains(owner);
@@ -259,6 +264,7 @@ public final class BannerController {
             synchronized (statusStateLock) {
                 statusRevision++;
                 moderationRevision++;
+                checkingSubmission = null;
                 hideAvatarRevision++;
                 statusActivityRevision++;
                 hideAvatarPendingScope = null;
@@ -766,14 +772,14 @@ public final class BannerController {
             final long startRevision;
             final long startActivityRevision;
             synchronized (statusStateLock) {
-                if (!isCurrentScope(scope) || statusFetching.contains(scope)) return;
+                if (!isCurrentScope(scope) || statusFetching.contains(scope) || moderationSending.contains(scope)) return;
                 startRevision = statusRevision;
                 startActivityRevision = statusActivityRevision;
             }
             JsonObject d = readJson(statusFile(scope));
             if (d == null || !isCurrentScope(scope)) return;
             synchronized (statusStateLock) {
-                if (!isCurrentScope(scope)
+                if (!isCurrentScope(scope) || moderationSending.contains(scope)
                         || statusRevision != startRevision
                         || statusActivityRevision != startActivityRevision) {
                     return;
@@ -842,7 +848,7 @@ public final class BannerController {
         if (scope == null || scope.uid == 0L) return STATUS_SKIPPED;
         final long requestRevision;
         synchronized (statusStateLock) {
-            if (!isCurrentScope(scope)) return STATUS_SKIPPED;
+            if (!isCurrentScope(scope) || moderationSending.contains(scope)) return STATUS_SKIPPED;
             if (hideAvatarWorkerRunning) {
                 hideAvatarReconcileScope = scope;
                 hideAvatarReconcileAttemptsLeft = 2;
@@ -944,6 +950,61 @@ public final class BannerController {
     }
 
 
+    private boolean ownsSubmission(Scope scope, long revision) {
+        synchronized (statusStateLock) {
+            return revision >= 0 && revision == moderationRevision && isCurrentScope(scope);
+        }
+    }
+
+    private boolean commitModerationStatus(Scope scope, long revision, String status) {
+        synchronized (statusStateLock) {
+            long committed = finishStatusMutationLocked(scope, revision, true);
+            if (committed < 0) return false;
+            myStatus = status;
+            statusEverFetched = true;
+            persistCurrentStatusLocked(scope, committed);
+            return true;
+        }
+    }
+
+    private void reconcileSubmission(Scope scope, long revision) {
+        final long avatarSerial;
+        final boolean avatarWasIdle;
+        synchronized (statusStateLock) {
+            if (!ownsSubmission(scope, revision)) return;
+            checkingSubmission = scope;
+            avatarSerial = hideAvatarRequestSerial;
+            avatarWasIdle = !hideAvatarWorkerRunning;
+        }
+        reloadSettings();
+        uiModeration(scope, revision, R.string.NM_BAN_SubmitChecking);
+        BannerHttp.Status status = BannerHttp.checkSubmissionStatus(scope.uid);
+        int notice = R.string.NM_BAN_SubmitUnconfirmed;
+        if (status.ok) {
+            synchronized (statusStateLock) {
+                long committed = finishStatusMutationLocked(scope, revision, true);
+                if (committed < 0) return;
+                myStatus = status.status;
+                if (avatarWasIdle && !hideAvatarWorkerRunning && avatarSerial == hideAvatarRequestSerial) {
+                    myHideAvatar = status.hideAvatar;
+                    myHasSound = status.hasSound;
+                    myStatusRaw = status.rawJson;
+                }
+                statusEverFetched = true;
+                persistCurrentStatusLocked(scope, committed);
+            }
+            if ("pending".equals(status.status)) {
+                clearMyCache(key(scope, scope.uid));
+                notice = R.string.NM_BAN_SubmitPendingOnServer;
+            } else if ("approved".equals(status.status)) {
+                loadBannerAsync(key(scope, scope.uid));
+                notice = R.string.NM_BAN_SubmitApprovedOnServer;
+            } else if ("blocked".equals(status.status)) {
+                notice = R.string.NM_BAN_BlockedError;
+            }
+        }
+        uiModeration(scope, revision, notice);
+    }
     public void submitModeration(File tmp, String ext, long size) {
         final Scope operationScope = scope();
         if (!moderationSending.add(operationScope)) {
@@ -955,63 +1016,56 @@ public final class BannerController {
         executor.submit(() -> {
             try {
                 long my = operationScope.uid;
-                if (my == 0 || operationRevision < 0L) { uiErr(R.string.NM_BAN_IdError); safeRemove(tmp); return; }
-                uiInfo(R.string.NM_BAN_Sending);
+                if (!ownsSubmission(operationScope, operationRevision)) return;
+                if (my == 0) { uiModeration(operationScope, operationRevision, R.string.NM_BAN_IdError); return; }
+                uiModeration(operationScope, operationRevision, R.string.NM_BAN_Sending);
                 String token = ensureToken(operationScope);
-                if (TextUtils.isEmpty(token)) { safeRemove(tmp); uiErr(R.string.NM_BAN_IdError); return; }
+                if (!ownsSubmission(operationScope, operationRevision)) return;
+                if (TextUtils.isEmpty(token)) { uiModeration(operationScope, operationRevision, R.string.NM_BAN_IdError); return; }
                 BannerHttp.SubmitResult r = BannerHttp.submit(tmp, ext, my, size, token);
                 if (r.httpCode == 401) {
+                    if (!ownsSubmission(operationScope, operationRevision)) return;
                     BannerConfig.setAuthToken(operationScope.account, operationScope.uid, "");
                     token = ensureToken(operationScope);
+                    if (!ownsSubmission(operationScope, operationRevision)) return;
                     if (!TextUtils.isEmpty(token)) r = BannerHttp.submit(tmp, ext, my, size, token);
                 }
-                safeRemove(tmp);
-                if (!isCurrentScope(operationScope)) return;
-                if (r.httpCode == 200) {
-                    if (r.success) {
-                        synchronized (statusStateLock) {
-                            long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
-                            if (committedRevision < 0L) return;
-                            myStatus = "pending";
-                            statusEverFetched = true;
-                            persistCurrentStatusLocked(operationScope, committedRevision);
-                        }
-                        clearMyCache(key(operationScope, operationScope.uid));
-                        uiOk(R.string.NM_BAN_SentOk);
-                    } else {
-                        uiErrText(r.error != null ? r.error : LocaleController.getString(R.string.NM_BAN_StatusUnknown));
-                    }
-                } else if (r.httpCode == 401) {
-                    uiErr(R.string.NM_BAN_IdError);
-                } else if (r.httpCode == 413) {
-                    uiErr(R.string.NM_BAN_FileTooBig);
-                } else if (r.httpCode == 429) {
-                    uiErr(R.string.NM_BAN_RateLimited);
-                } else if (r.httpCode == 403) {
-                    synchronized (statusStateLock) {
-                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
-                        if (committedRevision < 0L) return;
-                        myStatus = "blocked";
-                        statusEverFetched = true;
-                        persistCurrentStatusLocked(operationScope, committedRevision);
-                    }
-                    uiErr(R.string.NM_BAN_BlockedError);
-                } else if (r.httpCode == 409) {
-                    synchronized (statusStateLock) {
-                        long committedRevision = finishStatusMutationLocked(operationScope, operationRevision, true);
-                        if (committedRevision < 0L) return;
-                        myStatus = "pending";
-                        statusEverFetched = true;
-                        persistCurrentStatusLocked(operationScope, committedRevision);
-                    }
-                    uiErr(R.string.NM_BAN_PendingError);
-                } else {
-                    uiErrText(LocaleController.getString(R.string.NM_BAN_StatusUnknown) + ": " + r.httpCode);
+                if (!ownsSubmission(operationScope, operationRevision)) return;
+                if (r.needsStatusCheck()) {
+                    reconcileSubmission(operationScope, operationRevision);
+                    return;
                 }
-            } catch (Throwable t) {
-                safeRemove(tmp);
+                final int notice;
+                if (r.httpCode == 200 && r.success) {
+                    if (!commitModerationStatus(operationScope, operationRevision, "pending")) return;
+                    clearMyCache(key(operationScope, operationScope.uid));
+                    notice = R.string.NM_BAN_SentOk;
+                } else if (r.httpCode == 401) {
+                    notice = R.string.NM_BAN_IdError;
+                } else if (r.httpCode == 413) {
+                    notice = R.string.NM_BAN_FileTooBig;
+                } else if (r.httpCode == 429) {
+                    notice = R.string.NM_BAN_RateLimited;
+                } else if (r.httpCode == 400 && "invalid_file_type".equals(r.error)) {
+                    notice = R.string.NM_BAN_InvalidFormat;
+                } else if (r.httpCode == 403 && "user_blocked".equals(r.error)) {
+                    if (!commitModerationStatus(operationScope, operationRevision, "blocked")) return;
+                    notice = R.string.NM_BAN_BlockedError;
+                } else if (r.httpCode == 409) {
+                    if (!commitModerationStatus(operationScope, operationRevision, "pending")) return;
+                    notice = R.string.NM_BAN_PendingError;
+                } else {
+                    notice = R.string.NM_BAN_SubmitRefused;
+                }
+                uiModeration(operationScope, operationRevision, notice);
+            } catch (RuntimeException t) {
                 FileLog.e("nimarko-banner: submitModeration failed", t);
+                uiModeration(operationScope, operationRevision, R.string.NM_BAN_SubmitUnconfirmed);
             } finally {
+                safeRemove(tmp);
+                synchronized (statusStateLock) {
+                    if (checkingSubmission == operationScope) checkingSubmission = null;
+                }
                 moderationSending.remove(operationScope);
                 if (isCurrentScope(operationScope)) invalidate();
                 reloadSettings();
@@ -1477,12 +1531,19 @@ public final class BannerController {
 
 
     private void uiOk(@StringRes int res) { uiBulletin(LocaleController.getString(res)); }
-    private void uiInfo(@StringRes int res) { uiBulletin(LocaleController.getString(res)); }
     private void uiErr(@StringRes int res) { uiBulletin(LocaleController.getString(res)); }
-    private void uiErrText(String text) { uiBulletin(text); }
 
     private void uiBulletin(String text) {
+        uiBulletin(text, null, -1, false);
+    }
+
+    private void uiModeration(Scope scope, long revision, @StringRes int res) {
+        uiBulletin(LocaleController.getString(res), scope, revision, res == R.string.NM_BAN_SubmitChecking);
+    }
+
+    private void uiBulletin(String text, Scope owner, long revision, boolean checking) {
         AndroidUtilities.runOnUIThread(() -> {
+            if (owner != null && (!ownsSubmission(owner, revision) || checking && checkingSubmission != owner)) return;
             try {
                 BaseFragment f = LaunchActivity.getLastFragment();
                 if (f != null) {

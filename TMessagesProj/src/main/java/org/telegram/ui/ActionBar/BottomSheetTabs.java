@@ -25,6 +25,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.TextPaint;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -72,6 +73,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
+import java.util.Map;
+
+import app.nimarkogram.messenger.AppConfig;
 import app.nimarkogram.messenger.icons.IconResources;
 public class BottomSheetTabs extends FrameLayout {
 
@@ -460,13 +464,12 @@ public class BottomSheetTabs extends FrameLayout {
     }
 
     public boolean tryRemoveTabWith(ArticleViewer articleViewer) {
-        for (int account = 0; account < this.tabs.size(); ++account) {
-            ArrayList<WebTabData> tabs = this.tabs.get(account);
-            if (tabs != null) {
-                for (WebTabData tab : tabs) {
+        if (articleViewer == null) return false;
+        for (Map.Entry<Integer, ArrayList<WebTabData>> entry : tabs.entrySet()) {
+            for (WebTabData tab : entry.getValue()) {
                     if (tab.articleViewer == articleViewer) {
-                        return removeTab(account, tab, true);
-                    }
+                    removeTab(entry.getKey(), tab, true);
+                    return true;
                 }
             }
         }
@@ -811,9 +814,12 @@ public class BottomSheetTabs extends FrameLayout {
         private Drawable iconDrawable;
         private int iconDrawableColor = Color.WHITE;
         private Resources iconDrawableResources;
+        private IconResources iconDrawablePack;
         private long iconDrawableGeneration;
         private int iconDrawableDensity;
         private Configuration iconDrawableConfiguration;
+        private int articleIconSlotWidth, articleIconSlotHeight;
+        private boolean articleIconUsesMaster;
         private final Text title;
         private Text overrideTitle;
 
@@ -852,21 +858,40 @@ public class BottomSheetTabs extends FrameLayout {
             if (tab == null || !tab.isArticle() || parentView == null) {
                 return null;
             }
-            final Resources resources = parentView.getContext().getResources();
+            final Context context = parentView.getContext();
+            final Resources resources = context.getResources();
             if (resources == null) {
                 return null;
             }
-            final long generation = resources instanceof IconResources
-                    ? ((IconResources) resources).getReplacementGeneration() : -1L;
+            IconResources pack = resources instanceof IconResources ? (IconResources) resources : null;
+            if (pack == null) {
+                Context app = context.getApplicationContext();
+                Resources appResources = app == null ? null : app.getResources();
+                if (appResources instanceof IconResources) pack = (IconResources) appResources;
+            }
+            final long generation = pack != null ? pack.getReplacementGeneration() : -1L;
             final int density = resources.getDisplayMetrics().densityDpi;
             final Configuration configuration = resources.getConfiguration();
-            final boolean reload = iconDrawableResources != resources
+            final boolean reload = iconDrawableResources != resources || iconDrawablePack != pack
                     || iconDrawableGeneration != generation || iconDrawableDensity != density
                     || !configuration.equals(iconDrawableConfiguration);
             if (reload) {
-                final Drawable drawable = resources.getDrawable(R.drawable.msg_instant);
-                iconDrawable = drawable == null ? null : drawable.mutate();
+                Resources art = resources instanceof IconResources ? ((IconResources) resources).getOriginalResources() : resources;
+                Drawable slot = art.getDrawable(R.drawable.msg_instant, context.getTheme());
+                articleIconSlotWidth = slot.getIntrinsicWidth();
+                articleIconSlotHeight = slot.getIntrinsicHeight();
+                int selection = pack == null ? AppConfig.ICON_REPLACE_NONE : pack.getAppliedSelection();
+                articleIconUsesMaster = selection == AppConfig.ICON_REPLACE_LIQUID_GLASS || selection == AppConfig.ICON_REPLACE_PLUMPY;
+                if (articleIconUsesMaster) {
+                    int id = selection == AppConfig.ICON_REPLACE_LIQUID_GLASS ? R.drawable.filled_boost_plus_liquid : R.drawable.msg_instant_plumpy;
+                    iconDrawable = art.getDrawableForDensity(id, DisplayMetrics.DENSITY_XXXHIGH, context.getTheme()).mutate();
+                } else if (selection == AppConfig.ICON_REPLACE_SOLAR) {
+                    iconDrawable = art.getDrawable(R.drawable.ng_compact_instant_solar, context.getTheme()).mutate();
+                } else {
+                    iconDrawable = slot.mutate();
+                }
                 iconDrawableResources = resources;
+                iconDrawablePack = pack;
                 iconDrawableGeneration = generation;
                 iconDrawableDensity = density;
                 iconDrawableConfiguration = new Configuration(configuration);
@@ -1014,7 +1039,7 @@ public class BottomSheetTabs extends FrameLayout {
                 final int sz = dp(24);
 
                 final int h = sz;
-                final int w = (int) (sz / (float) articleIcon.getIntrinsicHeight() * articleIcon.getIntrinsicWidth());
+                final int w = (int) (sz / (float) articleIconSlotHeight * articleIconSlotWidth);
                 final float s = .7f;
 
                 AndroidUtilities.rectTmp2.set(
@@ -1024,6 +1049,13 @@ public class BottomSheetTabs extends FrameLayout {
                     (int) (bounds.centerY() + h / 2f * s)
                 );
                 articleIcon.setAlpha((int) (0xFF * alpha * contentAlpha));
+                if (articleIconUsesMaster) {
+                    int artWidth = Math.round(AndroidUtilities.rectTmp2.height()
+                            * ((float) articleIcon.getIntrinsicWidth() / articleIcon.getIntrinsicHeight()));
+                    int artLeft = Math.round(AndroidUtilities.rectTmp2.exactCenterX() - artWidth / 2f);
+                    AndroidUtilities.rectTmp2.left = artLeft;
+                    AndroidUtilities.rectTmp2.right = artLeft + artWidth;
+                }
                 articleIcon.setBounds(AndroidUtilities.rectTmp2);
                 articleIcon.draw(canvas);
 

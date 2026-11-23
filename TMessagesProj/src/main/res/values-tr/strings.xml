@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">Devam et</string>
+    <string name="Retry">Tekrar dene</string>
     <string name="UseProxyWeb">WEB proxy</string>
     <string name="UseProxyWebInfo">WEB proxy, ayrı bir WebView içinde bir HTTPS sayfası kullanır. Protokol şeması veya yol içermeyen bir ana makine adı ve 16 baytlık bir MTProxy gizli anahtarı girin. Bu deneysel uygulama, uygulama ön plandayken test edilmek üzere tasarlanmıştır ve güncel Android System WebView gerektirir.</string>
     <string name="NM_Menu_TelegramPlus">Modern mesaj menüsü</string>
@@ -11,21 +15,21 @@
     <string name="InstallPlugin">Yükle</string>
     <string name="Links">Bağlantılar</string>
     <string name="PluginDelete">Eklentiyi Sil</string>
-    <string name="PluginDeleteInfo">**%1$s** eklentisini silmek istediğinize emin misiniz?</string>
-    <string name="PluginDisableError">**%1$s** devre dışı bırakılamadı.</string>
-    <string name="PluginEnableError">**%1$s** etkinleştirilemedi.</string>
-    <string name="PluginEngineNotEnabled">**%1$s** ayarlarını açmak için **Eklenti Motorunu** etkinleştirin.</string>
-    <string name="PluginHasNoSettings">**%1$s** için herhangi bir ayar yok.</string>
-    <string name="PluginInstallError">**%1$s** yüklenemedi.</string>
-    <string name="PluginInstalled">**%1$s** başarıyla yüklendi.</string>
-    <string name="PluginInstalledButFailedToEnable">**%1$s** yüklendi, ancak etkinleştirilirken bir hata oluştu.</string>
+    <string name="PluginDeleteInfo">%s silinsin mi?</string>
+    <string name="PluginDisableError">Eklenti devre dışı bırakılamadı: %s</string>
+    <string name="PluginEnableError">Eklenti etkinleştirilemedi: %s</string>
+    <string name="PluginEngineNotEnabled">Eklenti motoru kapalı. %s kullanmak için motoru etkinleştirin.</string>
+    <string name="PluginHasNoSettings">%s için ayar yok.</string>
+    <string name="PluginInstallError">Eklenti yüklenemedi.</string>
+    <string name="PluginInstalled">%s eklentisi yüklendi.</string>
+    <string name="PluginInstalledButFailedToEnable">Eklenti yüklendi ancak etkinleştirilemedi.</string>
     <string name="PluginIsNotResponding">Eklenti yanıt vermiyor.</string>
     <string name="PluginIsNotRespondingAlert">%1$s yanıt vermiyor</string>
     <string name="PluginNoAuthor">Bilinmeyen Yazar</string>
     <string name="PluginNoDescription">Açıklama sağlanmamış.</string>
-    <string name="PluginNotEnabled">**%1$s** eklentisini yüklemek için **Eklenti Motorunu** etkinleştirin.</string>
-    <string name="PluginNotFound">**%1$s** bulunamadı.</string>
-    <string name="PluginUpdated">**%1$s** başarıyla güncellendi.</string>
+    <string name="PluginNotEnabled">%s eklentisi etkin değil.</string>
+    <string name="PluginNotFound">%s eklentisi bulunamadı.</string>
+    <string name="PluginUpdated">%s eklentisi güncellendi.</string>
     <string name="PluginVersion">Sürüm</string>
     <string name="Plugins">Eklentiler</string>
     <string name="PluginsCompactView">Eklentiler Kompakt Görünüm</string>
@@ -33,14 +37,14 @@
     <string name="PluginsDisableArtInfo">ART Profile Saver\'ı devre dışı bırakarak eklenti kancası (hook) hatalarını önler.</string>
     <string name="PluginsDocumentation">Dokümantasyon</string>
     <string name="PluginsEngine">Eklenti Motoru</string>
-    <string name="PluginsInfo">Eklentileri @exteraPlugins adresinde bulabilirsiniz.</string>
+    <string name="PluginsInfo">Eklenti motoru, uygulamaya özellik ekleyen Python betiklerinin yüklenmesini sağlar.</string>
     <string name="PluginsNotFound">Eklenti bulunamadı.</string>
     <string name="PluginsSafeMode">Güvenli Mod</string>
     <string name="PluginsSafeModeInfo">Eklenti Motoru bir çökme nedeniyle devre dışı bırakıldı. Güvenli modun devre dışı bırakılması öngörülemeyen sonuçlara yol açabilir.</string>
     <string name="PluginsTrusted">Güvenilir Eklentiler</string>
-    <string name="Preferences">exteraGram Ayarları</string>
-    <string name="ResetPluginSettings">**%1$s** ayarları sıfırlandı.</string>
-    <string name="ResetPluginSettingsInfo">**%1$s** ayarlarını varsayılana sıfırlamak istediğinize emin misiniz?</string>
+    <string name="Preferences">Tercihler</string>
+    <string name="ResetPluginSettings">%s eklentisinin ayarları sıfırlandı.</string>
+    <string name="ResetPluginSettingsInfo">%s eklentisinin tüm ayarları varsayılana sıfırlansın mı?</string>
     <string name="RestartRequired">Değişikliklerin etkili olması için uygulamayı yeniden başlatın.</string>
     <string name="UpdatePlugin">Güncelle</string>
-<string name="ForkedByNimarko">Nimarko tarafından çatallandı</string><string name="PluginIncompatible">Uyumsuz eklenti</string><string name="PluginIncompatibleInfo">Bu eklenti uygulamanın daha yeni bir sürümünü gerektiriyor.</string><string name="PluginsDevMode">Geliştirici modu</string><string name="PluginsDevServerLaunched">Geliştirme sunucusu başlatıldı.</string><string name="PluginsDevServerStopped">Geliştirme sunucusu durduruldu.</string><string name="PluginsDisableAll">Tümünü devre dışı bırak</string><string name="PluginsDisableAllConfirm">Tüm etkin eklentiler devre dışı bırakılsın mı?</string><string name="PluginsDisabledN">%1$d eklenti devre dışı bırakıldı.</string><string name="PluginsPoweredBy"><![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]> eklenti motoru tarafından sağlanmaktadır.</string><string name="PluginsPySdkAutoUpdate">SDK\'yı otomatik güncelle</string><string name="PluginsPySdkCheckUpdates">SDK güncellemelerini denetle</string><string name="PluginsPySdkEnableBetaVersion">Beta SDK kullan</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">NimarkoGram\'da çevrimiçi güncellemeler devre dışı.</string><string name="PluginsRestartEngine">Motoru yeniden başlat</string><string name="PluginsRestartingEngine">Eklenti motoru yeniden başlatılıyor…</string><string name="PluginsRowSubtitle">Uygulamayı genişleten Python betikleri</string><string name="PluginsSafeModeInfo2">Tüm eklentiler devre dışı bırakıldı. Sorun çıkaranı bulmak için tek tek tekrar etkinleştirin.</string><string name="PluginsSafeModeOff">Güvenli mod devre dışı.</string><string name="PluginsSafeModeOn">Güvenli mod etkin. Eklentiler otomatik yüklenmeyecek.</string></resources>
+<string name="ForkedByNimarko">Nimarko tarafından çatallandı</string><string name="PluginIncompatible">Uyumsuz eklenti</string><string name="PluginIncompatibleInfo">Bu eklenti uygulamanın daha yeni bir sürümünü gerektiriyor.</string><string name="PluginsDevMode">Geliştirici modu</string><string name="PluginsDevServerLaunched">Geliştirme sunucusu başlatıldı.</string><string name="PluginsDevServerStopped">Geliştirme sunucusu durduruldu.</string><string name="PluginsDisableAll">Tümünü devre dışı bırak</string><string name="PluginsDisableAllConfirm">Tüm etkin eklentiler devre dışı bırakılsın mı?</string><string name="PluginsDisabledN">%1$d eklenti devre dışı bırakıldı.</string><string name="PluginsPoweredBy"><![CDATA[<a href="https://github.com/exteraSquad/exteraGram">exteraGram</a>]]> eklenti motoru tarafından sağlanmaktadır.</string><string name="PluginsPySdkAutoUpdate">SDK\'yı otomatik güncelle</string><string name="PluginsPySdkCheckUpdates">SDK güncellemelerini denetle</string><string name="PluginsPySdkEnableBetaVersion">Beta SDK kullan</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">NimarkoGram\'da çevrimiçi güncellemeler devre dışı.</string><string name="PluginsRestartEngine">Motoru yeniden başlat</string><string name="PluginsRestartingEngine">Eklenti motoru yeniden başlatılıyor…</string><string name="PluginsRowSubtitle">Uygulamayı genişleten Python betikleri</string><string name="PluginsSafeModeInfo2">Güvenli mod eklentilerin çalışmasını engeller. Kaydedilmiş eklenti raporları erişilebilir kalır.</string><string name="PluginsSafeModeOff">Güvenli mod devre dışı.</string><string name="PluginsSafeModeOn">Güvenli mod etkin. Eklentiler otomatik yüklenmeyecek.</string></resources>

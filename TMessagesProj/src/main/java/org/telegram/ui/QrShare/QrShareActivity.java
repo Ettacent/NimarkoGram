@@ -38,6 +38,8 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.OrientationController;
 import org.telegram.ui.ProfileActivity;
 
+import java.io.File;
+import java.io.FileOutputStream;
 public class QrShareActivity extends BaseFragment {
 
     private long userId, chatId;
@@ -99,7 +101,7 @@ public class QrShareActivity extends BaseFragment {
         pickOverlay = null;
         tabsStyled = false;
         nativeBarsOff = false;
-        saveAfterPermission = false;
+        pendingGalleryLink = null;
 
         final QrBackdrops backdrops = QrBackdrops.get(currentAccount);
         Backdrops.apply(backdrops.getList());
@@ -217,13 +219,21 @@ public class QrShareActivity extends BaseFragment {
             return;
         }
         final android.graphics.Bitmap bitmap = view.renderShareImage();
-        final Uri uri = bitmap != null ? AndroidUtilities.getBitmapShareUri(bitmap, "qr_tmp.jpg", android.graphics.Bitmap.CompressFormat.JPEG) : null;
+        Uri uri = null;
+        if (bitmap != null) {
+            try {
+                final String name = "qr_" + java.util.UUID.randomUUID() + ".jpg";
+                uri = AndroidUtilities.getBitmapShareUri(bitmap, name, android.graphics.Bitmap.CompressFormat.JPEG);
+            } finally {
+                bitmap.recycle();
+            }
+        }
         final Intent intent = new Intent(Intent.ACTION_SEND);
         if (uri != null) {
             intent.setType("image/*");
             intent.putExtra(Intent.EXTRA_STREAM, uri);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } else if (!TextUtils.isEmpty(link)) {
+        } else if (!TextUtils.isEmpty(link) && TextUtils.equals(link, view.getCurrentLink())) {
             intent.setType("text/plain");
             intent.putExtra(Intent.EXTRA_TEXT, link);
         } else {
@@ -247,19 +257,24 @@ public class QrShareActivity extends BaseFragment {
         sheet.show();
     }
 
-    private boolean saveAfterPermission;
+    private @Nullable String pendingGalleryLink;
 
     private void saveToGallery() {
         final android.app.Activity activity = getParentActivity();
-        if (activity == null || view == null || view.getCurrentLink() == null) {
+        final String link = view == null ? null : view.getCurrentLink();
+        if (activity == null || link == null) {
             return;
         }
         if (Build.VERSION.SDK_INT >= 23 && (Build.VERSION.SDK_INT <= 28 || org.telegram.messenger.BuildVars.NO_SCOPED_STORAGE)
             && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            saveAfterPermission = true;
+            final boolean alreadyRequested = pendingGalleryLink != null;
+            pendingGalleryLink = link;
+            if (!alreadyRequested) {
             activity.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, org.telegram.ui.BasePermissionsActivity.REQUEST_CODE_EXTERNAL_STORAGE);
+            }
             return;
         }
+        pendingGalleryLink = null;
         final int generation = viewGeneration;
         final java.util.function.BooleanSupplier navigationCurrent = captureNavigationRequest();
         final android.graphics.Bitmap bitmap = view.renderShareImage();
@@ -267,25 +282,37 @@ public class QrShareActivity extends BaseFragment {
             return;
         }
         Utilities.globalQueue.postRunnable(() -> {
-            final java.io.File file = new java.io.File(AndroidUtilities.getCacheDir(), "qr_code_" + System.currentTimeMillis() + ".png");
-            boolean written = false;
-            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
-                written = bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-            bitmap.recycle();
-            if (!written) {
-                return;
-            }
+            final File file = writeGalleryPng(bitmap);
+            if (file == null) return;
             AndroidUtilities.runOnUIThread(() -> {
                 final android.app.Activity a = getParentActivity();
-                if (a == null || generation != viewGeneration || !navigationCurrent.getAsBoolean()) return;
+                if (a == null || generation != viewGeneration || !navigationCurrent.getAsBoolean()
+                    || view == null || !link.equals(view.getCurrentLink())) {
+                    file.delete();
+                    return;
+                }
                 MediaController.saveFile(file.getAbsolutePath(), a, 0, file.getName(), "image/png", uri -> {
+                    file.delete();
                     if (view != null && generation == viewGeneration && navigationCurrent.getAsBoolean()) view.showSavedToast();
                 }, false);
             });
         });
+    }
+
+    private static @Nullable File writeGalleryPng(android.graphics.Bitmap bitmap) {
+        File file = null;
+        try {
+            file = File.createTempFile("qr_code_", ".png", AndroidUtilities.getCacheDir());
+            try (FileOutputStream out = new FileOutputStream(file)) {
+                if (bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)) return file;
+            }
+            } catch (Exception e) {
+                FileLog.e(e);
+        } finally {
+            bitmap.recycle();
+        }
+        if (file != null) file.delete();
+        return null;
     }
 
     private void onScanClick() {
@@ -396,11 +423,11 @@ public class QrShareActivity extends BaseFragment {
     public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == org.telegram.ui.BasePermissionsActivity.REQUEST_CODE_EXTERNAL_STORAGE) {
             final boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            if (saveAfterPermission && granted) {
-                saveAfterPermission = false;
+            final String link = pendingGalleryLink;
+            pendingGalleryLink = null;
+            if (granted && link != null && view != null && link.equals(view.getCurrentLink())) {
                 saveToGallery();
             }
-            saveAfterPermission = false;
             return;
         }
         if (getParentActivity() == null || requestCode != ActionIntroActivity.CAMERA_PERMISSION_REQUEST_CODE) {
@@ -1064,7 +1091,7 @@ public class QrShareActivity extends BaseFragment {
     @Override
     public void onFragmentDestroy() {
         ++viewGeneration;
-        saveAfterPermission = false;
+        pendingGalleryLink = null;
         restoreBars();
         super.onFragmentDestroy();
         unlockTransition();

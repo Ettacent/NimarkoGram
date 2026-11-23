@@ -1200,14 +1200,11 @@ public class ProfileActionsView extends View {
             }
 
             if (snapGeometryPending) {
-                prevRect.set(rect);
-                from.set(rect);
-                to.set(rect);
-                positionFraction.set(1f, true);
-                return;
+                from.top = to.top = rect.top;
+                from.bottom = to.bottom = rect.bottom;
             }
 
-            if (!rect.equals(to)) {
+            if (rect.left != to.left || rect.right != to.right) {
                 from.set(prevRect);
                 to.set(rect);
                 positionFraction.set(0f, true);

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Önbellekten kaldır</string>
+    <string name="NM_ClearedFromCache">Önbellekten kaldırıldı</string>
+    <string name="NM_CopyCallback">Geri çağırma verisini kopyala</string>
+    <string name="NM_CopyID">Kullanıcı kimliğini kopyala</string>
+    <string name="NM_CopyInlineQuery">Satır içi sorguyu kopyala</string>
+    <string name="NM_CopyPhoto">Fotoğrafı kopyala</string>
+    <string name="NM_CopyPhotoAsSticker">Fotoğrafı çıkartma olarak kopyala</string>
+    <string name="NM_CopyReportDetails">Şikâyet ayrıntılarını kopyala</string>
+    <string name="NM_CopySetId">Paket kimliğini kopyala</string>
+    <string name="NM_CopyTitle">Başlığı kopyala</string>
+    <string name="NM_Copy_Coordinates">Koordinatlar</string>
+    <string name="NM_DoNotRemindAgain">Bir daha hatırlatma</string>
+    <string name="NM_ExportSettings">Ayarları dışa aktar</string>
+    <string name="NM_FoldersTypeIcons">Yalnızca simgeler</string>
+    <string name="NM_FoldersTypeIconsTitles">Simge ve başlık</string>
+    <string name="NM_FoldersTypeTitles">Yalnızca başlıklar</string>
+    <string name="NM_GetEmojiPack">Emoji al</string>
+    <string name="NM_ImportSettings">Ayarları içe aktar</string>
+    <string name="NM_ImportSettingsAlert">Ayarların üzerine yazılsın mı? Bilinmeyen kaynaklardan ayarları içe aktarmak uygulamanın çalışmasını engelleyebilir.</string>
+    <string name="NM_OpenEmojiPack">Emojiyi almak için dokun</string>
+    <string name="NM_OpenStickerPack">Çıkartmayı almak için dokun</string>
+    <string name="NM_PasskeyInfo2">Bu özellik yalnızca **Bitwarden** ve **KeePassDX** gibi, ayrıcalıklı uygulamaların güven ayarlarını yönetmene izin veren parola yöneticileriyle çalışır.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Kullanılabilir bir kimlik bilgisi yok.</string>
+    <string name="NM_PasskeyUnsupportedMessage">**Bitwarden** veya **KeePassDX** gibi başka bir parola yöneticisi dene.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Parola yöneticisi desteklenmiyor</string>
+    <string name="NM_PhotoCopied">Fotoğraf panoya kopyalandı.</string>
+    <string name="NM_ProfileBackground">Profil arka planını uygula</string>
+    <string name="NM_QRLoginMessage">Giriş yapmak için QR kodunu başka bir cihazla tara.</string>
+    <string name="NM_QRLoginTitle">QR koduyla giriş</string>
+    <string name="NM_ReportDetailsCopied">Şikâyet ayrıntıları panoya kopyalandı.</string>
+    <string name="NM_RestartToApply">Değişikliklerin etkili olması için uygulamayı yeniden başlatın.</string>
+    <string name="NM_SafeStars_buy_Telegram">Telegram üzerinden Yıldız satın al</string>
+    <string name="NM_SaveSticker">Çıkartmayı kaydet</string>
+    <string name="NM_SendPhotoAsSticker">Çıkartma olarak gönder</string>
+    <string name="NM_SortByDate">Mesaj tarihine göre sırala</string>
+    <string name="NM_SwipeToUnarchive">Arşivden çıkarmak için sola kaydır</string>
+    <string name="NM_SwitchedToAccount">**%1$s** hesabına geçildi</string>
+    <string name="NM_TranslationLanguage">Çeviri dili</string>
+</resources>

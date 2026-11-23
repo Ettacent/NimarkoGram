@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
     <string name="NM_BAN_Attach">Attach banner</string>
     <string name="NM_BAN_SelectHint">Choose a photo or video up to 8 MB. It is sent for review automatically and, once approved, will be visible to everyone.</string>
     <string name="NM_BAN_AutoStatus">Status updates automatically while this screen is open.</string>
     <string name="NM_BAN_AccountChanged">Account changed. Select the file again.</string>
+    <string name="NM_BAN_SubmitChecking">Could not confirm the upload. Checking its status…</string>
+    <string name="NM_BAN_SubmitPendingOnServer">A banner is awaiting review. No need to send it again.</string>
+    <string name="NM_BAN_SubmitApprovedOnServer">An approved banner is on your profile. Check it before sending this file again.</string>
+    <string name="NM_BAN_SubmitUnconfirmed">Could not confirm this upload. Check the banner status before trying again.</string>
+    <string name="NM_BAN_SubmitRefused">The server declined this upload.</string>
 </resources>

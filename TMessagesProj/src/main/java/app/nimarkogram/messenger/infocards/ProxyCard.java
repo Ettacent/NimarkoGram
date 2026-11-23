@@ -18,8 +18,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.ProxyListActivity;
 
-import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
-import app.nimarkogram.messenger.wsbypass.WsBypassCore;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 
 public class ProxyCard extends BaseInfoCard implements NotificationCenter.NotificationCenterDelegate {
 
@@ -175,9 +174,7 @@ public class ProxyCard extends BaseInfoCard implements NotificationCenter.Notifi
     }
 
     private static boolean isOwnBypass(SharedConfig.ProxyInfo proxy) {
-        return proxy != null && proxy.getSettings() != null
-                && WsBypassCore.LOCAL_PROXY_HOST.equals(proxy.getSettings().getAddress())
-                && proxy.getSettings().getPort() == WsBypassConfig.localPort;
+        return ClientRelays.owns(proxy);
     }
     private static long displayPing(SharedConfig.ProxyInfo proxy, int account) {
         return isOwnBypass(proxy) ? ConnectionsManager.native_getCurrentMainPingTime(account) : proxy.ping;

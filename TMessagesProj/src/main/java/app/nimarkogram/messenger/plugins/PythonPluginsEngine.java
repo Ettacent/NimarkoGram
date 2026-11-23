@@ -3823,7 +3823,9 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
         } catch (Throwable t) {
             FileLog.e("nimarko: openInExternalApp failed", t);
             try {
-                BulletinFactory.of(safeLastFragment).createErrorBulletin(t.getMessage() != null ? t.getMessage() : "Failed to open plugin").show();
+                BulletinFactory.of(safeLastFragment)
+                        .createErrorBulletin(LocaleController.getString(R.string.NM_PluginOpenExternalFailed))
+                        .show();
             } catch (Throwable ignored) {}
         }
     }
@@ -6677,14 +6679,11 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                         BulletinFactory.of(baseFragment)
                                 .createSimpleBulletin(
                                         R.raw.error,
-                                        AndroidUtilities.replaceTags(
-                                                LocaleController.formatString(
-                                                        R.string.PluginInstallError,
-                                                        displayName)))
+                                        LocaleUtils.pluginInstallFailureText(displayName))
                                 .show());
             }
         } else {
-            AndroidUtilities.runOnUIThread(() -> BulletinFactory.of(baseFragment).createSimpleBulletin(R.raw.error, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginInstallError, displayName)), LocaleUtils.createCopySpan(baseFragment), () -> {
+            AndroidUtilities.runOnUIThread(() -> BulletinFactory.of(baseFragment).createSimpleBulletin(R.raw.error, LocaleUtils.pluginInstallFailureText(displayName), LocaleUtils.createCopySpan(baseFragment), () -> {
                 if (AndroidUtilities.addToClipboard(pluginValidationResultValidatePluginFromFile.error)) {
                     BulletinFactory.of(baseFragment).createCopyBulletin(LocaleController.getString(R.string.TextCopied)).show();
                 }

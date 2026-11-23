@@ -870,6 +870,11 @@ public final class QuoteCreator {
                         recycleBitmapLater(bitmap);
                         return;
                     }
+                    if (card.getWidth() != bitmapWidth || card.getHeight() != bitmapHeight) {
+                        recycleBitmapLater(bitmap);
+                        completePreview(generation, card);
+                        return;
+                    }
                     previewBitmap = bitmap;
                     card.setPreviewSnapshotMode(true);
                     drawBitmapPreview(generation, card, bitmap);

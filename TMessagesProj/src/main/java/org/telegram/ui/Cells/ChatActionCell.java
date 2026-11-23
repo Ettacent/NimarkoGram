@@ -214,7 +214,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         } else if (id == NotificationCenter.walletUpdate) {
             if (hasWalletActionLayout()) {
                 accessibilityText = null;
-                previousWidth = 0;
+                wasLayout = false;
                 requestLayout();
                 invalidate();
             }
@@ -702,7 +702,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
         messageObject.forceUpdate = false;
         hasReplyMessage = messageObject.replyMessageObject != null;
         DownloadController.getInstance(currentAccount).removeLoadingFileObserver(this);
-        previousWidth = 0;
+        wasLayout = false;
         isSpoilerRevealing = false;
         if (giftPremiumText != null && messageIdChanged) {
             giftPremiumText.detach();
@@ -1979,7 +1979,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
             }
         }
         int width = Math.max(dp(30), MeasureSpec.getSize(widthMeasureSpec));
-        if (previousWidth != width) {
+        if (!wasLayout || previousWidth != width) {
             wasLayout = true;
             previousWidth = width;
             buildLayout();

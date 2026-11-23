@@ -331,7 +331,6 @@
     <string name="VideoMessagesCameraAsk">一律詢問</string>
     <string name="VideoMessagesCameraFront">前置</string>
     <string name="VideoMessagesCameraRear">後置</string>
-    <string name="exteraAppName">NimarkoGram</string>
     <string name="NG_OpenEmojiPack">開啟表情符號套件</string>
     <string name="NG_OpenStickerPack">開啟貼圖套件</string>
     <string name="LivePhotosSavedHint_one">動態照片已儲存至圖庫</string>

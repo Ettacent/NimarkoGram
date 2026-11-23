@@ -510,11 +510,9 @@ public class JsonBottomSheet extends BottomSheet implements NotificationCenter.N
             messageIdTextView.setLines(2);
             messageIdTextView.setTextColor(getThemedColor(Theme.key_player_actionBarSubtitle));
             messageIdTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            StringBuilder sb = new StringBuilder();
-            sb.append("message ID: ");
-            sb.append(messageId);
-            sb.append("\nJSON Library: ");
-            sb.append(messageObject.messageOwner instanceof TLRPC.TL_messageService || !isJacksonSupportedAndEnabled() ? "Google GSON" : "Jackson");
+            StringBuilder sb = new StringBuilder(LocaleController.formatString(R.string.NM_MessageDetails_Id, Integer.toString(messageId)));
+            String library = messageObject.messageOwner instanceof TLRPC.TL_messageService || !isJacksonSupportedAndEnabled() ? "Google GSON" : "Jackson";
+            sb.append('\n').append(LocaleController.formatString(R.string.NM_MessageDetails_Library, library));
             messageIdTextView.setText(sb);
             messageIdTextView.setPadding(0, dp(2), 0, dp(2));
             messageIdTextView.setOnClickListener(v -> {

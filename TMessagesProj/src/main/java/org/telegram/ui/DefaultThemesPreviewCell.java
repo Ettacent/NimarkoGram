@@ -238,9 +238,10 @@ public class DefaultThemesPreviewCell extends LinearLayout implements Theme.Colo
 
                     dayNightCell.getImageView().playAnimation();
                     int[] pos = new int[2];
-                    dayNightCell.getImageView().getLocationInWindow(pos);
-                    pos[0] += dayNightCell.getImageView().getMeasuredWidth() / 2;
-                    pos[1] += dayNightCell.getImageView().getMeasuredHeight() / 2 + AndroidUtilities.dp(3);
+                    View icon = dayNightCell.getImageView();
+                    icon.getLocationInWindow(pos);
+                    pos[0] += (icon.getWidth() + icon.getPaddingLeft() - icon.getPaddingRight()) / 2;
+                    pos[1] += (icon.getHeight() + icon.getPaddingTop() - icon.getPaddingBottom()) / 2;
 
                     Runnable then = () -> {
                         updateDayNightMode();
@@ -568,12 +569,10 @@ public class DefaultThemesPreviewCell extends LinearLayout implements Theme.Colo
 
     private void setDayNightCellText(int stringRes) {
         dayNightCell.setTextAndIcon(LocaleController.getString(stringRes), darkThemeDrawable, true);
-        if (customDayNightIcons) {
-            dayNightCell.setImageLeft(16);
-            dayNightCell.getImageView().setPadding(0, AndroidUtilities.dp(7), 0, 0);
-        } else {
-            dayNightCell.imageLeft += 2;
-        }
+        dayNightCell.setImageLeft(browseThemesCell.imageLeft - (customDayNightIcons ? 0 : 2));
+        View reference = browseThemesCell.getImageView();
+        dayNightCell.getImageView().setPadding(reference.getPaddingLeft(), reference.getPaddingTop(),
+                reference.getPaddingRight(), reference.getPaddingBottom());
     }
 
     private android.graphics.drawable.Drawable browseThemesBackground;

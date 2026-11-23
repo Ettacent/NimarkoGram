@@ -1,6 +1,6 @@
 /* Modifications Copyright (C) 2026 Ettacent */
 
- 
+
 package app.nimarkogram.messenger.preferences;
 
 import static org.telegram.messenger.LocaleController.getString;
@@ -37,7 +37,7 @@ public final class DeleteAccountDialog {
         builder.setMessage(getString(R.string.TosDeclineDeleteAccount));
         builder.setTitle(getString(R.string.NM_PR_DeleteAccount));
         builder.setPositiveButton(getString(R.string.Deactivate), (dialogInterface, which) -> {
-            
+
             if (BuildConfig.DEBUG) return;
 
             final AlertDialog progressDialog = new AlertDialog(fragment.getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
@@ -59,7 +59,7 @@ public final class DeleteAccountDialog {
                             errorText += "\n" + error.text;
                         }
                         AlertDialog.Builder builder1 = new AlertDialog.Builder(fragment.getParentActivity());
-                        builder1.setTitle(getString(R.string.exteraAppName));
+                        builder1.setTitle(getString(R.string.AppName));
                         builder1.setMessage(errorText);
                         builder1.setPositiveButton(getString(R.string.OK), null);
                         builder1.show();

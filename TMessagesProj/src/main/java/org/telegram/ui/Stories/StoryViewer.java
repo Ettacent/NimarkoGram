@@ -2075,6 +2075,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     private void dispatchVolumeEvent(KeyEvent event) {
+        if (!isShowing || isClosed || storiesViewPager == null || volumeControl == null) return;
         if (isInSilentMode) {
             toggleSilentMode();
             return;
@@ -2088,6 +2089,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
 
     public void toggleSilentMode() {
+        if (!isShowing || isClosed || storiesViewPager == null) return;
         isInSilentMode = !isInSilentMode;
         if (playerHolder != null) {
             playerHolder.setAudioEnabled(!isInSilentMode, false);

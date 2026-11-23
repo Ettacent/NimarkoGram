@@ -428,7 +428,7 @@ void onHostNameResolved(JNIEnv *env, jclass c, jstring host, jlong address, jstr
         env->ReleaseStringUTFChars(host, hostStr);
     }
     ConnectionSocket *socket = (ConnectionSocket *) (intptr_t) address;
-    socket->onHostNameResolved(h, i, false);
+    socket->onHostNameResolved(h, i);
 }
 
 void discardConnection(JNIEnv *env, jclass c,  jint instanceNum, jint datacenerId, jint connectionType) {

@@ -18,6 +18,10 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 public class FilePathDatabase {
 
     public final static int FLAG_LOCALLY_CREATED = 1; //file is locally created, skip file size check in FileLoader
@@ -82,6 +86,11 @@ public class FilePathDatabase {
                 }
                 migrateDatabase(version);
                 //migration
+            }
+            try {
+                database.executeFast("CREATE INDEX IF NOT EXISTS path_in_paths_nocase ON paths(path COLLATE NOCASE)").stepThis().dispose();
+            } catch (SQLiteException e) {
+                FileLog.e(e);
             }
             if (!fromBackup) {
                 createBackup();
@@ -368,6 +377,30 @@ public class FilePathDatabase {
         });
     }
 
+    boolean isDownloadPathMapped(String path) throws IOException {
+        FutureTask<Boolean> lookup = new FutureTask<>(() -> {
+            ensureDatabaseCreated();
+            return database.executeInt("SELECT 1 FROM paths WHERE path = ? COLLATE NOCASE LIMIT 1", path) != null;
+        });
+        DispatchQueue2 queue = getQueue();
+        if (Thread.currentThread() == queue) {
+            lookup.run();
+        } else if (!queue.postRunnable(lookup)) {
+            throw new IOException("File path database queue unavailable");
+        }
+        try {
+            return lookup.get(250, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        } catch (TimeoutException e) {
+            throw new IOException("Timed out checking download path", e);
+        } catch (ExecutionException e) {
+            throw new IOException(e.getCause());
+        } finally {
+            if (lookup.cancel(false)) queue.cancelRunnable(lookup);
+        }
+    }
     public boolean hasAnotherRefOnFile(String path) {
         CountDownLatch syncLatch = new CountDownLatch(1);
         boolean[] res = new boolean[]{false};

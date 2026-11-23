@@ -4305,14 +4305,19 @@ public class ActionBarLayout extends FrameLayout implements INavigationLayout, F
                 ViewCompat.setOnApplyWindowInsetsListener(fragmentView, previousFragment::onInsetsInternal);
                 containerView.invalidate();
             }
-        } else {
+        }
             ViewGroup parent = (ViewGroup) fragmentView.getParent();
+        if (parent != containerView) {
             if (parent != null) {
                 previousFragment.onRemoveFromParent();
-                parent.removeView(fragmentView);
+                if (fragmentView.getParent() == parent) parent.removeView(fragmentView);
+            }
+            if (fragmentView.getParent() == null) {
+        containerView.addView(fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+            } else if (fragmentView.getParent() != containerView) {
+                return;
             }
         }
-        containerView.addView(fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         containerView.setShouldHandleBottomInsets(previousFragment.getEdgeToEdgeSupportMode());
         containerView.setDrawNavigationBar(previousFragment.drawEdgeNavigationBar());
         if (previousFragment.actionBar != null && previousFragment.actionBar.shouldAddToContainer()) {

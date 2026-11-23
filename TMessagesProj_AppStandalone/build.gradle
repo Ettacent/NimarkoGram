@@ -138,6 +138,7 @@ android {
     //   debug      -> app.nimarkogram.messenger
     //   standalone -> app.nimarkogram.messenger
     defaultConfig.applicationId = 'app.nimarkogram.messenger'
+    defaultConfig.manifestPlaceholders['nmContactsNamespace'] = 'org.telegram.messenger'
 
     sourceSets.debug {
         manifest.srcFile '../TMessagesProj/config/release/AndroidManifest_standalone.xml'

@@ -838,7 +838,8 @@ public class PluginsActivity extends BasePreferencesActivity implements Notifica
                             }
                             if (str != null) {
                                 BulletinFactory.of(PluginsActivity.this)
-                                        .createSimpleBulletin(R.raw.error, str)
+                                        .createSimpleBulletin(R.raw.error,
+                                                LocaleController.getString(R.string.NM_PluginDeleteIncomplete))
                                         .show();
                             }
                         })

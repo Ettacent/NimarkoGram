@@ -328,7 +328,6 @@
     <string name="VideoMessagesCameraAsk">每次询问</string>
     <string name="VideoMessagesCameraFront">前置</string>
     <string name="VideoMessagesCameraRear">后置</string>
-    <string name="exteraAppName">NimarkoGram</string>
     <string name="NG_OpenEmojiPack">打开表情包</string>
     <string name="NG_OpenStickerPack">打开贴纸包</string>
     <string name="LivePhotosSavedHint_one">动态照片已保存到图库</string>

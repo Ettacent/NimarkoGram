@@ -477,9 +477,8 @@ public final class MediaControllerExt {
                 return;
             }
             if (!result.success) {
-                String errMsg = result.error != null ? result.error :
-                        LocaleController.getString(R.string.NM_NM_GenericError);
-                finishWithError(request, fragmentForBulletins, errMsg);
+                finishWithError(request, fragmentForBulletins,
+                        LocaleController.getString(downloadErrorResource(result)));
                 return;
             }
 
@@ -961,6 +960,11 @@ public final class MediaControllerExt {
         return sent;
     }
 
+    private static int downloadErrorResource(MediaDownloader.Result result) {
+        if ("auth".equals(result.error)) return R.string.NM_NM_AuthFailed;
+        if (result.connectionFailure) return R.string.NM_NM_ConnectionError;
+        return R.string.NM_NM_GenericError;
+    }
     private void successBulletin(BaseFragment f, boolean fromCache) {
         String msg = fromCache
                 ? LocaleController.getString(R.string.NM_NM_SentFromCache)
@@ -969,13 +973,11 @@ public final class MediaControllerExt {
     }
 
     private void successBulletinAlbum(BaseFragment f, int count, boolean fromCache) {
-        String msg;
-        if (fromCache) {
-            msg = LocaleController.getString(R.string.NM_NM_SentFromCache);
-        } else {
-            msg = LocaleController.formatString(R.string.NM_NM_PhotosSent, count);
+        if (fromCache || count == 1) {
+            successBulletin(f, fromCache);
+            return;
         }
-        showSuccess(f, msg);
+        showSuccess(f, LocaleController.formatString(R.string.NM_NM_PhotosSent, count));
     }
 
     private void finishWithError(RequestContext request, BaseFragment f, String msg) {

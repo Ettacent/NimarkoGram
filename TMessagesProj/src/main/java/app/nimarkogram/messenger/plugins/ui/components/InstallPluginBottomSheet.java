@@ -507,7 +507,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
                 }
                 BulletinFactory.of(fragment).createSimpleBulletin(
                         R.raw.error,
-                        AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginInstallError, result.plugin.getName())),
+                        LocaleUtils.pluginInstallFailureText(result.plugin.getName()),
                         LocaleUtils.createCopySpan(fragment),
                         () -> {
                             if (PluginUiRegistry.isFragmentUiActive(fragment)) {
@@ -534,7 +534,7 @@ public class InstallPluginBottomSheet extends BottomSheet {
                         }
                         BulletinFactory.of(fragment).createSimpleBulletin(
                                 R.raw.error,
-                                AndroidUtilities.replaceTags(LocaleController.formatString(R.string.PluginInstalledButFailedToEnable, result.plugin.getName())),
+                                LocaleUtils.pluginEnableFailureAfterInstallText(result.plugin.getName()),
                                 LocaleUtils.createCopySpan(fragment),
                                 () -> {
                                     if (PluginUiRegistry.isFragmentUiActive(fragment)) {
@@ -579,12 +579,8 @@ public class InstallPluginBottomSheet extends BottomSheet {
         }
         BulletinFactory.of(fragment).createSimpleBulletin(
                 R.raw.error,
-                AndroidUtilities.replaceTags(
-                        LocaleController.formatString(
-                                R.string.PluginInstallError,
-                                result != null && result.plugin != null
-                                        ? result.plugin.getName()
-                                        : ""))).show();
+                LocaleUtils.pluginInstallFailureText(
+                        result != null && result.plugin != null ? result.plugin.getName() : null)).show();
     }
 
     private boolean isHostFragmentActive() {

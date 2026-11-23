@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
     <string name="UseProxyWeb">وكيل WEB</string>
     <string name="UseProxyWebInfo">يستخدم وكيل WEB صفحة HTTPS داخل WebView منفصل. أدخل اسم المضيف دون بادئة البروتوكول أو المسار، ومفتاح MTProxy سريًا بطول 16 بايت. هذا تنفيذ تجريبي مخصص للاختبار أثناء تشغيل التطبيق في المقدمة، ويتطلب إصدارًا حديثًا من Android System WebView.</string>
@@ -560,7 +562,7 @@
     <string name="DirectShareInfo">إظهار آخر المحادثات في قائمة المشاركة</string>
     <string name="Emoji">الرموز التعبيرية</string>
     <string name="LargeEmoji">رموز تعبيرية كبيرة</string>
-    <string name="TelegramVersion">NimarkoGram for Android %1$s</string>
+    <string name="TelegramVersion">NimarkoGram لأندرويد %1$s</string>
     <string name="ChangeLanguageLater">يمكنك تغيير لغة التطبيق لاحقًا من الإعدادات.</string>
     <string name="ChooseYourLanguage">اختيار اللغة</string>
     <string name="ChooseYourLanguageOther">أخرى</string>
@@ -1256,7 +1258,7 @@
     <string name="PluginsDisableArtInfo">تخطّي تجميع Python عند البدء. إقلاع أسرع، لكنّ الإضافات تعمل أبطأ قليلاً.</string>
     <string name="PluginsSafeMode">الوضع الآمن</string>
     <string name="PluginsSafeModeInfo">محرّك الإضافات يعمل في الوضع الآمن بعد عطل.</string>
-    <string name="PluginsSafeModeInfo2">كل الإضافات معطّلة. فعّلها واحدةً تلو الأخرى لتحديد المسبّبة.</string>
+    <string name="PluginsSafeModeInfo2">يمنع الوضع الآمن تشغيل الإضافات. تظل تقارير الإضافات المحفوظة متاحة.</string>
     <string name="PluginsDocumentation">التوثيق</string>
     <string name="PluginsTrusted">إضافات موثوقة</string>
     <string name="ForkedByNimarko">تفرّع من Nimarko</string>
@@ -1272,7 +1274,7 @@
     <string name="PluginIncompatibleInfo">تتطلّب هذه الإضافة إصدارًا أحدث من التطبيق.</string>
     <string name="RestartRequired">يجب إعادة التشغيل</string>
     <string name="LinkCopied">تم نسخ الرابط</string>
-    <string name="PluginInstalled">تم تثبيت الإضافة</string>
-    <string name="PluginUpdated">تم تحديث الإضافة</string>
+    <string name="PluginInstalled">ثُبّتت الإضافة %s.</string>
+    <string name="PluginUpdated">حُدّثت الإضافة %s.</string>
     <string name="PluginInstallError">تعذّر تثبيت الإضافة</string>
-<string name="Preferences">تفضيلات exteraGram</string><string name="Links">الروابط</string><string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">Developer mode</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">Disable all plugins</string><string name="PluginsDisableAllConfirm">Turn off every enabled plugin?</string><string name="PluginsDisabledN">%1$d plugins disabled.</string><string name="PluginsRestartEngine">Restart engine</string><string name="PluginsRestartingEngine">Restarting plugin engine…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">Online updates disabled in NimarkoGram.</string><string name="PluginsSafeModeOff">Safe mode disabled.</string><string name="PluginsSafeModeOn">Safe mode enabled. Plugins won’t auto-load.</string><string name="PluginIsNotRespondingAlert">Plugin "%s" is not responding</string><string name="EnablePluginsEngine">Enable plugin engine</string><string name="PluginDelete">Delete plugin</string><string name="PluginDeleteInfo">Are you sure you want to delete %s?</string><string name="PluginDisableError">Failed to disable plugin: %s</string><string name="PluginEnableError">Failed to enable plugin: %s</string><string name="PluginEngineNotEnabled">Plugin engine is disabled. Enable it to use %s.</string><string name="PluginHasNoSettings">%s has no settings.</string><string name="PluginInstalledButFailedToEnable">Installed, but failed to enable plugin.</string><string name="PluginNotEnabled">Plugin %s is not enabled.</string><string name="PluginNotFound">Plugin %s not found.</string></resources>
+<string name="Preferences">التفضيلات</string><string name="Links">الروابط</string><string name="PluginsRowSubtitle">Python scripts that extend the app</string><string name="PluginsDevMode">وضع المطوّر</string><string name="PluginsDevServerLaunched">Dev server is running.</string><string name="PluginsDevServerStopped">Dev server is stopped.</string><string name="PluginsDisableAll">تعطيل كل الإضافات</string><string name="PluginsDisableAllConfirm">هل تريد تعطيل كل الإضافات المفعّلة؟</string><string name="PluginsDisabledN">عدد الإضافات المعطّلة: %1$d.</string><string name="PluginsRestartEngine">إعادة تشغيل المحرك</string><string name="PluginsRestartingEngine">جارٍ إعادة تشغيل محرك الإضافات…</string><string name="PluginsPySdkAutoUpdate">Auto-update SDK</string><string name="PluginsPySdkCheckUpdates">Check for SDK updates</string><string name="PluginsPySdkEnableBetaVersion">Use beta SDK</string><string name="PluginsPySdkHeader">Python SDK</string><string name="PluginsPySdkOffline">التحديثات عبر الإنترنت معطّلة في NimarkoGram.</string><string name="PluginsSafeModeOff">عُطّل الوضع الآمن.</string><string name="PluginsSafeModeOn">تم تفعيل الوضع الآمن. لن تُحمَّل الإضافات تلقائيًا.</string><string name="PluginIsNotRespondingAlert">الإضافة «%s» لا تستجيب</string><string name="EnablePluginsEngine">تفعيل محرك الإضافات</string><string name="PluginDelete">حذف الإضافة</string><string name="PluginDeleteInfo">هل تريد حذف %s؟</string><string name="PluginDisableError">تعذّر تعطيل الإضافة: %s</string><string name="PluginEnableError">تعذّر تفعيل الإضافة: %s</string><string name="PluginEngineNotEnabled">محرك الإضافات معطّل. فعّله لاستخدام %s.</string><string name="PluginHasNoSettings">لا توجد إعدادات لـ%s.</string><string name="PluginInstalledButFailedToEnable">ثُبّتت الإضافة لكن تعذّر تفعيلها.</string><string name="PluginNotEnabled">الإضافة %s غير مفعّلة.</string><string name="PluginNotFound">لم يُعثر على الإضافة %s.</string></resources>

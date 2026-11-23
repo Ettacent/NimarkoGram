@@ -2,6 +2,7 @@
 
 package org.telegram.ui.Stories;
 
+import app.nimarkogram.messenger.distribution.ClientUpdates;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.getString;
@@ -4549,17 +4550,7 @@ public class PeerStoriesView extends SizeNotifierFrameLayout implements Notifica
         ThemeBind.selectorBackground(buttonTextView, Theme.createSimpleSelectorRoundRectDrawable(dp(8),
                 Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider),
                 ColorUtils.setAlphaComponent(Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider), 30)), ThemeBind.of(Theme.key_featuredStickers_addButton), ThemeBind.alpha(Theme.key_featuredStickers_buttonText, 30), resourcesProvider);
-        buttonTextView.setOnClickListener(v -> {
-            if (ApplicationLoader.isStandaloneBuild()) {
-                if (LaunchActivity.instance != null) {
-                    LaunchActivity.instance.checkAppUpdate(true, null);
-                }
-            } else if (BuildVars.isHuaweiStoreApp()){
-                Browser.openUrl(getContext(), BuildVars.HUAWEI_STORE_URL);
-            } else {
-                Browser.openUrl(getContext(), BuildVars.PLAYSTORE_APP_URL);
-            }
-        });
+        buttonTextView.setOnClickListener(v -> ClientUpdates.openFromContext(getContext()));
         linearLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         linearLayout.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 24, 0, 0));
 

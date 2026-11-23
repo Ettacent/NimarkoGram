@@ -5,7 +5,7 @@ package app.nimarkogram.messenger;
 import android.media.MediaRecorder;
 import android.os.Build;
 import app.nimarkogram.messenger.chats.filters.MessagesFilterHelper;
-import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 import app.nimarkogram.messenger.security.AppBiometricPrompt;
 import app.nimarkogram.messenger.textanim.TextAnim;
 import app.nimarkogram.messenger.utils.LockedChats;
@@ -154,13 +154,17 @@ public final class AppConfig {
     }
 
     private static int getIntSafe(String key, int def) {
+        return getIntSafe(key, def, def);
+    }
+
+    private static int getIntSafe(String key, int def, int legacyTrueValue) {
         try {
             return getPreferences().getInt(key, def);
         } catch (ClassCastException oldType) {
             int migrated = def;
             try {
                 boolean legacy = getPreferences().getBoolean(key, false);
-                migrated = legacy ? def : 0;
+                migrated = legacy ? legacyTrueValue : 0;
             } catch (Throwable ignored) {}
             try {
                 getEditor().remove(key).putInt(key, migrated).apply();
@@ -188,13 +192,13 @@ public final class AppConfig {
     public static volatile boolean pluginsSafeMode = getPreferences().getBoolean("pluginsSafeMode", false);
     public static void togglePluginsSafeMode() {
         if (!pluginsSafeMode) {
-            PluginCrashReports.setSafeModeReason("manual");
+            ClientPlugins.setSafeModeReason("manual");
         }
         setPluginsSafeMode(!pluginsSafeMode);
     }
     public static void setPluginsSafeMode(boolean v) {
         pluginsSafeMode = v;
-        if (!v) PluginCrashReports.setSafeModeReason(null);
+        if (!v) ClientPlugins.setSafeModeReason(null);
         getEditor().putBoolean("pluginsSafeMode", v).commit();
         try {
             FileLog.d("nimarko: setPluginsSafeMode = " + v);
@@ -512,7 +516,7 @@ public final class AppConfig {
     public static final int ICON_REPLACE_MD3 = 2;           // Material Design 3 (mono SVG) — unused
     public static final int ICON_REPLACE_LIQUID_GLASS = 3;  // Liquid Glass (mono SVG)
     public static final int ICON_REPLACE_PLUMPY = 4;        // Plumpy (colourful PNG)
-    public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_SOLAR);
+    public static volatile int iconReplacement = getIntSafe("iconReplacement", ICON_REPLACE_NONE, ICON_REPLACE_SOLAR);
     public static void setIconReplacement(int v) { iconReplacement = v; getEditor().putInt("iconReplacement", v).apply(); }
 
     public static boolean tabsHideAllChats = getPreferences().getBoolean("tabsHideAllChats", false);

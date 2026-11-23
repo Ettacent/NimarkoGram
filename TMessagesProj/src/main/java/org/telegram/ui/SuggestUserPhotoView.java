@@ -1,94 +1,88 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 
+import android.view.ViewTreeObserver;
 import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLObject;
 import org.telegram.ui.Components.AvatarDrawable;
-import org.telegram.ui.Components.PhotoCropView;
+public class SuggestUserPhotoView extends View implements ViewTreeObserver.OnPreDrawListener {
 
-public class SuggestUserPhotoView extends View {
+    interface Preview {
+        boolean draw(Canvas canvas, RectF bounds);
+    }
 
-    ImageReceiver currentPhoto = new ImageReceiver(this);
-    ImageReceiver newPhoto = new ImageReceiver(this);
-    AvatarDrawable avatarDrawable = new AvatarDrawable();
-    View containterView;
-    PhotoCropView photoCropView;
-    Path path = new Path();
-    Drawable arrowDrawable;
+    private final ImageReceiver currentPhoto = new ImageReceiver(this);
+    private final Path clip = new Path();
+    private final RectF bounds = new RectF();
+    private final Paint placeholderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Drawable arrow, placeholder;
+    private final View editor;
+    private final Preview preview;
+    private ViewTreeObserver editorObserver;
 
-    public SuggestUserPhotoView(Context context) {
+    SuggestUserPhotoView(Context context, int account, TLObject recipient, View editor, Preview preview) {
         super(context);
-        avatarDrawable.setInfo(UserConfig.selectedAccount, UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser());
-        currentPhoto.setForUserOrChat(UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser(), avatarDrawable);
-        newPhoto.setForUserOrChat(UserConfig.getInstance(UserConfig.selectedAccount).getCurrentUser(), avatarDrawable);
-        arrowDrawable = ContextCompat.getDrawable(context, R.drawable.msg_arrow_avatar);
-        arrowDrawable.setAlpha(100);
+        this.editor = editor;
+        this.preview = preview;
+        AvatarDrawable avatar = new AvatarDrawable();
+        avatar.setInfo(account, recipient);
+        currentPhoto.setCurrentAccount(account);
+        currentPhoto.setRoundRadius(AndroidUtilities.dp(30));
+        currentPhoto.setForUserOrChat(recipient, avatar);
+        arrow = ContextCompat.getDrawable(context, R.drawable.msg_arrow_avatar).mutate();
+        arrow.setAlpha(100);
+        placeholder = ContextCompat.getDrawable(context, R.drawable.msg_photos).mutate();
+        placeholder.setTint(0x99ffffff);
+        placeholderPaint.setColor(0x25ffffff);
     }
 
 
     @Override
-    public void draw(Canvas canvas) {
-        int centerX = getMeasuredWidth() >> 1;
-        int cy = getMeasuredHeight() - AndroidUtilities.dp(30);
-        int cx1 = centerX - AndroidUtilities.dp(46);
-        int cx2 = centerX + AndroidUtilities.dp(46);
-        setImageCoords(currentPhoto, cx1, cy);
-        setImageCoords(newPhoto, cx2, cy);
-
-        arrowDrawable.setBounds(
-                centerX - arrowDrawable.getIntrinsicWidth() / 2,
-                cy - arrowDrawable.getIntrinsicHeight() / 2,
-                centerX + arrowDrawable.getIntrinsicWidth() / 2,
-                cy + arrowDrawable.getIntrinsicHeight() / 2
-        );
-
-        arrowDrawable.draw(canvas);
-        path.reset();
-        path.addCircle(cx2, cy, AndroidUtilities.dp(30), Path.Direction.CW);
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        int center = getWidth() / 2, radius = AndroidUtilities.dp(30), offset = AndroidUtilities.dp(46);
+        int y = getHeight() - radius, x = center + offset;
+        currentPhoto.setImageCoords(center - offset - radius, y - radius, 2 * radius, 2 * radius);
 
         currentPhoto.draw(canvas);
 
-        if (containterView != null) {
-            float topOffset = 0, leftOffset = 0;
-            topOffset -= photoCropView.getTop();
-            leftOffset -= photoCropView.getLeft();
-            float s = AndroidUtilities.dp(60) / (float) photoCropView.cropView.areaView.size;
-            topOffset -= photoCropView.cropView.areaView.top;
-            leftOffset -= photoCropView.cropView.areaView.left;
-            canvas.save();
-            canvas.clipPath(path);
-            canvas.scale(s, s, 0, 0);
-            canvas.translate(leftOffset, topOffset);
-            canvas.translate((cx2 - AndroidUtilities.dp(30)) / s, (cy - AndroidUtilities.dp(30)) / s);
+        int hw = arrow.getIntrinsicWidth() / 2, hh = arrow.getIntrinsicHeight() / 2;
+        arrow.setBounds(center - hw, y - hh, center + hw, y + hh);
+        arrow.draw(canvas);
 
-            PhotoViewer.getInstance().skipLastFrameDraw = true;
-            containterView.draw(canvas);
-            PhotoViewer.getInstance().skipLastFrameDraw = false;
-            canvas.restore();
+        bounds.set(x - radius, y - radius, x + radius, y + radius);
+        clip.rewind();
+        clip.addCircle(x, y, radius, Path.Direction.CW);
+        int save = canvas.save();
+        try {
+            canvas.clipPath(clip);
+            if (!preview.draw(canvas, bounds)) {
+                canvas.drawCircle(x, y, radius, placeholderPaint);
+                int half = AndroidUtilities.dp(12);
+                placeholder.setBounds(x - half, y - half, x + half, y + half);
+                placeholder.draw(canvas);
         }
-        super.draw(canvas);
-        containterView.invalidate();
-        invalidate();
+        } finally {
+            canvas.restoreToCount(save);
     }
 
-    private void setImageCoords(ImageReceiver currentPhoto, int cx1, int cy) {
-        currentPhoto.setImageCoords(cx1 - AndroidUtilities.dp(30), cy - AndroidUtilities.dp(30), AndroidUtilities.dp(60), AndroidUtilities.dp(60));
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        currentPhoto.setRoundRadius(AndroidUtilities.dp(30));
-        newPhoto.setRoundRadius(AndroidUtilities.dp(30));
         super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(86), MeasureSpec.EXACTLY));
     }
 
@@ -96,21 +90,24 @@ public class SuggestUserPhotoView extends View {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         currentPhoto.onAttachedToWindow();
-        newPhoto.onAttachedToWindow();
+        editorObserver = editor.getViewTreeObserver();
+        editorObserver.addOnPreDrawListener(this);
+    }
+
+    @Override
+    public boolean onPreDraw() {
+        postInvalidateOnAnimation();
+        return true;
     }
 
     @Override
     protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
+        if (editorObserver != null) {
+            ViewTreeObserver observer = editorObserver.isAlive() ? editorObserver : editor.getViewTreeObserver();
+            observer.removeOnPreDrawListener(this);
+        }
+        editorObserver = null;
         currentPhoto.onDetachedFromWindow();
-        newPhoto.onDetachedFromWindow();
-    }
-
-
-    public void setImages(TLObject setAvatarFor, View containerView, PhotoCropView photoCropView) {
-        avatarDrawable.setInfo(setAvatarFor);
-        currentPhoto.setForUserOrChat(setAvatarFor, avatarDrawable);
-        this.containterView = containerView;
-        this.photoCropView = photoCropView;
+        super.onDetachedFromWindow();
     }
 }

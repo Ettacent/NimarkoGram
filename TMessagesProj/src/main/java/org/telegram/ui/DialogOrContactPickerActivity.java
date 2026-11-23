@@ -512,10 +512,12 @@ public class DialogOrContactPickerActivity extends BaseFragment {
             viewPages[a].header = viewPages[a].parentFragment.getSimpleActionBar() != null
                     ? viewPages[a].parentFragment.getSimpleActionBar() : viewPages[a].parentFragment.getActionBar();
             viewPages[a].addView(viewPages[a].fragmentView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+            if (viewPages[a].header != null) {
             AndroidUtilities.removeFromParent(viewPages[a].header);
             viewPages[a].addView(viewPages[a].header, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             viewPages[a].header.setVisibility(View.GONE);
 
+            }
             for (int i = 0; i < 2; i++) {
                 RecyclerListView listView = i == 0 ? viewPages[a].listView : viewPages[a].listView2;
                 if (listView == null) {

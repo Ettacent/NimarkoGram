@@ -434,7 +434,7 @@ public class QrShareView extends View {
         }
         this.baseLink = baseLink;
         buildCode(baseLink, code -> {
-            if (!TextUtils.equals(this.baseLink, baseLink)) return;
+            if (code == null || !TextUtils.equals(this.baseLink, baseLink)) return;
             final boolean first = feeCode == null;
             feeCode = code;
             if (free) return;
@@ -455,7 +455,7 @@ public class QrShareView extends View {
             return;
         }
         buildCode(link, code -> {
-            if (!TextUtils.equals(freeLink, link)) return;
+            if (code == null || !TextUtils.equals(freeLink, link)) return;
             freeCode = code;
             if (free && timerOn && timerWaiting) {
                 timerWaiting = false;
@@ -477,7 +477,16 @@ public class QrShareView extends View {
     }
 
     public String getCurrentLink() {
-        return free && freeLink != null && freeCode != null ? freeLink : feeCode != null ? baseLink : null;
+        final QrCodeLayer.Code code = getShareCode();
+        return code == null ? null : code.link;
+    }
+
+    @Nullable
+    private QrCodeLayer.Code getShareCode() {
+        if (disposed || (free && timerOn) || (tempLink && System.currentTimeMillis() / 1000 >= linkExpires)) return null;
+        final String link = free ? freeLink : baseLink;
+        final QrCodeLayer.Code code = free ? freeCode : feeCode;
+        return code != null && TextUtils.equals(code.link, link) ? code : null;
     }
 
     private void refreshIcons() {
@@ -1350,7 +1359,7 @@ public class QrShareView extends View {
     private void rebuildCodes() {
         final String base = baseLink;
         buildCode(base, code -> {
-            if (!TextUtils.equals(baseLink, base)) return;
+            if (code == null || !TextUtils.equals(baseLink, base)) return;
             feeCode = code;
             if (!free) qr.assemble(code);
             invalidate();
@@ -1533,6 +1542,7 @@ public class QrShareView extends View {
 
     private void toggleTimer() {
         timerOn = !timerOn;
+        setFreeLink(null);
         if (timerOn) startTimerWait();
         else timerWaiting = false;
         lastChipSec = -1;
@@ -1880,30 +1890,37 @@ public class QrShareView extends View {
 
     @Nullable
     public Bitmap renderShareImage() {
+        final QrCodeLayer.Code shareCode = getShareCode();
         final int w = getWidth(), h = getHeight();
-        if (disposed || w <= 0 || h <= 0) return null;
+        if (shareCode == null || w <= 0 || h <= 0) return null;
         final float wasSheet = sheet;
+        final boolean wasSharing = sharing;
+        Bitmap bitmap = null;
+        try {
         sheet = 0f;
         final int height = Math.min(h, (int) (w * SHARE_MAX_ASPECT));
         final float cardCenter = cardTop() + cardH() / 2f;
         final int top = (int) Math.max(0, Math.min(h - height, cardCenter - height / 2f));
-        final Bitmap bitmap;
-        try {
             bitmap = Bitmap.createBitmap(w, height, Bitmap.Config.ARGB_8888);
-        } catch (OutOfMemoryError e) {
-            sheet = wasSheet;
-            return null;
-        }
         ensureLogoOptimal();
         final Canvas c = new Canvas(bitmap);
+            try {
         c.translate(0, -top);
+                sharing = true;
         drawBackground(c, w, h, System.currentTimeMillis());
-        sharing = true;
-        drawCard(c, w);
-        sharing = false;
+                drawCard(c, w, shareCode);
+            } finally {
         c.setBitmap(null);
+            }
+            return bitmap;
+        } catch (RuntimeException | OutOfMemoryError e) {
+            if (bitmap != null) bitmap.recycle();
+            org.telegram.messenger.FileLog.e(e);
+            return null;
+        } finally {
+            sharing = wasSharing;
         sheet = wasSheet;
-        return bitmap;
+        }
     }
 
     @Override
@@ -1952,7 +1969,7 @@ public class QrShareView extends View {
             drawBackground(canvas, w, h, now);
         }
 
-        drawCard(canvas, w);
+        drawCard(canvas, w, null);
         final float ui = elem(0);
         uiK = ui;
         drawTopBar(canvas, glass);
@@ -3267,7 +3284,11 @@ public class QrShareView extends View {
         invalidate();
     }
 
-    private void drawCard(Canvas c, int w) {
+    private void drawCard(Canvas c, int w, @Nullable QrCodeLayer.Code shareCode) {
+        if (shareCode != null) {
+            drawCardInner(c, w, shareCode);
+            return;
+        }
         c.save();
         float cs = reveal >= 1f ? 1f : revealOpening ? lerp(0.9f, 1f, revealX) : lerp(0.92f, 1f, revealX);
         {
@@ -3280,7 +3301,7 @@ public class QrShareView extends View {
             else if (u > 0f) cs *= 1f - 0.03f * (float) Math.sin(Math.PI * u) * (1f - u * 0.3f);
         }
         c.scale(cs, cs, w / 2f, cardTop() + cardH() / 2f);
-        drawCardInner(c, w);
+        drawCardInner(c, w, shareCode);
         c.restore();
     }
 
@@ -3389,7 +3410,7 @@ public class QrShareView extends View {
         }
     }
 
-    private void drawCardInner(Canvas c, int w) {
+    private void drawCardInner(Canvas c, int w, @Nullable QrCodeLayer.Code shareCode) {
         final float cw = cardW(), ch = cardH(), left = (w - cw) / 2f, top = cardTop();
         rect.set(left, top, left + cw, top + ch);
         cardPaint.setColor(Color.WHITE);
@@ -3399,8 +3420,13 @@ public class QrShareView extends View {
         final int color = qrColor();
         final float qs = cw * 0.70f, ql = left + (cw - qs) / 2f, qt = top + lerp(cw * 0.12f, (cw - qs) / 2f, tempK);
         qr.setColor(color);
+        if (shareCode == null) {
         qr.draw(c, ql, qt, qs);
-        final float lr = qr.logoSize(qs) / 2f, lcx = ql + qs / 2f, lcy = qt + qs / 2f;
+        } else {
+            qr.drawShareCode(c, shareCode, ql, qt, qs);
+        }
+        final float logoSize = shareCode == null ? qr.logoSize(qs) : QrCodeLayer.logoShare(shareCode) * qs;
+        final float lr = logoSize / 2f, lcx = ql + qs / 2f, lcy = qt + qs / 2f;
         final float bp = qr.buildProgress();
         final float lp = 1f;
         final float ls = elemScale(lp);

@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Modifications Copyright (C) 2026 Ettacent -->
 <resources>
+    <string name="NM_ScheduledShortTitle">Scheduled</string>
+    <string name="NM_ScheduledOnlineStatusHidden">Message not sent. Their last seen status is hidden. Choose a date and time instead.</string>
     <string name="NM_EnhancedGlassBlur">Enhanced glass and blur</string>
     <string name="NM_EnhancedGlassBlur_Desc">Higher-quality effects. Uses more processing power.</string>
+    <string name="NM_MessageContainsCustomReactions_one">%1$d custom reaction in this message</string>
+    <string name="NM_MessageContainsCustomReactions_other">%1$d custom reactions in this message</string>
     <!-- NimarkoGram settings UI (sorted alphabetically by key) -->
     <string name="NimarkoAbout">About NimarkoGram</string>
     <string name="NimarkoAboutAuthor">by @NimarkoProject</string>
@@ -258,7 +262,6 @@
     <string name="NM_MF_ChatBlacklist">Never filter in these chats</string>
     <string name="NM_FollowChannelInfo">Our channel :)</string>
 
-    <!-- NimarkoTextAnim: native text-input animation -->
     <string name="NM_TA_Title">Text animation</string>
     <string name="NM_TA_HeaderMain">Animation</string>
     <string name="NM_TA_HeaderEffects">Effects</string>
@@ -275,7 +278,6 @@
     <string name="NM_TA_Spoiler_Desc">Characters hide under noise particles before fading in</string>
     <string name="NM_TA_Hint">Restart not required — toggles apply on the next keystroke.</string>
 
-    <!-- NimarkoExtra: profile detail enrichments -->
     <string name="NM_Extra_DayOfWeek_Monday">Monday</string>
     <string name="NM_Extra_DayOfWeek_Tuesday">Tuesday</string>
     <string name="NM_Extra_DayOfWeek_Wednesday">Wednesday</string>
@@ -283,7 +285,29 @@
     <string name="NM_Extra_DayOfWeek_Friday">Friday</string>
     <string name="NM_Extra_DayOfWeek_Saturday">Saturday</string>
     <string name="NM_Extra_DayOfWeek_Sunday">Sunday</string>
-    <string name="NM_Extra_YearsAgo">ago</string>
+    <string name="NM_Extra_YearsAgo">%1$s ago</string>
+    <string name="NM_Extra_YearsAgo_one">%1$d year ago</string>
+    <string name="NM_Extra_YearsAgo_two">2 years ago</string>
+    <string name="NM_Extra_YearsAgo_few">%1$d years ago</string>
+    <string name="NM_Extra_YearsAgo_many">%1$d years ago</string>
+    <string name="NM_Extra_YearsAgo_other">%1$d years ago</string>
+    <string name="NM_NM_ConnectionError">Could not connect to the download service. Try again.</string>
+    <string name="NM_PluginOpenExternalFailed">Could not open the plugin in another app.</string>
+    <string name="NM_PluginDeleteIncomplete">Plugin deletion did not finish. Restart the app and try again if the plugin still appears.</string>
+    <string name="NM_ProfileInfo_Id">ID: %1$s</string>
+    <string name="NM_ProfileInfo_DataCenter">Data center: %1$s</string>
+    <string name="NM_ProfileInfo_Registered">Registered: %1$s</string>
+    <string name="NM_ProfileInfo_Premium">Premium: %1$s</string>
+    <string name="NM_ProfileInfo_Verified">Verified: %1$s</string>
+    <string name="NM_ProfileInfo_Bot">Bot: %1$s</string>
+    <string name="NM_ProfileInfo_Yes">Yes</string>
+    <string name="NM_ProfileInfo_No">No</string>
+    <string name="NM_Restriction_NotRestricted">This chat or channel has no restrictions.</string>
+    <string name="NM_Restriction_Platform">Platform: %1$s</string>
+    <string name="NM_Restriction_Reason">Reason: %1$s</string>
+    <string name="NM_Restriction_Text">Text: %1$s</string>
+    <string name="NM_MessageDetails_Id">Message ID: %1$s</string>
+    <string name="NM_MessageDetails_Library">JSON library: %1$s</string>
     <string name="NM_Extra_LastSeenPattern_Morning">usually online in the morning</string>
     <string name="NM_Extra_LastSeenPattern_Afternoon">usually online in the afternoon</string>
     <string name="NM_Extra_LastSeenPattern_Evening">usually online in the evening</string>
@@ -292,8 +316,7 @@
     <!-- NimarkoGram pillstack: crypto/forex pill -->
     <string name="CryptoPillTargetCurrency">Target currency</string>
     <string name="NM_ProxyVpnPromo">Fast VPN, no blocks</string>
-    <string name="NM_ProxyVlessPromo">VLESS &amp; Hysteria2</string>
-    <string name="NM_ProxyVpnPromo_Desc">A VPN and ready-to-use VLESS/Hysteria2 keys to bypass blocks.</string>
+    <string name="NM_ProxyVpnBotInfo">Connect to the VPN through the Telegram bot.</string>
     <string name="NM_IOSStyleComposer">iOS-style message input</string>
     <string name="NM_IOSStyleComposer_Desc">Separate attachment, text and send controls.</string>
     <string name="NM_QC_Create">Create quote</string>
@@ -514,4 +537,24 @@
     <string name="NM_InAppNotificationsDesc">Show new messages at the top. Pull down to read more, swipe up to collapse or dismiss, tap to open the chat.</string>
     <string name="NM_InAppNotificationsPreview">Show example</string>
     <string name="NM_InAppNotificationsSample">New messages will appear here</string>
+    <string name="NM_SearchPhotoHint">Search this image on the web. Results open in your browser.</string>
+    <string name="NM_JsonSwitchParser">Switch to %1$s</string>
+    <string name="NM_JsonJacksonRequiresAndroid">Jackson requires Android 8.0 or later.</string>
+    <string name="NM_JsonDateValue">Message date: %1$s</string>
+    <string name="NM_JsonMediaDateValue">Media date: %1$s</string>
+    <string name="NM_JsonMediaDateUnavailable">No media date</string>
+    <string name="NM_JsonMediaDcValue">Media data center: %1$d</string>
+    <string name="NM_JsonMediaDcUnavailable">Data center is shown only for media.</string>
+    <string name="NM_DeleteCutoffDay">24 hours ago</string>
+    <string name="NM_DeleteCutoffWeek">7 days ago</string>
+    <string name="NM_DeleteCutoffMonth">30 days ago</string>
+    <string name="NM_DeleteCutoffCustom">Choose date and time</string>
+    <string name="NM_DeletePending">Messages marked for deletion</string>
+    <string name="NM_DeletePendingCount">Selected messages: %1$d</string>
+    <string name="NM_ProfileInfo_Unknown">Unknown</string>
+    <string name="NM_ProfilePreviewBirthday">Birthday</string>
+    <string name="NM_ProfilePreviewBirthdayAge">%1$s (age: %2$d)</string>
+    <string name="NM_PluginInstallErrorNamed">Could not install the plugin “%1$s”.</string>
+    <string name="NM_PluginEnableAfterInstallErrorNamed">The plugin “%1$s” was installed, but could not be enabled.</string>
+    <string name="NM_ChannelWallpaperTitle">Channel wallpaper</string>
 </resources>

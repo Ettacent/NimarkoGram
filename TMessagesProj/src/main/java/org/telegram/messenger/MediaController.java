@@ -5672,6 +5672,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
         if (downloadingCurrentMessage && messageObject != null && isSamePlayingMessage(messageObject)) {
             isPaused = true;
+            if (!fromFocus && isTemporaryPlayback(playingMessageObject)) {
+                abandonPlaybackFocus(playbackFocusListener, playbackFocusLeaseGeneration);
+            }
             NotificationCenter.getInstance(messageObject.currentAccount).postNotificationName(NotificationCenter.messagePlayingPlayStateChanged, messageObject.getId());
             return true;
         }

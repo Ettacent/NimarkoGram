@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.voip;
 
 import android.animation.Animator;
@@ -137,19 +139,13 @@ public class VoIpSwitchLayout extends FrameLayout {
 
     private void attachNewButton(int rawRes, int size, boolean isSelected, Type type) {
         final VoIpButtonView newVoIpButtonView = new VoIpButtonView(getContext(), backgroundProvider);
-        if (rawRes == R.raw.camera_flip2) {
-            newVoIpButtonView.singleIcon = new RLottieDrawable(rawRes, size, size, true, null);
-            newVoIpButtonView.singleIcon.setMasterParent(newVoIpButtonView);
-        } else {
-            newVoIpButtonView.unSelectedIcon = new RLottieDrawable(rawRes, size, size, true, null);
-            newVoIpButtonView.selectedIcon = new RLottieDrawable(rawRes, size, size, true, null);
-            newVoIpButtonView.selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
-        }
+        newVoIpButtonView.setIcons(rawRes, size);
         newVoIpButtonView.setSelectedState(isSelected, false, type);
         newVoIpButtonView.setAlpha(0f);
         newVoIpButtonView.setOnBtnClickedListener(voIpButtonView.onBtnClickedListener);
         addView(newVoIpButtonView, LayoutHelper.createFrame(VoIpButtonView.ITEM_SIZE + 1.5f, VoIpButtonView.ITEM_SIZE + 1.5f, Gravity.CENTER_HORIZONTAL));
         final VoIpButtonView oldVoIpButton = voIpButtonView;
+        oldVoIpButton.setOnBtnClickedListener(null);
         voIpButtonView = newVoIpButtonView;
         newVoIpButtonView.animate().alpha(1f).setDuration(250).start();
         oldVoIpButton.animate().alpha(0f).setDuration(250).setListener(new AnimatorListenerAdapter() {
@@ -179,19 +175,13 @@ public class VoIpSwitchLayout extends FrameLayout {
         switch (newType) {
             case MICRO:
                 if (this.type != Type.MICRO) {
-                    voIpButtonView.unSelectedIcon = new RLottieDrawable(R.raw.call_mute, size, size, true, null);
-                    voIpButtonView.selectedIcon = new RLottieDrawable(R.raw.call_mute, size, size, true, null);
-                    voIpButtonView.selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
-                    voIpButtonView.selectedIcon.setMasterParent(voIpButtonView);
+                    voIpButtonView.setIcons(R.raw.call_mute, size);
                 }
                 break;
             case VIDEO:
                 //R.drawable.calls_sharescreen screencast is not used in the design
                 if (this.type != Type.VIDEO) {
-                    voIpButtonView.unSelectedIcon = new RLottieDrawable(R.raw.video_stop, size, size, true, null);
-                    voIpButtonView.selectedIcon = new RLottieDrawable(R.raw.video_stop, size, size, true, null);
-                    voIpButtonView.selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
-                    voIpButtonView.selectedIcon.setMasterParent(voIpButtonView);
+                    voIpButtonView.setIcons(R.raw.video_stop, size);
                 }
                 break;
             case CAMERA:
@@ -199,36 +189,27 @@ public class VoIpSwitchLayout extends FrameLayout {
                     ignoreSetState = true;
                     attachNewButton(R.raw.camera_flip2, size, isSelected, newType);
                 } else if (this.type != Type.CAMERA) {
-                    voIpButtonView.singleIcon = new RLottieDrawable(R.raw.camera_flip2, size, size, true, null);
-                    voIpButtonView.singleIcon.setMasterParent(voIpButtonView);
+                    voIpButtonView.setIcons(R.raw.camera_flip2, size);
                 }
                 break;
             case SPEAKER:
                 if (this.type == Type.BLUETOOTH) {
-                    ignoreSetState = isSelected == voIpButtonView.isSelectedState;
-                    RLottieDrawable icon = isSelected ? voIpButtonView.selectedIcon : voIpButtonView.unSelectedIcon;
-                    icon.setMasterParent(voIpButtonView);
-                    icon.setOnAnimationEndListener(() -> AndroidUtilities.runOnUIThread(() -> attachSpeakerToBt(size)));
-                    icon.start();
+                    ignoreSetState = animateRouteIcon(newType, isSelected, R.raw.speaker_to_bt, size);
                 } else if (this.type == Type.CAMERA) {
                     ignoreSetState = true;
                     attachNewButton(R.raw.speaker_to_bt, size, isSelected, newType);
                 } else if (this.type != Type.SPEAKER) {
-                    attachSpeakerToBt(size);
+                    voIpButtonView.setIcons(R.raw.speaker_to_bt, size);
                 }
                 break;
             case BLUETOOTH:
                 if (this.type == Type.SPEAKER) {
-                    ignoreSetState = isSelected == voIpButtonView.isSelectedState;
-                    RLottieDrawable icon = isSelected ? voIpButtonView.selectedIcon : voIpButtonView.unSelectedIcon;
-                    icon.setMasterParent(voIpButtonView);
-                    icon.setOnAnimationEndListener(() -> AndroidUtilities.runOnUIThread(() -> attachBtToSpeaker(size)));
-                    icon.start();
+                    ignoreSetState = animateRouteIcon(newType, isSelected, R.raw.bt_to_speaker, size);
                 } else if (this.type == Type.CAMERA) {
                     ignoreSetState = true;
                     attachNewButton(R.raw.bt_to_speaker, size, isSelected, newType);
                 } else if (this.type != Type.BLUETOOTH) {
-                    attachBtToSpeaker(size);
+                    voIpButtonView.setIcons(R.raw.bt_to_speaker, size);
                 }
                 break;
         }
@@ -240,16 +221,21 @@ public class VoIpSwitchLayout extends FrameLayout {
         this.type = newType;
     }
 
-    private void attachSpeakerToBt(int size) {
-        voIpButtonView.unSelectedIcon = new RLottieDrawable(R.raw.speaker_to_bt, size, size, true, null);
-        voIpButtonView.selectedIcon = new RLottieDrawable(R.raw.speaker_to_bt, size, size, true, null);
-        voIpButtonView.selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
-    }
-
-    private void attachBtToSpeaker(int size) {
-        voIpButtonView.unSelectedIcon = new RLottieDrawable(R.raw.bt_to_speaker, size, size, true, null);
-        voIpButtonView.selectedIcon = new RLottieDrawable(R.raw.bt_to_speaker, size, size, true, null);
-        voIpButtonView.selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
+    private boolean animateRouteIcon(Type destination, boolean selected, int idleIconRes, int size) {
+        VoIpButtonView button = voIpButtonView;
+        RLottieDrawable icon = selected ? button.selectedIcon : button.unSelectedIcon;
+        if (icon.hasPrivateCallArtwork()) {
+            attachNewButton(idleIconRes, size, selected, destination);
+            return true;
+        }
+        icon.setOnAnimationEndListener(() -> AndroidUtilities.runOnUIThread(() -> {
+            if (type == destination && voIpButtonView == button &&
+                    (button.selectedIcon == icon || button.unSelectedIcon == icon)) {
+                button.setIcons(idleIconRes, size);
+            }
+        }));
+        icon.start();
+        return selected == button.isSelectedState;
     }
 
     public static class VoIpButtonView extends View {
@@ -261,6 +247,7 @@ public class VoIpSwitchLayout extends FrameLayout {
         private final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint whiteCirclePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint darkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint selectedPackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path clipPath = new Path();
         private final int maxRadius = AndroidUtilities.dp(ITEM_SIZE / 2f);
         private int unselectedRadius = maxRadius;
@@ -271,6 +258,31 @@ public class VoIpSwitchLayout extends FrameLayout {
         private ValueAnimator animator;
         private final VoIPBackgroundProvider backgroundProvider;
 
+        private RLottieDrawable newIcon(int rawRes, int size) {
+            RLottieDrawable icon = new RLottieDrawable(rawRes, size, size, true, null);
+            icon.bindPrivateCallIcons(getContext());
+            icon.setBounds(0, 0, size, size);
+            icon.setMasterParent(this);
+            return icon;
+        }
+
+        private void setIcons(int rawRes, int size) {
+            if (rawRes == R.raw.camera_flip2) {
+                singleIcon = newIcon(rawRes, size);
+                unSelectedIcon = selectedIcon = null;
+            } else {
+                singleIcon = null;
+                unSelectedIcon = newIcon(rawRes, size);
+                selectedIcon = newIcon(rawRes, size);
+                selectedIcon.setColorFilter(new PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.MULTIPLY));
+            }
+        }
+
+        private static void seekIcon(RLottieDrawable icon, int frame) {
+            boolean packed = icon.hasPrivateCallArtwork();
+            icon.setInvalidateOnProgressSet(packed);
+            icon.setCurrentFrame(frame, packed);
+        }
         public void setSelectedState(boolean selectedState, boolean animate, Type type) {
             if (animator != null && animator.isRunning()) {
                 animator.removeAllUpdateListeners();
@@ -291,7 +303,7 @@ public class VoIpSwitchLayout extends FrameLayout {
                     animator.setDuration(200);
                     animator.start();
                     if (type == Type.CAMERA) {
-                        singleIcon.setCurrentFrame(0, false);
+                        seekIcon(singleIcon, 0);
                         singleIcon.start();
                     }
                 } else {
@@ -315,7 +327,7 @@ public class VoIpSwitchLayout extends FrameLayout {
                         });
                         animator.setDuration(200);
                         animator.start();
-                        selectedIcon.setCurrentFrame(0, false);
+                        seekIcon(selectedIcon, 0);
                         selectedIcon.start();
                     } else {
                         selectedRadius = maxRadius;
@@ -340,7 +352,7 @@ public class VoIpSwitchLayout extends FrameLayout {
                     unselectedRadius = 0;
                     singleIconBackgroundAlphaPercent = 100;
                     if (type == Type.VIDEO || type == Type.MICRO) {
-                        selectedIcon.setCurrentFrame(selectedIcon.getFramesCount() - 1, false);
+                        seekIcon(selectedIcon, selectedIcon.getFramesCount() - 1);
                     }
                 } else {
                     selectedRadius = 0;
@@ -363,10 +375,10 @@ public class VoIpSwitchLayout extends FrameLayout {
         public VoIpButtonView(@NonNull Context context, VoIPBackgroundProvider backgroundProvider) {
             super(context);
             this.backgroundProvider = backgroundProvider;
-            backgroundProvider.attach(this);
             setLayerType(View.LAYER_TYPE_SOFTWARE, null);
             whiteCirclePaint.setColor(Color.WHITE);
 
+            selectedPackPaint.setColorFilter(new PorterDuffColorFilter(0xff263747, PorterDuff.Mode.SRC_IN));
             maskPaint.setColor(Color.BLACK);
             maskPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
 
@@ -375,6 +387,17 @@ public class VoIpSwitchLayout extends FrameLayout {
             darkPaint.setAlpha(VoIPBackgroundProvider.DARK_LIGHT_DEFAULT_ALPHA);
         }
 
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            backgroundProvider.attach(this);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            backgroundProvider.detach(this);
+            super.onDetachedFromWindow();
+        }
         private ValueAnimator pressedScaleAnimator;
         private float pressedScale = 1.0f;
 
@@ -389,6 +412,17 @@ public class VoIpSwitchLayout extends FrameLayout {
             });
             pressedScaleAnimator.setDuration(150);
             pressedScaleAnimator.start();
+        }
+
+        private void drawSelectedIcon(Canvas canvas) {
+            if (selectedIcon.hasPrivateCallArtwork()) {
+                selectedIcon.draw(canvas, selectedPackPaint);
+            } else {
+                selectedIcon.setAlpha(255);
+                selectedIcon.draw(canvas, maskPaint);
+                selectedIcon.setAlpha((int) (255 * VoIPBackgroundProvider.DARK_LIGHT_PERCENT));
+                selectedIcon.draw(canvas);
+            }
         }
 
         @Override
@@ -407,8 +441,18 @@ public class VoIpSwitchLayout extends FrameLayout {
                     darkPaint.setAlpha((int) (VoIPBackgroundProvider.DARK_LIGHT_DEFAULT_ALPHA * singleIconBackgroundAlphaPercent / 100f));
                     whiteCirclePaint.setAlpha((int) (255 * singleIconBackgroundAlphaPercent / 100f));
                     canvas.drawCircle(cx, cy, maxRadius, whiteCirclePaint);
+                    if (singleIcon.hasPrivateCallArtwork()) {
+                        int inkAlpha = (singleIconBackgroundAlphaPercent - 20) * 255 / 80;
+                        singleIcon.setAlpha(255 - inkAlpha);
+                        if (inkAlpha < 255) singleIcon.draw(canvas);
+                        selectedPackPaint.setAlpha(inkAlpha);
+                        singleIcon.draw(canvas, selectedPackPaint);
+                        selectedPackPaint.setAlpha(255);
+                        singleIcon.setAlpha(255);
+                    } else {
                     singleIcon.draw(canvas, maskPaint);
                     singleIcon.draw(canvas, darkPaint); //dimming icons
+                    }
                 } else {
                     canvas.drawCircle(cx, cy, maxRadius, backgroundProvider.getLightPaint()); //add a light background
                     if(backgroundProvider.isReveal()) {
@@ -416,9 +460,13 @@ public class VoIpSwitchLayout extends FrameLayout {
                     }
                     singleIcon.draw(canvas);
                 }
+                canvas.restore();
                 return;
             }
-            if (selectedIcon == null || unSelectedIcon == null) return;
+            if (selectedIcon == null || unSelectedIcon == null) {
+                canvas.restore();
+                return;
+            }
 
             boolean isUnSelected = unselectedRadius == maxRadius && selectedRadius == 0;
             boolean isSelected = selectedRadius == maxRadius && unselectedRadius == 0;
@@ -428,10 +476,7 @@ public class VoIpSwitchLayout extends FrameLayout {
                 canvas.drawCircle(cx, cy, selectedRadius, whiteCirclePaint);
                 canvas.drawCircle(cx, cy, unselectedRadius, maskPaint);
 
-                selectedIcon.setAlpha(255);
-                selectedIcon.draw(canvas, maskPaint);
-                selectedIcon.setAlpha((int) (255 * VoIPBackgroundProvider.DARK_LIGHT_PERCENT));
-                selectedIcon.draw(canvas); //dimming icons
+                drawSelectedIcon(canvas);
 
                 clipPath.reset();
                 clipPath.addCircle(cx, cy, unselectedRadius, Path.Direction.CW);
@@ -454,10 +499,7 @@ public class VoIpSwitchLayout extends FrameLayout {
                 clipPath.addCircle(cx, cy, selectedRadius, Path.Direction.CW);
                 canvas.clipPath(clipPath);
                 canvas.drawCircle(cx, cy, selectedRadius, whiteCirclePaint); //circular background
-                selectedIcon.setAlpha(255);
-                selectedIcon.draw(canvas, maskPaint);
-                selectedIcon.setAlpha((int) (255 * VoIPBackgroundProvider.DARK_LIGHT_PERCENT));
-                selectedIcon.draw(canvas); //dimming icons
+                drawSelectedIcon(canvas);
             }
             canvas.restore();
         }

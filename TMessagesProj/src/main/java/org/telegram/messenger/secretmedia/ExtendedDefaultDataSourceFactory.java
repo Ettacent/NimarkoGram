@@ -83,7 +83,8 @@ public final class ExtendedDefaultDataSourceFactory implements DataSource.Factor
     }
 
     public void putDocumentUri(long docId, Uri uri) {
+        synchronized (mtprotoUris) {
         mtprotoUris.put(docId, uri);
     }
 
-}
+}}

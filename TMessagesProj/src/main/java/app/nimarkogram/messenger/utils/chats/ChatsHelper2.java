@@ -1,4 +1,3 @@
-
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -10,6 +9,7 @@ package app.nimarkogram.messenger.utils.chats;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.formatJoined;
+import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.os.Build;
@@ -290,17 +290,17 @@ public final class ChatsHelper2 {
         ItemOptions.makeOptions(sa.container, null, scrimView)
                 .addChecked(
                         state.hasAuthorship(),
-                        getString(R.string.CG_FwdMenu_Authorship),
+                        getString(R.string.NM_FwdMenu_Authorship),
                         state::toggleAuthorship
                 )
                 .addChecked(
                         state.hasCaptions(),
-                        getString(R.string.CG_FwdMenu_Captions),
+                        getString(R.string.NM_FwdMenu_Captions),
                         state::toggleCaptions
                 )
                 .addChecked(
                         state.shouldNotify(),
-                        getString(R.string.CG_FwdMenu_Notify),
+                        getString(R.string.NM_FwdMenu_Notify),
                         state::toggleNotify
                 )
                 .setDimAlpha(100)
@@ -309,27 +309,29 @@ public final class ChatsHelper2 {
     }
 
     public static void showJsonMenu(JsonBottomSheet sa, FrameLayout field, MessageObject messageObject) {
-        String fwdDateLabel;
+        String mediaDateLabel;
         if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
-            fwdDateLabel = "Date: ➥ " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.media.document.date);
+            mediaDateLabel = formatString(R.string.NM_JsonMediaDateValue,
+                    ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.media.document.date));
         } else if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.photo != null) {
-            fwdDateLabel = "Date: ➥ " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.media.photo.date);
+            mediaDateLabel = formatString(R.string.NM_JsonMediaDateValue,
+                    ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.media.photo.date));
         } else {
-            fwdDateLabel = "Message is not forwarded.";
+            mediaDateLabel = getString(R.string.NM_JsonMediaDateUnavailable);
         }
         String dcLabel;
         if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
-            dcLabel = "DC: " + messageObject.messageOwner.media.document.dc_id;
+            dcLabel = formatString(R.string.NM_JsonMediaDcValue, messageObject.messageOwner.media.document.dc_id);
         } else if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.photo != null) {
-            dcLabel = "DC: " + messageObject.messageOwner.media.photo.dc_id;
+            dcLabel = formatString(R.string.NM_JsonMediaDcValue, messageObject.messageOwner.media.photo.dc_id);
         } else {
-            dcLabel = "DC: Available only for media.";
+            dcLabel = getString(R.string.NM_JsonMediaDcUnavailable);
         }
         ItemOptions options = ItemOptions.makeOptions(sa.container, sa.resourcesProvider, field)
                 .addIf(
                         !(messageObject.messageOwner instanceof TLRPC.TL_messageService),
                         R.drawable.msg_info,
-                        sa.isJacksonSupportedAndEnabled() ? "Switch to GSON" : "Switch to Jackson",
+                        formatString(R.string.NM_JsonSwitchParser, sa.isJacksonSupportedAndEnabled() ? "Gson" : "Jackson"),
                         () -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 AppConfig.toggleJacksonJSON_Provider();
@@ -337,14 +339,14 @@ public final class ChatsHelper2 {
                                 JsonBottomSheet.showAlert(sa.getContext(), sa.resourcesProvider, sa.fragment, messageObject, null);
                             } else {
                                 BulletinFactory.of(sa.container, sa.resourcesProvider)
-                                        .createSimpleBulletin(R.raw.error, "Jackson library is supported on Android 8 and newer.")
+                                        .createSimpleBulletin(R.raw.error, getString(R.string.NM_JsonJacksonRequiresAndroid))
                                         .show();
                             }
                         }
                 )
                 .add(
                         R.drawable.msg_calendar2,
-                        "Date: " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.date),
+                        formatString(R.string.NM_JsonDateValue, ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.date)),
                         () -> {
                             AndroidUtilities.addToClipboard(ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.date));
                             BulletinFactory.of(sa.container, sa.resourcesProvider)
@@ -352,9 +354,10 @@ public final class ChatsHelper2 {
                                     .show();
                         }
                 )
+                .makeMultiline(false)
                 .addIf(messageObject.messageOwner != null,
                         R.drawable.msg_calendar2,
-                        fwdDateLabel,
+                        mediaDateLabel,
                         () -> {
                             String textToCopy = "";
                             if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
@@ -370,11 +373,13 @@ public final class ChatsHelper2 {
                             }
                         }
                 )
+                .makeMultiline(false)
                 .addIf(messageObject.messageOwner != null,
                         R.drawable.msg_info,
                         dcLabel,
                         () -> {}
                 )
+                .makeMultiline(false)
                 .addGapIf(messageObject.messageOwner != null
                         && messageObject.messageOwner.restriction_reason != null
                         && hasRestrictionReasons(messageObject));

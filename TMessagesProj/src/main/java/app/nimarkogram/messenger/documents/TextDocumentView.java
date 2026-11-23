@@ -8,6 +8,7 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.graphics.Typeface;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
@@ -110,23 +111,7 @@ public final class TextDocumentView extends FrameLayout {
         this.listener = listener;
         layout = new ZoomLayoutManager(context);
         viewport = new DocumentViewport(context);
-        list = new RecyclerListView(context) {
-            @Override
-            protected boolean allowSelectChildAtPosition(View child) {
-                return false;
-            }
-
-            @Override
-            public boolean requestChildRectangleOnScreen(View child, Rect rect, boolean immediate) {
-                return revealNativeRectangle(child, rect);
-            }
-
-            @Override public boolean canScrollVertically(int direction) {
-                if (layout == null || viewport == null) return super.canScrollVertically(direction);
-                return canScrollDocument(direction);
-            }
-
-        };
+        list = new DocumentList(context);
         list.setLayoutManager(layout);
         list.setVerticalScrollBarEnabled(false);
         list.setHorizontalScrollBarEnabled(false);
@@ -415,9 +400,63 @@ public final class TextDocumentView extends FrameLayout {
         applyViewportTransform();
     }
 
+    private final class DocumentList extends RecyclerListView {
+        private final Matrix downTransform = new Matrix();
+        private final Matrix inverseDownTransform = new Matrix();
+        private final Matrix toScrollSpace = new Matrix();
+        private boolean hasScrollSpace;
+
+        DocumentList(Context context) { super(context); }
+
+        @Override public boolean dispatchTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                downTransform.set(getMatrix());
+                hasScrollSpace = downTransform.invert(inverseDownTransform);
+            }
+            try {
+                return super.dispatchTouchEvent(event);
+            } finally {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    hasScrollSpace = false;
+                }
+            }
+        }
+
+        private boolean scrollTouchEvent(MotionEvent event, boolean intercept) {
+            MotionEvent scrollEvent = event;
+            try {
+                final Matrix current = getMatrix();
+                if (hasScrollSpace && event.getActionMasked() != MotionEvent.ACTION_CANCEL
+                        && !downTransform.equals(current)) {
+                    toScrollSpace.setConcat(inverseDownTransform, current);
+                    scrollEvent = MotionEvent.obtain(event);
+                    scrollEvent.transform(toScrollSpace);
+                }
+                return intercept ? super.onInterceptTouchEvent(scrollEvent) : super.onTouchEvent(scrollEvent);
+            } finally {
+                if (scrollEvent != event) scrollEvent.recycle();
+            }
+        }
+
+        @Override public boolean onInterceptTouchEvent(MotionEvent event) { return scrollTouchEvent(event, true); }
+        @Override public boolean onTouchEvent(MotionEvent event) { return scrollTouchEvent(event, false); }
+        @Override protected boolean allowSelectChildAtPosition(View child) { return false; }
+        @Override public boolean requestChildRectangleOnScreen(View child, Rect rect, boolean immediate) {
+            return revealNativeRectangle(child, rect);
+        }
+        @Override public boolean canScrollVertically(int direction) {
+            if (layout == null || viewport == null) return super.canScrollVertically(direction);
+            return canScrollDocument(direction);
+        }
+    }
     private final class ZoomLayoutManager extends LinearLayoutManager {
         ZoomLayoutManager(Context context) { super(context); }
 
+        @Override public boolean onRequestChildFocus(RecyclerView parent, RecyclerView.State state, View child, View focused) {
+            return (selection != null && selection.isTakingFocus(child))
+                    || super.onRequestChildFocus(parent, state, child, focused);
+        }
         @Override public boolean performAccessibilityAction(RecyclerView.Recycler recycler, RecyclerView.State state,
                                                              int action, android.os.Bundle arguments) {
             if (action == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD || action == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) {

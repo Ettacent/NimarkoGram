@@ -16,6 +16,8 @@ import java.util.ArrayList;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.BuildConfig;
+import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -49,6 +51,8 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
     private static final int ID_OPEN_ARCHIVE = 14;
     private static final int ID_PROTECT_SAVED_MESSAGES = 15;
 
+    private static final int ID_PRIVACY_POLICY = 16;
+    private static final String PLAY_PRIVACY_POLICY = "https://ettacent.dev/nimarkogram/privacy/";
     @Override
     public String getTitle() {
         return LocaleController.getString(R.string.NM_Cat_Privacy);
@@ -118,6 +122,10 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
         items.add(UItem.asShadow(-5, null));
 
         items.add(UItem.asHeader(-6, LocaleController.getString(R.string.NM_SettingsSectionAccount)));
+        if (BuildConfig.NIMARKO_PLAY) {
+            items.add(asSettingsLink(ID_PRIVACY_POLICY, IconBackgroundColors.BLUE, R.drawable.msg2_policy,
+                    LocaleController.getString(R.string.PrivacyPolicy)));
+        }
         items.add(asSettingsLink(ID_DELETE_ACCOUNT, IconBackgroundColors.RED,
                 R.drawable.msg_user_remove,
                 LocaleController.getString(R.string.NM_PR_DeleteAccount)).red());
@@ -127,6 +135,10 @@ public class PrivacyPreferencesActivity extends BasePreferencesActivity {
     @Override
     public void onClick(UItem item, View view, int position, float x, float y) {
         int id = item.id;
+        if (id == ID_PRIVACY_POLICY && BuildConfig.NIMARKO_PLAY) {
+            if (getParentActivity() != null) Browser.openUrl(getParentActivity(), PLAY_PRIVACY_POLICY);
+            return;
+        }
         if (id == ID_HIDE_PROXY) {
             AppConfig.toggleHideProxySponsor();
             applyCheck(item, view, AppConfig.hideProxySponsor);

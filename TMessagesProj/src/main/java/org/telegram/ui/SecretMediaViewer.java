@@ -925,7 +925,7 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
                     if (duration != C.TIME_UNSET) {
                         videoPlayer.seekTo((long) (progress * duration), false);
                     }
-                    videoPlayer.play();
+                    videoPlayer.playByUser();
                 }
             }
 
@@ -2527,10 +2527,11 @@ public class SecretMediaViewer implements NotificationCenter.NotificationCenterD
             e.getX() >= playButton.getX() &&
             e.getY() >= playButton.getY() &&
             e.getX() <= playButton.getX() + playButton.getMeasuredWidth() &&
-            e.getX() <= playButton.getX() + playButton.getMeasuredWidth()
+            e.getY() <= playButton.getY() + playButton.getMeasuredHeight()
         )) {
-            videoPlayer.setPlayWhenReady(!videoPlayer.getPlayWhenReady());
-            if (videoPlayer.getPlayWhenReady()) {
+            if (videoPlayer.isPlaying()) videoPlayer.pauseByUser();
+            else videoPlayer.playByUser();
+            if (videoPlayer.isPlaying()) {
                 toggleActionBar(true, true);
             } else {
                 showPlayButton(true, true);

@@ -15,7 +15,6 @@ import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.text.TextUtils;
@@ -52,17 +51,9 @@ public class TextSettingsCell extends FrameLayout {
     private ImageView valueImageView;
     public boolean needDivider;
     private boolean canDisable;
-    private boolean drawLoading;
     private int padding;
 
-    private boolean incrementLoadingProgress;
-    private float loadingProgress;
-    private float drawLoadingProgress;
-    private int loadingSize;
-    private boolean measureDelay;
-    private int changeProgressStartDelay;
-
-    Paint paint;
+    private final SettingsValueTransition valueTransition = new SettingsValueTransition();
 
     public TextSettingsCell(Context context) {
         this(context, 21);
@@ -166,13 +157,6 @@ public class TextSettingsCell extends FrameLayout {
         textView.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
     }
 
-    @Override
-    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
-        super.onLayout(changed, left, top, right, bottom);
-        if (measureDelay && getParent() != null) {
-            changeProgressStartDelay = (int) ((getTop() / (float) ((View) getParent()).getMeasuredHeight()) * 150f);
-        }
-    }
 
     public TextView getTextView() {
         return textView;
@@ -205,16 +189,18 @@ public class TextSettingsCell extends FrameLayout {
     }
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean divider) {
-        setTextAndValue(text, value, false, divider);
+        setTextAndValue(text, value, true, divider);
     }
 
     public void setTextAndValue(CharSequence text, CharSequence value, boolean animated, boolean divider) {
+        animated = animated && !TextUtils.isEmpty(value) && valueTransition.canChangeText(this, text);
         textView.setText(text);
         valueImageView.setVisibility(INVISIBLE);
         if (value != null) {
             valueTextView.setText(value, animated);
             valueTextView.setVisibility(VISIBLE);
         } else {
+            valueTextView.setText(null, false);
             valueTextView.setVisibility(INVISIBLE);
         }
         needDivider = divider;
@@ -319,53 +305,24 @@ public class TextSettingsCell extends FrameLayout {
     }
 
     @Override
-    protected void dispatchDraw(Canvas canvas) {
-        if (drawLoading || drawLoadingProgress != 0) {
-            if (paint == null) {
-                paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(Theme.getColor(Theme.key_dialogSearchBackground, resourcesProvider));
+    protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        if (child == valueTextView) {
+            float alpha = valueTransition.valueOpacity();
+            if (alpha <= 0f) return false;
+            if (alpha < 1f) {
+                int save = canvas.saveLayerAlpha(child.getLeft(), child.getTop(), child.getRight(), child.getBottom(), Math.round(alpha * 255));
+                boolean more = super.drawChild(canvas, child, drawingTime);
+                canvas.restoreToCount(save);
+                return more;
             }
-            //LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT;
-            if (incrementLoadingProgress) {
-                loadingProgress += AndroidUtilities.screenRefreshTime / 1000f;
-                if (loadingProgress > 1f) {
-                    loadingProgress = 1f;
-                    incrementLoadingProgress = false;
-                }
-            } else {
-                loadingProgress -= AndroidUtilities.screenRefreshTime / 1000f;
-                if (loadingProgress < 0) {
-                    loadingProgress = 0;
-                    incrementLoadingProgress = true;
-                }
-            }
-
-            if (changeProgressStartDelay > 0) {
-                changeProgressStartDelay -= 15;
-            } else if (drawLoading && drawLoadingProgress != 1f) {
-                drawLoadingProgress += AndroidUtilities.screenRefreshTime / 150f;
-                if (drawLoadingProgress > 1f) {
-                    drawLoadingProgress = 1f;
-                }
-            } else if (!drawLoading && drawLoadingProgress != 0) {
-                drawLoadingProgress -= AndroidUtilities.screenRefreshTime / 150f;
-                if (drawLoadingProgress < 0) {
-                    drawLoadingProgress = 0;
-                }
-            }
-
-            float alpha = (0.6f + 0.4f * loadingProgress) * drawLoadingProgress;
-            paint.setAlpha((int) (255 * alpha));
-            int cy = getMeasuredHeight() >> 1;
-            AndroidUtilities.rectTmp.set(getMeasuredWidth() - AndroidUtilities.dp(padding) - AndroidUtilities.dp(loadingSize), cy - AndroidUtilities.dp(3), getMeasuredWidth() - AndroidUtilities.dp(padding), cy + AndroidUtilities.dp(3));
-            if (LocaleController.isRTL) {
-                AndroidUtilities.rectTmp.left = getMeasuredWidth() - AndroidUtilities.rectTmp.left;
-                AndroidUtilities.rectTmp.right = getMeasuredWidth() - AndroidUtilities.rectTmp.right;
-            }
-            canvas.drawRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(3), AndroidUtilities.dp(3), paint);
-            invalidate();
         }
-        valueTextView.setAlpha(1f - drawLoadingProgress);
+        return super.drawChild(canvas, child, drawingTime);
+    }
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        valueTransition.draw(this, canvas, textView.getText(), valueTextView.getVisibility() == VISIBLE
+                && !TextUtils.isEmpty(valueTextView.getText()), padding, resourcesProvider);
         super.dispatchDraw(canvas);
 
         if (needDivider) {
@@ -383,15 +340,15 @@ public class TextSettingsCell extends FrameLayout {
     }
 
     public void setDrawLoading(boolean drawLoading, int size, boolean animated) {
-        this.drawLoading = drawLoading;
-        this.loadingSize = size;
+        valueTransition.loading(this, textView.getText(), drawLoading, size, animated);
+    }
 
-        if (!animated) {
-            drawLoadingProgress = drawLoading ? 1f : 0f;
-        } else {
-            measureDelay = true;
-        }
-        invalidate();
+    public void resetValuePresentation() {
+        valueTransition.reset();
+    }
+
+    public void revealValueOnFirstDraw() {
+        valueTransition.revealOnFirstDraw();
     }
 
     public BackupImageView getValueBackupImageView() {
@@ -405,6 +362,7 @@ public class TextSettingsCell extends FrameLayout {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        valueTransition.reset();
         if (valueBackupImageView != null && valueBackupImageView.getImageReceiver() != null && valueBackupImageView.getImageReceiver().getDrawable() instanceof AnimatedEmojiDrawable) {
             ((AnimatedEmojiDrawable) valueBackupImageView.getImageReceiver().getDrawable()).removeView(this);
         }

@@ -635,7 +635,18 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
         if (shouldApplyBackground(viewType)) {
             ThemeBind.backgroundColor(view, key_background, themedColors);
         }
+        if (viewType == VIEW_TYPE_TEXT || viewType == VIEW_TYPE_TEXT_SETTINGS) return new ValueHolder(view);
         return new RecyclerListView.Holder(view);
+    }
+
+    private static final class ValueHolder extends RecyclerListView.Holder {
+        private UItem bound;
+        ValueHolder(View view) { super(view); }
+        boolean bind(UItem item) {
+            boolean same = bound != null && bound.equals(item);
+            bound = item;
+            return same;
+        }
     }
 
     @Override
@@ -697,10 +708,12 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 break;
             case VIEW_TYPE_TEXT_SETTINGS:
                 final TextSettingsCell settingsCell = (TextSettingsCell) holder.itemView;
+                boolean sameSetting = ((ValueHolder) holder).bind(item);
+                if (!sameSetting) settingsCell.resetValuePresentation();
                 settingsCell.getValueBackupImageView().setImageDrawable(null);
                 if (item.text != null) {
                     if (item.subtext != null) {
-                        settingsCell.setTextAndValue(item.text, item.subtext, divider);
+                        settingsCell.setTextAndValue(item.text, item.subtext, sameSetting, divider);
                     } else {
                         settingsCell.setText(item.text, divider);
                     }
@@ -729,6 +742,8 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                 break;
             case VIEW_TYPE_TEXT:
                 TextCell cell = (TextCell) holder.itemView;
+                boolean sameText = ((ValueHolder) holder).bind(item);
+                if (!sameText) cell.resetValuePresentation();
                 if (item.object instanceof TLRPC.Document) {
                     cell.setTextAndSticker(item.text, (TLRPC.Document) item.object, divider);
                 } else if (item.object instanceof String) {
@@ -743,11 +758,11 @@ public class UniversalAdapter extends AdapterWithDiffUtils {
                     }
                 } else {
                     if (item.object instanceof Drawable) {
-                        cell.setTextAndValueAndIcon(item.text, item.textValue, (Drawable) item.object, divider);
+                        cell.setTextAndValueAndIcon(item.text, item.textValue, sameText, (Drawable) item.object, divider);
                     } else if (item.iconResId == 0) {
-                        cell.setTextAndValue(item.text, item.textValue, divider);
+                        cell.setTextAndValue(item.text, item.textValue, sameText, divider);
                     } else {
-                        cell.setTextAndValueAndIcon(item.text, item.textValue, item.iconResId, divider);
+                        cell.setTextAndValueAndIcon(item.text, item.textValue, sameText, item.iconResId, divider);
                     }
                 }
                 // NimarkoGram: re-style the leading icon as a rounded gradient badge when requested. The text

@@ -8601,6 +8601,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void updateButtonState(boolean animated) {
+            if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return;
             final int currentAccount = parent.getCurrentAccount();
             final String fileName = FileLoader.getAttachFileName(currentDocument);
             final File path = FileLoader.getInstance(currentAccount).getPathToAttach(currentDocument);
@@ -9111,6 +9112,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void updateButtonState(boolean animated) {
+            if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return;
             final int currentAccount = parent.getCurrentAccount();
             final String fileName = FileLoader.getAttachFileName(currentDocument);
             final File path = FileLoader.getInstance(currentAccount).getPathToAttach(currentDocument, true);
@@ -13472,6 +13474,7 @@ public class ArticleViewer extends IArticleViewer implements NotificationCenter.
         }
 
         public void updateButtonState(boolean animated) {
+            if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return;
             final int currentAccount = parent.getCurrentAccount();
             final String fileName = FileLoader.getAttachFileName(currentPhotoObject);
             final File path = FileLoader.getInstance(currentAccount).getPathToAttach(currentPhotoObject, true);

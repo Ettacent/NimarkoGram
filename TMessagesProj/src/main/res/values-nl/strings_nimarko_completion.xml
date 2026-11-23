@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Uit cache verwijderen</string>
+    <string name="NM_ClearedFromCache">Uit cache verwijderd</string>
+    <string name="NM_CopyCallback">Callbackgegevens kopiëren</string>
+    <string name="NM_CopyID">Gebruikers-ID kopiëren</string>
+    <string name="NM_CopyInlineQuery">Inlinezoekopdracht kopiëren</string>
+    <string name="NM_CopyPhoto">Foto kopiëren</string>
+    <string name="NM_CopyPhotoAsSticker">Foto als sticker kopiëren</string>
+    <string name="NM_CopyReportDetails">Details van de melding kopiëren</string>
+    <string name="NM_CopySetId">Pakket-ID kopiëren</string>
+    <string name="NM_CopyTitle">Titel kopiëren</string>
+    <string name="NM_Copy_Coordinates">Coördinaten</string>
+    <string name="NM_DoNotRemindAgain">Niet meer herinneren</string>
+    <string name="NM_ExportSettings">Instellingen exporteren</string>
+    <string name="NM_FoldersTypeIcons">Alleen pictogrammen</string>
+    <string name="NM_FoldersTypeIconsTitles">Pictogrammen en titels</string>
+    <string name="NM_FoldersTypeTitles">Alleen titels</string>
+    <string name="NM_GetEmojiPack">Emoji ophalen</string>
+    <string name="NM_ImportSettings">Instellingen importeren</string>
+    <string name="NM_ImportSettingsAlert">Instellingen overschrijven? Als je instellingen van onbekende bronnen importeert, werkt de app mogelijk niet meer.</string>
+    <string name="NM_OpenEmojiPack">Tik om de emoji op te halen</string>
+    <string name="NM_OpenStickerPack">Tik om de sticker op te halen</string>
+    <string name="NM_PasskeyInfo2">Deze functie werkt alleen met wachtwoordbeheerders waarmee je vertrouwensinstellingen voor apps met speciale rechten kunt beheren, zoals **Bitwarden** en **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Er zijn geen geschikte inloggegevens beschikbaar.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Probeer een andere wachtwoordbeheerder, zoals **Bitwarden** of **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Wachtwoordbeheerder wordt niet ondersteund</string>
+    <string name="NM_PhotoCopied">Foto naar het klembord gekopieerd.</string>
+    <string name="NM_ProfileBackground">Profielachtergrond toepassen</string>
+    <string name="NM_QRLoginMessage">Scan de QR-code met een ander apparaat om in te loggen.</string>
+    <string name="NM_QRLoginTitle">Inloggen met QR-code</string>
+    <string name="NM_ReportDetailsCopied">Details van de melding naar het klembord gekopieerd.</string>
+    <string name="NM_RestartToApply">Herstart vereist</string>
+    <string name="NM_SafeStars_buy_Telegram">Sterren kopen via Telegram</string>
+    <string name="NM_SaveSticker">Sticker opslaan</string>
+    <string name="NM_SendPhotoAsSticker">Als sticker verzenden</string>
+    <string name="NM_SortByDate">Sorteren op berichtdatum</string>
+    <string name="NM_SwipeToUnarchive">Veeg naar links om uit het archief te halen</string>
+    <string name="NM_SwitchedToAccount">Overgeschakeld naar **%1$s**</string>
+    <string name="NM_TranslationLanguage">Vertaaltaal</string>
+</resources>

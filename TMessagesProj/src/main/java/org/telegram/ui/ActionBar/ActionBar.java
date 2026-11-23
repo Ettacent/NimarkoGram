@@ -382,9 +382,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public boolean getMenuItemGlassRect(ActionBarMenuItem item, RectF out) {
         final int p = dp(6);
         final int s = dp(46);
-        final int menuWidth = getGlassMenuWidth();
-        if (item.getParent() == menu && glassDrawableMenu != null && !doNotDrawGlassMenu && !glassOnlyBack
-                && searchFactor == 0 && getActionModeFactor() == 0 && menuWidth > 0) {
+        final int menuWidth = getPresentedMenuWidth();
+        if (item.getParent() == menu && menuWidth > 0) {
             final int top = getHeight() - extraHeight - (getCurrentActionBarHeight() + s) / 2;
             out.set(getWidth() - Math.max(s, menuWidth) - p, top, getWidth() - p, top + s);
             return true;
@@ -395,6 +394,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final float cy = getHeight() - extraHeight - (getCurrentActionBarHeight() + s) / 2f + half;
         out.set(cx - half, cy - half, cx + half, cy + half);
         return false;
+    }
+
+    public int getPresentedMenuWidth() {
+        return menu != null && glassDrawableMenu != null && !doNotDrawGlassMenu && !glassOnlyBack
+                && searchFactor == 0 && getActionModeFactor() == 0 ? getGlassMenuWidth() : -1;
     }
 
     @Override
@@ -1016,7 +1020,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int measuredWidth = view.getMeasuredWidth();
         final float progress = centerTitleAnimator.getFloatValue();
         final int centeredWidth = getCenteredTitleAvailableWidth(width, textLeft, adaptiveCenterTitle);
-        final float viewportLeft = lerp(textLeft,
+        final float viewportLeft = lerp(textLeft + uncenteredTitleOffsetX,
                 getTargetCenterTitleX(width, textLeft, adaptiveCenterTitle) - centeredWidth / 2f, progress);
         final int availableWidth = getTitleAvailableWidth(width, textLeft);
         final float alignment = LocaleController.isRTL ? 1f - progress / 2f : progress / 2f;
@@ -1300,7 +1304,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                 super.setAlpha(alpha);
                 ActionBar.this.invalidate();
                 if (chatAvatarContainer != null
-                        && chatAvatarContainer.shouldUseCompactTitleIsland()) {
+                        && (chatAvatarContainer.shouldUseCompactTitleIsland() || chatAvatarContainer.isScheduledHeader())) {
 
                     chatAvatarContainer.requestLayout();
                 }
@@ -1991,8 +1995,16 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     private int additionalTextLeft;
 
+    private int uncenteredTitleOffsetX;
     public void setAdditionalTextLeft(int x) {
         additionalTextLeft = x;
+    }
+
+    public void setUncenteredTitleOffsetX(int offsetX) {
+        if (uncenteredTitleOffsetX != offsetX) {
+            uncenteredTitleOffsetX = offsetX;
+            requestLayout();
+        }
     }
 
     @Override
@@ -2117,7 +2129,14 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (child.getVisibility() == GONE || child == titleTextView[0] || child == titleTextView[1] || child == additionalSubTitleOverlayContainer || child == subtitleTextView || child == menu || child == backButtonImageView || child == countLayout || child == additionalSubtitleTextView || child == avatarSearchImageView) {
                 continue;
             }
-            measureChildWithMargins(child, widthMeasureSpec, 0, MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY), 0);
+            final int parentHeight = MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY);
+            if (resolveScheduledHeaderBounds(child, width)) {
+                MarginLayoutParams lp = (MarginLayoutParams) child.getLayoutParams();
+                child.measure(MeasureSpec.makeMeasureSpec(chatAvatarOvalBounds.width(), MeasureSpec.EXACTLY),
+                        getChildMeasureSpec(parentHeight, getPaddingTop() + getPaddingBottom() + lp.topMargin + lp.bottomMargin, lp.height));
+            } else {
+                measureChildWithMargins(child, widthMeasureSpec, 0, parentHeight, 0);
+            }
         }
     }
 
@@ -2258,6 +2277,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                     break;
                 default:
                     childTop = lp.topMargin;
+            }
+            if (resolveScheduledHeaderBounds(child, barWidth)) {
+                childLeft = chatAvatarOvalBounds.left;
             }
             child.layout(childLeft, childTop, childLeft + width, childTop + height);
         }
@@ -3150,7 +3172,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             invalidate();
             if (chatAvatarContainer != null
                     && (chatAvatarContainer.shouldUseCompactTitleIsland()
-                    || glassModeIsForum)) {
+                    || chatAvatarContainer.isScheduledHeader() || glassModeIsForum)) {
 
                 chatAvatarContainer.requestLayout();
             }
@@ -3174,9 +3196,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             visualWidth = Math.max(visualWidth, dp(192));
         }
 
-        final int width = Math.max(0, Math.min(
-                getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6),
-                visualWidth));
+        final int width = Math.min(getMaxChatAvatarContentWidth(), Math.max(0, visualWidth));
         if (chatAvatarContainer.hasSubtitleWidthTransition()) {
             final float progress = Utilities.clamp01(chatAvatarContainer.getSubtitleWidthTransitionProgress());
             final float start = chatAvatarContainer.getSubtitleWidthTransitionStart();
@@ -3213,21 +3233,30 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private boolean calculateChatAvatarOvalBounds(Rect out) {
-        if (glassDrawable == null || getWidth() <= 0) {
+        return calculateChatAvatarOvalBounds(out, getWidth());
+    }
+
+    private boolean resolveScheduledHeaderBounds(View child, int barWidth) {
+        return child == chatAvatarContainer && isChatAvatarContainerReady(chatAvatarContainer)
+                && chatAvatarContainer.isScheduledHeader() && calculateChatAvatarOvalBounds(chatAvatarOvalBounds, barWidth);
+    }
+
+    private boolean calculateChatAvatarOvalBounds(Rect out, int barWidth) {
+        if (glassDrawable == null || barWidth <= 0) {
             out.setEmpty();
             return false;
         }
         if (!isChatAvatarContainerReady(chatAvatarContainer)) {
             if (centerTitleAndGlass && titleTextView[0] != null && titleTextView[0].getVisibility() == View.VISIBLE) {
-                int titleWidth = Math.min(getWidth(), (int) Math.ceil(titleTextView[0].getTextWidth()) + dp(60));
-                int left = (getWidth() - titleWidth) / 2 + Math.round(titleTextView[0].getTranslationX());
+                int titleWidth = Math.min(barWidth, (int) Math.ceil(titleTextView[0].getTextWidth()) + dp(60));
+                int left = (barWidth - titleWidth) / 2 + Math.round(titleTextView[0].getTranslationX());
                 out.set(left, 0, left + titleWidth, 0);
             } else {
                 final int left = backButtonImageView != null && backButtonImageView.getVisibility() == View.VISIBLE ? dp(52) : 0;
                 final float menuWidth = getGlassMenuWidthFloat();
                 final float menuPadding = hasForcedMenuWidth || hasForcedMenuMinWidth
                         ? (menuWidth > 0 ? dp(6) : 0) : dp(6) * animatorHasMenuItems.getFloatValue();
-                final int right = Math.max(left + 1, Math.round(getWidth() - menuWidth - menuPadding));
+                final int right = Math.max(left + 1, Math.round(barWidth - menuWidth - menuPadding));
                 out.set(left, 0, right, 0);
             }
             return true;
@@ -3239,11 +3268,6 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final boolean useCompactChatTitle =
                 chatAvatarContainer.shouldUseCompactTitleIsland();
         final boolean hasBackButton = backButtonImageView != null && backButtonImageView.getVisibility() == View.VISIBLE;
-        final int barWidth = getWidth();
-        if (barWidth <= 0) {
-            out.setEmpty();
-            return false;
-        }
         final float menuWidth = getGlassMenuWidthFloat();
         final float menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth)
                 ? (menuWidth > 0 ? p : 0)
@@ -3303,7 +3327,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
                     widthDefault,
                     Math.max(search, actionModeFactor)));
             if (chatAvatarContainer.isInlineCenteredAvatar()) {
-                final float desiredLeft = (getWidth() - width) / 2f;
+                final float desiredLeft = (barWidth - width) / 2f;
                 left = Math.max(boundedLeftDefault, Math.min(desiredLeft, rightDefault - width));
             } else {
                 left = (rightDefault + boundedLeftDefault - width) / 2f;
@@ -3333,19 +3357,33 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public int getChatAvatarCompactContentWidth() {
-        if (chatAvatarContainer == null
-                || !chatAvatarContainer.isCenterChatTitleEnabled()
-                || !calculateChatAvatarOvalBounds(chatAvatarOvalBounds)) {
+        if (chatAvatarContainer == null || !chatAvatarContainer.isCenterChatTitleEnabled()) {
             return 0;
         }
+        final boolean scheduled = chatAvatarContainer.isScheduledHeader();
+        if (!calculateChatAvatarOvalBounds(chatAvatarOvalBounds, scheduled ? getMeasuredWidth() : getWidth())) return 0;
         final int glassPadding = dp(6);
         final int drawableContentWidth = Math.max(
                 0, chatAvatarOvalBounds.width() - glassPadding * 2);
-        return Math.max(0, Math.min(
+        return scheduled ? drawableContentWidth : Math.max(0, Math.min(
                 drawableContentWidth,
                 Math.round(animatorAvatarContainerWidth.getFactor())));
     }
+    public int getScheduledHeaderContentWidth(ChatAvatarContainer owner) {
+        return resolveScheduledHeaderBounds(owner, getMeasuredWidth())
+                ? Math.max(0, chatAvatarOvalBounds.width() - 2 * dp(6)) : -1;
+    }
+
+    public int getMaxChatAvatarContentWidth() {
+        int scheduledWidth = getScheduledHeaderContentWidth(chatAvatarContainer);
+        if (scheduledWidth >= 0) return scheduledWidth;
+        return Math.max(0, getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6));
+    }
     public int getChatAvatarAnimatedContentRight(ChatAvatarContainer container) {
+        if (container != null && !container.isCenterChatTitleEnabled()
+                && resolveScheduledHeaderBounds(container, getMeasuredWidth())) {
+            return chatAvatarOvalBounds.width() - dp(6);
+        }
         if (container == null || container != chatAvatarContainer
                 || !container.isLaidOut()
                 || container.isCenterChatTitleEnabled()
@@ -3382,6 +3420,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         finishSearchMenuGeometryIfSettled();
         invalidate();
+        if (callee == animatorMenuItemsWidth) {
+            onAnimatedMenuWidthChanged(getPresentedMenuWidth());
+        }
         final boolean compactMenuGeometryChanged =
                 chatAvatarContainer != null
                 && chatAvatarContainer.shouldUseCompactTitleIsland()
@@ -3404,6 +3445,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
+    protected void onAnimatedMenuWidthChanged(int width) {
+    }
     private int forcedMenuWidth;
     private int forcedMenuMinWidth;
     private boolean hasForcedMenuWidth;
@@ -3588,14 +3631,21 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
     }
 
+    protected float getNormalMenuGlassPresence(float layoutPresence) {
+        return -1f;
+    }
     private void drawGlassMenu(Canvas canvas, int menuWidth, int t, int b, int glassA, float search, boolean coveredByTitle) {
         if (glassDrawableMenu == null) return;
-        if (menuWidth > 0 && !glassOnlyBack && !doNotDrawGlassMenu && !isMenuPillInOverlay()) {
+        final float normalPresence = !coveredByTitle && !hasForcedMenuWidth && !hasForcedMenuMinWidth && search == 0f
+                && !isSearchFieldVisible && !actionModeVisible && getActionModeFactor() == 0f
+                ? getNormalMenuGlassPresence(animatorHasMenuItems.getFloatValue()) : -1f;
+        if ((menuWidth > 0 || normalPresence > 0f) && normalPresence != 0f
+                && !glassOnlyBack && !doNotDrawGlassMenu && !isMenuPillInOverlay()) {
             final int p = dp(6);
             final int s = dp(46);
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
 
-            final float menuPresence = coveredByTitle && searchClosedMenuWidth >= 0f
+            final float menuPresence = normalPresence >= 0f ? normalPresence : coveredByTitle && searchClosedMenuWidth >= 0f
                     ? Math.max(searchClosedMenuPresence, animatorHasMenuItems.getFloatValue())
                     : animatorHasMenuItems.getFloatValue();
             final int menuGlassA = hasForcedMenuWidth ? 255 : (int) (255 * menuPresence);

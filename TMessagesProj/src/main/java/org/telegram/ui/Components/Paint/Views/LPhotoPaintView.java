@@ -146,7 +146,7 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
     private FrameLayout selectionContainerView;
     public EntitiesContainerView entitiesView;
     private ThanosEffect thanosEffect;
-    private FrameLayout topLayout;
+    private PaintTopBar topLayout;
     public FrameLayout bottomLayout;
     public FrameLayout overlayLayout;
     private FrameLayout pipetteContainerLayout;
@@ -190,9 +190,6 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
     public PaintTextOptionsView textOptionsView;
     private PaintTypefaceListView typefaceListView;
     private ImageView undoButton;
-    private LinearLayout zoomOutButton;
-    private ImageView zoomOutImage;
-    private TextView zoomOutText;
     private TextView undoAllButton;
     private TextView cancelTextButton;
     private TextView doneTextButton;
@@ -537,13 +534,14 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
         };
         addView(selectionContainerView);
 
-        topLayout = new FrameLayout(context);
+        topLayout = new PaintTopBar(context, () -> PhotoViewer.getInstance().zoomOut());
         topLayout.setPadding(dp(12), dp(12), dp(12), dp(12));
         topLayout.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xff000000, 0x00000000}));
         addView(topLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
 
         undoButton = new ImageView(context);
         undoButton.setImageResource(R.drawable.photo_undo2);
+        undoButton.setContentDescription(LocaleController.getString(R.string.UndoNoCaps));
         undoButton.setPadding(dp(3), dp(3), dp(3), dp(3));
         undoButton.setBackground(Theme.createSelectorDrawable(Theme.ACTION_BAR_WHITE_SELECTOR_COLOR));
         undoButton.setOnClickListener(v -> {
@@ -557,26 +555,7 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
         });
         undoButton.setAlpha(0.6f);
         undoButton.setClickable(false);
-        topLayout.addView(undoButton, LayoutHelper.createFrame(32, 32, Gravity.TOP | Gravity.LEFT, 12, 0, 0, 0));
-
-        zoomOutButton = new LinearLayout(context);
-        zoomOutButton.setOrientation(LinearLayout.HORIZONTAL);
-        zoomOutButton.setBackground(Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_ROUNDRECT_6DP));
-        zoomOutButton.setPadding(dp(8), 0, dp(8), 0);
-        zoomOutText = new TextView(context);
-        zoomOutText.setTextColor(Color.WHITE);
-        zoomOutText.setTypeface(AndroidUtilities.bold());
-        zoomOutText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        zoomOutText.setText(LocaleController.getString(R.string.PhotoEditorZoomOut));
-        zoomOutImage = new ImageView(context);
-        zoomOutImage.setImageResource(R.drawable.photo_zoomout);
-        zoomOutButton.addView(zoomOutImage, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
-        zoomOutButton.addView(zoomOutText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-        zoomOutButton.setAlpha(0);
-        zoomOutButton.setOnClickListener(e -> {
-            PhotoViewer.getInstance().zoomOut();
-        });
-        topLayout.addView(zoomOutButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, Gravity.CENTER));
+        topLayout.addStartAction(undoButton, 32, 12);
 
         undoAllButton = new TextView(context);
         undoAllButton.setBackground(Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_ROUNDRECT_6DP));
@@ -600,7 +579,7 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
             entitiesView.removeAllViews();
         });
         undoAllButton.setAlpha(0.6f);
-        topLayout.addView(undoAllButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, Gravity.RIGHT, 0, 0, 4, 0));
+        topLayout.addEndAction(undoAllButton, LayoutHelper.WRAP_CONTENT, 4);
 
         cancelTextButton = new TextView(context);
         cancelTextButton.setBackground(Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_ROUNDRECT_6DP));
@@ -622,7 +601,7 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
         });
         cancelTextButton.setAlpha(0);
         cancelTextButton.setVisibility(View.GONE);
-        topLayout.addView(cancelTextButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, Gravity.LEFT | Gravity.TOP, 4, 0, 0, 0));
+        topLayout.addStartAction(cancelTextButton, LayoutHelper.WRAP_CONTENT, 4);
 
         doneTextButton = new TextView(context);
         doneTextButton.setBackground(Theme.createSelectorDrawable(0x30ffffff, Theme.RIPPLE_MASK_ROUNDRECT_6DP));
@@ -637,7 +616,7 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
         });
         doneTextButton.setAlpha(0);
         doneTextButton.setVisibility(View.GONE);
-        topLayout.addView(doneTextButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 32, Gravity.RIGHT, 0, 0, 4, 0));
+        topLayout.addEndAction(doneTextButton, LayoutHelper.WRAP_CONTENT, 4);
 
         bottomLayout = new BottomLayout(context);
         bottomLayout.setPadding(dp(8), dp(8), dp(8), 0);
@@ -956,15 +935,9 @@ public class LPhotoPaintView extends SizeNotifierFrameLayoutPhoto implements IPh
         AndroidUtilities.showKeyboard(view);
     }
 
-    private boolean zoomOutVisible = false;
     @Override
     public void updateZoom(boolean zoomedOut) {
-        boolean shouldBeVisible = !zoomedOut;
-        if (zoomOutVisible != shouldBeVisible) {
-            zoomOutVisible = shouldBeVisible;
-            zoomOutButton.animate().cancel();
-            zoomOutButton.animate().alpha(zoomedOut ? 0f : 1f).setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).setDuration(240).start();
-        }
+        topLayout.setZoomVisible(!zoomedOut);
     }
 
     private boolean selectEntity(EntityView entityView) {

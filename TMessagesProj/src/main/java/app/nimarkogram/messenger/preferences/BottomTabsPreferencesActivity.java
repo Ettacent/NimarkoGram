@@ -3,8 +3,6 @@
 package app.nimarkogram.messenger.preferences;
 
 import org.telegram.ui.DialogsActivity;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 
 import java.util.ArrayList;
@@ -31,8 +29,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
     private MainTabsPreviewCell editorCell;
 
     private ArrayList<MainTabsManager.Tab> tabs;
-    private ArrayList<MainTabsManager.Tab> initialTabs;
-    private boolean resetToDefaults;
 
     @Override
     public String getTitle() {
@@ -41,14 +37,7 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
 
     @Override
     public boolean onFragmentCreate() {
-        initialTabs = new ArrayList<>();
-        for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {
-            initialTabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
-        }
-        tabs = new ArrayList<>();
-        for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {
-            tabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
-        }
+        tabs = new ArrayList<>(MainTabsManager.INSTANCE.getAllTabs());
         return super.onFragmentCreate();
     }
 
@@ -58,7 +47,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             editorCell.setOnReorderCommitted(null);
         }
         super.onFragmentDestroy();
-        commitTabs(true);
     }
 
     @Override
@@ -77,10 +65,7 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
                 editorCell.setEditMode(true);
                 editorCell.setTabs(getContext(), getResourceProvider(), tabs);
 
-                editorCell.setOnReorderCommitted(() -> {
-                    resetToDefaults = false;
-                    postCgTabsUpdated();
-                });
+                editorCell.setOnReorderCommitted(this::postCgTabsUpdated);
             } else if (editorCell != null) {
                 editorCell.refresh();
             }
@@ -118,8 +103,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
             updateItemsAfterToggle();
 
             postCgTabsUpdated();
-            showRestartBulletin();
-            rebuildMainTabsFragments();
         } else if (id == ID_SHOW_TITLE) {
             AppConfig.toggleShowMainTabsTitle();
             applyCheck(item, view, AppConfig.showMainTabsTitle);
@@ -127,7 +110,6 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
                 editorCell.refresh();
             }
             postCgTabsUpdated();
-            rebuildMainTabsFragments();
         } else if (id == ID_SHOW_SEARCH_IN_TABS) {
             AppConfig.toggleShowSearchInTabs();
             applyCheck(item, view, AppConfig.showSearchInTabs);
@@ -135,23 +117,14 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
                 editorCell.refresh();
             }
             postCgTabsUpdated();
-            rebuildMainTabsFragments();
         } else if (id == ID_FORCE_OPEN_CHATS) {
             AppConfig.toggleMainTabsForceOpenChats();
             applyCheck(item, view, AppConfig.mainTabsForceOpenChats);
         } else if (id == ID_RESET_ORDER) {
 
             AppConfig.setMainTabsOrder(null);
-            resetToDefaults = true;
             tabs.clear();
-            for (MainTabsManager.Tab t : MainTabsManager.INSTANCE.getAllTabs()) {
-                tabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
-            }
-
-            initialTabs = new ArrayList<>();
-            for (MainTabsManager.Tab t : tabs) {
-                initialTabs.add(new MainTabsManager.Tab(t.getType(), t.enabled));
-            }
+            tabs.addAll(MainTabsManager.INSTANCE.getAllTabs());
             if (editorCell != null) {
                 editorCell.setTabs(getContext(), getResourceProvider(), tabs);
             }
@@ -159,29 +132,11 @@ public class BottomTabsPreferencesActivity extends BasePreferencesActivity {
                 listView.adapter.update(true);
             }
             postCgTabsUpdated();
-            rebuildMainTabsFragments();
-        }
-    }
-
-    private void commitTabs(boolean notify) {
-        if (tabs == null || resetToDefaults) return;
-        MainTabsManager.INSTANCE.saveTabs(tabs);
-        if (notify && !tabs.equals(initialTabs)) {
-            postCgTabsUpdated();
         }
     }
 
     private void postCgTabsUpdated() {
-        new Handler(Looper.getMainLooper()).postDelayed(
-                () -> NotificationCenter.getGlobalInstance()
-                        .postNotificationName(NotificationCenter.cgTabsUpdated),
-                80);
-    }
-
-    private void rebuildMainTabsFragments() {
-        if (getParentLayout() != null) {
-            getParentLayout().rebuildAllFragmentViews(false, false);
-        }
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.cgTabsUpdated);
     }
 
     private void applyCheck(UItem item, View view, boolean value) {

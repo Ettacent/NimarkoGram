@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -26,14 +28,21 @@ public class EncryptedFileInputStream extends FileInputStream {
     private final static int MODE_CTR = 0;
     private final static int MODE_CBC = 1;
 
-    public EncryptedFileInputStream(File file, File keyFile) throws Exception {
+    public EncryptedFileInputStream(File file, File keyFile) throws IOException {
         super(file);
 
         currentMode = MODE_CTR;
-        RandomAccessFile randomAccessFile = new RandomAccessFile(keyFile, "r");
-        randomAccessFile.read(key, 0, 32);
-        randomAccessFile.read(iv, 0, 16);
-        randomAccessFile.close();
+        try (RandomAccessFile randomAccessFile = new RandomAccessFile(keyFile, "r")) {
+            randomAccessFile.readFully(key);
+            randomAccessFile.readFully(iv);
+        } catch (IOException | RuntimeException | Error e) {
+            try {
+                super.close();
+            } catch (IOException closeError) {
+                e.addSuppressed(closeError);
+            }
+            throw e;
+        }
     }
 
     public EncryptedFileInputStream(File file, SecureDocumentKey secureDocumentKey) throws Exception {
@@ -45,8 +54,34 @@ public class EncryptedFileInputStream extends FileInputStream {
     }
 
     @Override
+    public int read() throws IOException {
+        if (currentMode == MODE_CTR) {
+            byte[] b = new byte[1];
+            return read(b, 0, 1) == -1 ? -1 : b[0] & 0xff;
+        }
+        return super.read();
+    }
+
+    @Override
+    public int read(byte[] b) throws IOException {
+        if (currentMode == MODE_CTR) {
+            return read(b, 0, b.length);
+        }
+        return super.read(b);
+    }
+
+    @Override
     public int read(byte[] b, int off, int len) throws IOException {
-        if (currentMode == MODE_CBC && fileOffset == 0) {
+        if (currentMode == MODE_CTR) {
+            int bytesRead = super.read(b, off, len);
+            if (bytesRead > 0) {
+                long position = getChannel().position() - bytesRead;
+                Utilities.aesCtrDecryptionByteArrayAtOffset(b, key, iv, off, bytesRead, position);
+            }
+            return bytesRead;
+        }
+
+        if (fileOffset == 0) {
             byte[] temp = new byte[32];
             super.read(temp, 0, 32);
             Utilities.aesCbcEncryptionByteArraySafe(b, key, iv, off, len, fileOffset, 0);
@@ -54,18 +89,16 @@ public class EncryptedFileInputStream extends FileInputStream {
             skip((temp[0] & 0xff) - 32);
         }
         int result = super.read(b, off, len);
-        if (currentMode == MODE_CBC) {
             Utilities.aesCbcEncryptionByteArraySafe(b, key, iv, off, len, fileOffset, 0);
-        } else if (currentMode == MODE_CTR) {
-            Utilities.aesCtrDecryptionByteArray(b, key, iv, off, len, fileOffset);
-        }
         fileOffset += len;
         return result;
     }
 
     @Override
     public long skip(long n) throws IOException {
+        if (currentMode == MODE_CBC) {
         fileOffset += n;
+        }
         return super.skip(n);
     }
 

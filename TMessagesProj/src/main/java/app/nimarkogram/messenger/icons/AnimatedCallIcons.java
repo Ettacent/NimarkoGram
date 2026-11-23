@@ -17,7 +17,7 @@ public final class AnimatedCallIcons {
             return AnimatedIconSpec.pair(R.drawable.calls_video, R.drawable.calls_camera_mini, 3, 17).withAlignedTransition().withScale(.5f).withMotion(CallIconMotion.TOGGLE);
         }
         if (rawRes == R.raw.camera_flip2) {
-            return AnimatedIconSpec.pulse(R.drawable.camera_revert1).withScale(.5f).withMotion(CallIconMotion.CAMERA_BUTTON);
+            return AnimatedIconSpec.pulse(R.drawable.msg_photo_switch2).withScale(.5f).withMotion(CallIconMotion.CAMERA_BUTTON);
         }
         if (rawRes == R.raw.camera_flip) {
             return AnimatedIconSpec.pulse(R.drawable.camera_revert1).withPulseFrames(0, 17, 18, 38).withMotion(CallIconMotion.CAMERA);
@@ -132,7 +132,7 @@ public final class AnimatedCallIcons {
     public static int[] drawableIds() {
         return new int[]{
                 R.drawable.calls_unmute, R.drawable.calls_mute_mini, R.drawable.calls_video,
-                R.drawable.calls_camera_mini, R.drawable.camera_revert1, R.drawable.calls_speaker,
+                R.drawable.calls_camera_mini, R.drawable.camera_revert1, R.drawable.msg_photo_switch2, R.drawable.calls_speaker,
                 R.drawable.calls_bluetooth, R.drawable.msg_handdown, R.drawable.input_notify_on,
                 R.drawable.input_notify_off, R.drawable.ic_action_play, R.drawable.msg_calls,
                 R.drawable.ic_rating_star, R.drawable.ic_rating_star_filled,

@@ -1235,8 +1235,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private boolean pipAnimationInProgress;
     private Bitmap currentBitmap;
     private int currentBitmapGeneration;
-    private Bitmap lastFrameBitmap;
-    private ImageView lastFrameImageView;
     private boolean changingTextureView;
     private int waitingForFirstTextureUpload;
     private boolean textureUploaded;
@@ -1365,7 +1363,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private Drawable pickerViewSendDrawable;
     private CharSequence customTitle;
     private boolean disableSelection;
-    public boolean skipLastFrameDraw;
 
     public void setSelectionDisabled(boolean disabled) {
         disableSelection = disabled;
@@ -1885,7 +1882,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 }
                 videoPlayer.setSurfaceView(null);
                 videoPlayer.setTextureView(null);
+                if (!videoPlayer.usesTransientAudioFocus()
+                        || videoPlayer.isPlaying() && videoPlayer.canAutoStartTransientPlayback()) {
                 videoPlayer.play();
+                }
                 videoPlayer.setTextureView(changedTextureView);
                 checkChangedTextureView(true);
                 changedTextureView.setVisibility(View.VISIBLE);
@@ -8388,9 +8388,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     AlertDialog.Builder builder = new AlertDialog.Builder(containerView.getContext());
                     builder.setAdditionalHorizontalPadding(dp(8));
-                    SuggestUserPhotoView suggestUserPhotoView = new SuggestUserPhotoView(containerView.getContext());
-                    suggestUserPhotoView.setImages(setAvatarFor.object, containerView, photoCropView);
-                    builder.setTopView(suggestUserPhotoView);
+                    AvatarSuggestionPreview preview = new AvatarSuggestionPreview();
+                    builder.setTopView(new SuggestUserPhotoView(containerView.getContext(), currentAccount,
+                            setAvatarFor.object, containerView, preview));
                     String confirmMessage;
                     if (setAvatarFor.type == ImageUpdater.TYPE_SET_PHOTO_FOR_USER) {
                         if (UserConfig.getInstance(currentAccount).clientUserId == dialog_id) {
@@ -8415,7 +8415,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
                     });
                     builder.setPositiveButton(confirmMessage, (dialog, which) -> {
+                        if (preview.isCurrent()) {
                         sendPressed(notify, scheduleDate, scheduleRepeatPeriod, replace, forceDocument, true);
+                        }
                     });
                     builder.setDialogButtonColorKey(Theme.key_voipgroup_listeningText);
                     AlertDialog alertDialog = builder.create();
@@ -8423,42 +8425,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     alertDialog.setBackgroundColor(ColorUtils.setAlphaComponent(0xff141414, (int) (0.8f * 255)));
                     alertDialog.show();
                     alertDialog.setTextColor(Theme.getColor(Theme.key_voipgroup_nameText));
-                    alertDialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-                        @Override
-                        public void onDismiss(DialogInterface dialog) {
-                            if (lastFrameImageView != null) {
-                                lastFrameImageView.animate().alpha(0).withEndAction(() -> {
-                                    if (lastFrameImageView != null && lastFrameImageView.getParent() != null) {
-                                        ((ViewGroup) lastFrameImageView.getParent()).removeView(lastFrameImageView);
-                                        if (lastFrameBitmap != null) {
-                                            if (lastFrameImageView != null) {
-                                                lastFrameImageView.setBackground(null);
-                                            }
-                                            AndroidUtilities.recycleBitmap(lastFrameBitmap);
-                                            lastFrameBitmap = null;
-                                        }
-                                        lastFrameImageView = null;
-                                    }
-                                }).setDuration(150).start();
-                            }
-                        }
-                    });
-
-                    if (isCurrentVideo && videoTextureView != null) {
-                        try {
-                            lastFrameBitmap = videoTextureView.getBitmap();
-                            if (lastFrameImageView != null) {
-                                aspectRatioFrameLayout.removeView(lastFrameImageView);
-                                lastFrameImageView = null;
-                            }
-                            lastFrameImageView = new ImageView(videoTextureView.getContext());
-                            lastFrameImageView.setBackground(new BitmapDrawable(lastFrameBitmap));
-                            aspectRatioFrameLayout.addView(lastFrameImageView);
-                        } catch (Throwable e) {
-                            recycleCurrentBitmap();
-                            FileLog.e(e);
-                        }
-                    }
+                    alertDialog.setOnDismissListener(dialog -> preview.release());
+                    preview.freezeVideoBackground();
                     return;
                 }
                 applyCurrentEditMode();
@@ -10887,6 +10855,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
+    private void pauseVideoByUser(VideoPlayer owner) {
+        autoPausedOnPause = false;
+        cancelVideoPlayRunnable();
+        owner.pauseByUser();
+    }
     private void seekVideoOrWebToProgress(float progress) {
         if (videoPlayer != null) {
             videoPlayer.seekTo((long) (progress * videoPlayer.getDuration()));
@@ -11481,14 +11454,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
 
             @Override
-            protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
-                if (child == lastFrameImageView && skipLastFrameDraw) {
-                    return true;
-                }
-                return super.drawChild(canvas, child, drawingTime);
-            }
-
-            @Override
             public void draw(@NonNull Canvas canvas) {
                 if (textureViewSkipRender) {
                     return;
@@ -11580,6 +11545,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
     private void releasePlayer(boolean onClose, boolean keepVideoFocus) {
         if (!keepVideoFocus) releasePendingVideoAudioFocus();
+        autoPausedOnPause = false;
         cancelVideoTimelineSeek();
         ++playerGeneration;
         usedSurfaceView = false;
@@ -11948,42 +11914,161 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return null;
     }
 
-    private Matrix createCroppedMatrix(int w, int h, MediaController.CropState cropState, int[] extraTransform, boolean mirror) {
+    private final class AvatarSuggestionPreview implements SuggestUserPhotoView.Preview {
+        private final int generation = openGeneration, binding = parentBindingGeneration, account = currentAccount, index = currentIndex;
+        private final Object entry = index >= 0 && index < imagesArrLocals.size() ? imagesArrLocals.get(index) : null;
+        private final ImageUpdater.AvatarFor recipient = setAvatarFor;
+        private final Matrix matrix = new Matrix(), lastCropMatrix = new Matrix();
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final MediaController.CropState previewCrop = new MediaController.CropState();
+        private CropView.CropState lastCropState;
+        private float cropWidth, cropHeight, sourceWidth, sourceHeight;
+        private Bitmap poster;
+        private ImageView frozenView;
+        private boolean released;
+
+        boolean isCurrent() {
+            return !released && isVisible && sendPhotoType == SELECT_TYPE_AVATAR && generation == openGeneration
+                    && binding == parentBindingGeneration && account == currentAccount && recipient == setAvatarFor
+                    && entry != null && currentIndex == index && index < imagesArrLocals.size() && imagesArrLocals.get(index) == entry;
+        }
+
+        private MediaController.CropState getCrop() {
+            CropView view = photoCropView == null ? null : photoCropView.cropView;
+            if (view == null || view.state == null || !(view.state.minimumScale > 0 && view.getCropWidth() > 0 && view.getCropHeight() > 0)) {
+                return editState == null ? null : editState.cropState;
+            }
+            CropView.CropState state = view.state;
+            if (lastCropState != state || !lastCropMatrix.equals(state.matrix) || previewCrop.mirrored != state.mirrored
+                    || previewCrop.transformRotation != ((int) view.getStateOrientation() + 360) % 360
+                    || cropWidth != view.getCropWidth() || cropHeight != view.getCropHeight()
+                    || sourceWidth != state.width || sourceHeight != state.height) {
+                view.applyToCropState(previewCrop);
+                lastCropState = state;
+                lastCropMatrix.set(state.matrix);
+                cropWidth = view.getCropWidth();
+                cropHeight = view.getCropHeight();
+                sourceWidth = state.width;
+                sourceHeight = state.height;
+            }
+            return previewCrop;
+        }
+
+        @Override
+        public boolean draw(Canvas canvas, RectF bounds) {
+            if (!isCurrent()) {
+                return false;
+            }
+            MediaController.CropState crop = getCrop();
+            Bitmap image = null;
+            int rotation = 0, invert = 0;
+            if (isCurrentVideo) {
+                image = photoCropView == null ? null : photoCropView.getVideoThumb();
+                if (image == null || image.isRecycled()) image = poster;
+            }
+            if (image == null || image.isRecycled()) {
+                image = centerImage.getBitmap();
+                rotation = centerImage.getOrientation();
+                invert = centerImage.getInvert();
+            }
+            boolean drawn = false;
+            if (image != null && !image.isRecycled() && (canvas.isHardwareAccelerated()
+                    || Build.VERSION.SDK_INT < 26 || image.getConfig() != Bitmap.Config.HARDWARE)) {
+                setAvatarPreviewMatrix(matrix, bounds, image.getWidth(), image.getHeight(), crop, rotation, invert, true);
+                canvas.drawBitmap(image, matrix, paint);
+                drawn = true;
+            }
+            if (isCurrentVideo && textureUploaded && videoSizeSet && videoTextureView != null
+                    && videoTextureView.isAvailable() && canvas.isHardwareAccelerated()) {
+                drawn |= drawLayer(canvas, bounds, crop, videoTextureView, true);
+            }
+            if (drawn && paintingOverlay != null && paintingOverlay.getVisibility() == View.VISIBLE) {
+                drawLayer(canvas, bounds, crop, paintingOverlay, false);
+            }
+            return drawn;
+        }
+
+        private boolean drawLayer(Canvas canvas, RectF bounds, MediaController.CropState crop, View layer, boolean mirror) {
+            if (layer.getWidth() <= 0 || layer.getHeight() <= 0) {
+                return false;
+            }
+            setAvatarPreviewMatrix(matrix, bounds, layer.getWidth(), layer.getHeight(), crop, 0, 0, mirror);
+            int save = canvas.save();
         try {
-            int tr = (cropState.transformRotation + (extraTransform != null ? extraTransform[0] : 0)) % 360;
-            int inv = extraTransform != null && extraTransform.length > 1 ? extraTransform[1] : 0;
-            int fw = w, rotatedW = w;
-            int fh = h, rotatedH = h;
-            if (tr == 90 || tr == 270) {
-                int temp = fw;
-                fw = rotatedW = fh;
-                fh = rotatedH = temp;
+                canvas.concat(matrix);
+                layer.draw(canvas);
+            } finally {
+                canvas.restoreToCount(save);
             }
-            fw *= cropState.cropPw;
-            fh *= cropState.cropPh;
-            Matrix matrix = new Matrix();
-            matrix.postTranslate(-w / 2, -h / 2);
-            if (mirror && cropState.mirrored) {
-                if (tr == 90 || tr == 270) {
-                    matrix.postScale(1, -1);
-                } else {
-                    matrix.postScale(-1, 1);
-                }
+            return true;
+        }
+
+        void freezeVideoBackground() {
+            TextureView texture = videoTextureView;
+            if (!isCurrent() || !isCurrentVideo || !textureUploaded || texture == null || !texture.isAvailable()
+                    || texture.getWidth() <= 0 || texture.getHeight() <= 0 || aspectRatioFrameLayout == null) {
+                return;
             }
-            if (inv == 1) {
-                matrix.postScale(-1, 1);
-            } else if (inv == 2) {
-                matrix.postScale(1, -1);
-            }
-            matrix.postRotate(cropState.cropRotate + tr);
-            matrix.postTranslate(cropState.cropPx * rotatedW, cropState.cropPy * rotatedH);
-            matrix.postScale(cropState.cropScale, cropState.cropScale);
-            matrix.postTranslate(fw / 2, fh / 2);
-            return matrix;
-        } catch (Throwable e) {
+            float scale = Math.min(1f, 1280f / Math.max(texture.getWidth(), texture.getHeight()));
+            try {
+                poster = texture.getBitmap(Math.max(1, Math.round(texture.getWidth() * scale)),
+                        Math.max(1, Math.round(texture.getHeight() * scale)));
+            } catch (RuntimeException e) {
             FileLog.e(e);
         }
-        return null;
+            if (poster != null) {
+                frozenView = new ImageView(texture.getContext());
+                frozenView.setScaleType(ImageView.ScaleType.FIT_XY);
+                frozenView.setImageBitmap(poster);
+                aspectRatioFrameLayout.addView(frozenView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+            }
+        }
+
+        void release() {
+            final ImageView view = frozenView;
+            boolean animate = isCurrent() && view != null && view.isAttachedToWindow();
+            released = true;
+            frozenView = null;
+            poster = null;
+            if (view != null) {
+                Runnable remove = () -> {
+                    if (view.getParent() instanceof ViewGroup) {
+                        ((ViewGroup) view.getParent()).removeView(view);
+                    }
+                    view.setImageDrawable(null);
+                };
+                if (animate) {
+                    view.animate().alpha(0).setDuration(150).withEndAction(remove).start();
+                } else {
+                    remove.run();
+                }
+            }
+        }
+    }
+
+    private static void setAvatarPreviewMatrix(Matrix matrix, RectF bounds, int w, int h,
+            MediaController.CropState crop, int rotation, int invert, boolean mirror) {
+        final boolean cropped = crop != null && crop.cropScale > 0 && crop.cropPw > 0 && crop.cropPh > 0;
+        int tr = ((rotation + (cropped ? crop.transformRotation : 0)) % 360 + 360) % 360;
+        boolean sideways = tr == 90 || tr == 270;
+        int rotatedW = sideways ? h : w, rotatedH = sideways ? w : h;
+        int fw = cropped ? Math.max(1, (int) (rotatedW * crop.cropPw)) : rotatedW;
+        int fh = cropped ? Math.max(1, (int) (rotatedH * crop.cropPh)) : rotatedH;
+        matrix.setTranslate(-w / 2, -h / 2);
+        if (cropped && mirror && crop.mirrored) {
+            matrix.postScale(sideways ? 1 : -1, sideways ? -1 : 1);
+        }
+        if (invert == 1) matrix.postScale(-1, 1);
+        if (invert == 2) matrix.postScale(1, -1);
+        matrix.postRotate(tr + (cropped ? crop.cropRotate : 0));
+        if (cropped) {
+            matrix.postTranslate(crop.cropPx * rotatedW, crop.cropPy * rotatedH);
+            matrix.postScale(crop.cropScale, crop.cropScale);
+        }
+        float scale = Math.max(bounds.width() / fw, bounds.height() / fh);
+        matrix.postTranslate(fw / 2 - fw * .5f, fh / 2 - fh * .5f);
+        matrix.postScale(scale, scale);
+        matrix.postTranslate(bounds.centerX(), bounds.centerY());
     }
 
     private void applyCurrentEditMode(Bitmap bitmap) {
@@ -12783,7 +12868,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return centerImageIsLivePhoto && isUnalivePhoto() && sendPhotoType != SELECT_TYPE_AVATAR;
     }
     private void startVideoPlayer() {
-        if (isCurrentVideo && videoPlayer != null && !videoPlayer.isPlaying() && !isStillLivePhoto()) {
+        if (isCurrentVideo && videoPlayer != null && videoPlayer.canAutoStartTransientPlayback()
+                && !videoPlayer.isPlaying() && !isStillLivePhoto()) {
             if (!muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) {
                 videoPlayer.setVolume(0);
             }
@@ -14514,7 +14600,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         cancelVideoPlayRunnable();
         AndroidUtilities.cancelRunOnUIThread(hideActionBarRunnable);
         if (playing) {
+            if (videoPlayer != null) {
+                pauseVideoByUser(videoPlayer);
+            } else {
             pauseVideoOrWeb();
+            }
         } else {
             if (isCurrentVideo) {
                 if (Math.abs(videoTimelineView.getProgress() - videoTimelineView.getRightProgress()) < 0.01f || videoPlayer != null && videoPlayer.getCurrentPosition() == videoPlayer.getDuration()) {
@@ -14526,7 +14616,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 }
                 scheduleActionBarHide();
             }
+            if (videoPlayer != null) {
+                videoPlayer.playByUser();
+            } else {
             playVideoOrWeb();
+            }
         }
         containerView.invalidate();
     }
@@ -20506,7 +20600,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (AndroidUtilities.isInPictureInPictureMode(parentActivity)) {
             return;
         }
-        if (videoPlayer != null ? isPlaying : photoViewerWebView != null && photoViewerWebView.isControllable() && photoViewerWebView.isPlaying()) {
+        if (videoPlayer != null ? isPlaying || videoPlayer.usesTransientAudioFocus()
+                : photoViewerWebView != null && photoViewerWebView.isControllable() && photoViewerWebView.isPlaying()) {
             pauseVideoOrWeb();
         }
     }
@@ -25545,7 +25640,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (isEmbed()) {
                 photoViewerWebView.playVideo();
             } else if (videoPlayer != null) {
-                videoPlayer.play();
+                videoPlayer.playByUser();
             }
         }
 
@@ -25555,8 +25650,15 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (isEmbed()) {
                 photoViewerWebView.pauseVideo();
             } else if (videoPlayer != null) {
-                videoPlayer.pause();
+                pauseVideoByUser(videoPlayer);
             }
+        }
+
+        @Override
+        public void pauseForAppBackground() {
+            if (!isCurrent()) return;
+            if (isEmbed()) photoViewerWebView.pauseVideo();
+            else if (videoPlayer != null) videoPlayer.pause();
         }
 
         @Override
@@ -25656,9 +25758,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         if (!sourceCurrent()) return;
                         if (source.getPlaybackState() == androidx.media3.common.Player.STATE_IDLE
                                 && source.getMediaItemCount() > 0) super.prepare();
-                        owner.play();
+                        if (sourceCurrent()) owner.playByUser();
                     }
-                    @Override public void pause() { if (sourceCurrent()) owner.pause(); }
+                    @Override public void pause() { if (sourceCurrent()) pauseVideoByUser(owner); }
                     @Override public void setPlayWhenReady(boolean ready) { if (ready) play(); else pause(); }
                     @Override public void stop() { if (sourceCurrent()) owner.stopTransientPlayback(); }
                     @Override public void setVolume(float volume) { if (sourceCurrent()) owner.setVolume(volume); }

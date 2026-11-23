@@ -1310,7 +1310,7 @@ public class PremiumPreviewFragment extends BaseFragment implements Notification
     public static String getPremiumButtonText(int currentAccount, SubscriptionTier tier) {
 
         if (tier != null && tier.isSafeStars) {
-            return getString(R.string.CG_SafeStars_BuyPremiumButton);
+            return getString(R.string.NM_SafeStars_BuyPremiumButton);
         }
 
         if (BuildVars.IS_BILLING_UNAVAILABLE && !app.nimarkogram.messenger.AppConfig.allowSafeStars) {

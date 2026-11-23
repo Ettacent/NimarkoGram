@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">Hapus dari cache</string>
+    <string name="NM_ClearedFromCache">Dihapus dari cache</string>
+    <string name="NM_CopyCallback">Salin data callback</string>
+    <string name="NM_CopyID">Salin ID pengguna</string>
+    <string name="NM_CopyInlineQuery">Salin kueri sebaris</string>
+    <string name="NM_CopyPhoto">Salin foto</string>
+    <string name="NM_CopyPhotoAsSticker">Salin foto sebagai stiker</string>
+    <string name="NM_CopyReportDetails">Salin rincian laporan</string>
+    <string name="NM_CopySetId">Salin ID paket</string>
+    <string name="NM_CopyTitle">Salin judul</string>
+    <string name="NM_Copy_Coordinates">Koordinat</string>
+    <string name="NM_DoNotRemindAgain">Jangan ingatkan lagi</string>
+    <string name="NM_ExportSettings">Ekspor pengaturan</string>
+    <string name="NM_FoldersTypeIcons">Ikon saja</string>
+    <string name="NM_FoldersTypeIconsTitles">Ikon dan judul</string>
+    <string name="NM_FoldersTypeTitles">Judul saja</string>
+    <string name="NM_GetEmojiPack">Dapatkan emoji</string>
+    <string name="NM_ImportSettings">Impor pengaturan</string>
+    <string name="NM_ImportSettingsAlert">Timpa pengaturan? Mengimpor pengaturan dari sumber yang tidak dikenal dapat membuat aplikasi tidak berfungsi.</string>
+    <string name="NM_OpenEmojiPack">Ketuk untuk mendapatkan emoji</string>
+    <string name="NM_OpenStickerPack">Ketuk untuk mendapatkan stiker</string>
+    <string name="NM_PasskeyInfo2">Fitur ini hanya berfungsi dengan pengelola kata sandi yang memungkinkan Anda mengatur kepercayaan untuk aplikasi berhak akses khusus, seperti **Bitwarden** dan **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">Tidak ada kredensial yang dapat digunakan.</string>
+    <string name="NM_PasskeyUnsupportedMessage">Coba pengelola kata sandi lain seperti **Bitwarden** atau **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">Pengelola kata sandi tidak didukung</string>
+    <string name="NM_PhotoCopied">Foto disalin ke papan klip.</string>
+    <string name="NM_ProfileBackground">Terapkan latar belakang profil</string>
+    <string name="NM_QRLoginMessage">Pindai kode QR dengan perangkat lain untuk masuk.</string>
+    <string name="NM_QRLoginTitle">Masuk dengan kode QR</string>
+    <string name="NM_ReportDetailsCopied">Rincian laporan disalin ke papan klip.</string>
+    <string name="NM_RestartToApply">Perlu mulai ulang</string>
+    <string name="NM_SafeStars_buy_Telegram">Beli Bintang melalui Telegram</string>
+    <string name="NM_SaveSticker">Simpan stiker</string>
+    <string name="NM_SendPhotoAsSticker">Kirim sebagai stiker</string>
+    <string name="NM_SortByDate">Urutkan berdasarkan tanggal pesan</string>
+    <string name="NM_SwipeToUnarchive">Geser ke kiri untuk mengeluarkan dari arsip</string>
+    <string name="NM_SwitchedToAccount">Beralih ke akun **%1$s**</string>
+    <string name="NM_TranslationLanguage">Bahasa terjemahan</string>
+</resources>

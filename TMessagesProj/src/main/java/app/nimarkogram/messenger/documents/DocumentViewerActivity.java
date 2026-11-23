@@ -1284,7 +1284,7 @@ public final class DocumentViewerActivity extends BaseFragment implements Notifi
         }
     }
 
-    private void stopDocumentScrolling() {
+    private void stopDocumentScrolling(boolean forPause) {
         cancelPendingPage();
         if (root != null) {
             long now = android.os.SystemClock.uptimeMillis();
@@ -1296,7 +1296,7 @@ public final class DocumentViewerActivity extends BaseFragment implements Notifi
             }
         }
         if (textView != null) textView.stopScrolling();
-        if (officeView != null) officeView.stopScrolling();
+        if (officeView != null) officeView.stopScrolling(forPause);
         if (pdfView != null) {
             pdfView.setRenderingPaused(true);
             pdfView.setRenderingPaused(!resumed || !fullyVisible);
@@ -1305,12 +1305,12 @@ public final class DocumentViewerActivity extends BaseFragment implements Notifi
 
     @Override public void onTransitionAnimationStart(boolean isOpen, boolean backward) {
         super.onTransitionAnimationStart(isOpen, backward);
-        if (!isOpen) stopDocumentScrolling();
+        if (!isOpen) stopDocumentScrolling(false);
     }
 
     @Override public void prepareFragmentToSlide(boolean topFragment, boolean beginSlide) {
         super.prepareFragmentToSlide(topFragment, beginSlide);
-        if (topFragment && beginSlide) stopDocumentScrolling();
+        if (topFragment && beginSlide) stopDocumentScrolling(false);
     }
 
     @Override public void onBecomeFullyVisible() {
@@ -1346,7 +1346,7 @@ public final class DocumentViewerActivity extends BaseFragment implements Notifi
 
     @Override public void onPause() {
         resumed = false;
-        stopDocumentScrolling();
+        stopDocumentScrolling(true);
         if (pdfView != null) pdfView.setRenderingPaused(true);
         cancelPendingPage();
         cancelPaletteAnimation();

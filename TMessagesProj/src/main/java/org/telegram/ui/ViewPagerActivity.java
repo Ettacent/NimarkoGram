@@ -31,7 +31,6 @@ import org.telegram.ui.Components.ViewPagerFixed;
 
 import java.util.ArrayList;
 
-import org.telegram.messenger.FileLog;
 import java.util.HashSet;
 public abstract class ViewPagerActivity extends BaseFragment {
     protected final SparseArray<FragmentState> fragmentsArr = new SparseArray<>();
@@ -40,10 +39,14 @@ public abstract class ViewPagerActivity extends BaseFragment {
     protected ViewPagerActivityPagerLayout viewPager;
     private int initialFragmentPosition = -1;
 
+    private WindowInsetsCompat fragmentInsets;
     abstract protected int getStartPosition();
 
     abstract protected int getFragmentsCount();
 
+    protected int getFragmentViewType(int position) {
+        return 0;
+    }
     abstract protected BaseFragment createBaseFragmentAt(int position);
 
 
@@ -70,11 +73,16 @@ public abstract class ViewPagerActivity extends BaseFragment {
         if (initialFragmentPosition == -1) {
             initialFragmentPosition = getStartPosition();
         }
-        viewPager.setPosition(initialFragmentPosition);
+        viewPager.currentPosition = initialFragmentPosition;
         viewPager.setAdapter(new ViewPagerFixed.Adapter() {
             @Override
             public int getItemCount() {
                 return getFragmentsCount();
+            }
+
+            @Override
+            public int getItemViewType(int position) {
+                return getFragmentViewType(position);
             }
 
             @Override
@@ -91,9 +99,6 @@ public abstract class ViewPagerActivity extends BaseFragment {
                 } else {
                     fragment = createBaseFragmentAt(position);
 
-                    state = new FragmentState(fragment);
-                    fragmentsArr.put(position, state);
-                }
 
                 // Defense in depth: getFragmentsCount()/createBaseFragmentAt() are kept consistent by the tab
                 // manager's CHATS invariant, so this should never be null — but a null here used to crash
@@ -102,6 +107,9 @@ public abstract class ViewPagerActivity extends BaseFragment {
                 if (fragment == null) {
                     FileLog.e("ViewPagerActivity: null fragment at position " + position + " (skipping bind)");
                     return;
+                    }
+                    state = new FragmentState(fragment);
+                    fragmentsArr.put(position, state);
                 }
 
                 if (!state.onCreateCalled) {
@@ -138,6 +146,9 @@ public abstract class ViewPagerActivity extends BaseFragment {
                         AndroidUtilities.removeFromParent(fragmentActionBar);
                         container.addView(fragmentActionBar);
                     }
+                    if (fragmentInsets != null) {
+                        ViewCompat.dispatchApplyWindowInsets(fragmentView, fragmentInsets);
+                    }
                     ViewCompat.requestApplyInsets(container);
                 }
 
@@ -157,6 +168,16 @@ public abstract class ViewPagerActivity extends BaseFragment {
         fragmentsArr.put(position, new FragmentState(fragment));
     }
 
+    protected int getSelectedFragmentPosition() {
+        return viewPager == null ? initialFragmentPosition : viewPager.getSelectionForRebind();
+    }
+
+    protected void rebindSelectedFragment(int position) {
+        initialFragmentPosition = position;
+        if (viewPager != null) {
+            viewPager.rebindCurrentPage(position);
+        }
+    }
     protected boolean canScrollBackward(MotionEvent ev) {
         return true;
     }
@@ -181,6 +202,7 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
     @NonNull
     protected WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+        fragmentInsets = insets;
         for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
             final FragmentState state = fragmentsArr.valueAt(a);
             if (state != null) {
@@ -209,9 +231,10 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
     @Override
     public void clearViews() {
-        if (viewPager != null) {
-            initialFragmentPosition = viewPager.getCurrentPosition();
-        }
+        final ViewPagerActivityPagerLayout oldPager = viewPager;
+        initialFragmentPosition = getSelectedFragmentPosition();
+        viewPager = null;
+        fragmentInsets = null;
         for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
             final FragmentState state = fragmentsArr.valueAt(a);
             if (state != null) {
@@ -224,6 +247,9 @@ public abstract class ViewPagerActivity extends BaseFragment {
         }
 
         super.clearViews();
+        if (oldPager != null) {
+            oldPager.releasePageAnimations();
+        }
     }
 
     protected void clearAllHiddenFragments() {
@@ -415,30 +441,34 @@ public abstract class ViewPagerActivity extends BaseFragment {
 
     protected void dropFragmentAtPosition(int position) {
         final FragmentState state = fragmentsArr.get(position);
-        if (state != null) {
-            if (state.isFullyVisible) {
-                state.fragment.onBecomeFullyHidden();
-            }
-            if (state.isResumed) {
-                state.fragment.onPause();
+        fragmentsArr.remove(position);
+        if (state == null) {
+            return;
+        }
+        if (state.onCreateCalled && !state.fragment.isFinished) {
+            if (state.fragment.getFragmentView() != null) {
+                state.setVisibility(0f, 0f, false, false);
             }
             state.fragment.onFragmentDestroy();
-            state.fragment.setParentLayout(null);
         }
-        fragmentsArr.remove(position);
+        state.fragment.setSimpleMenuOverlayHost(null);
+            state.fragment.setParentLayout(null);
+        AndroidUtilities.removeFromParent(state.fragment.getFragmentView());
+        AndroidUtilities.removeFromParent(state.fragment.getActionBar());
     }
 
     @Override
     public void onFragmentDestroy() {
+        final ViewPagerActivityPagerLayout oldPager = viewPager;
+        viewPager = null;
+        fragmentInsets = null;
         super.onFragmentDestroy();
-        for (int a = 0, N = fragmentsArr.size(); a < N; a++) {
-            final FragmentState state = fragmentsArr.valueAt(a);
-            if (state.onCreateCalled) {
-                state.fragment.onFragmentDestroy();
-                state.fragment.setParentLayout(null);
-            }
+        while (fragmentsArr.size() > 0) {
+            dropFragmentAtPosition(fragmentsArr.keyAt(fragmentsArr.size() - 1));
         }
-        fragmentsArr.clear();
+        if (oldPager != null) {
+            oldPager.releasePageAnimations();
+        }
     }
 
     private String titleOverlay;

@@ -16,6 +16,7 @@
 
   const root = document.documentElement,result = document.getElementById('result');
   const status = document.getElementById('vw-status');
+  let statusLabels = {};
   const color = (value) => '#' + (Number(value) >>> 0).toString(16).padStart(8, '0').slice(-6);
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, Number(n) || 0));
   let started = false,active = false,ready = false,finished = false,paused = false,allowCopy = false;
@@ -306,7 +307,9 @@
     if (!active || error?.officeCancelled) return;
     const code = Number.isInteger(error?.officeCode) ? clamp(error.officeCode, 1, 5) : 3;
     post({ type: 'error', code, renderer: 'gander-pptx', fallbackRequired: code === 3, featureCodes: [error?.feature || 'rendererFailure'] });
-    dispose();status.className = 'vw-status vw-error';status.style.display = '';status.textContent = code === 3 ? 'This presentation needs the original reader.' : 'Could not open this presentation.';
+    dispose();status.className = 'vw-status vw-error';status.style.display = '';
+    status.textContent = (code === 3 ? statusLabels.anotherReader : statusLabels.failed) || '';
+    status.hidden = !status.textContent;
   }
   function searchState(pending) {post({ type: 'search', revision, count: 0, index: -1, truncated: queryClipped, pending });}
   vwFind.setSink((message) => {
@@ -363,6 +366,10 @@
   }
   async function open(message) {
     if (started) return;started = active = true;++generation;
+    statusLabels = message.statusLabels || {};
+    status.lang = message.statusLanguage || '';
+    status.textContent = statusLabels.opening || '';
+    status.hidden = !status.textContent;
     paper = OfficePptxPaper.create({ live: () => active, epoch: () => generation, paused: () => paused || document.hidden,
       createURL: (blob) => {const url = createURL(blob);urls.add(url);return url;},
       revokeURL: (url) => {urls.delete(url);URL.revokeObjectURL(url);},

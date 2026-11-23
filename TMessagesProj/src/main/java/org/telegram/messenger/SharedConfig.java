@@ -339,6 +339,8 @@ public class SharedConfig {
 
     @PerformanceClass
     private static int devicePerformanceClass;
+    private static volatile int networkPerformanceClass = -1;
+    private static final java.util.concurrent.atomic.AtomicBoolean networkPerformancePending = new java.util.concurrent.atomic.AtomicBoolean();
     @PerformanceClass
     private static int overrideDevicePerformanceClass;
 
@@ -691,6 +693,8 @@ public class SharedConfig {
             suggestAnimatedEmoji = preferences.getBoolean("suggestAnimatedEmoji", true);
             overrideDevicePerformanceClass = preferences.getInt("overrideDevicePerformanceClass", -1);
             devicePerformanceClass = preferences.getInt("devicePerformanceClass", -1);
+            networkPerformanceClass = Build.FINGERPRINT != null && Build.FINGERPRINT.equals(preferences.getString("networkPerformanceFingerprintV1", ""))
+                    ? preferences.getInt("networkPerformanceClassV1", -1) : -1;
             sortContactsByName = preferences.getBoolean("sortContactsByName", false);
             sortFilesByName = preferences.getBoolean("sortFilesByName", false);
             noSoundHintShowed = preferences.getBoolean("noSoundHintShowed", false);
@@ -1731,6 +1735,33 @@ public class SharedConfig {
         return devicePerformanceClass;
     }
 
+    public static int getNetworkPerformanceClass() {
+        final int known = networkPerformanceClass;
+        if (known >= PERFORMANCE_CLASS_LOW && known <= PERFORMANCE_CLASS_HIGH) return known;
+        final Context app = ApplicationLoader.applicationContext;
+        if (app != null && networkPerformancePending.compareAndSet(false, true)) {
+            try {
+                java.util.concurrent.ForkJoinPool.commonPool().execute(() -> {
+                    try {
+                        int measured = measureDevicePerformanceClass();
+                        networkPerformanceClass = measured;
+                        if (Build.FINGERPRINT != null) {
+                            app.getSharedPreferences("mainconfig", Context.MODE_PRIVATE).edit()
+                                    .putInt("networkPerformanceClassV1", measured)
+                                    .putString("networkPerformanceFingerprintV1", Build.FINGERPRINT).apply();
+                        }
+                    } catch (RuntimeException unavailable) {
+                        if (BuildVars.LOGS_ENABLED) FileLog.d("Optional device performance metadata unavailable");
+                    } finally {
+                        networkPerformancePending.set(false);
+                    }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException unavailable) {
+                networkPerformancePending.set(false);
+            }
+        }
+        return -1;
+    }
     public static int measureDevicePerformanceClass() {
         int androidVersion = Build.VERSION.SDK_INT;
         int cpuCount = ConnectionsManager.CPU_COUNT;
@@ -1748,15 +1779,13 @@ public class SharedConfig {
         int totalCpuFreq = 0;
         int freqResolved = 0;
         for (int i = 0; i < cpuCount; i++) {
-            try {
-                RandomAccessFile reader = new RandomAccessFile(String.format(Locale.ENGLISH, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", i), "r");
+            try (RandomAccessFile reader = new RandomAccessFile("/sys/devices/system/cpu/cpu" + i + "/cpufreq/cpuinfo_max_freq", "r")) {
                 String line = reader.readLine();
                 if (line != null) {
                     totalCpuFreq += Utilities.parseInt(line) / 1000;
                     freqResolved++;
                 }
-                reader.close();
-            } catch (Throwable ignore) {}
+            } catch (java.io.IOException | RuntimeException ignore) {}
         }
         int maxCpuFreq = freqResolved == 0 ? -1 : (int) Math.ceil(totalCpuFreq / (float) freqResolved);
 

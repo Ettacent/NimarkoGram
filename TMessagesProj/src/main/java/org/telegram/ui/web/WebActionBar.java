@@ -11,6 +11,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
@@ -19,7 +20,9 @@ import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.Editable;
 import android.text.TextPaint;
@@ -194,7 +197,7 @@ public class WebActionBar extends FrameLayout {
             @Override
             public void setState(boolean state) {
                 super.setState(state);
-                forwardButton.setContentDescription(state ? getString(R.string.PollCollapse) : getString(R.string.Forward));
+                forwardButton.setContentDescription(getString(state ? R.string.WebForward : R.string.AccDescrCollapsePanel));
             }
         });
         forwardButtonDrawable.setState(false);
@@ -1049,7 +1052,16 @@ public class WebActionBar extends FrameLayout {
     public class ForwardDrawable extends Drawable {
 
         private final BoundedPackIconRenderer forwardRenderer = new BoundedPackIconRenderer();
-        private final BoundedPackIconRenderer collapseRenderer = new BoundedPackIconRenderer();
+        private Drawable collapseIcon;
+        private Resources collapseResources;
+        private long collapseGeneration;
+        private int collapseDensity;
+        private boolean rebindPosted;
+        private final Runnable rebindIcon = () -> {
+            rebindPosted = false;
+            bindCollapseIcon(false);
+            invalidateSelf();
+        };
         private int alpha = 255;
         private final Path path = new Path();
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); {
@@ -1060,55 +1072,84 @@ public class WebActionBar extends FrameLayout {
         private AnimatedFloat animatedState = new AnimatedFloat(this::invalidateSelf, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
         private boolean state;
 
+        public ForwardDrawable() {
+            bindCollapseIcon(false);
+        }
+
+        private void bindCollapseIcon(boolean drawing) {
+            final Resources resources = getContext().getResources();
+            final long generation = resources instanceof IconResources ? ((IconResources) resources).getReplacementGeneration() : 0;
+            final int density = resources.getDisplayMetrics().densityDpi;
+            if (resources == collapseResources && generation == collapseGeneration && density == collapseDensity) return;
+            if (drawing) {
+                if (!rebindPosted) rebindPosted = WebActionBar.this.post(rebindIcon);
+                return;
+            }
+            Drawable artwork = resources.getDrawable(R.drawable.arrow_more, getContext().getTheme());
+            collapseIcon = artwork instanceof BitmapDrawable
+                    ? new BitmapDrawable(resources, ((BitmapDrawable) artwork).getBitmap()) : artwork.mutate();
+            collapseIcon.setBounds(getBounds());
+            collapseIcon.setTint(paint.getColor());
+            collapseIcon.setColorFilter(paint.getColorFilter());
+            collapseResources = resources;
+            collapseGeneration = generation;
+            collapseDensity = density;
+        }
+
+        @Override
+        protected void onBoundsChange(Rect bounds) {
+            if (collapseIcon != null) collapseIcon.setBounds(bounds);
+        }
         public void setState(boolean state) { // false = collapse, true = forward
             this.state = state;
+            bindCollapseIcon(false);
             invalidateSelf();
         }
 
         @Override
         public void draw(@NonNull Canvas canvas) {
-            final float state = this.animatedState.set(!this.state);
-
-            final float cx = getBounds().centerX(), cy = getBounds().centerY();
-            final float w = getBounds().width(), aw = w * 0.57f;
-
-            IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
-            boolean forwardReady = forwardRenderer.prepare(icons, R.drawable.ic_ab_back);
-            boolean collapseReady = collapseRenderer.prepare(icons, R.drawable.arrow_more);
-            if (forwardReady && collapseReady) {
-                int save = canvas.save();
+            final float collapse = animatedState.set(!state);
+            final float cx = getBounds().exactCenterX(), cy = getBounds().exactCenterY();
+            if (alpha == 0 || getBounds().isEmpty()) return;
+            bindCollapseIcon(true);
+            final int restore = canvas.getSaveCount();
                 if (alpha != 255) canvas.saveLayerAlpha(getBounds().left, getBounds().top,
                         getBounds().right, getBounds().bottom, alpha);
-                canvas.translate(cx, cy - w * 0.10f * state);
-                canvas.rotate(90f * state);
-                canvas.save();
-                canvas.rotate(180f);
-                forwardRenderer.draw(canvas, paint, 0, 0, aw + dp(2), w * .54f + dp(2), 1f - state, false);
-                canvas.restore();
-                canvas.rotate(-90f);
-                collapseRenderer.draw(canvas, paint, 0, 0, w * .54f + dp(2), w * .27f + dp(2), state, false);
+            if (collapse < 1f) {
+                final float w = getBounds().width(), aw = w * .57f;
+                int save = canvas.save();
+                canvas.rotate(90f * collapse, cx, cy);
+                final int oldAlpha = paint.getAlpha();
+                paint.setAlpha(Math.round(oldAlpha * (1f - collapse)));
+                if (forwardRenderer.prepare(IconResources.activeNavigationIcons(), R.drawable.ic_ab_back)) {
+                    canvas.rotate(180f, cx, cy);
+                    forwardRenderer.draw(canvas, paint, cx, cy, aw + dp(2), w * .54f + dp(2), 1f, false);
+                } else {
+                    path.rewind();
+                    path.moveTo(cx - aw / 2f, cy);
+                    path.lineTo(cx + aw / 2f, cy);
+                    path.moveTo(cx + aw / 2f - w * .27f, cy - w * .27f);
+                    path.lineTo(cx + aw / 2f, cy);
+                    path.lineTo(cx + aw / 2f - w * .27f, cy + w * .27f);
+                    paint.setStrokeWidth(dp(2));
+                    canvas.drawPath(path, paint);
+                }
+                paint.setAlpha(oldAlpha);
                 canvas.restoreToCount(save);
-                return;
             }
-            path.rewind();
-            path.moveTo(cx - lerp(aw / 2f, -aw / 2f, state), cy);
-            path.lineTo(cx + aw / 2f, cy);
-            path.moveTo(cx + aw / 2f - w * .27f, cy - w * .54f / 2f);
-            path.lineTo(cx + aw / 2f, cy);
-            path.lineTo(cx + aw / 2f - w * .27f, cy + w * .54f / 2f);
-
-            int save = canvas.save();
-            if (alpha != 255) canvas.saveLayerAlpha(getBounds().left, getBounds().top,
-                    getBounds().right, getBounds().bottom, alpha);
-            paint.setStrokeWidth(dp(2));
-            canvas.translate(0, -w * 0.10f * state);
-            canvas.rotate(90 * state, cx, cy);
-            canvas.drawPath(path, paint);
+            if (collapse > 0f) {
+                final int save = canvas.save();
+                canvas.rotate(-90f * (1f - collapse), cx, cy);
+                collapseIcon.setAlpha(Math.round(255 * collapse));
+                collapseIcon.draw(canvas);
             canvas.restoreToCount(save);
+            }
+            canvas.restoreToCount(restore);
         }
 
         public void setColor(int color) {
             paint.setColor(color);
+            collapseIcon.setTint(color);
             invalidateSelf();
         }
 
@@ -1128,6 +1169,7 @@ public class WebActionBar extends FrameLayout {
         public void setColorFilter(@Nullable ColorFilter colorFilter) {
 
             paint.setColorFilter(colorFilter);
+            collapseIcon.setColorFilter(colorFilter);
             invalidateSelf();
         }
 

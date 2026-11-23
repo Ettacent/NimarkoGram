@@ -8,7 +8,7 @@ import app.nimarkogram.messenger.plugins.intents.IntentsController;
 import app.nimarkogram.messenger.plugins.ui.PluginUiRegistry;
 import app.nimarkogram.messenger.plugins.utils.PluginsWatchdog;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
-import app.nimarkogram.messenger.wsbypass.WsBypassCore;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 import java.util.Objects;
 import java.util.function.Predicate;
 import android.content.SharedPreferences;
@@ -2344,10 +2344,12 @@ public class PluginsController implements PluginsHooks {
                 }
                 return;
             }
-            generation = toggleGenerations.getOrDefault(str, 0) + 1;
+            PluginRuntimeToken current = z ? getCurrentPluginRuntime(str) : null;
+            generation = current != null && isPluginRuntimeCallbackAllowed(current)
+                    ? current.getGeneration() : toggleGenerations.getOrDefault(str, 0) + 1;
             toggleGenerations.put(str, generation);
             prior = pendingToggleState.put(str, z);
-            if (callback != null) {
+            if (callback != null || pendingToggleCallbacks.containsKey(str)) {
                 pendingToggleCallbacks
                         .computeIfAbsent(str, ignored -> new CopyOnWriteArrayList<>())
                         .add(new PendingToggleCallback(
@@ -2544,12 +2546,13 @@ public class PluginsController implements PluginsHooks {
             String error) {
         if (callbacks == null || callbacks.isEmpty()) return;
         AndroidUtilities.runOnUIThread(() -> {
+            PendingToggleCallback latest = callbacks.get(callbacks.size() - 1);
             for (PendingToggleCallback pending : callbacks) {
                 if (pending == null || pending.callback == null) continue;
                 try {
 
                     pending.callback.run(
-                            pending.requestedState == finalState
+                            pending == latest && pending.requestedState == finalState
                                     && pending.generation
                                             == appliedGeneration
                                     && pending.lifecycleEpoch
@@ -3068,7 +3071,7 @@ public class PluginsController implements PluginsHooks {
             return;
         }
 
-        if (WsBypassCore.isWsBypassPluginFile(file)) {
+        if (ClientRelays.isLegacyPlugin(file)) {
             BulletinFactory.of(baseFragment)
                     .createSimpleBulletin(R.raw.info,
                             AndroidUtilities.replaceTags(LocaleController.getString(R.string.NM_WSBypassBuiltIn)))

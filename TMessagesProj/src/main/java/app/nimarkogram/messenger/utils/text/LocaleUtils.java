@@ -20,6 +20,7 @@ import java.util.regex.Pattern;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -29,6 +30,21 @@ import org.telegram.ui.LaunchActivity;
 public abstract class LocaleUtils {
     private static final Pattern MARKDOWN_LINK_PATTERN = Pattern.compile("\\[([^]]+?)]\\(" + "AndroidUtilities.WEB_URL" + "\\)");
 
+    public static String pluginInstallFailureText(String displayName) {
+        return pluginFailureText(displayName, R.string.PluginInstallError, R.string.NM_PluginInstallErrorNamed);
+    }
+
+    public static String pluginEnableFailureAfterInstallText(String displayName) {
+        return pluginFailureText(displayName, R.string.PluginInstalledButFailedToEnable,
+                R.string.NM_PluginEnableAfterInstallErrorNamed);
+    }
+
+    private static String pluginFailureText(String displayName, int genericRes, int namedRes) {
+        if (displayName == null || displayName.trim().isEmpty()) {
+            return LocaleController.getString(genericRes);
+        }
+        return LocaleController.formatString(namedRes, displayName);
+    }
     public static CharSequence formatWithUsernames(CharSequence charSequence) {
         return formatWithUsernames(charSequence, LaunchActivity.getSafeLastFragment());
     }
@@ -50,10 +66,10 @@ public abstract class LocaleUtils {
                 int end = i + 1;
                 boolean isEnd = end == charSequence.length();
                 boolean isValidChar = Character.isLetterOrDigit(charSequence.charAt(end - 1)) || charSequence.charAt(end - 1) == '_';
-                
+
                 if (isEnd || !isValidChar) {
                     int finalEnd = isEnd && isValidChar ? end : i;
-                    
+
                     if (finalEnd - start > 1) {
                         URLSpan[] existingSpans = builder.getSpans(start, finalEnd, URLSpan.class);
                         if (existingSpans == null || existingSpans.length == 0) {
@@ -116,11 +132,11 @@ public abstract class LocaleUtils {
         CharSequence[] seqRef = {formatWithURLs(charSequence)};
         parseMarkdownLinks(seqRef, runnable);
         CharSequence text = seqRef[0];
-        
-        CharSequence withUsernames = (baseFragment != null && runnable != null) 
-                ? formatWithUsernames(text, baseFragment, runnable) 
+
+        CharSequence withUsernames = (baseFragment != null && runnable != null)
+                ? formatWithUsernames(text, baseFragment, runnable)
                 : formatWithUsernames(text);
-                
+
         return AndroidUtilities.replaceTags(withUsernames);
     }
 
@@ -134,13 +150,13 @@ public abstract class LocaleUtils {
 
     public static void parseMarkdownLinks(CharSequence[] seqRef, Runnable runnable) {
         if (seqRef == null || seqRef.length == 0 || seqRef[0] == null) return;
-        
+
         Spannable spannable = seqRef[0] instanceof Spannable ? (Spannable) seqRef[0] : new SpannableString(seqRef[0]);
         Matcher matcher = MARKDOWN_LINK_PATTERN.matcher(spannable);
-        
+
         ArrayList<String> sources = new ArrayList<>();
         ArrayList<CharSequence> replacements = new ArrayList<>();
-        
+
         while (matcher.find()) {
             int start = matcher.start(1);
             int end = matcher.end(1);
@@ -157,7 +173,7 @@ public abstract class LocaleUtils {
                 replacements.add(replacement);
             }
         }
-        
+
         if (!sources.isEmpty()) {
             seqRef[0] = TextUtils.replace(seqRef[0], sources.toArray(new String[0]), replacements.toArray(new CharSequence[0]));
         }
@@ -170,10 +186,10 @@ public abstract class LocaleUtils {
         }
         return "https://" + str;
     }
-    
+
     public static Spannable createCopySpan(BaseFragment baseFragment) {
         SpannableString span = new SpannableString(" ");
-        
+
         Context ctx = baseFragment != null ? baseFragment.getParentActivity() : null;
         if (ctx == null) {
             ctx = ApplicationLoader.applicationContext;

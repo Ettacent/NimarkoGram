@@ -36,6 +36,7 @@ public final class ApiClient {
     private static final String NIMARKO_BASE_URL = org.telegram.messenger.BuildConfig.NIMARKO_API_BASE_URL;
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
+            .followSslRedirects(!org.telegram.messenger.BuildConfig.NIMARKO_PLAY)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(chain -> chain.proceed(chain.request().newBuilder()

@@ -1732,7 +1732,7 @@ public final class BulletinFactory {
             final String loadingPlaceholder = "<{LOADING}>";
 
             SpannableStringBuilder stringBuilder;
-            stringBuilder = new SpannableStringBuilder(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_ReplyContainsEmojiPack, loadingPlaceholder)));
+            stringBuilder = new SpannableStringBuilder(AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NM_ReplyContainsEmojiPack, loadingPlaceholder)));
 
             LoadingSpan loadingSpan = null;
             int index;
@@ -1752,7 +1752,7 @@ public final class BulletinFactory {
             MediaDataController.getInstance(UserConfig.selectedAccount).getStickerSet(inputStickerSet, null, false, set -> {
                 CharSequence message;
                 if (set != null && set.set != null) {
-                    message = AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_ReplyContainsEmojiPack, set.set.title));
+                    message = AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NM_ReplyContainsEmojiPack, set.set.title));
                 } else {
                     message = LocaleController.getString(R.string.AddEmojiNotFound);
                 }
@@ -1763,7 +1763,7 @@ public final class BulletinFactory {
             return bulletin;
         } else {
             CharSequence message;
-            message = AndroidUtilities.replaceTags(LocaleController.formatString(R.string.CG_ReplyContainsEmojiPack, cachedSet.set.title));
+            message = AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NM_ReplyContainsEmojiPack, cachedSet.set.title));
             return createEmojiBulletin2(document, message, LocaleController.getString(R.string.ApplyTheme), selectedObject, () -> app.nimarkogram.messenger.utils.chats.ChatHelper.getInstance(selectedObject.currentAccount).applyReplyBackground(selectedObject, fragment));
         }
     }

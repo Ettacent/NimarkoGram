@@ -14985,6 +14985,7 @@ public class MessagesStorage extends BaseController {
     }
 
     private long[] updateMessageStateAndIdInternal(long randomId, long dialogId, Integer _oldId, int newId, int date, int scheduled, int newTopicId) {
+        final boolean mappingOnly = _oldId == null && scheduled == -1;
         SQLiteCursor cursor = null;
         int oldMessageId;
 
@@ -15025,6 +15026,18 @@ public class MessagesStorage extends BaseController {
                 }
             }
         } else if (_oldId > 0) {
+            if (mappingOnly && oldMessageId == newId && dialogId != 0) {
+                SQLiteCursor pending = null;
+                try {
+                    pending = database.queryFinalized("SELECT 1 FROM scheduled_messages_v2 WHERE uid = ? AND mid = ? LIMIT 1", dialogId, newId);
+                    if (pending.next()) return null;
+                } catch (Exception e) {
+                    checkSQLException(e);
+                    return null;
+                } finally {
+                    if (pending != null) pending.dispose();
+                }
+            }
             TL_update.TL_updateDeleteScheduledMessages update = new TL_update.TL_updateDeleteScheduledMessages();
             update.messages.add(oldMessageId);
             if (DialogObject.isChatDialog(dialogId)) {

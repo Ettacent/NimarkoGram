@@ -360,7 +360,7 @@ public class ChatsHelper extends BaseController {
             buttonText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             buttonText.setTypeface(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM));
             buttonText.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText));
-            buttonText.setText(LocaleController.formatPluralString("CG_MessageContainsCustomReactions", getCustomReactionsCount(selectedObject)));
+            buttonText.setText(LocaleController.formatPluralString("NM_MessageContainsCustomReactions", getCustomReactionsCount(selectedObject)));
 
             button.addView(buttonText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             button.setOnClickListener(e -> chatActivity.processSelectedOption(ChatActivityHelper.OPTION_GET_CUSTOM_REACTIONS));
@@ -667,40 +667,40 @@ public class ChatsHelper extends BaseController {
         ArrayList<String> configStringKeys = new ArrayList<>();
         ArrayList<Integer> configValues = new ArrayList<>();
 
-        configStringKeys.add(getString( R.string.CG_SearchFilter_None));
+        configStringKeys.add(getString( R.string.NM_SearchFilter_None));
         configValues.add(AppConfig.FILTER_NONE);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Photos));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Photos));
         configValues.add(AppConfig.FILTER_PHOTOS);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Videos));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Videos));
         configValues.add(AppConfig.FILTER_VIDEOS);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_VoiceMessages));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_VoiceMessages));
         configValues.add(AppConfig.FILTER_VOICE_MESSAGES);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_VideoMessages));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_VideoMessages));
         configValues.add(AppConfig.FILTER_VIDEO_MESSAGES);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Files));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Files));
         configValues.add(AppConfig.FILTER_FILES);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Music));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Music));
         configValues.add(AppConfig.FILTER_MUSIC);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_GIFs));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_GIFs));
         configValues.add(AppConfig.FILTER_GIFS);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Geolocation));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Geolocation));
         configValues.add(AppConfig.FILTER_GEO);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_Contacts));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_Contacts));
         configValues.add(AppConfig.FILTER_CONTACTS);
 
-        configStringKeys.add(getString(R.string.CG_SearchFilter_MyMentions));
+        configStringKeys.add(getString(R.string.NM_SearchFilter_MyMentions));
         configValues.add(AppConfig.FILTER_MENTIONS);
 
-        PopupHelper.show(configStringKeys, getString(R.string.CG_SearchFilter), configValues.indexOf(AppConfig.messagesSearchFilter), chatActivity.getContext(), i -> {
+        PopupHelper.show(configStringKeys, getString(R.string.NM_SearchFilter), configValues.indexOf(AppConfig.messagesSearchFilter), chatActivity.getContext(), i -> {
             AppConfig.setMessagesSearchFilter(configValues.get(i));
 
             chatActivity.openSearchWithText(null);

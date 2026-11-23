@@ -4,20 +4,16 @@ package app.nimarkogram.messenger.preferences;
 
 import android.widget.FrameLayout;
 import app.nimarkogram.messenger.infocards.preferences.InfoCardsPreferencesActivity;
-import app.nimarkogram.messenger.updater.UpdaterSheet;
+import app.nimarkogram.messenger.distribution.ClientUpdates;
 import org.telegram.messenger.browser.Browser;
 import android.content.Context;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.EditText;
 
-import app.nimarkogram.messenger.plugins.PluginsController;
-import app.nimarkogram.messenger.plugins.ui.PluginsActivity;
-import app.nimarkogram.messenger.plugins.ui.PluginsInfoActivity;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 import app.nimarkogram.messenger.utils.AppRestartHelper;
-import app.nimarkogram.messenger.wsbypass.preferences.WsBypassPreferencesActivity;
-
-import app.nimarkogram.messenger.wsbypass.preferences.WlPreferencesActivity;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 import java.util.ArrayList;
 
 import org.telegram.messenger.LocaleController;
@@ -131,21 +127,23 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 R.drawable.msg_settings_solar, R.string.NM_Cat_General, R.string.NM_SettingsSummaryGeneral, "nimarko_general"));
         arrayList.add(category(ID_APPEARANCE, IconBackgroundColors.PURPLE,
                 R.drawable.msg_theme_solar, R.string.NM_Cat_Appearance, R.string.NM_SettingsSummaryAppearance, "nimarko_appearance"));
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) arrayList.add(privacyCategory());
         arrayList.add(category(ID_CHATS, IconBackgroundColors.BLUE_DEEP,
                 R.drawable.msg_msgbubble3_solar, R.string.NM_Cat_Chats, R.string.NM_SettingsSummaryChats, "nimarko_chats"));
         arrayList.add(category(ID_CAMERA, IconBackgroundColors.CYAN,
                 R.drawable.camera_solar, R.string.NM_Cat_Camera, R.string.NM_SettingsSummaryCamera, "nimarko_camera"));
         arrayList.add(UItem.asShadow(null));
 
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
         arrayList.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionPrivacyNetwork)));
-        arrayList.add(category(ID_PRIVACY, IconBackgroundColors.GREEN,
-                R.drawable.msg_secret_solar, R.string.NM_Cat_Privacy, R.string.NM_SettingsSummaryPrivacy, "nimarko_privacy"));
+            arrayList.add(privacyCategory());
         arrayList.add(category(ID_WSBYPASS, IconBackgroundColors.BLUE_DEEP,
                 R.drawable.msg_satellite_solar, R.string.NM_WSB_Title, R.string.NM_SettingsSummaryBypass, "nimarko_wsbypass"));
         arrayList.add(UItem.asShadow(null));
 
+        }
         arrayList.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionFeatures)));
-        if (PluginsController.isPluginEngineSupported()) {
+        if (ClientPlugins.supported()) {
             arrayList.add(category(ID_PLUGINS, IconBackgroundColors.PURPLE,
                     R.drawable.msg_plugins, R.string.Plugins, R.string.NM_SettingsSummaryPlugins, "nimarko_plugins"));
         }
@@ -160,8 +158,10 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
         arrayList.add(UItem.asShadow(null));
 
         arrayList.add(UItem.asHeader(LocaleController.getString(R.string.NM_SettingsSectionApp)));
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
         arrayList.add(category(ID_UPDATES, IconBackgroundColors.BLUE,
                 R.drawable.msg_info_solar, R.string.UP_CheckForUpdates, R.string.NM_SettingsSummaryUpdates, "nimarko_updates"));
+        }
         arrayList.add(category(ID_DEBUG, IconBackgroundColors.GRAY,
                 R.drawable.msg_log_solar, R.string.NM_SettingsAdvanced, R.string.NM_SettingsSummaryAdvanced, "nimarko_debug"));
         arrayList.add(category(ID_SOURCE_CODE, IconBackgroundColors.BLUE_DEEP,
@@ -169,6 +169,11 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
         arrayList.add(category(ID_RESTART, IconBackgroundColors.ORANGE_DEEP,
                 R.drawable.msg_retry_solar, R.string.NM_HUB_Restart, R.string.NM_SettingsSummaryRestart, "nimarko_restart"));
         arrayList.add(UItem.asShadow(null));
+    }
+
+    private UItem privacyCategory() {
+        return category(ID_PRIVACY, IconBackgroundColors.GREEN,
+                R.drawable.msg_secret_solar, R.string.NM_Cat_Privacy, R.string.NM_SettingsSummaryPrivacy, "nimarko_privacy");
     }
 
     private void fillSearchItems(ArrayList<UItem> items) {
@@ -265,10 +270,10 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 fragment = new PrivacyPreferencesActivity();
                 break;
             case SettingsSearchIndex.SCREEN_PLUGINS:
-                fragment = new PluginsActivity();
+                fragment = ClientPlugins.settings(false);
                 break;
             case SettingsSearchIndex.SCREEN_PLUGIN_SETTINGS:
-                fragment = new PluginsInfoActivity();
+                fragment = ClientPlugins.settings(true);
                 break;
             case SettingsSearchIndex.SCREEN_MEDIA:
                 fragment = new MediaPreferencesActivity();
@@ -277,10 +282,10 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 fragment = new BannerPreferencesActivity();
                 break;
             case SettingsSearchIndex.SCREEN_BYPASS:
-                fragment = new WsBypassPreferencesActivity();
+                fragment = ClientRelays.settings(false);
                 break;
             case SettingsSearchIndex.SCREEN_WHITELIST:
-                fragment = new WlPreferencesActivity();
+                fragment = ClientRelays.settings(true);
                 break;
             case SettingsSearchIndex.SCREEN_TEXT_ANIMATION:
                 fragment = new TextAnimPreferencesActivity();
@@ -316,7 +321,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 fragment = new RecentEmojisStickersPreferencesActivity();
                 break;
             case SettingsSearchIndex.ACTION_UPDATES:
-                UpdaterSheet.showAlert(this, false, null);
+                ClientUpdates.open(this);
                 return;
             case SettingsSearchIndex.ACTION_SOURCE:
                 Browser.openUrl(
@@ -370,7 +375,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 presentFragment(new PrivacyPreferencesActivity());
                 break;
             case ID_PLUGINS:
-                presentFragment(new PluginsActivity());
+                if (ClientPlugins.supported()) presentFragment(ClientPlugins.settings(false));
                 break;
             case ID_NIMARKO_MEDIA:
                 presentFragment(new MediaPreferencesActivity());
@@ -379,7 +384,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 presentFragment(new BannerPreferencesActivity());
                 break;
             case ID_WSBYPASS:
-                presentFragment(new WsBypassPreferencesActivity());
+                if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) presentFragment(ClientRelays.settings(false));
                 break;
             case ID_PILLSTACK:
                 presentFragment(new InfoCardsPreferencesActivity());
@@ -388,7 +393,7 @@ public class MainPreferencesActivity extends BasePreferencesActivity {
                 presentFragment(new TextAnimPreferencesActivity());
                 break;
             case ID_UPDATES:
-                UpdaterSheet.showAlert(this, false, null);
+                if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) ClientUpdates.open(this);
                 break;
             case ID_DEBUG:
                 presentFragment(new DebugPreferencesActivity());

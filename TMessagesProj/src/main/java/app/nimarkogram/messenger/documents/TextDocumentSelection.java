@@ -47,6 +47,7 @@ final class TextDocumentSelection {
     private final Matrix mapping = new Matrix();
     private final Matrix inverseMapping = new Matrix();
     private BlockTextView active;
+    private BlockTextView focusTarget;
     private Spannable activeText;
     private long activeBinding;
     private ActionMode mode;
@@ -95,6 +96,10 @@ final class TextDocumentSelection {
 
     void onScrollStarted() {
         cancel();
+    }
+
+    boolean isTakingFocus(View child) {
+        return focusTarget != null && child == focusTarget;
     }
 
     void cancel() {
@@ -178,7 +183,13 @@ final class TextDocumentSelection {
                 cancelIfCurrent(requestVersion);
                 return false;
             }
+            final BlockTextView previousFocusTarget = focusTarget;
+            focusTarget = view;
+            try {
             view.requestFocus();
+            } finally {
+                focusTarget = previousFocusTarget;
+            }
             if (!ownsSelection(view, text, binding, requestVersion)
                     || start > text.length() || end > text.length()) {
                 cancelIfCurrent(requestVersion);

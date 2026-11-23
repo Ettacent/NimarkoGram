@@ -3,7 +3,7 @@
 package app.nimarkogram.messenger.utils;
 
 import android.system.Os;
-import app.nimarkogram.messenger.plugins.PluginsController;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 import android.content.Context;
 import android.content.SharedPreferences;
 
@@ -131,6 +131,10 @@ public final class ConfigBackup {
                 || normalized.endsWith("install-id");
     }
 
+    private static boolean availableNamespace(String name) {
+        return !org.telegram.messenger.BuildConfig.NIMARKO_PLAY ||
+                !(PREFS_WSBYPASS.equals(name) || PREFS_UPDATE.equals(name) || PREFS_PLUGINS.equals(name));
+    }
     private static SharedPreferences prefs(String name) {
         return ApplicationLoader.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE);
     }
@@ -138,6 +142,7 @@ public final class ConfigBackup {
     private static String expectedType(String namespace, String key) {
         if (key == null || !SAFE_KEY.matcher(key).matches() || isSensitiveKey(key)) return null;
         if (PREFS_MAIN.equals(namespace)) {
+            if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY && (key.startsWith("plugins") || key.startsWith("nimarkoMediaYt"))) return null;
             if (isDeviceLocalSecurityKey(key)) return null;
 
             if (key.startsWith("customSavedMessages") || key.startsWith("nimarkoSavedMessages")) return null;
@@ -223,19 +228,19 @@ public final class ConfigBackup {
     }
 
     public static String exportJson() throws Exception {
-        return PluginsController
+        return ClientPlugins
                 .withPortablePluginSettingsTransaction(() ->
                         AppConfig.withSettingsTransaction(ConfigBackup::exportJsonLocked));
     }
 
     private static String exportJsonLocked() throws Exception {
         JSONObject namespaces = new JSONObject();
-        for (String name : PORTABLE_NAMESPACES) namespaces.put(name, dumpPrefs(name, prefs(name)));
+        for (String name : PORTABLE_NAMESPACES) if (availableNamespace(name)) namespaces.put(name, dumpPrefs(name, prefs(name)));
         JSONObject root = new JSONObject()
                 .put("magic", MAGIC)
-                .put("version", VERSION)
+                .put("version", org.telegram.messenger.BuildConfig.NIMARKO_PLAY ? 2 : VERSION)
                 .put("namespaces", namespaces);
-        root.put(PYTHON_PLUGIN_SETTINGS, readPortablePythonPluginSettings());
+        if (!org.telegram.messenger.BuildConfig.NIMARKO_PLAY) root.put(PYTHON_PLUGIN_SETTINGS, readPortablePythonPluginSettings());
         String result = root.toString(2);
         if (!withinSizeLimit(result)) throw new IllegalStateException("backup too large");
         return result;
@@ -409,7 +414,7 @@ public final class ConfigBackup {
         boolean pythonReloaded = true;
         if (reloadPythonSettings) {
             try {
-                pythonReloaded = PluginsController.reloadPortablePluginSettings();
+                pythonReloaded = ClientPlugins.reloadPortablePluginSettings();
             } catch (Throwable t) {
                 pythonReloaded = false;
                 FileLog.e("Nimarko config rollback could not reload restored plugin settings", t);
@@ -426,7 +431,7 @@ public final class ConfigBackup {
 
     public static boolean importJson(String json) {
         try {
-            return PluginsController
+            return ClientPlugins
                     .withPortablePluginSettingsTransaction(() ->
                             AppConfig.withSettingsTransaction(() -> importJsonLocked(json)));
         } catch (RuntimeException e) {
@@ -455,7 +460,8 @@ public final class ConfigBackup {
             if (version < 1 || version > VERSION) return false;
 
             JSONObject pendingPortablePythonSettings = null;
-            if (version >= 4) {
+            boolean withPluginSettings = version >= 4 && !org.telegram.messenger.BuildConfig.NIMARKO_PLAY;
+            if (withPluginSettings) {
                 Object pythonNode = root.opt(PYTHON_PLUGIN_SETTINGS);
                 if (!(pythonNode instanceof JSONObject)) return false;
                 int[] pluginValueCount = {0};
@@ -476,6 +482,7 @@ public final class ConfigBackup {
                 while (names.hasNext()) {
                     String name = names.next();
                     if (!PORTABLE_NAMESPACE_SET.contains(name)) return false;
+                    if (!availableNamespace(name)) continue;
                     pending.add(validateNamespace(name, namespaces.optJSONObject(name)));
                 }
 
@@ -484,6 +491,7 @@ public final class ConfigBackup {
                             ? PORTABLE_NAMESPACES
                             : PORTABLE_NAMESPACES.subList(0, PORTABLE_NAMESPACES.size() - 1);
                     for (String name : fullSnapshotNamespaces) {
+                        if (!availableNamespace(name)) continue;
                         boolean found = false;
                         for (PendingNamespace p : pending) if (name.equals(p.name)) { found = true; break; }
                         if (!found) pending.add(new PendingNamespace(name));
@@ -493,14 +501,14 @@ public final class ConfigBackup {
 
             snapshots = new HashMap<>();
             for (PendingNamespace p : pending) snapshots.put(p.name, portableSnapshot(p.name));
-            JSONObject mergedPythonSettings = version >= 4
+            JSONObject mergedPythonSettings = withPluginSettings
                     ? mergePortablePythonPluginSettings(pendingPortablePythonSettings)
                     : null;
             preparedPython = mergedPythonSettings == null
                     ? null
                     : PreparedPythonReplacement.prepare(
                             mergedPythonSettings.toString().getBytes(StandardCharsets.UTF_8));
-            if (version >= 4 && preparedPython == null) return false;
+            if (withPluginSettings && preparedPython == null) return false;
             for (PendingNamespace p : pending) {
 
                 touched.add(p.name);
@@ -515,9 +523,9 @@ public final class ConfigBackup {
                     throw new IllegalStateException("Python settings commit verification failed");
                 }
             }
-            if (version >= 4) {
+            if (withPluginSettings) {
                 pythonSettingsReloaded = true;
-                if (!PluginsController.reloadPortablePluginSettings()) {
+                if (!ClientPlugins.reloadPortablePluginSettings()) {
                     throw new IllegalStateException("Python plugin settings reload failed");
                 }
             }

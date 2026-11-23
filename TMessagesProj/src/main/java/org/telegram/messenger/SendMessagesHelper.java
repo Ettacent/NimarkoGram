@@ -3630,7 +3630,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                                             messageIds.add(oldId);
                                                             getMessagesController().deleteMessages(messageIds, null, null, newMsgObj1.dialog_id, false, fromMode, false, 0, null, 0, toMode == ChatActivity.MODE_SCHEDULED, message.id);
                                                             ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                                                            messageObjects.add(new MessageObject(msgObj.currentAccount, msgObj.messageOwner, true, true));
+                                                            messageObjects.add(scheduleTransitionRow(msgObj1.currentAccount, newMsgObj1, message, scheduledOnline, toMode == ChatActivity.MODE_SCHEDULED));
                                                             getMessagesController().updateInterfaceWithMessages(newMsgObj1.dialog_id, messageObjects, toMode);
                                                             getMediaDataController().increasePeerRaiting(newMsgObj1.dialog_id);
                                                             processSentMessage(oldId);
@@ -5403,7 +5403,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         if (_smpInParam != null && _smpInParam.preparedVoiceOwnership != null
                 && _smpInParam.preparedVoiceOwnership.pluginOwnsFile) return;
         try {
-            _smpInParam = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+            _smpInParam = app.nimarkogram.messenger.distribution.ClientPlugins
                     .executeSendMessageHook(currentAccount, _smpInParam);
             if (_smpInParam == null) {
                 if (submission != null) submission.outcome = PreparedVoiceSendOutcome.PLUGIN_CANCELLED;
@@ -9472,6 +9472,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         final String attachPath = newMsgObj.attachPath;
                         final int existFlags;
                         boolean scheduledOnline = newMsgObj.date == 0x7FFFFFFE;
+                        TLRPC.Message confirmedMessage = null;
                         if (response instanceof TLRPC.TL_updateShortSentMessage) {
                             final TLRPC.TL_updateShortSentMessage res = (TLRPC.TL_updateShortSentMessage) response;
                             updateMediaPaths(msgObj, null, res.id, null, false, params);
@@ -9613,6 +9614,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             }
                             if (message != null) {
                                 MessageObject.getDialogId(message);
+                                confirmedMessage = message;
                                 if (scheduledOnline && message.date != 0x7FFFFFFE) {
                                     currentSchedule = false;
                                 }
@@ -9668,11 +9670,14 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 ArrayList<Integer> messageIds = new ArrayList<>();
                                 messageIds.add(oldId);
                                 ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                                messageObjects.add(new MessageObject(msgObj.currentAccount, msgObj.messageOwner, true, true));
+                                messageObjects.add(scheduleTransitionRow(msgObj.currentAccount, newMsgObj, confirmedMessage, scheduledOnline, finalCurrentSchedule));
                                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
                                     getMessagesStorage().putMessages(sentMessages, true, false, false, 0, false, !scheduled ? ChatActivity.MODE_SCHEDULED : ChatActivity.MODE_DEFAULT, 0);
                                     AndroidUtilities.runOnUIThread(() -> {
                                         final int scheduledMessageId = finalCurrentSchedule && newMsgObj != null ? newMsgObj.id : 0;
+                                        if (scheduledOnline && !finalCurrentSchedule) {
+                                            ChatActivity.onWhenOnlineSent(currentAccount, newMsgObj.dialog_id, oldId, newMsgObj.random_id);
+                                        }
                                         getMessagesController().deleteMessages(messageIds, null, null, newMsgObj.dialog_id, false, scheduled ? ChatActivity.MODE_SCHEDULED : ChatActivity.MODE_DEFAULT, false, 0, null, 0, !scheduled && finalCurrentSchedule, scheduledMessageId);
                                         getMessagesController().updateInterfaceWithMessages(newMsgObj.dialog_id, messageObjects, finalCurrentSchedule ? ChatActivity.MODE_SCHEDULED : ChatActivity.MODE_DEFAULT);
                                         getMediaDataController().increasePeerRaiting(newMsgObj.dialog_id);
@@ -9818,6 +9823,15 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             }
         }
         return false;
+    }
+
+    private static MessageObject scheduleTransitionRow(int account, TLRPC.Message local, TLRPC.Message confirmed, boolean whenOnline, boolean remainsScheduled) {
+        TLRPC.Message display = whenOnline && !remainsScheduled && confirmed != null && confirmed.id > 0 && confirmed.id == local.id
+                && confirmed.date > 0 && confirmed.date != 0x7FFFFFFE && MessageObject.getDialogId(confirmed) == MessageObject.getDialogId(local)
+                ? confirmed : local;
+        MessageObject row = new MessageObject(account, display, true, true);
+        row.scheduled = remainsScheduled;
+        return row;
     }
 
     private void updateMediaPaths(MessageObject newMsgObj, TLRPC.Message sentMessage, int newMsgId, String originalPath, boolean post, HashMap<String, String> params) {

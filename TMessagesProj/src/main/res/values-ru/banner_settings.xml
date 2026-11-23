@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
     <string name="NM_BAN_Attach">Прикрепить баннер</string>
     <string name="NM_BAN_SelectHint">Фото или видео до 8 МБ. После выбора сразу отправится на проверку, а после одобрения будет видно всем.</string>
     <string name="NM_BAN_AutoStatus">Статус обновляется автоматически, пока открыт этот экран.</string>
     <string name="NM_BAN_AccountChanged">Аккаунт изменился. Выберите файл заново.</string>
+    <string name="NM_BAN_SubmitChecking">Отправку не удалось подтвердить. Проверяем статус…</string>
+    <string name="NM_BAN_SubmitPendingOnServer">Баннер уже на модерации. Повторно отправлять не нужно.</string>
+    <string name="NM_BAN_SubmitApprovedOnServer">В профиле есть одобренный баннер. Проверьте его перед повторной отправкой.</string>
+    <string name="NM_BAN_SubmitUnconfirmed">Отправку не удалось подтвердить. Проверьте статус баннера перед повторной попыткой.</string>
+    <string name="NM_BAN_SubmitRefused">Сервер отклонил эту отправку.</string>
 </resources>

@@ -38,48 +38,51 @@ public final class MediaDownloader {
     public static final long TELEGRAM_UPLOAD_LIMIT_BYTES = 18L * 1024L * 1024L;
 
     public enum Platform {
-        TIKTOK("tiktok", Pattern.compile(
+        TIKTOK("tiktok", "TikTok", Pattern.compile(
             "(?:https?://)?(?:www\\.|vm\\.|vt\\.|m\\.)?tiktok\\.com/\\S+",
             Pattern.CASE_INSENSITIVE)),
-        YOUTUBE("youtube", Pattern.compile(
+        YOUTUBE("youtube", "YouTube", Pattern.compile(
             "(?:https?://)?(?:www\\.|m\\.|music\\.)?(?:youtube\\.com/(?:watch\\?v=|shorts/|live/|embed/)|youtu\\.be/)[\\w-]+",
             Pattern.CASE_INSENSITIVE)),
-        SOUNDCLOUD("soundcloud", Pattern.compile(
+        SOUNDCLOUD("soundcloud", "SoundCloud", Pattern.compile(
             "(?:https?://)?(?:www\\.|on\\.|m\\.)?soundcloud\\.com/\\S+",
             Pattern.CASE_INSENSITIVE)),
-        INSTAGRAM("instagram", Pattern.compile(
+        INSTAGRAM("instagram", "Instagram", Pattern.compile(
             "(?:https?://)?(?:www\\.)?instagram\\.com/(?:[\\w.-]+/)?(?:p|reel|reels|tv|stories)/[\\w-]+",
             Pattern.CASE_INSENSITIVE)),
-        TWITTER("twitter", Pattern.compile(
+        TWITTER("twitter", "X\u00a0(Twitter)", Pattern.compile(
             "(?:https?://)?(?:www\\.|mobile\\.)?(?:twitter|x|fxtwitter|vxtwitter|fixupx)\\.com/[\\w]+/status(?:es)?/\\d+",
             Pattern.CASE_INSENSITIVE)),
-        REDDIT("reddit", Pattern.compile(
+        REDDIT("reddit", "Reddit", Pattern.compile(
             "(?:https?://)?(?:(?:www|old|new|np|i|m)\\.)?reddit\\.com/(?:r/\\w+/(?:comments|s)/|gallery/)[\\w]+|(?:https?://)?(?:v\\.)?redd\\.it/[\\w]+",
             Pattern.CASE_INSENSITIVE)),
-        VK("vk", Pattern.compile(
+        VK("vk", "VK", Pattern.compile(
             "(?:https?://)?(?:www\\.|m\\.)?(?:vk\\.com|vkvideo\\.ru)/(?:video|clip)(?:-?\\d+_\\d+|s/[\\w-]+)",
             Pattern.CASE_INSENSITIVE)),
-        PINTEREST("pinterest", Pattern.compile(
+        PINTEREST("pinterest", "Pinterest", Pattern.compile(
             "(?:https?://)?(?:[a-z]{2}\\.)?pinterest\\.[a-z.]+/pin/\\d+|(?:https?://)?pin\\.it/[\\w]+",
             Pattern.CASE_INSENSITIVE)),
-        BLUESKY("bluesky", Pattern.compile(
+        BLUESKY("bluesky", "Bluesky", Pattern.compile(
             "(?:https?://)?bsky\\.app/profile/[\\w.:-]+/post/[\\w]+",
             Pattern.CASE_INSENSITIVE)),
-        TWITCH("twitch", Pattern.compile(
+        TWITCH("twitch", "Twitch", Pattern.compile(
             "(?:https?://)?(?:clips\\.twitch\\.tv/|(?:www\\.)?twitch\\.tv/\\w+/clip/)[\\w-]+",
             Pattern.CASE_INSENSITIVE)),
-        VIMEO("vimeo", Pattern.compile(
+        VIMEO("vimeo", "Vimeo", Pattern.compile(
             "(?:https?://)?(?:www\\.|player\\.)?vimeo\\.com/(?:video/|channels/[\\w]+/|groups/[\\w]+/videos/)?\\d+",
             Pattern.CASE_INSENSITIVE)),
-        DAILYMOTION("dailymotion", Pattern.compile(
+        DAILYMOTION("dailymotion", "Dailymotion", Pattern.compile(
             "(?:https?://)?(?:www\\.)?(?:dailymotion\\.com/(?:video|embed/video)/|dai\\.ly/)\\w+",
             Pattern.CASE_INSENSITIVE));
 
         public final String id;
         public final Pattern pattern;
 
-        Platform(String id, Pattern pattern) {
+        public final String displayName;
+
+        Platform(String id, String displayName, Pattern pattern) {
             this.id = id;
+            this.displayName = displayName;
             this.pattern = pattern;
         }
 
@@ -100,8 +103,12 @@ public final class MediaDownloader {
     public static final Pattern YOUTUBE_SHORTS_PATTERN = Pattern.compile(
         "youtube\\.com/shorts/", Pattern.CASE_INSENSITIVE);
 
+    private static final Pattern URL_TOKEN = Pattern.compile(
+            "https?://[^\\s<>]+|(?<![\\w.@/-])(?:[a-z0-9-]+\\.)+[a-z]{2,}/[^\\s<>]+",
+            Pattern.CASE_INSENSITIVE);
     public static boolean messageHasSupportedUrl(CharSequence text) {
         if (text == null) return false;
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) return findUrl(text) != null;
         return SUPPORTED_DOMAINS_REGEX.matcher(text).matches();
     }
 
@@ -118,6 +125,14 @@ public final class MediaDownloader {
 
     public static UrlMatch findUrl(CharSequence text) {
         if (text == null) return null;
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
+            Matcher tokens = URL_TOKEN.matcher(text);
+            while (tokens.find()) {
+                UrlMatch match = matchPlayProvider(tokens.group());
+                if (match != null) return match;
+            }
+            return null;
+        }
         String s = text.toString();
         UrlMatch first = null;
         int firstStart = Integer.MAX_VALUE;
@@ -133,6 +148,15 @@ public final class MediaDownloader {
         return first;
     }
 
+    private static UrlMatch matchPlayProvider(String url) {
+        if (url == null) return null;
+        for (Platform platform : Platform.values()) {
+            if (platform == Platform.YOUTUBE) continue;
+            Matcher m = platform.pattern.matcher(url);
+            if (m.lookingAt()) return new UrlMatch(platform, m.group(), false);
+        }
+        return null;
+    }
     public static final class Result {
         public boolean success;
 
@@ -144,6 +168,7 @@ public final class MediaDownloader {
         public boolean fromCache;
         public String error;
 
+        boolean connectionFailure;
         public String localPath;
         public long localSize;
 
@@ -157,6 +182,7 @@ public final class MediaDownloader {
     }
 
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
+            .followSslRedirects(!org.telegram.messenger.BuildConfig.NIMARKO_PLAY)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
@@ -285,9 +311,8 @@ public final class MediaDownloader {
 
     public static Result requestDownload(String url, String type, String authToken, TransferSession session) {
         Result out = new Result();
-        if (!isApiConfigured()) {
-            out.success = false;
-            out.error = "Media service is not configured";
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY && matchPlayProvider(url) == null) {
+            out.error = "unsupported_url";
             return out;
         }
         try {
@@ -354,6 +379,7 @@ public final class MediaDownloader {
             FileLog.e("nimarko-media: requestDownload IO", ioe);
             out.success = false;
             out.error = "Connection error";
+            out.connectionFailure = true;
             return out;
         } catch (Throwable t) {
             FileLog.e("nimarko-media: requestDownload failed", t);
@@ -402,7 +428,7 @@ public final class MediaDownloader {
     }
 
     public static String authPoll(long userId, String code, TransferSession session) {
-        if (!isApiConfigured() || code == null || code.isEmpty()) return null;
+        if (code == null || code.isEmpty()) return null;
         try {
             Request req = new Request.Builder()
                     .url(API_URL + "/api/v1/auth/poll?user_id=" + userId + "&code=" + code)
@@ -441,6 +467,13 @@ public final class MediaDownloader {
 
     public static String download(String fileUrl, String suggestedName, TransferSession session) {
         if (fileUrl == null || fileUrl.isEmpty()) return null;
+        if (org.telegram.messenger.BuildConfig.NIMARKO_PLAY) {
+            okhttp3.HttpUrl endpoint = okhttp3.HttpUrl.parse(fileUrl);
+            if (endpoint == null || !endpoint.isHttps()) {
+                FileLog.e("nimarko-media: refusing a non-HTTPS download in Play");
+                return null;
+            }
+        }
         File out = null;
         boolean complete = false;
         try {

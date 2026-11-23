@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">پاک کردن از حافظهٔ نهان</string>
+    <string name="NM_ClearedFromCache">از حافظهٔ پنهان پاک شد</string>
+    <string name="NM_CopyCallback">کپی داده‌های فراخوان برگشتی</string>
+    <string name="NM_CopyID">کپی شناسهٔ کاربر</string>
+    <string name="NM_CopyInlineQuery">کپی پرس‌وجوی درون‌خطی</string>
+    <string name="NM_CopyPhoto">کپی عکس</string>
+    <string name="NM_CopyPhotoAsSticker">کپی عکس به‌عنوان استیکر</string>
+    <string name="NM_CopyReportDetails">کپی جزئیات گزارش</string>
+    <string name="NM_CopySetId">کپی شناسهٔ بسته</string>
+    <string name="NM_CopyTitle">کپی عنوان</string>
+    <string name="NM_Copy_Coordinates">مختصات</string>
+    <string name="NM_DoNotRemindAgain">دیگر یادآوری نکن</string>
+    <string name="NM_ExportSettings">برون‌بری تنظیمات</string>
+    <string name="NM_FoldersTypeIcons">فقط نمادها</string>
+    <string name="NM_FoldersTypeIconsTitles">نمادها و نام‌ها</string>
+    <string name="NM_FoldersTypeTitles">فقط نام‌ها</string>
+    <string name="NM_GetEmojiPack">دریافت ایموجی</string>
+    <string name="NM_ImportSettings">درون‌ریزی تنظیمات</string>
+    <string name="NM_ImportSettingsAlert">تنظیمات جایگزین شوند؟ وارد کردن تنظیمات از منابع ناشناخته ممکن است باعث شود برنامه دیگر کار نکند.</string>
+    <string name="NM_OpenEmojiPack">برای دریافت ایموجی بزنید</string>
+    <string name="NM_OpenStickerPack">برای دریافت استیکر بزنید</string>
+    <string name="NM_PasskeyInfo2">این قابلیت فقط با برنامه‌های مدیریت گذرواژه‌ای کار می‌کند که امکان مدیریت تنظیمات اعتماد برای برنامه‌های دارای دسترسی ویژه را می‌دهند، مانند **Bitwarden** و **KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">اطلاعات ورود مناسب در دسترس نیست.</string>
+    <string name="NM_PasskeyUnsupportedMessage">برنامهٔ مدیریت گذرواژهٔ دیگری مانند **Bitwarden** یا **KeePassDX** را امتحان کنید.</string>
+    <string name="NM_PasskeyUnsupportedTitle">برنامهٔ مدیریت گذرواژه پشتیبانی نمی‌شود</string>
+    <string name="NM_PhotoCopied">عکس در کلیپ‌بورد کپی شد.</string>
+    <string name="NM_ProfileBackground">اعمال پس‌زمینهٔ پروفایل</string>
+    <string name="NM_QRLoginMessage">برای ورود، کد QR را با دستگاه دیگری اسکن کنید.</string>
+    <string name="NM_QRLoginTitle">ورود با کد QR</string>
+    <string name="NM_ReportDetailsCopied">جزئیات گزارش در کلیپ‌بورد کپی شد.</string>
+    <string name="NM_RestartToApply">راه‌اندازی مجدد لازم است</string>
+    <string name="NM_SafeStars_buy_Telegram">خرید ستاره از طریق Telegram</string>
+    <string name="NM_SaveSticker">ذخیرهٔ استیکر</string>
+    <string name="NM_SendPhotoAsSticker">ارسال به‌صورت استیکر</string>
+    <string name="NM_SortByDate">مرتب‌سازی بر اساس تاریخ پیام</string>
+    <string name="NM_SwipeToUnarchive">برای خارج کردن از بایگانی، به چپ بکشید</string>
+    <string name="NM_SwitchedToAccount">به حساب **%1$s** منتقل شدید</string>
+    <string name="NM_TranslationLanguage">زبان ترجمه</string>
+</resources>

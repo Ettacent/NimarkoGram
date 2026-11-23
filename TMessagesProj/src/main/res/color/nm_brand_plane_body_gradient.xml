@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<gradient xmlns:android="http://schemas.android.com/apk/res/android" android:type="linear" android:startX="-558" android:startY="-8" android:endX="24" android:endY="572">
+    <item android:offset="0.0" android:color="#FFEBD2E0"/>
+    <item android:offset="0.0" android:color="#FFEAC9D1"/>
+    <item android:offset="0.45" android:color="#FFA6757D"/>
+    <item android:offset="1.0" android:color="#FF6E484E"/>
+</gradient>

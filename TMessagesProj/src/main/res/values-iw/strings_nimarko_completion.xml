@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_ClearFromCache">הסרה מהמטמון</string>
+    <string name="NM_ClearedFromCache">הוסר מהמטמון</string>
+    <string name="NM_CopyCallback">העתקת נתוני הקריאה החוזרת</string>
+    <string name="NM_CopyID">העתקת מזהה משתמש</string>
+    <string name="NM_CopyInlineQuery">העתקת שאילתת אינליין</string>
+    <string name="NM_CopyPhoto">העתקת תמונה</string>
+    <string name="NM_CopyPhotoAsSticker">העתקת תמונה כמדבקה</string>
+    <string name="NM_CopyReportDetails">העתקת פרטי הדיווח</string>
+    <string name="NM_CopySetId">העתקת מזהה החבילה</string>
+    <string name="NM_CopyTitle">העתקת כותרת</string>
+    <string name="NM_Copy_Coordinates">קואורדינטות</string>
+    <string name="NM_DoNotRemindAgain">לא להזכיר שוב</string>
+    <string name="NM_ExportSettings">ייצוא הגדרות</string>
+    <string name="NM_FoldersTypeIcons">סמלים בלבד</string>
+    <string name="NM_FoldersTypeIconsTitles">סמלים ושמות</string>
+    <string name="NM_FoldersTypeTitles">שמות בלבד</string>
+    <string name="NM_GetEmojiPack">קבלת אימוג׳י</string>
+    <string name="NM_ImportSettings">ייבוא הגדרות</string>
+    <string name="NM_ImportSettingsAlert">להחליף את ההגדרות הקיימות? ייבוא הגדרות ממקורות לא מוכרים עלול לפגוע בפעולת היישום.</string>
+    <string name="NM_OpenEmojiPack">הקישו כדי לקבל את האימוג׳י</string>
+    <string name="NM_OpenStickerPack">הקישו כדי לקבל את המדבקה</string>
+    <string name="NM_PasskeyInfo2">התכונה פועלת רק עם מנהלי סיסמאות שמאפשרים לנהל את הגדרות האמון של יישומים בעלי הרשאות מיוחדות, כגון **Bitwarden** ו־**KeePassDX**.</string>
+    <string name="NM_PasskeyNoCredentialAvailable">אין פרטי כניסה מתאימים זמינים.</string>
+    <string name="NM_PasskeyUnsupportedMessage">נסו מנהל סיסמאות אחר, כמו **Bitwarden** או **KeePassDX**.</string>
+    <string name="NM_PasskeyUnsupportedTitle">מנהל הסיסמאות לא נתמך</string>
+    <string name="NM_PhotoCopied">התמונה הועתקה ללוח.</string>
+    <string name="NM_ProfileBackground">החלת רקע לפרופיל</string>
+    <string name="NM_QRLoginMessage">סרקו את קוד ה־QR במכשיר אחר כדי להיכנס.</string>
+    <string name="NM_QRLoginTitle">כניסה באמצעות קוד QR</string>
+    <string name="NM_ReportDetailsCopied">פרטי הדיווח הועתקו ללוח.</string>
+    <string name="NM_RestartToApply">הפעל מחדש את האפליקציה כדי שהשינויים ייכנסו לתוקף.</string>
+    <string name="NM_SafeStars_buy_Telegram">קניית כוכבים דרך Telegram</string>
+    <string name="NM_SaveSticker">שמירת מדבקה</string>
+    <string name="NM_SendPhotoAsSticker">שליחה כמדבקה</string>
+    <string name="NM_SortByDate">מיון לפי תאריך ההודעה</string>
+    <string name="NM_SwipeToUnarchive">החליקו שמאלה להוצאה מהארכיון</string>
+    <string name="NM_SwitchedToAccount">החשבון הפעיל כעת: **%1$s**</string>
+    <string name="NM_TranslationLanguage">שפת התרגום</string>
+</resources>

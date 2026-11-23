@@ -162,9 +162,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 
-import app.nimarkogram.messenger.wsbypass.WsBypassConfig;
-import app.nimarkogram.messenger.wsbypass.voip.VoipBypassConfig;
-import app.nimarkogram.messenger.wsbypass.voip.VoipBypassCore;
+import app.nimarkogram.messenger.distribution.ClientRelays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -979,9 +977,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		}
 		initializeService();
 		if (isCallEnded) return START_NOT_STICKY;
-		if (WsBypassConfig.enabled && VoipBypassConfig.isVoipBypassEnabled()) {
-			app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.prefetchAsync(currentAccount);
-		}
+		ClientRelays.prefetchCall(currentAccount);
 		classGuid = ConnectionsManager.generateClassGuid();
 		createGroupCall = intent.getBooleanExtra("createGroupCall", false);
 		byte[] joinConferenceBytes = intent.getByteArrayExtra("joinConference");
@@ -3031,7 +3027,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 						long selfId = getSelfId();
 						if (nmPublishedScreenParams != null) {
 							final boolean[] payloadApplied = {false};
-							boolean stateCurrent = VoipBypassConfig.publishIfRelayStateCurrent(
+							boolean stateCurrent = ClientRelays.publish(
 									nmPreparedParams.relayState, () -> {
 										if (!nmIsCurrentGroupJoin(nmJoinGeneration, true)
 												|| tgVoip[CAPTURE_DEVICE_SCREEN] == null) return;
@@ -3253,7 +3249,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 
 
 	private boolean nmGroupRelayRequired() {
-		return VoipBypassConfig.captureRelayState().required;
+		return ClientRelays.capture().required;
 	}
 
 	private int nmBeginGroupJoin() {
@@ -3282,7 +3278,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private void nmAbortGroupRelay(String reason, int generation, boolean presentation) {
 		if (!nmIsCurrentGroupJoin(generation, presentation)) return;
 		myParams = null;
-		VoipBypassCore.dlog("group relay required; aborting join: " + reason);
+		ClientRelays.log("group relay required; aborting join: " + reason);
 		AndroidUtilities.runOnUIThread(() -> {
 			if (nmIsCurrentGroupJoin(generation, presentation)) {
 				myParams = null;
@@ -3309,12 +3305,12 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	private static final class NmPreparedGroupParamsBatch {
 		final ArrayList<NmPreparedGroupParams> prepared = new ArrayList<>();
 		final ArrayList<TL_update.TL_updateGroupCallConnection> suppressed = new ArrayList<>();
-		final VoipBypassConfig.RelayState relayState;
+		final ClientRelays.State relayState;
 		final boolean presentation;
 		final int generation;
 		int relevantUpdates;
 
-		NmPreparedGroupParamsBatch(VoipBypassConfig.RelayState relayState,
+		NmPreparedGroupParamsBatch(ClientRelays.State relayState,
 				boolean presentation, int generation) {
 			this.relayState = relayState;
 			this.presentation = presentation;
@@ -3330,7 +3326,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			boolean presentation, int generation, boolean presentationGeneration,
 			String path) {
 		if (!nmIsCurrentGroupJoin(generation, presentationGeneration)) return null;
-		VoipBypassConfig.RelayState relayState = VoipBypassConfig.captureRelayState();
+		ClientRelays.State relayState = ClientRelays.capture();
 		NmPreparedGroupParamsBatch batch = new NmPreparedGroupParamsBatch(
 				relayState, presentation, generation);
 		long deadline = relayState.required
@@ -3363,7 +3359,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				}
 			}
 			if (!nmIsCurrentGroupJoin(generation, presentationGeneration)) return null;
-			VoipBypassConfig.RelayState now = VoipBypassConfig.captureRelayState();
+			ClientRelays.State now = ClientRelays.capture();
 			if (now.generation != relayState.generation
 					|| now.required != relayState.required) {
 				nmAbortGroupRelay(path + " relay state changed during batch preparation",
@@ -3390,7 +3386,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			return false;
 		}
 		final boolean[] applied = {false};
-		boolean current = VoipBypassConfig.publishIfRelayStateCurrent(batch.relayState, () -> {
+		boolean current = ClientRelays.publish(batch.relayState, () -> {
 			if (!nmIsCurrentGroupJoin(generation, presentationGeneration)) return;
 			for (NmPreparedGroupParams prepared : batch.prepared) {
 				prepared.update.params = prepared.params;
@@ -3407,7 +3403,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		});
 		if (current && applied[0]) return true;
 
-		VoipBypassConfig.RelayState now = VoipBypassConfig.captureRelayState();
+		ClientRelays.State now = ClientRelays.capture();
 		String reason = !batch.relayState.required && now.required
 				? path + " direct transport rejected after relay enable"
 				: path + " relay state changed before transport publication";
@@ -3419,7 +3415,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		if (batch == null || batch != nmCameraParamsBatch
 				|| !nmIsCurrentGroupJoin(batch.generation)) return false;
 		final boolean[] applied = {false};
-		boolean current = VoipBypassConfig.publishIfRelayStateCurrent(batch.relayState, () -> {
+		boolean current = ClientRelays.publish(batch.relayState, () -> {
 			if (batch != nmCameraParamsBatch || !nmIsCurrentGroupJoin(batch.generation)
 					|| tgVoip[CAPTURE_DEVICE_CAMERA] == null) return;
 			if (streaming) {
@@ -3466,7 +3462,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 					suppressed++;
 					continue;
 				}
-				String relayTarget = VoipBypassConfig.relayProtocolTarget(cip);
+				String relayTarget = ClientRelays.target(cip);
 				if (relayTarget == null) {
 					cands.remove(i--);
 					suppressed++;
@@ -3476,18 +3472,18 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				try { cport = Integer.parseInt(c.optString("port")); }
 				catch (Exception e) { cands.remove(i--); suppressed++; continue; }
 				if (cport <= 0 || cport > 65535) { cands.remove(i--); suppressed++; continue; }
-				VoipBypassCore.RelayEndpoint relay = null;
+				ClientRelays.Endpoint relay = null;
 				int remainingMs = (int) (deadline - android.os.SystemClock.elapsedRealtime());
 				if (remainingMs > 0) {
 					try {
-						relay = VoipBypassCore.getInstance().allocateRelay(relayTarget, cport,
+						relay = ClientRelays.allocate(relayTarget, cport,
 								currentAccount, remainingMs);
 					} catch (Exception e) {
 					}
 				}
 				if (relay == null || TextUtils.isEmpty(relay.host) || relay.port <= 0 || relay.port > 65535
 						|| android.os.SystemClock.elapsedRealtime() >= deadline) {
-					VoipBypassCore.dlog("group relay allocation failed for " + cip + ":" + cport);
+					ClientRelays.log("group relay allocation failed for " + cip + ":" + cport);
 					cands.remove(i--);
 					suppressed++;
 					continue;
@@ -3496,14 +3492,14 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				c.put("ip", relayIp);
 				c.put("port", String.valueOf(relay.port));
 				rewritten++;
-				VoipBypassCore.dlog("group RELAY candidate " + cip + ":" + cport + " -> " + relayIp + ":" + relay.port);
+				ClientRelays.log("group RELAY candidate " + cip + ":" + cport + " -> " + relayIp + ":" + relay.port);
 			}
 			if (rewritten == 0) return null;
-			VoipBypassCore.dlog("group join-response relayed=" + rewritten
+			ClientRelays.log("group join-response relayed=" + rewritten
 					+ " suppressedDirect=" + suppressed);
 			return o.toString();
 		} catch (Exception e) {
-			VoipBypassCore.dlog("group relay rewrite failed; aborting join: " + e);
+			ClientRelays.log("group relay rewrite failed; aborting join: " + e);
 			return null;
 		}
 	}
@@ -3799,11 +3795,11 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 			String ipv6 = connection.ipv6;
 			int port = connection.port;
 			if (useVoipBypass) {
-				String target = VoipBypassConfig.relayProtocolTarget(ip);
-				if (target == null) target = VoipBypassConfig.relayProtocolTarget(ipv6);
-				VoipBypassCore.RelayEndpoint relay = null;
+				String target = ClientRelays.target(ip);
+				if (target == null) target = ClientRelays.target(ipv6);
+				ClientRelays.Endpoint relay = null;
 				if (!forceTcp && !connection.tcp && target != null) {
-					relay = VoipBypassCore.getInstance().allocateRelay(target, port,
+					relay = ClientRelays.allocate(target, port,
 							currentAccount, (int) (deadline - android.os.SystemClock.elapsedRealtime()));
 				}
 				if (relay == null) {
@@ -3906,7 +3902,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 		nmCancelPrivateCallPreparation();
 		final int generation = nmPrivateCallGeneration.get();
 		nmPendingPrivateCall = new NmPendingPrivateCall(callId, generation);
-		final VoipBypassConfig.RelayState relayState = VoipBypassConfig.captureRelayState();
+		final ClientRelays.State relayState = ClientRelays.capture();
 		final boolean forceTcp = MessagesController.getGlobalMainSettings().getBoolean("dbg_force_tcp_in_calls", false);
 		final ArrayList<TLRPC.PhoneConnection> connections = new ArrayList<>(privateCall.connections);
 		Runnable prepare = () -> {
@@ -3938,7 +3934,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 	}
 
 	private void initiateActualEncryptedCall(long callId, int generation,
-			VoipBypassConfig.RelayState relayState, Instance.Endpoint[] endpoints, boolean forceTcp) {
+			ClientRelays.State relayState, Instance.Endpoint[] endpoints, boolean forceTcp) {
 		if (!nmIsCurrentPrivateCall(callId, generation)) {
 			if (nmPendingPrivateCall != null && nmPendingPrivateCall.callId == callId
 					&& nmPendingPrivateCall.generation == generation) nmCancelPrivateCallPreparation();
@@ -4051,7 +4047,7 @@ public class VoIPService extends Service implements SensorEventListener, AudioMa
 				}
 			}
 			final boolean[] initialized = {false};
-			boolean current = VoipBypassConfig.publishIfRelayStateCurrent(relayState, () -> {
+			boolean current = ClientRelays.publish(relayState, () -> {
 				if (!nmIsCurrentPrivateCall(callId, generation)) return;
 			tgVoip[CAPTURE_DEVICE_CAMERA] = Instance.makeInstance(privateCall.protocol.library_versions.get(0), config, persistentStateFilePath, endpoints, proxy, getNetworkType(), encryptionKey, remoteSink[CAPTURE_DEVICE_CAMERA], captureDevice[CAPTURE_DEVICE_CAMERA], (uids, levels, voice) -> {
 					if (!nmIsCurrentPrivateCall(callId, generation)) {

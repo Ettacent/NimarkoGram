@@ -2363,7 +2363,7 @@ public class ChatEditActivity extends BaseFragment implements ImageUpdater.Image
             if (botAffiliateProgramCell != null) {
                 botAffiliateProgramCell.setDrawLoading(userInfo == null, 45, true);
                 if (userInfo != null) {
-                    botAffiliateProgramCell.setValue(userInfo.starref_program == null ? getString(R.string.AffiliateProgramBotOff) : String.format(Locale.US, "%.1f%%", userInfo.starref_program.commission_permille / 10.0f), false);
+                    botAffiliateProgramCell.setValue(userInfo.starref_program == null ? getString(R.string.AffiliateProgramBotOff) : String.format(Locale.US, "%.1f%%", userInfo.starref_program.commission_permille / 10.0f), true);
                 }
             }
             if (verifyCell != null) {

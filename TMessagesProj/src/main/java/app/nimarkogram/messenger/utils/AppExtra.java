@@ -1,4 +1,3 @@
-
 /* Modifications Copyright (C) 2026 Ettacent */
 
 /*
@@ -78,14 +77,14 @@ public final class AppExtra {
                 if (ChatObject.isInChat(chat)) {
                     date = AndroidUtilities.replaceTags(
                             LocaleController.formatString(
-                                    R.string.CG_JoinedDate, chat.title,
+                                    R.string.NM_JoinedDate, chat.title,
                                     LocaleController.formatDateTime((long) chat.date, true)
                             )
                     );
                 } else {
                     date = AndroidUtilities.replaceTags(
                             LocaleController.formatString(
-                                    R.string.CG_CreatedDate, chat.title,
+                                    R.string.NM_CreatedDate, chat.title,
                                     LocaleController.formatDateTime((long) chat.date, true)
                             )
                     );
@@ -171,8 +170,7 @@ public final class AppExtra {
                 years--;
             }
             if (years > 0) {
-                yearsAgo = LocaleController.formatPluralString("Years", years) + " "
-                        + getString(R.string.NM_Extra_YearsAgo);
+                yearsAgo = LocaleController.formatPluralString("NM_Extra_YearsAgo", years);
             }
         } else {
             formatted = regMonth;
@@ -230,21 +228,35 @@ public final class AppExtra {
     }
 
     public static StringBuilder getProfileDC(int account, TLRPC.User user, TLRPC.Chat chat) {
-        StringBuilder sb = new StringBuilder();
         int dcId = resolveDcId(account, user, chat);
 
-        if (dcId > 0) {
-            sb.append("DC: ")
-                    .append(dcId)
-                    .append(", ")
-                    .append(ResourcesUtils.getDCName(dcId))
-                    .append(", ")
-                    .append(ResourcesUtils.getDCGeo(dcId));
-        } else {
-            sb.append("DC: ").append(getString(R.string.NumberUnknown));
-        }
+        return new StringBuilder("DC: ").append(validProfileDC(dcId)
+                ? profileDCDetails(dcId) : getString(R.string.NumberUnknown));
+    }
 
-        return sb;
+    private static boolean validProfileDC(int dcId) {
+        return dcId > 0 && dcId != Integer.MAX_VALUE;
+    }
+
+    private static String profileDCDetails(int dcId) {
+        String geo;
+        switch (dcId) {
+            case 1: case 3: geo = "USA (Miami)"; break;
+            case 2: case 4: geo = "NLD (Amsterdam)"; break;
+            case 5: geo = "SGP (Singapore)"; break;
+            default: geo = "UNK (Unknown)";
+        }
+        return dcId + ", " + ResourcesUtils.getDCName(dcId) + ", " + geo;
+    }
+
+    public static String profileDCLabel(int dcId) {
+        return validProfileDC(dcId) ? "DC " + profileDCDetails(dcId) : "DC ?";
+    }
+
+    public static String previewDCLabel(int dcId) {
+        return "DC: " + (validProfileDC(dcId)
+                ? dcId + ", " + ResourcesUtils.getDCName(dcId) + ", " + ResourcesUtils.getDCGeo(dcId)
+                : getString(R.string.NumberUnknown));
     }
 
     public static int resolveDcId(TLRPC.User user, TLRPC.Chat chat) {

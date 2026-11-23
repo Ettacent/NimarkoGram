@@ -33,6 +33,7 @@
 
 package app.nimarkogram.messenger.utils.chats;
 
+import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.os.Build;
@@ -581,7 +582,7 @@ public final class ChatHelper2 {
                 .addIf(
                         !(messageObject.messageOwner instanceof TLRPC.TL_messageService),
                         R.drawable.msg_info,
-                        sa.isJacksonSupportedAndEnabled() ? "Switch to GSON" : "Switch to Jackson",
+                        formatString(R.string.NM_JsonSwitchParser, sa.isJacksonSupportedAndEnabled() ? "Gson" : "Jackson"),
                         () -> {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                 AppConfig.toggleJacksonJSON_Provider();
@@ -589,31 +590,33 @@ public final class ChatHelper2 {
                                 JsonBottomSheet.showAlert(sa.getContext(), sa.resourcesProvider, sa.fragment, messageObject, null);
                             } else {
                                 BulletinFactory.of(sa.getContainer(), sa.resourcesProvider)
-                                        .createSimpleBulletin(R.raw.error, "Jackson library is supported on Android 8 and newer.")
+                                        .createSimpleBulletin(R.raw.error, getString(R.string.NM_JsonJacksonRequiresAndroid))
                                         .show();
                             }
                         }
                 )
                 .add(
                         R.drawable.msg_calendar2,
-                        "Date: " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.date),
+                        formatString(R.string.NM_JsonDateValue, ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.date)),
                         () -> {
                             AndroidUtilities.addToClipboard(ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.date));
                             BulletinFactory.of(sa.getContainer(), sa.resourcesProvider)
                                     .createCopyBulletin(getString(R.string.TextCopied))
                                     .show();
                         }
-                );
+                ).makeMultiline(false);
 
-        final CharSequence fwdDateLabel;
+        final CharSequence mediaDateLabel;
         if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
-            fwdDateLabel = "Date: ➥ " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.media.document.date);
+            mediaDateLabel = formatString(R.string.NM_JsonMediaDateValue,
+                    ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.media.document.date));
         } else if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.photo != null) {
-            fwdDateLabel = "Date: ➥ " + ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.media.photo.date);
+            mediaDateLabel = formatString(R.string.NM_JsonMediaDateValue,
+                    ResourcesUtils.createDateAndTimeForJSON(messageObject.messageOwner.media.photo.date));
         } else {
-            fwdDateLabel = "Message is not forwarded.";
+            mediaDateLabel = getString(R.string.NM_JsonMediaDateUnavailable);
         }
-        opts.add(R.drawable.msg_calendar2, fwdDateLabel, () -> {
+        opts.add(R.drawable.msg_calendar2, mediaDateLabel, () -> {
             String textToCopy = "";
             if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
                 textToCopy = ResourcesUtils.createDateAndTimeForJSON((long) messageObject.messageOwner.media.document.date);
@@ -626,17 +629,17 @@ public final class ChatHelper2 {
                         .createCopyBulletin(getString(R.string.TextCopied))
                         .show();
             }
-        });
+        }).makeMultiline(false);
 
         final CharSequence dcLabel;
         if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.document != null) {
-            dcLabel = "DC: " + messageObject.messageOwner.media.document.dc_id;
+            dcLabel = formatString(R.string.NM_JsonMediaDcValue, messageObject.messageOwner.media.document.dc_id);
         } else if (messageObject.messageOwner.media != null && messageObject.messageOwner.media.photo != null) {
-            dcLabel = "DC: " + messageObject.messageOwner.media.photo.dc_id;
+            dcLabel = formatString(R.string.NM_JsonMediaDcValue, messageObject.messageOwner.media.photo.dc_id);
         } else {
-            dcLabel = "DC: Available only for media.";
+            dcLabel = getString(R.string.NM_JsonMediaDcUnavailable);
         }
-        opts.add(R.drawable.msg_info, dcLabel, () -> {                         });
+        opts.add(R.drawable.msg_info, dcLabel, () -> {}).makeMultiline(false);
 
         String restrictions = ProfileActivityHelper.getRestrictionReasons(messageObject.messageOwner.restriction_reason);
         if (restrictions != null && !restrictions.isEmpty()) {

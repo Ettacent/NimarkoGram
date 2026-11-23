@@ -455,7 +455,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
     protected int getDrawableContentWidth() {
         return getMeasuredWidth();
     }
-    private int getOutsideRightDrawablesStartX(int textOffsetX) {
+    protected int getOutsideRightDrawablesStartX(int textOffsetX) {
         final int slotsWidth = getOutsideRightDrawablesWidth();
         final int contentRight = Math.max(0, getDrawableContentWidth() - paddingRight);
         final int maxStart = Math.max(0, contentRight - slotsWidth);
@@ -526,6 +526,10 @@ public class SimpleTextView extends View implements Drawable.Callback {
         } else {
             replacingDrawableTextOffset = 0;
         }
+    }
+
+    protected CharSequence getSingleLineLayoutText(CharSequence value, int width) {
+        return value;
     }
 
     protected boolean createLayout(int width) {
@@ -612,6 +616,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     layout = StaticLayoutEx.createStaticLayout(text, textPaint, width, getAlignment(), 1.0f, 0.0f, false, TextUtils.TruncateAt.END, width, maxLines, false);
                 } else {
                     CharSequence string;
+                    text = getSingleLineLayoutText(text, width);
                     if (scrollNonFitText || ellipsizeByGradient) {
                         string = text;
                     } else {

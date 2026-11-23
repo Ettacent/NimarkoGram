@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Seanslarni tugatib bo‘lmadi. Ulanishni tekshiring va qayta urinib ko‘ring.</string>
+</resources>

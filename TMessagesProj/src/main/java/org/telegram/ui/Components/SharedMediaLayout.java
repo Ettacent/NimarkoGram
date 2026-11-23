@@ -216,6 +216,9 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
     private static final int TAB_STORIES_ALBUM_PREFIX = 0x00010000;
     private static final int TAB_STORIES_ALBUM_MASK = 0x0000FFFF;
 
+    private static boolean isLoadableMediaTab(int tab) {
+        return (tab >= TAB_PHOTOVIDEO && tab <= TAB_GIF) || tab == TAB_POLL;
+    }
     public static boolean isAnyStoryPageType(int type) {
         return type == TAB_STORIES || type == TAB_ARCHIVED_STORIES || isStoryAlbumPageType(type);
     }
@@ -760,6 +763,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
     private boolean legacyHeaderSearchManaged;
     private boolean legacyHeaderSearchAllowed;
     private float legacyHeaderSearchProgress;
+    private float legacyHeaderControlCoverage;
     private int legacyHeaderControlTab = -1;
     private int legacyHeaderControlsGeneration;
     private OnLayoutChangeListener legacyHeaderControlLayoutListener;
@@ -768,7 +772,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
     private float optionsAlpha;
     public TextView saveItem;
     public ImageView photoVideoOptionsItem;
-    private RLottieImageView optionsSearchImageView;
+    private OptionsSearchImageView optionsSearchImageView;
     private ActionBarMenuItem forwardItem;
     private ActionBarMenuItem gotoItem;
     private ActionBarMenuItem pinItem;
@@ -2026,10 +2030,6 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             actionBar.addView(photoVideoOptionsItem, LayoutHelper.createFrame(48, 56, Gravity.RIGHT | Gravity.BOTTOM));
 
             optionsSearchImageView = new OptionsSearchImageView(context);
-            optionsSearchImageView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            optionsSearchImageView.setAnimation(R.raw.options_to_search, 24, 24);
-            optionsSearchImageView.getAnimatedDrawable().multiplySpeed(2f);
-            optionsSearchImageView.getAnimatedDrawable().setPlayInDirectionOfCustomEndFrame(true);
             ThemeBind.colorFilter(optionsSearchImageView, Theme.key_actionBarActionModeDefaultIcon, resourcesProvider, PorterDuff.Mode.SRC_IN);
             optionsSearchImageView.setVisibility(GONE);
             actionBar.addView(optionsSearchImageView, LayoutHelper.createFrame(48, 56, Gravity.RIGHT | Gravity.BOTTOM));
@@ -3247,30 +3247,30 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         position -= savedMessagesSearchAdapter.dialogs.size();
                         if (position < savedMessagesSearchAdapter.messages.size()) {
                             MessageObject msg = savedMessagesSearchAdapter.messages.get(position);
-                            final int pos = position;
+                            final int messageId = msg.getId();
+                            final String query = savedMessagesSearchAdapter.lastQuery;
+                            final ReactionsLayoutInBubble.VisibleReaction reaction = savedMessagesSearchAdapter.lastReaction;
+                            final ArrayList<MessageObject> local = new ArrayList<>(savedMessagesSearchAdapter.cachedMessages);
+                            final ArrayList<MessageObject> loaded = new ArrayList<>(savedMessagesSearchAdapter.loadedMessages);
+                            final int count = savedMessagesSearchAdapter.count;
+                            final boolean reached = savedMessagesSearchAdapter.endReached;
 
                             Bundle args = new Bundle();
                             args.putLong("user_id", profileActivity.getUserConfig().getClientUserId());
-                            args.putInt("message_id", msg.getId());
+                            args.putInt("message_id", messageId);
                             ChatActivity chatActivity = new ChatActivity(args) {
                                 boolean firstCreateView = true;
                                 @Override
                                 public void onTransitionAnimationStart(boolean isOpen, boolean backward) {
-                                    if (firstCreateView) {
-                                        if (searchItem != null) {
-                                            openSearchWithText("");
-                                            searchItem.setSearchFieldText(savedMessagesSearchAdapter.lastQuery, false);
-                                        }
-                                        if (actionBarSearchTags != null) {
-                                            actionBarSearchTags.setChosen(savedMessagesSearchAdapter.lastReaction, false);
-                                        }
-                                        profileActivity.getMediaDataController().portSavedSearchResults(getClassGuid(), savedMessagesSearchAdapter.lastReaction, savedMessagesSearchAdapter.lastQuery, savedMessagesSearchAdapter.cachedMessages, savedMessagesSearchAdapter.loadedMessages, pos, savedMessagesSearchAdapter.count, savedMessagesSearchAdapter.endReached);
+                                    if (firstCreateView && isOpen && !backward) {
                                         firstCreateView = false;
+                                        openSavedSearchResults(query, reaction, local, loaded, messageId, count, reached);
                                     }
                                     super.onTransitionAnimationStart(isOpen, backward);
                                 }
                             };
-                            chatActivity.setHighlightMessageId(msg.getId());
+                            chatActivity.setCurrentAccount(profileActivity.getCurrentAccount());
+                            chatActivity.setHighlightMessageId(messageId);
                             profileActivity.presentFragment(chatActivity);
                         }
                         return;
@@ -8097,7 +8097,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
 
             } else if (mediaPages[a].selectedType == TAB_GIFTS) {
 
-            } else {
+            } else if (isLoadableMediaTab(mediaPages[a].selectedType)) {
                 int type = mediaPages[a].selectedType;
                 if (type == TAB_POLL) {
                     type = MEDIA_POLL;
@@ -12872,8 +12872,40 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private final Paint packPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF packBounds = new RectF();
 
+        private boolean showingOptions;
         public OptionsSearchImageView(Context context) {
             super(context);
+            setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            RLottieDrawable animation = new RLottieDrawable(R.raw.options_to_search, dp(24), dp(24), false, null);
+            animation.multiplySpeed(2f);
+            animation.setPlayInDirectionOfCustomEndFrame(true);
+            animation.setCustomEndFrame(0);
+            setAnimation(animation);
+        }
+
+        void setOptions(boolean options, boolean animated) {
+            RLottieDrawable animation = getAnimatedDrawable();
+            animated = animated && isAttachedToWindow() && SharedConfig.animationsEnabled();
+            boolean changed = showingOptions != options;
+            showingOptions = options;
+            if (!changed && animated) return;
+            int end = options ? 50 : animation.getCurrentFrame() < 20 ? 0 : 100;
+            if (!changed && !animation.isRunning() && animation.getCustomEndFrame() == end
+                    && animation.getCurrentFrame() == end) return;
+            animation.setCustomEndFrame(end);
+            if (animated) {
+                animation.start();
+            } else {
+                animation.stop();
+                animation.setCurrentFrame(end);
+            }
+            invalidate();
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            setOptions(showingOptions, false);
         }
 
         @Override
@@ -12888,12 +12920,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                 return;
             }
             animation.updateCurrentFrame(0, false);
-            int frame = animation.getCurrentFrame();
-            int targetFrame = animation.getCustomEndFrame();
-            if (!animation.isRunning() && targetFrame >= 0 && Math.abs(frame - targetFrame) <= 1) {
-                frame = targetFrame;
-            }
-            float progress = getOptionsProgress(frame);
+            float progress = animation.isRunning() ? getOptionsProgress(animation.getCurrentFrame()) : (showingOptions ? 1f : 0f);
             float width = getWidth() - getPaddingLeft() - getPaddingRight();
             float height = getHeight() - getPaddingTop() - getPaddingBottom();
             float size = Math.min(dp(24), Math.min(width, height));
@@ -12939,21 +12966,9 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             animateSearchToOptions(searchAlpha < 0.1f, true);
         }
     }
-    private boolean animatingToOptions;
     public void animateSearchToOptions(boolean toOptions, boolean animated) {
-        if (optionsSearchImageView == null) return;
-        if (animatingToOptions != toOptions) {
-            animatingToOptions = toOptions;
-            if (!animatingToOptions && optionsSearchImageView.getAnimatedDrawable().getCurrentFrame() < 20) {
-                optionsSearchImageView.getAnimatedDrawable().setCustomEndFrame(0);
-            } else {
-                optionsSearchImageView.getAnimatedDrawable().setCustomEndFrame(animatingToOptions ? 50 : 100);
-            }
-            if (animated) {
-                optionsSearchImageView.getAnimatedDrawable().start();
-            } else {
-                optionsSearchImageView.getAnimatedDrawable().setCurrentFrame(optionsSearchImageView.getAnimatedDrawable().getCustomEndFrame());
-            }
+        if (optionsSearchImageView != null) {
+            optionsSearchImageView.setOptions(toOptions, animated);
         }
     }
 
@@ -14040,6 +14055,26 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         applyLegacyHeaderSearchVisibility();
     }
 
+    private boolean splitProfileHeaderGlyphs() {
+        return legacyHeaderSearchManaged && optionsSearchImageView != null
+                && (!optionsSearchImageView.showingOptions || optionsSearchImageView.getAnimatedDrawable().isRunning());
+    }
+
+    public float getProfileHeaderGlyphAlpha(float visibility) {
+        final float cut = splitProfileHeaderGlyphs() ? .5f * legacyHeaderControlCoverage : 0f;
+        return Utilities.clamp01((visibility - cut) / (1f - cut));
+    }
+
+    private float getMediaHeaderGlyphAlpha() {
+        return splitProfileHeaderGlyphs()
+                ? Math.max(0f, legacyHeaderControlCoverage - 2f * (1f - legacyHeaderSearchProgress))
+                : legacyHeaderControlCoverage * legacyHeaderSearchProgress;
+    }
+
+    public float getProfileMenuGlassPresence() {
+        return legacyHeaderSearchManaged
+                ? 1f - legacyHeaderSearchProgress * (1f - legacyHeaderControlCoverage) : -1f;
+    }
     public void updateLegacyHeaderSearchPresentation() {
         if (legacyHeaderSearchManaged) applyLegacyHeaderSearchVisibility();
     }
@@ -14079,11 +14114,15 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         final boolean eligible = !destroyed && !isActionModeShowed && !actionBar.isActionModeShowed() && canShowSearchItem()
                 && (giftsContainer == null || !giftsContainer.isReordering())
                 && (storiesContainer == null || !storiesContainer.isReordering());
+        final float coverage = eligible ? Utilities.clamp01(searchAlpha + optionsAlpha) : 0f;
+        if (legacyHeaderControlCoverage != coverage) {
+            legacyHeaderControlCoverage = coverage;
+            actionBar.invalidate();
+        }
         final float searchProgress = Utilities.clamp01(actionBar.searchFieldVisibleAlpha);
         final boolean inputAllowed = legacyHeaderSearchAllowed && !searching
                 && !actionBar.isSearchFieldVisible() && searchProgress == 0f;
-        final float alpha = eligible ? legacyHeaderSearchProgress * Utilities.clamp01(searchAlpha + optionsAlpha)
-                * (1f - searchProgress) : 0f;
+        final float alpha = getMediaHeaderGlyphAlpha() * (1f - searchProgress);
         final int tab = getClosestTab();
         final float controlOffsetX = getLegacyHeaderControlOffsetX();
         if (optionsSearchImageView != null) {

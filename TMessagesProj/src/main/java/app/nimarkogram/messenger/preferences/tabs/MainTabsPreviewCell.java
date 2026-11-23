@@ -93,7 +93,9 @@ public class MainTabsPreviewCell extends ViewGroup {
     }
 
     public void setEditMode(boolean editMode) {
+        if (this.editMode == editMode) return;
         this.editMode = editMode;
+        if (boundContext != null) applyBackground();
     }
 
     @Override
@@ -304,6 +306,10 @@ public class MainTabsPreviewCell extends ViewGroup {
     }
 
     private void applyBackground() {
+        if (editMode) {
+            setBackground(null);
+            return;
+        }
         setBackground(Theme.createRoundRectDrawable(
                 dp(DialogsActivity.MAIN_TABS_HEIGHT / 2f),
                 Theme.getColor(Theme.key_chat_messagePanelBackground, boundResourceProvider)));

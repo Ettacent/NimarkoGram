@@ -568,7 +568,8 @@ public class GroupCallPipContent implements PipContent {
             } else if (lastSpeakerId != 0 && call.participants.get(lastSpeakerId) != null) {
                 avatarPeerId = lastSpeakerId;
             } else {
-                avatarPeerId = -service.getChat().id;
+                final TLRPC.Chat chat = service.getChat();
+                avatarPeerId = chat != null ? -chat.id : (call.chatId > 0 ? -call.chatId : 0);
             }
             for (Tile tile : tiles) {
                 tile.updateState(service, call, now, avatarPeerId);

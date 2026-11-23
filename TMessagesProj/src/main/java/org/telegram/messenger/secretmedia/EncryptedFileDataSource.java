@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of Telegram for Android v. 5.x.x.
  * It is licensed under GNU GPL v. 2 or later.
@@ -26,8 +28,10 @@ import androidx.media3.datasource.TransferListener;
 import org.telegram.messenger.FileLoader;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 
+import java.nio.channels.FileChannel;
 @OptIn(markerClass = UnstableApi.class)
 public final class EncryptedFileDataSource extends BaseDataSource {
 
@@ -41,7 +45,7 @@ public final class EncryptedFileDataSource extends BaseDataSource {
 
     private Uri uri;
     private boolean opened;
-    private int bytesRemaining;
+    private long bytesRemaining;
     EncryptedFileInputStream fileInputStream;
 
     public EncryptedFileDataSource() {
@@ -59,48 +63,59 @@ public final class EncryptedFileDataSource extends BaseDataSource {
 
     @Override
     public long open(DataSpec dataSpec) throws IOException {
+        if (uri != null) {
+            throw new IllegalStateException("Data source is already open");
+        }
         uri = dataSpec.uri;
-        File path = new File(dataSpec.uri.getPath());
-        String name = path.getName();
-        File keyPath = new File(FileLoader.getInternalCacheDir(), name + ".key");
+        try {
+            transferInitializing(dataSpec);
+            File path = new File(uri.getPath());
+            File keyPath = new File(FileLoader.getInternalCacheDir(), path.getName() + ".key");
 
         try {
             fileInputStream = new EncryptedFileInputStream(path, keyPath);
-            fileInputStream.skip(dataSpec.position);
-            int len = (int) path.length();
+            } catch (FileNotFoundException e) {
+                throw new DataSourceException(e, PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND);
+            }
 
-            transferInitializing(dataSpec);
-            if (dataSpec.position > len) {
+            FileChannel channel = fileInputStream.getChannel();
+            long fileLength = channel.size();
+            if (dataSpec.position > fileLength) {
                 throw new DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE);
             }
-            bytesRemaining = (int) (len - dataSpec.position);
+            channel.position(dataSpec.position);
+            bytesRemaining = fileLength - dataSpec.position;
             if (dataSpec.length != C.LENGTH_UNSET) {
-                bytesRemaining = (int) min(bytesRemaining, dataSpec.length);
+                bytesRemaining = min(bytesRemaining, dataSpec.length);
             }
             opened = true;
             transferStarted(dataSpec);
             return dataSpec.length != C.LENGTH_UNSET ? dataSpec.length : bytesRemaining;
-        } catch (Throwable throwable) {
-            throw new DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE);
+        } catch (IOException | RuntimeException | Error e) {
+            try {
+                close();
+            } catch (IOException | RuntimeException | Error closeError) {
+                if (closeError != e) {
+                    e.addSuppressed(closeError);
+                }
+            }
+            throw e;
         }
     }
 
     @Override
-    public int read(byte[] buffer, int offset, int length) {
+    public int read(byte[] buffer, int offset, int length) throws IOException {
         if (length == 0) {
             return 0;
         } else if (bytesRemaining == 0) {
             return C.RESULT_END_OF_INPUT;
         }
-        length = min(length, bytesRemaining);
-        try {
-            fileInputStream.read(buffer, offset, length);
-        } catch (IOException e) {
-            e.printStackTrace();
+        int bytesRead = fileInputStream.read(buffer, offset, (int) min(length, bytesRemaining));
+        if (bytesRead > 0) {
+            bytesRemaining -= bytesRead;
+            bytesTransferred(bytesRead);
         }
-        bytesRemaining -= length;
-        bytesTransferred(length);
-        return length;
+        return bytesRead;
     }
 
     @Override
@@ -110,17 +125,20 @@ public final class EncryptedFileDataSource extends BaseDataSource {
     }
 
     @Override
-    public void close() {
+    public void close() throws IOException {
+        uri = null;
+        bytesRemaining = 0;
+        EncryptedFileInputStream stream = fileInputStream;
+        fileInputStream = null;
         try {
-            fileInputStream.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+            if (stream != null) {
+                stream.close();
         }
+        } finally {
         if (opened) {
             opened = false;
             transferEnded();
         }
-        fileInputStream = null;
-        uri = null;
     }
+}
 }

@@ -270,7 +270,7 @@ public class PremiumTierCell extends ViewGroup {
                 break;
 
             case 1390:
-                titleView.setText(LocaleController.getString(R.string.CG_SafeStars_buy));
+                titleView.setText(LocaleController.getString(R.string.NM_SafeStars_buy));
                 break;
 
         }
@@ -292,7 +292,7 @@ public class PremiumTierCell extends ViewGroup {
                 pricePerYearView.setVisibility(VISIBLE);
             }
             if (tier.isSafeStars) {
-                pricePerYearView.setText(LocaleController.getString(R.string.CG_SafeStars_Desc));
+                pricePerYearView.setText(LocaleController.getString(R.string.NM_SafeStars_Desc));
                 pricePerYearStrikeView.setVisibility(GONE);
                 pricePerMonthView.setVisibility(GONE);
             } else {

@@ -78,7 +78,7 @@ public class DownloadController extends BaseController implements NotificationCe
     private SparseArray<String> observersByTag = new SparseArray<>();
     private int listenerDispatchDepth;
     private final ArrayList<Runnable> deferredObserverChanges = new ArrayList<>();
-    private int lastTag = 0;
+    private final java.util.concurrent.atomic.AtomicInteger lastTag = new java.util.concurrent.atomic.AtomicInteger();
 
     private boolean loadingAutoDownloadConfig;
 
@@ -1253,7 +1253,7 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public int generateObserverTag() {
-        return lastTag++;
+        return lastTag.getAndIncrement();
     }
 
     public void addLoadingFileObserver(String fileName, FileDownloadProgressListener observer) {
@@ -1261,6 +1261,10 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public void addLoadingFileObserver(String fileName, MessageObject messageObject, FileDownloadProgressListener observer) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> addLoadingFileObserver(fileName, messageObject, observer));
+            return;
+        }
         if (listenerDispatchDepth != 0) {
             deferredObserverChanges.add(() -> addLoadingFileObserver(fileName, messageObject, observer));
             return;
@@ -1279,6 +1283,10 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public void removeLoadingFileObserver(FileDownloadProgressListener observer) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            AndroidUtilities.runOnUIThread(() -> removeLoadingFileObserver(observer));
+            return;
+        }
         if (listenerDispatchDepth != 0) {
             deferredObserverChanges.add(() -> removeLoadingFileObserver(observer));
             return;

@@ -27,6 +27,7 @@ import java.util.Random;
 public final class QrCodeLayer {
 
     public static final class Code {
+        final String link;
         Bitmap mask;
         int size;
         final Rect maskSrc = new Rect();
@@ -42,6 +43,13 @@ public final class QrCodeLayer {
         float[] hcx, hcy, hdelay;
         boolean[] hon;
         int[] hsrc;
+        public Code() {
+            this(null);
+        }
+
+        private Code(String link) {
+            this.link = link;
+        }
     }
 
     private static void prepareHalftone(Code c) {
@@ -87,7 +95,7 @@ public final class QrCodeLayer {
             hints.put(EncodeHintType.MARGIN, 0);
             final TelegramQRCodeWriter writer = new TelegramQRCodeWriter();
             if (center != null) writer.setCenterDrawable(center);
-            final Code c = new Code();
+            final Code c = new Code(link);
             final Bitmap code = writer.encode(link, px, px, hints, null, radiusFactor, 0x00000000, 0xFFFFFFFF);
             c.size = code.getWidth();
             c.n = Encoder.encode(link, level, hints).getMatrix().getWidth();
@@ -326,6 +334,11 @@ public final class QrCodeLayer {
 
     float logoSize(float size) {
         return current == null ? 0 : current.imageSize * size / current.size;
+    }
+
+    void drawShareCode(Canvas canvas, Code code, float left, float top, float size) {
+        maskPaint.setColorFilter(filter);
+        drawCode(canvas, code, left, top, size, Float.NaN, true);
     }
 
     public void draw(Canvas canvas, float left, float top, float size) {

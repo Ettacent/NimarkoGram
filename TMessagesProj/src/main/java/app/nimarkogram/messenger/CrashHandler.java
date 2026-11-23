@@ -13,8 +13,7 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
 
-import app.nimarkogram.messenger.plugins.utils.PluginCrashReports;
-import app.nimarkogram.messenger.plugins.utils.PluginsWatchdog;
+import app.nimarkogram.messenger.distribution.ClientPlugins;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -47,7 +46,7 @@ public final class CrashHandler {
             String pluginId = null;
             try {
                 if (!isOom(throwable)) {
-                    pluginId = PluginsWatchdog.findCrashingPlugin(thread, throwable);
+                    pluginId = ClientPlugins.crashingPlugin(thread, throwable);
                 }
                 if (pluginId != null) {
 
@@ -73,7 +72,7 @@ public final class CrashHandler {
     public static void dump(Thread thread, Throwable t) {
         String pluginId = null;
         try {
-            if (!isOom(t)) pluginId = PluginsWatchdog.findCrashingPlugin(thread, t);
+            if (!isOom(t)) pluginId = ClientPlugins.crashingPlugin(thread, t);
         } catch (Throwable ignored) {}
         dump(thread, t, pluginId);
     }
@@ -102,8 +101,23 @@ public final class CrashHandler {
                     pw.println();
                 }
                 pw.println(pluginId == null ? "=== NimarkoGram crash ===" : "=== NimarkoGram plugin crash ===");
+                if (t != null) {
+                    pw.print("Failure: ");
+                    Throwable cause = t;
+                    for (int i = 0; i < 16; i++) {
+                        if (i != 0) pw.print(" -> ");
+                        pw.print(cause.getClass().getName());
+                        Throwable next = cause.getCause();
+                        if (next == null || next == cause || next == t) break;
+                        cause = next;
+                        if (i == 15) pw.print(" -> ...");
+                    }
+                    pw.println();
+                }
+                pw.println();
+                pw.println("=== Environment ===");
                 if (pluginId != null) {
-                    PluginCrashReports.writeIdentity(pw, pluginId);
+                    ClientPlugins.writeIdentity(pw, pluginId);
                     pw.println("Attribution: tracked callback, matching throwable or registered DEX origin");
                     pw.println("Client process terminated: yes");
                 }
@@ -140,20 +154,9 @@ public final class CrashHandler {
                     }
                 }
                 pw.println();
+                pw.println("=== Stack trace ===");
                 if (t != null) {
                     t.printStackTrace(pw);
-                    pw.println();
-                    pw.println("=== Caused-by chain ===");
-                    Throwable cause = t.getCause();
-                    int depth = 0;
-                    while (cause != null && cause != t && depth++ < 16) {
-                        cause.printStackTrace(pw);
-                        pw.println();
-                        cause = cause.getCause();
-                    }
-                    if (cause != null) {
-                        pw.println("(cause chain truncated)");
-                    }
                 } else {
                     pw.println("(throwable was null)");
                 }
@@ -165,7 +168,7 @@ public final class CrashHandler {
                 }
             }
             writtenReport = f;
-            if (pluginId != null) PluginCrashReports.rememberFatalReport(pluginId, f);
+            if (pluginId != null) ClientPlugins.rememberFatalReport(pluginId, f);
 
             Log.e("nimarko-crash", "report written to " + f.getAbsolutePath());
 

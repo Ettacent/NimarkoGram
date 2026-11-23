@@ -25,6 +25,9 @@
     <string name="NM_DocNext">Next</string>
     <string name="NM_DocRetry">Try again</string>
     <string name="NM_DocOpenError">This document could not be opened in the built-in viewer.</string>
+    <string name="NM_DocStatusOpening">Opening document…</string>
+    <string name="NM_DocStatusAnotherReader">This document needs another viewer.</string>
+    <string name="NM_DocStatusNativePdf">Opening in the native PDF viewer…</string>
     <string name="NM_DocPasswordRequired">This PDF requires a password. If you already entered one, check it and try again.</string>
     <string name="NM_DocEnterPassword">Enter PDF password</string>
     <string name="NM_DocPasswordUnsupported">Password-protected PDFs require Android 15 or later in the built-in viewer.</string>

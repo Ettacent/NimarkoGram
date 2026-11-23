@@ -507,7 +507,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
         if (currentType == TYPE_ALL) {
             simpleActionBar.setTitle(LocaleController.getString(R.string.ChatBackground));
         } else if (currentType == TYPE_CHANNEL_PATTERNS) {
-            simpleActionBar.setTitle("Channel Wallpaper");
+            simpleActionBar.setTitle(LocaleController.getString(R.string.NM_ChannelWallpaperTitle));
         } else if (currentType == TYPE_COLOR) {
             simpleActionBar.setTitle(LocaleController.getString(R.string.SelectColorTitle));
         }

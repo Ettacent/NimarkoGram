@@ -1,0 +1,5 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Impossible de fermer les sessions. Vérifie ta connexion et réessaie.</string>
+</resources>

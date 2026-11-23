@@ -851,7 +851,7 @@ public class UItem extends AdapterWithDiffUtils.Item {
                 return factory.equals(this, item);
             }
         }
-        return itemEquals(item);
+        return compareItem(item, viewType == UniversalAdapter.VIEW_TYPE_TEXT || viewType == UniversalAdapter.VIEW_TYPE_TEXT_SETTINGS);
     }
 
     @Override
@@ -881,6 +881,10 @@ public class UItem extends AdapterWithDiffUtils.Item {
     }
 
     public boolean itemEquals(UItem item) {
+        return compareItem(item, false);
+    }
+
+    private boolean compareItem(UItem item, boolean ignoreStatus) {
         return (
             id == item.id &&
             pad == item.pad &&
@@ -889,12 +893,12 @@ public class UItem extends AdapterWithDiffUtils.Item {
             hideDivider == item.hideDivider &&
             transparent == item.transparent &&
             red == item.red &&
-            locked == item.locked &&
+            (ignoreStatus || locked == item.locked) &&
             accent == item.accent &&
             view == item.view &&
             TextUtils.equals(text, item.text) &&
-            TextUtils.equals(subtext, item.subtext) &&
-            TextUtils.equals(textValue, item.textValue) &&
+            (ignoreStatus && viewType == UniversalAdapter.VIEW_TYPE_TEXT_SETTINGS || TextUtils.equals(subtext, item.subtext)) &&
+            (ignoreStatus || TextUtils.equals(textValue, item.textValue)) &&
             view == item.view &&
             intValue == item.intValue &&
             Math.abs(floatValue - item.floatValue) < 0.01f &&
@@ -920,14 +924,9 @@ public class UItem extends AdapterWithDiffUtils.Item {
                 case UniversalAdapter.VIEW_TYPE_FLICKER:
                     return intValue == item.intValue;
                 case UniversalAdapter.VIEW_TYPE_TEXT:
-                    return (
-                        object == item.object &&
-                        TextUtils.equals(text, item.text) &&
-                        TextUtils.equals(textValue, item.textValue) &&
-                        iconResId == item.iconResId &&
-                        accent == item.accent &&
-                        red == item.red
-                    );
+                case UniversalAdapter.VIEW_TYPE_TEXT_SETTINGS:
+                    return itemEquals(item) && colorfulIcon == item.colorfulIcon
+                            && iconColorTop == item.iconColorTop && iconColorBottom == item.iconColorBottom;
             }
         }
         return super.contentsEquals(item);

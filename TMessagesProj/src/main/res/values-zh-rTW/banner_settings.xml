@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
     <string name="NM_BAN_Attach">新增橫幅</string>
     <string name="NM_BAN_SelectHint">選擇不超過 8 MB 的照片或影片。選擇後自動提交審核，通過後所有人可見。</string>
     <string name="NM_BAN_AutoStatus">此頁面開啟時會自動更新狀態。</string>
     <string name="NM_BAN_AccountChanged">帳號已變更，請重新選擇檔案。</string>
+    <string name="NM_BAN_SubmitChecking">無法確認上傳結果，正在查詢狀態…</string>
+    <string name="NM_BAN_SubmitPendingOnServer">已有橫幅正在審核，無須重複提交。</string>
+    <string name="NM_BAN_SubmitApprovedOnServer">個人檔案中已有審核通過的橫幅，請先查看，再決定是否重新提交。</string>
+    <string name="NM_BAN_SubmitUnconfirmed">無法確認這次上傳。請先查看橫幅狀態，再決定是否重試。</string>
+    <string name="NM_BAN_SubmitRefused">伺服器拒絕了這次提交。</string>
 </resources>

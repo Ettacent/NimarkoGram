@@ -1,0 +1,5 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">No se pudieron cerrar las sesiones. Comprueba la conexión e inténtalo de nuevo.</string>
+</resources>

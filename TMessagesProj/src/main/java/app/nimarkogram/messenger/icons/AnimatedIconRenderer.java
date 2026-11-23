@@ -13,6 +13,7 @@ import org.telegram.messenger.R;
 
 public final class AnimatedIconRenderer {
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint transferPaint = new Paint();
     private final Paint tintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint slashPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF target = new RectF();
@@ -37,7 +38,11 @@ public final class AnimatedIconRenderer {
 
     public boolean draw(Canvas canvas, AnimatedIconSpec spec, float frame, int totalFrames,
                         RectF bounds, Paint source, long layerColor, boolean sourceForeground) {
-        IconResources.NavigationIcons icons = IconResources.activeNavigationIcons();
+        return draw(IconResources.activeNavigationIcons(), canvas, spec, frame, totalFrames, bounds, source, layerColor, sourceForeground);
+    }
+
+    public boolean draw(IconResources.NavigationIcons icons, Canvas canvas, AnimatedIconSpec spec, float frame,
+                        int totalFrames, RectF bounds, Paint source, long layerColor, boolean sourceForeground) {
         if (icons == null || bounds.width() <= 0 || bounds.height() <= 0) return false;
         if (spec.recordDelete != 0) {
             return drawRecordDelete(canvas, icons, spec, frame, bounds, source, layerColor);
@@ -51,7 +56,7 @@ public final class AnimatedIconRenderer {
         int next = spec.icons[Math.min(segment + 1, spec.icons.length - 1)];
         float progress = spec.progress(segment, frame);
         float size = Math.min(bounds.width(), bounds.height()) * spec.scale;
-        int save = canvas.save();
+        int save = saveIconLayer(canvas, bounds, source);
         canvas.clipRect(bounds);
         spec.sampleMotion(frame, motion);
         if (spec.hasMotion()) {
@@ -150,6 +155,11 @@ public final class AnimatedIconRenderer {
         return icon != null && !icon.bitmap.isRecycled();
     }
 
+    private int saveIconLayer(Canvas canvas, RectF bounds, Paint source) {
+        if (source.getXfermode() == null) return canvas.save();
+        transferPaint.setXfermode(source.getXfermode());
+        return canvas.saveLayer(bounds, transferPaint);
+    }
     private void drawIcon(Canvas canvas, IconResources.PreparedIcon icon, RectF bounds, Paint source,
                           long layerColor, float size, float alpha, float rotation, float slashStart, float slashEnd, boolean sourceForeground) {
         if (alpha <= 0 || source.getAlpha() == 0) return;

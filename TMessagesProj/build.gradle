@@ -270,6 +270,9 @@ android {
 
 
 
+        buildConfigField 'boolean', 'NIMARKO_PLAY', 'false'
+        buildConfigField 'String', 'CONTACTS_NAMESPACE', '"org.telegram.messenger"'
+        buildConfigField 'String', 'PLAY_STORE_PACKAGE', '"org.telegram.messenger"'
         def telegramApiId = nimarkoBuildValue('TELEGRAM_API_ID', '0')
         if (!(telegramApiId ==~ /[0-9]+/) || new BigInteger(telegramApiId) > Integer.MAX_VALUE) {
             throw new GradleException('TELEGRAM_API_ID must be a non-negative integer')

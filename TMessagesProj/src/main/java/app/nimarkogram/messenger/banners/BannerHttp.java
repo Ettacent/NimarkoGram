@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.Call;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
@@ -19,11 +20,14 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
+import okio.BufferedSink;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 
+import com.google.gson.Strictness;
 import org.telegram.messenger.FileLog;
 import android.util.AtomicFile;
 
@@ -35,12 +39,15 @@ public final class BannerHttp {
     private static final long MAX_JSON_SIZE = 256L << 10;
 
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
+            .followSslRedirects(!org.telegram.messenger.BuildConfig.NIMARKO_PLAY)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build();
 
+    private static final OkHttpClient SUBMIT_HTTP = HTTP.newBuilder().followRedirects(false).build();
     private static final Gson GSON = new Gson();
+    private static final Gson MODERATION_JSON = new GsonBuilder().setStrictness(Strictness.STRICT).create();
     private static final MediaType JSON_TYPE = MediaType.parse("application/json; charset=utf-8");
 
     public static final class Status {
@@ -53,20 +60,32 @@ public final class BannerHttp {
     }
 
     public static Status fetchStatus(long userId) {
+        return fetchStatus(userId, false);
+    }
+
+    static Status checkSubmissionStatus(long userId) {
+        return fetchStatus(userId, true);
+    }
+
+    private static Status fetchStatus(long userId, boolean afterSubmit) {
         Status out = new Status();
         try {
             Request req = new Request.Builder().url(API + "/status/" + userId).get().build();
-            try (Response resp = HTTP.newCall(req).execute()) {
+            Call call = HTTP.newCall(req);
+            if (afterSubmit) call.timeout().timeout(12, TimeUnit.SECONDS);
+            try (Response resp = call.execute()) {
                 out.httpCode = resp.code() == 200 ? -1 : resp.code();
                 if (resp.code() != 200 || resp.body() == null) return out;
                 String text = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                 if (text == null) return out;
-                JsonObject d = parse(text);
-                if (d == null) return out;
+                JsonObject d = parse(MODERATION_JSON, text);
+                String status = optString(d, "status", null);
+                if (!"none".equals(status) && !"pending".equals(status) && !"approved".equals(status)
+                        && !"rejected".equals(status) && !"blocked".equals(status)) return out;
                 out.ok = true;
                 out.httpCode = 200;
                 out.rawJson = text;
-                out.status = optString(d, "status", "none");
+                out.status = status;
                 out.hideAvatar = optBool(d, "hide_avatar", false);
                 out.hasSound = optBool(d, "has_sound", false);
                 return out;
@@ -195,9 +214,15 @@ public final class BannerHttp {
     public static final String AUTH_GIVE_UP = "\0give_up";
 
     public static final class SubmitResult {
-        public int httpCode;
+        public int httpCode = -1;
         public boolean success;
         public String error;
+        private boolean hasDecision;
+
+        public boolean needsStatusCheck() {
+            return httpCode < 0 || httpCode == 408 || httpCode == 499 || httpCode >= 500
+                    || (httpCode >= 200 && httpCode < 300 && !hasDecision);
+        }
     }
 
     public static SubmitResult submit(File file, String ext, long userId, long size, String token) {
@@ -212,26 +237,37 @@ public final class BannerHttp {
                     .addFormDataPart("user_id", String.valueOf(userId))
                     .addFormDataPart("file_size", String.valueOf(size))
                     .build();
-            Request.Builder builder = new Request.Builder().url(API + "/submit").post(body);
+            RequestBody upload = new RequestBody() {
+                @Override public MediaType contentType() { return body.contentType(); }
+                @Override public long contentLength() throws IOException { return body.contentLength(); }
+                @Override public void writeTo(BufferedSink sink) throws IOException { body.writeTo(sink); }
+                @Override public boolean isOneShot() { return true; }
+            };
+            Request.Builder builder = new Request.Builder().url(API + "/submit").post(upload);
             if (token != null && !token.isEmpty()) {
                 builder.header("X-Auth-Token", token);
             }
-            try (Response resp = HTTP.newCall(builder.build()).execute()) {
+            try (Response resp = SUBMIT_HTTP.newCall(builder.build()).execute()) {
                 out.httpCode = resp.code();
-                if (resp.code() == 200 && resp.body() != null) {
+                if ((resp.code() == 200 || resp.code() == 400 || resp.code() == 403) && resp.body() != null) {
                     String text = readBodyLimited(resp.body(), MAX_JSON_SIZE);
                     if (text == null) return out;
-                    JsonObject d = parse(text);
+                    JsonObject d = parse(MODERATION_JSON, text);
                     if (d != null) {
-                        out.success = optBool(d, "success", false);
-                        out.error = optString(d, "error", null);
+                        if (resp.code() == 200) {
+                            JsonElement decision = d.get("success");
+                            if (decision != null && decision.isJsonPrimitive() && decision.getAsJsonPrimitive().isBoolean()) {
+                                out.hasDecision = true;
+                                out.success = decision.getAsBoolean();
+                            }
+                        }
+                        out.error = optString(d, "detail", optString(d, "error", null));
                     }
                 }
                 return out;
             }
-        } catch (Throwable t) {
+        } catch (IOException | RuntimeException t) {
             FileLog.e("nimarko-banner: submit failed", t);
-            out.httpCode = -1;
             return out;
         }
     }
@@ -290,8 +326,12 @@ public final class BannerHttp {
     }
 
     private static JsonObject parse(String text) {
+        return parse(GSON, text);
+    }
+
+    private static JsonObject parse(Gson parser, String text) {
         try {
-            return GSON.fromJson(text, JsonObject.class);
+            return parser.fromJson(text, JsonObject.class);
         } catch (JsonSyntaxException jse) {
             return null;
         }

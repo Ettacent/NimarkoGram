@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -89,11 +91,6 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
 
     if (!proxyAddress->empty()) {
         if (LOGS_ENABLED) DEBUG_D("connection(%p) connecting via proxy %s:%d secret[%d]", this, proxyAddress->c_str(), proxyPort, (int) proxySecret->size());
-        if ((socketFd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-            if (LOGS_ENABLED) DEBUG_E("connection(%p) can't create proxy socket", this);
-            closeSocket(1, -1);
-            return;
-        }
         uint32_t tempBuffLength;
         if (proxySecret->empty()) {
             proxyAuthState = 1;
@@ -117,47 +114,37 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
         }
         socketAddress.sin_family = AF_INET;
         socketAddress.sin_port = htons(proxyPort);
-        bool continueCheckAddress;
-        if (inet_pton(AF_INET, proxyAddress->c_str(), &socketAddress.sin_addr.s_addr) != 1) {
-            continueCheckAddress = true;
-            if (LOGS_ENABLED) DEBUG_D("connection(%p) not ipv4 address %s", this, proxyAddress->c_str());
-        } else {
-            ipv6 = false;
-            continueCheckAddress = false;
-        }
-        if (continueCheckAddress) {
-            if (inet_pton(AF_INET6, proxyAddress->c_str(), &socketAddress6.sin6_addr.s6_addr) != 1) {
-                continueCheckAddress = true;
-                if (LOGS_ENABLED) DEBUG_D("connection(%p) not ipv6 address %s", this, proxyAddress->c_str());
-            } else {
-                ipv6 = true;
-                continueCheckAddress = false;
-            }
-            if (continueCheckAddress) {
+        socketAddress6.sin6_family = AF_INET6;
+        socketAddress6.sin6_port = htons(proxyPort);
+        int proxyFamily = parseProxyAddress(*proxyAddress);
+        if (LOGS_ENABLED && proxyFamily != AF_INET) DEBUG_D("connection(%p) not ipv4 address %s", this, proxyAddress->c_str());
+        if (proxyFamily == AF_UNSPEC) {
+            if (LOGS_ENABLED) DEBUG_D("connection(%p) not ipv6 address %s", this, proxyAddress->c_str());
 #ifdef USE_DELEGATE_HOST_RESOLVE
-                waitingForHostResolve = *proxyAddress;
-                ConnectionsManager::getInstance(instanceNum).delegate->getHostByName(*proxyAddress, instanceNum, this);
-                return;
+            waitingForHostResolve = *proxyAddress;
+            ConnectionsManager::getInstance(instanceNum).delegate->getHostByName(*proxyAddress, instanceNum, this);
+            return;
 #else
-                struct hostent *he;
-                if ((he = gethostbyname(proxyAddress->c_str())) == nullptr) {
-                    if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, proxyAddress->c_str());
-                    closeSocket(1, -1);
-                    return;
-                }
-                struct in_addr **addr_list = (struct in_addr **) he->h_addr_list;
-                if (addr_list[0] != nullptr) {
-                    socketAddress.sin_addr.s_addr = addr_list[0]->s_addr;
-                    if (LOGS_ENABLED) DEBUG_D("connection(%p) resolved host %s address %x", this, proxyAddress->c_str(), addr_list[0]->s_addr);
-                    ipv6 = false;
-                } else {
-                    if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, proxyAddress->c_str());
-                    closeSocket(1, -1);
-                    return;
-                }
-#endif
+            struct hostent *he;
+            if ((he = gethostbyname(proxyAddress->c_str())) == nullptr) {
+                if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, proxyAddress->c_str());
+                closeSocket(1, -1);
+                return;
             }
+            struct in_addr **addr_list = (struct in_addr **) he->h_addr_list;
+            if (addr_list[0] != nullptr) {
+                socketAddress.sin_addr.s_addr = addr_list[0]->s_addr;
+                if (LOGS_ENABLED) DEBUG_D("connection(%p) resolved host %s address %x", this, proxyAddress->c_str(), addr_list[0]->s_addr);
+                proxyFamily = AF_INET;
+            } else {
+                if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address", this, proxyAddress->c_str());
+                closeSocket(1, -1);
+                return;
+            }
+#endif
         }
+        openProxyConnection(proxyFamily);
+        return;
     } else {
         proxyAuthState = 0;
         if ((socketFd = socket(ipv6 ? AF_INET6 : AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -203,6 +190,25 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
     }
 
     openConnectionInternal(ipv6);
+}
+
+int ConnectionSocket::parseProxyAddress(const std::string &address) {
+    if (inet_pton(AF_INET, address.c_str(), &socketAddress.sin_addr) == 1) {
+        return AF_INET;
+    }
+    if (inet_pton(AF_INET6, address.c_str(), &socketAddress6.sin6_addr) == 1) {
+        return AF_INET6;
+    }
+    return AF_UNSPEC;
+}
+
+void ConnectionSocket::openProxyConnection(int family) {
+    if ((socketFd = socket(family, SOCK_STREAM, 0)) < 0) {
+        if (LOGS_ENABLED) DEBUG_E("connection(%p) can't create proxy socket", this);
+        closeSocket(1, -1);
+        return;
+    }
+    openConnectionInternal(family == AF_INET6);
 }
 
 void ConnectionSocket::openConnectionInternal(bool ipv6) {
@@ -727,7 +733,7 @@ void ConnectionSocket::resetLastEventTime() {
 }
 
 bool ConnectionSocket::isDisconnected() {
-    return socketFd < 0;
+    return socketFd < 0 && waitingForHostResolve.empty();
 }
 
 void ConnectionSocket::dropConnection() {
@@ -742,17 +748,19 @@ void ConnectionSocket::setOverrideProxy(std::string address, uint16_t port, std:
     overrideProxySecret = secret;
 }
 
-void ConnectionSocket::onHostNameResolved(std::string host, std::string ip, bool ipv6) {
-    ConnectionsManager::getInstance(instanceNum).scheduleTask([&, host, ip, ipv6] {
-        if (waitingForHostResolve == host) {
-            waitingForHostResolve = "";
-            if (ip.empty() || inet_pton(AF_INET, ip.c_str(), &socketAddress.sin_addr.s_addr) != 1) {
-                if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address via delegate", this, host.c_str());
-                closeSocket(1, -1);
-                return;
-            }
-            if (LOGS_ENABLED) DEBUG_D("connection(%p) resolved host %s address %s via delegate", this, host.c_str(), ip.c_str());
-            openConnectionInternal(ipv6);
+void ConnectionSocket::onHostNameResolved(std::string host, std::string ip) {
+    ConnectionsManager::getInstance(instanceNum).scheduleTask([this, host, ip] {
+        if (waitingForHostResolve.empty() || waitingForHostResolve != host) {
+            return;
         }
+        waitingForHostResolve.clear();
+        int proxyFamily = parseProxyAddress(ip);
+        if (proxyFamily == AF_UNSPEC) {
+            if (LOGS_ENABLED) DEBUG_E("connection(%p) can't resolve host %s address via delegate", this, host.c_str());
+            closeSocket(1, -1);
+            return;
+        }
+        if (LOGS_ENABLED) DEBUG_D("connection(%p) resolved host %s address %s via delegate", this, host.c_str(), ip.c_str());
+        openProxyConnection(proxyFamily);
     });
 }

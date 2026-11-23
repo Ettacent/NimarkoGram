@@ -1,8 +1,15 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Reactions;
 
 import static org.telegram.ui.Components.Premium.LimitReachedBottomSheet.TYPE_BOOSTS_FOR_REACTIONS;
 
 import android.graphics.Paint;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.SpannableString;
@@ -11,6 +18,10 @@ import android.text.Spanned;
 import android.text.TextUtils;
 
 import org.telegram.messenger.ChatObject;
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.Emoji;
+import org.telegram.messenger.ImageLocation;
+import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.UserConfig;
@@ -35,6 +46,69 @@ public class ReactionsUtils {
     public static final String SELECT_ANIMATION_FILTER = "60_60_pcache";
     public static final String ACTIVATE_ANIMATION_FILTER = "30_30_pcache";
 
+    public static boolean hasReactionMedia(TLRPC.Document document) {
+        return document != null && !(document instanceof TLRPC.TL_documentEmpty)
+                && document.id != 0 && document.dc_id > 0 && document.size > 0;
+    }
+
+    public static boolean bindStandardReactionIcon(ImageReceiver receiver, int account, String emoji, boolean preview) {
+        TLRPC.TL_availableReaction reaction = MediaDataController.getInstance(account).getReactionsMap().get(emoji);
+        TLRPC.Document document = null;
+        String filter = "40_40_lastreactframe";
+        String extension = "webp";
+        if (reaction != null) {
+            if (preview && hasReactionMedia(reaction.activate_animation)) {
+                document = reaction.activate_animation;
+                filter = "140_140";
+                extension = null;
+            } else if (hasReactionMedia(reaction.center_icon)) {
+                document = reaction.center_icon;
+            } else if (hasReactionMedia(reaction.static_icon)) {
+                document = reaction.static_icon;
+                filter = "40_40";
+            }
+        }
+        Drawable fallback = standardEmojiFallback(emoji);
+        if (document != null) {
+            receiver.setImage(ImageLocation.getForDocument(document), filter, fallback, extension, reaction, 1);
+        } else {
+            receiver.setImageBitmap(fallback);
+        }
+        return document != null || fallback != null;
+    }
+
+    public static Drawable standardEmojiFallback(String emoji) {
+        if (TextUtils.isEmpty(emoji) || emoji.length() > 32) return null;
+        final String glyph = Emoji.fixEmoji(emoji);
+        final String lookup = glyph.replace("\uFE0F", "");
+        if (!Emoji.isValidEmoji(glyph) && !Emoji.isValidEmoji(lookup)) return null;
+        return new Drawable() {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            private final Rect ink = new Rect();
+            private float x, y;
+
+            @Override
+            protected void onBoundsChange(Rect bounds) {
+                float size = Math.max(1f, Math.min(bounds.width(), bounds.height()) * .87f);
+                paint.setTextSize(size);
+                paint.getTextBounds(glyph, 0, glyph.length(), ink);
+                float maxInk = Math.max(ink.width(), ink.height());
+                if (maxInk > size) {
+                    paint.setTextSize(size * size / maxInk);
+                    paint.getTextBounds(glyph, 0, glyph.length(), ink);
+                }
+                x = bounds.exactCenterX() - ink.exactCenterX();
+                y = bounds.exactCenterY() - ink.exactCenterY();
+            }
+
+            @Override public void draw(Canvas canvas) { canvas.drawText(glyph, x, y, paint); }
+            @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); }
+            @Override public void setColorFilter(ColorFilter filter) {}
+            @Override public int getIntrinsicWidth() { return AndroidUtilities.dp(20); }
+            @Override public int getIntrinsicHeight() { return getIntrinsicWidth(); }
+            @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
+        };
+    }
     public static boolean compare(TLRPC.Reaction reaction, ReactionsLayoutInBubble.VisibleReaction visibleReaction) {
         if (reaction instanceof TLRPC.TL_reactionEmoji && visibleReaction.documentId == 0 && TextUtils.equals(((TLRPC.TL_reactionEmoji) reaction).emoticon, visibleReaction.emojicon)) {
             return true;

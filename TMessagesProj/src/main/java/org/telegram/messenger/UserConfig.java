@@ -467,9 +467,7 @@ public class UserConfig extends BaseController {
         app.nimarkogram.messenger.notifications.InAppNotifications.onAccountLoggedOut(currentAccount);
         app.nimarkogram.messenger.security.AppBiometricPrompt.clearVerifiedForAccount(currentAccount);
         app.nimarkogram.messenger.utils.LockedChats.onAccountLoggedOut(currentAccount, clientUserId);
-        app.nimarkogram.messenger.wsbypass.WsRelayAuth.onAccountLoggedOut(currentAccount, clientUserId);
-        app.nimarkogram.messenger.wsbypass.WlAccess.onAccountLoggedOut(currentAccount, clientUserId);
-        app.nimarkogram.messenger.wsbypass.voip.VoipRelayAuth.onAccountLoggedOut(currentAccount, clientUserId);
+        app.nimarkogram.messenger.distribution.ClientRelays.onLogout(currentAccount, clientUserId);
         getPreferences().edit().clear().apply();
 
         sharingMyLocationUntil = 0;

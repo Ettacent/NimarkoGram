@@ -827,6 +827,7 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
 
         private int searchId;
         private long searchUserId;
+        private int searchLoginTime;
         public long channel_id;
         public int message_id;
 
@@ -853,7 +854,9 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         }
 
         private void fetch(long channel_id, int message_id, boolean refreshCache) {
-            final long selfId = UserConfig.getInstance(currentAccount).getClientUserId();
+            final UserConfig config = UserConfig.getInstance(currentAccount);
+            final long selfId = config.getClientUserId();
+            final boolean sameSession = searchUserId == selfId && searchLoginTime == config.loginTime;
             if (channel_id <= 0) {
                 ++searchId;
                 searchUserId = selfId;
@@ -863,14 +866,15 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
                 done(false);
                 return;
             }
-            if (searchUserId == selfId && this.channel_id == channel_id && this.message_id == message_id
+            if (sameSession && this.channel_id == channel_id && this.message_id == message_id
                     && (loading || !refreshCache && loaded && !error)) {
                 return;
             }
             final int thisSearchId = ++this.searchId;
-            final boolean keepPreview = searchUserId == selfId && this.channel_id == channel_id
+            final boolean keepPreview = sameSession && this.channel_id == channel_id
                     && !messageObjects.isEmpty();
             searchUserId = selfId;
+            searchLoginTime = config.loginTime;
             loading = true;
                     loaded = false;
             error = false;
@@ -948,7 +952,8 @@ public class ProfileChannelCell extends FrameLayout implements Theme.Colorable {
         }
 
         private boolean isCurrent(int generation, long selfId) {
-            return generation == searchId && selfId == UserConfig.getInstance(currentAccount).getClientUserId();
+            final UserConfig config = UserConfig.getInstance(currentAccount);
+            return generation == searchId && selfId == config.getClientUserId() && searchLoginTime == config.loginTime;
         }
 
         private static boolean isUsableMessage(TLRPC.Message message) {

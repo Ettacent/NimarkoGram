@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
 <resources>
+    <string name="Continue">Continuer</string>
+    <string name="Retry">Réessayer</string>
     <string name="UseProxyWeb">Proxy WEB</string>
     <string name="UseProxyWebInfo">Le proxy WEB utilise une page HTTPS dans une WebView distincte. Saisissez un nom d’hôte sans protocole ni chemin et un secret MTProxy de 16 octets. Cette implémentation expérimentale est destinée aux tests lorsque l’application est au premier plan et nécessite une version récente d’Android System WebView.</string>
     <string name="NM_Menu_TelegramPlus">Menu de messages moderne</string>
@@ -13,7 +17,7 @@
     <string name="PluginsDisableArtInfo">Ignore la compilation AOT de Python au démarrage. Démarrage plus rapide, extensions un peu plus lentes.</string>
     <string name="PluginsSafeMode">Mode sans échec</string>
     <string name="PluginsSafeModeInfo">Le moteur d\'extensions est en mode sans échec après un plantage.</string>
-    <string name="PluginsSafeModeInfo2">Toutes les extensions sont désactivées. Réactivez-les une par une pour identifier la fautive.</string>
+    <string name="PluginsSafeModeInfo2">Le mode sans échec empêche l’exécution des extensions. Les rapports enregistrés restent accessibles.</string>
     <string name="PluginsDocumentation">Documentation</string>
     <string name="PluginsTrusted">Extensions de confiance</string>
     <string name="ForkedByNimarko">Forké par Nimarko</string>
@@ -29,7 +33,7 @@
     <string name="PluginIncompatibleInfo">Cette extension nécessite une version plus récente de l\'app.</string>
     <string name="RestartRequired">Redémarrage requis</string>
     <string name="LinkCopied">Lien copié dans le presse-papiers</string>
-    <string name="PluginInstalled">Extension installée</string>
-    <string name="PluginUpdated">Extension mise à jour</string>
+    <string name="PluginInstalled">L’extension %s a été installée.</string>
+    <string name="PluginUpdated">L’extension %s a été mise à jour.</string>
     <string name="PluginInstallError">Échec de l\'installation de l\'extension</string>
 <string name="EnablePluginsEngine">Activer le moteur de plugins</string><string name="PluginDelete">Supprimer le plugin</string><string name="PluginDeleteInfo">Êtes-vous sûr de vouloir supprimer %s ?</string><string name="PluginDisableError">Échec de la désactivation du plugin : %s</string><string name="PluginEnableError">Échec de l\'activation du plugin : %s</string><string name="PluginEngineNotEnabled">Le moteur de plugins est désactivé. Activez-le pour utiliser %s.</string><string name="PluginHasNoSettings">%s n\'a pas de paramètres.</string><string name="PluginInstalledButFailedToEnable">Installé, mais échec de l\'activation du plugin.</string><string name="PluginIsNotRespondingAlert">Le plugin "%s" ne répond pas</string><string name="PluginNotEnabled">Le plugin %s n\'est pas activé.</string><string name="PluginNotFound">Plugin %s introuvable.</string><string name="PluginsDevMode">Mode développeur</string><string name="PluginsDevServerLaunched">Serveur de développement lancé.</string><string name="PluginsDevServerStopped">Serveur de développement arrêté.</string><string name="PluginsDisableAll">Désactiver tous</string><string name="PluginsDisableAllConfirm">Désactiver tous les plugins activés ?</string><string name="PluginsDisabledN">%1$d plugins désactivés.</string><string name="PluginsPySdkAutoUpdate">Mise à jour automatique du SDK</string><string name="PluginsPySdkCheckUpdates">Vérifier les mises à jour du SDK</string><string name="PluginsPySdkEnableBetaVersion">Utiliser le SDK bêta</string><string name="PluginsPySdkHeader">SDK Python</string><string name="PluginsPySdkOffline">Mises à jour en ligne désactivées dans NimarkoGram.</string><string name="PluginsRestartEngine">Redémarrer le moteur</string><string name="PluginsRestartingEngine">Redémarrage du moteur de plugins…</string><string name="PluginsRowSubtitle">Scripts Python qui étendent l\'application</string><string name="PluginsSafeModeOff">Mode sans échec désactivé.</string><string name="PluginsSafeModeOn">Mode sans échec activé. Les plugins ne se chargeront pas automatiquement.</string></resources>

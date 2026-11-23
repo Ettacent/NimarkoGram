@@ -735,7 +735,9 @@ public final class FloatingToolbar {
         }
 
         public void show(Rect contentRectOnScreen) {
-            if (isShowing()) {
+            android.app.Activity owner = AndroidUtilities.findActivity(mParent.getContext());
+            if (isShowing() || !mParent.isAttachedToWindow() || mParent.getWindowToken() == null
+                    || (owner != null && (owner.isFinishing() || owner.isDestroyed()))) {
                 return;
             }
             mWindowGeneration++;
@@ -750,7 +752,14 @@ public final class FloatingToolbar {
             if (mPopupWindow.isShowing()) {
                 mPopupWindow.update(mCoordsOnWindow.x, mCoordsOnWindow.y, mPopupWindow.getWidth(), mPopupWindow.getHeight());
             } else {
+                try {
             mPopupWindow.showAtLocation(mParent, Gravity.NO_GRAVITY, mCoordsOnWindow.x, mCoordsOnWindow.y);
+                } catch (android.view.WindowManager.BadTokenException retiredWindow) {
+                    mDismissed = true;
+                    mPopupContentHolder.setContentTouchable(false);
+                    mPopupWindow.dismiss();
+                    return;
+                }
             }
             setTouchableSurfaceInsetsComputer();
             runShowAnimation();

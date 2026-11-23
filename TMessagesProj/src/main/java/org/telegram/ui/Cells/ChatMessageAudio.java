@@ -204,8 +204,10 @@ class ChatMessageAudio {
         }
         cell.radialProgress.draw(canvas);
 
+        final boolean forwardPreview = cell.currentMessageObject.previewForward;
+        final float playerOffsetY = forwardPreview ? buttonY - dp(13) : cell.namesOffset + cell.getMediaOffsetY();
         canvas.save();
-        canvas.translate(tx + cell.timeAudioX + songX, dp(13) + cell.namesOffset + cell.getMediaOffsetY());
+        canvas.translate(tx + cell.timeAudioX + songX, dp(13) + playerOffsetY);
         songLayout.draw(canvas);
         canvas.restore();
 
@@ -224,8 +226,8 @@ class ChatMessageAudio {
             cell.invalidate();
         }
         if (toSeekBarProgress > 0) {
-            float y = cell.seekBarY;
-            if (cell.transitionParams.animateBackgroundBoundsInner) {
+            float y = forwardPreview ? dp(29) + playerOffsetY : cell.seekBarY;
+            if (!forwardPreview && cell.transitionParams.animateBackgroundBoundsInner) {
                 y += cell.transitionParams.deltaTop;
             }
             if (toSeekBarProgress != 1f) {
@@ -239,7 +241,7 @@ class ChatMessageAudio {
         }
         if (toSeekBarProgress < 1f) {
             float x = tx + cell.timeAudioX + performerX;
-            float y = dp(35) + cell.namesOffset + cell.getMediaOffsetY();
+            float y = dp(35) + playerOffsetY;
             if (toSeekBarProgress != 0) {
                 canvas.saveLayerAlpha(x, y, x + performerLayout.getWidth(), y + performerLayout.getHeight(), (int) (255 * (1f - toSeekBarProgress)), Canvas.ALL_SAVE_FLAG);
             } else {
@@ -255,7 +257,7 @@ class ChatMessageAudio {
         }
 
         canvas.save();
-        canvas.translate(tx + cell.timeAudioX, dp(57) + cell.namesOffset + cell.getMediaOffsetY());
+        canvas.translate(tx + cell.timeAudioX, dp(57) + playerOffsetY);
         cell.durationLayout.draw(canvas);
         canvas.restore();
 

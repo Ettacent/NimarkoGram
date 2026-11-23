@@ -4,6 +4,7 @@
 import { XlsxViewer } from './engine/gander-xlsx.mjs';
 import { sheetZoom } from './engine/sheet-zoom.mjs';
 const root = document.documentElement,container = document.getElementById('viewer'),status = document.getElementById('status');
+let statusLabels = {};
 const MAX = 24 * 1024 * 1024;
 let started = false,active = false,ready = false,paused = false,allowCopy = false,generation = 0,reader = null,abort = null;
 let top = 0,bottom = 0,baseScale = 1,scale = 1,frame = 0,frameId = 0,awaiting = 0,dirty = false;
@@ -232,7 +233,8 @@ function fail(error) {
   if (!active) return;const code = Number.isInteger(error?.officeCode) ? error.officeCode : 1;
   const featureCode = fallbackReasons.indexOf(error?.message) + 1;
   send({ type: 'error', code, featureCode, renderer: 'gander-xlsx', fallbackRequired: code === 3 && !ready });
-  status.hidden = false;status.textContent = code === 3 ? 'This spreadsheet needs the original reader.' : 'Could not open this spreadsheet.';dispose(false);
+  status.textContent = (code === 3 ? statusLabels.anotherReader : statusLabels.failed) || '';
+  status.hidden = !status.textContent;dispose(false);
 }
 function dispose(hide = true) {
   if (!active) return;active = false;ready = false;++searchEpoch;++navigation;
@@ -311,6 +313,10 @@ function announce(initial) {
 }
 async function open(message) {
   if (started) return;started = active = true;++generation;
+  statusLabels = message.statusLabels || {};
+  status.lang = message.statusLanguage || '';
+  status.textContent = statusLabels.opening || '';
+  status.hidden = !status.textContent;
   try {
     if (message.format !== 'xlsx' || message.gestureMode !== 'xlsx-local-v1' || message.nativeGestures !== false || !window.visualViewport || !window.CSS?.highlights || typeof Highlight !== 'function') throw { officeCode: 3 };
     protection(message.allowCopy);colors(message);insets(message);abort = new AbortController();

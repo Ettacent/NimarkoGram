@@ -1,0 +1,5 @@
+<!-- Modifications Copyright (C) 2026 Ettacent -->
+
+<resources>
+    <string name="NM_DeviceTerminateFailed">Die Sitzungen konnten nicht beendet werden. Prüfe deine Verbindung und versuche es erneut.</string>
+</resources>

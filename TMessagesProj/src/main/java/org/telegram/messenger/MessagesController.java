@@ -6545,7 +6545,7 @@ public class MessagesController extends BaseController implements NotificationCe
         reloadingScheduledWebpagesPending.clear();
         reloadingSavedWebpages.clear();
         reloadingSavedWebpagesPending.clear();
-        sponsoredMessages.clear();
+        if (sponsoredMessages != null) sponsoredMessages.clear();
         sendAsPeers.clear();
         sendAsPeersLiveStories.clear();
         dialogs_dict.clear();
@@ -11834,7 +11834,7 @@ public class MessagesController extends BaseController implements NotificationCe
                     }
                 });
                 getConnectionsManager().bindRequestToGuid(reqId, classGuid);
-            } else if (threadMessageId != 0) {
+            } else if (threadMessageId != 0 && mode != ChatActivity.MODE_SCHEDULED) {
                 if (mode == ChatActivity.MODE_SAVED || ChatObject.isMonoForum(chat)) {
                     TLRPC.TL_messages_getSavedHistory req = new TLRPC.TL_messages_getSavedHistory();
                     req.peer = getInputPeer(threadMessageId);
@@ -12241,7 +12241,8 @@ public class MessagesController extends BaseController implements NotificationCe
             chatsDict.put(c.id, c);
         }
         if (mode == ChatActivity.MODE_SCHEDULED) {
-            reload = ((SystemClock.elapsedRealtime() - lastScheduledServerQueryTime.get(dialogId, 0L)) > 60 * 1000);
+            final long lastQuery = lastScheduledServerQueryTime.get(dialogId, -1L);
+            reload = lastQuery < 0 || SystemClock.elapsedRealtime() - lastQuery > 60_000L;
         } else if (mode == ChatActivity.MODE_QUICK_REPLIES) {
             reload = ((SystemClock.elapsedRealtime() - lastQuickReplyServerQueryTime.get(threadMessageId, 0L)) > 60 * 1000);
         } else if (mode == ChatActivity.MODE_WELCOME_MESSAGES) {
@@ -18285,7 +18286,7 @@ public class MessagesController extends BaseController implements NotificationCe
         final int sequenceDate = updatesIn.date;
         TLRPC.Updates hookedUpdates = updatesIn;
         try {
-            TLRPC.Updates hooked = app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+            TLRPC.Updates hooked = app.nimarkogram.messenger.distribution.ClientPlugins
                     .executeUpdatesHook(updatesIn.getClass().getSimpleName(), currentAccount, updatesIn);
             if (hooked != null) {
                 hookedUpdates = hooked;
@@ -18922,7 +18923,7 @@ public class MessagesController extends BaseController implements NotificationCe
     private TLRPC.Update applyIndividualUpdateHook(TLRPC.Update update) {
         if (update == null) return null;
         try {
-            return app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+            return app.nimarkogram.messenger.distribution.ClientPlugins
                     .executeUpdateHook(update.getClass().getSimpleName(), currentAccount, update);
         } catch (Throwable t) {
             FileLog.e("nimarko: executeUpdateHook threw", t);
@@ -22203,7 +22204,9 @@ public class MessagesController extends BaseController implements NotificationCe
     }
 
     public SponsoredMessagesInfo getSponsoredMessages(long dialogId) {
-        SponsoredMessagesInfo info = sponsoredMessages.get(dialogId);
+        final LongSparseArray<SponsoredMessagesInfo> cache = sponsoredMessages;
+        if (cache == null) return null;
+        SponsoredMessagesInfo info = cache.get(dialogId);
         if (info != null && (info.loading || Math.abs(SystemClock.elapsedRealtime() - info.loadTime) <= 5 * 60 * 1000)) {
             return info;
         }
@@ -22212,15 +22215,16 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         info = new SponsoredMessagesInfo();
         info.loading = true;
-        sponsoredMessages.put(dialogId, info);
+        cache.put(dialogId, info);
         SponsoredMessagesInfo infoFinal = info;
         TLRPC.TL_messages_getSponsoredMessages req = new TLRPC.TL_messages_getSponsoredMessages();
         req.peer = getInputPeer(dialogId);
         getConnectionsManager().sendRequest(req, (response, error) -> {
             ArrayList<MessageObject> result;
             Integer posts_between;
-            if (response instanceof TLRPC.messages_SponsoredMessages) {
-                TLRPC.messages_SponsoredMessages res = (TLRPC.messages_SponsoredMessages) response;
+            final TLRPC.messages_SponsoredMessages res = response instanceof TLRPC.messages_SponsoredMessages
+                    ? (TLRPC.messages_SponsoredMessages) response : null;
+            if (res != null) {
                 if (res.messages.isEmpty()) {
                     result = null;
                     posts_between = null;
@@ -22231,10 +22235,6 @@ public class MessagesController extends BaseController implements NotificationCe
                         posts_between = null;
                     }
                     result = new ArrayList<>();
-                    AndroidUtilities.runOnUIThread(() -> {
-                        putUsers(res.users, false);
-                        putChats(res.chats, false);
-                    });
                     final LongSparseArray<TLRPC.User> usersDict = new LongSparseArray<>();
                     final LongSparseArray<TLRPC.Chat> chatsDict = new LongSparseArray<>();
 
@@ -22287,9 +22287,12 @@ public class MessagesController extends BaseController implements NotificationCe
                 posts_between = null;
             }
             AndroidUtilities.runOnUIThread(() -> {
+                if (sponsoredMessages != cache || cache.get(dialogId) != infoFinal) return;
                 if (result == null) {
-                    sponsoredMessages.remove(dialogId);
+                    cache.remove(dialogId);
                 } else {
+                    putUsers(res.users, false);
+                    putChats(res.chats, false);
                     infoFinal.loadTime = SystemClock.elapsedRealtime();
                     infoFinal.loading = false;
                     infoFinal.messages = result;
@@ -22512,6 +22515,14 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
 
+        if (mode == ChatActivity.MODE_SCHEDULED && messages.size() == 1
+                && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            MessageObject own = messages.get(0);
+            if (own != null && own.wasJustSent && own.getId() < 0 && own.messageOwner != null
+                    && own.messageOwner.date == 0x7ffffffe && getNotificationCenter().hasDeferredNewMessageBatch(messages)) {
+                ChatActivity.presentDeferredWhenOnline(currentAccount, dialogId, messages);
+            }
+        }
         if (lastMessage == null || scheduled) {
             return false;
         }
@@ -23496,7 +23507,7 @@ public class MessagesController extends BaseController implements NotificationCe
             if (type != 3 && user.bot) {
                 type = 1;
                 BaseFragment lastFragment = LaunchActivity.getLastFragment();
-                if (lastFragment.getLastStoryViewer() == null) {
+                if (lastFragment != null && lastFragment.getLastStoryViewer() == null) {
                     closeLast = true;
                 }
             }

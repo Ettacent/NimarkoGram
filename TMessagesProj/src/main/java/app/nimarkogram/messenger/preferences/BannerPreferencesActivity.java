@@ -133,7 +133,8 @@ public class BannerPreferencesActivity extends BasePreferencesActivity {
         items.add(UItem.asHeader(-4, LocaleController.getString(R.string.NM_BAN_GlobalHeader)));
         boolean sending = processingFile || ctrl.isModerationSending();
         String details;
-        if (sending) details = LocaleController.getString(R.string.NM_BAN_Sending);
+        if (sending) details = LocaleController.getString(ctrl.isCheckingSubmission()
+                ? R.string.NM_BAN_SubmitChecking : R.string.NM_BAN_Sending);
         else if (ctrl.hasKnownStatus()) details = statusText(st);
         else details = LocaleController.getString(ctrl.isStatusRefreshing()
                     ? R.string.NM_BAN_Refreshing : R.string.NM_BAN_StatusUnknown);

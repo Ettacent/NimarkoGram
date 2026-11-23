@@ -9334,7 +9334,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     public static void applyChatServiceMessageColor(int[] custom, Drawable wallpaperOverride, Drawable currentWallpaper) {
-        if (chat_actionBackgroundPaint == null) {
+        if (chat_actionBackgroundPaint == null || chat_actionBackgroundSelectedPaint == null) {
             return;
         }
         int serviceColor;

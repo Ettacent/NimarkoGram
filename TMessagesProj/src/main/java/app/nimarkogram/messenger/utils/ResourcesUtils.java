@@ -21,14 +21,14 @@ public final class ResourcesUtils {
         switch (dcId) {
             case 1:
             case 3:
-                return "USA (Miami)";
+                return LocaleController.getString(R.string.NM_Settings_DCMiami);
             case 2:
             case 4:
-                return "NLD (Amsterdam)";
+                return LocaleController.getString(R.string.NM_Settings_DCAmsterdam);
             case 5:
-                return "SGP (Singapore)";
+                return LocaleController.getString(R.string.NM_Settings_DCSingapore);
             default:
-                return "UNK (Unknown)";
+                return LocaleController.getString(R.string.NM_ProfileInfo_Unknown);
         }
     }
 
@@ -39,7 +39,7 @@ public final class ResourcesUtils {
             case 3: return "Aurora";
             case 4: return "Vesta";
             case 5: return "Flora";
-            default: return LocaleController.getString(R.string.NumberUnknown);
+            default: return LocaleController.getString(R.string.NM_ProfileInfo_Unknown);
         }
     }
 

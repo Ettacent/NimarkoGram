@@ -511,7 +511,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 super.setTranslationX(translationX);
                 if (tabsAnimationInProgress || startedTracking || maybeStartTracking) {
                     if (viewPages[0] == this) {
-                        float scrollProgress = Math.abs(viewPages[0].getTranslationX()) / (float) viewPages[0].getMeasuredWidth();
+                        float scrollProgress = getFolderSwipeProgress(translationX, getMeasuredWidth());
                         filterTabsView.selectTabWithId(viewPages[1].selectedType, scrollProgress);
                     }
                 }
@@ -3501,6 +3501,46 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         mainTabsActivityController = controller;
     }
 
+    void updateMainTabsLayout(boolean barVisible) {
+        if (mainTabsActivityController == null) {
+            return;
+        }
+        final boolean barChanged = hasMainTabs != barVisible;
+        if (arguments != null) {
+            arguments.putBoolean("hasMainTabs", barVisible);
+        }
+        if (barChanged) {
+            hasMainTabs = barVisible;
+            updateMainTabsOffsets();
+        }
+        if (fragmentView == null) {
+            return;
+        }
+        if (barChanged) {
+            updateMainTabsTitle();
+            updateBottomInsets();
+            checkUi_chatListViewPaddingsBottom();
+            fragmentView.requestLayout();
+        }
+        checkUi_itemSearchVisibility();
+        if (floatingButton3 != null) {
+            floatingButton3.setLayoutParams(FragmentFloatingButton.createDefaultLayoutParams());
+        }
+        if (floatingButtonStories != null) {
+            floatingButtonStories.setLayoutParams(FragmentFloatingButton.createSubButtonLayoutParams());
+        }
+    }
+
+    private void updateMainTabsOffsets() {
+        additionNavigationBarHeight = hasMainTabs ? dp(MAIN_TABS_HEIGHT_WITH_MARGINS) : 0;
+        additionFloatingButtonOffset = hasMainTabs ? dp(MAIN_TABS_HEIGHT + MAIN_TABS_MARGIN) : 0;
+    }
+
+    private void updateMainTabsTitle() {
+        actionBar.getTitlesContainer().setTranslationX(hasMainTabs ? dp(4) : 0);
+        actionBar.setTitleColor(getThemedColor(hasMainTabs ? Theme.key_telegram_color_dialogsLogo
+                : Theme.key_actionBarDefaultTitle), hasMainTabs);
+    }
     private NotificationCenter.ObserversGroup observersGroup;
 
     @Override
@@ -3683,8 +3723,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // add right after), NOT the 72dp MainTabs height. (Previously the !showMainTabs branch
         // over-reserved 72dp/64dp for that 50dp strip → the folder strip floated above the nav bar
         // with an empty gap and the FAB sat 14dp too high.)
-        additionNavigationBarHeight = hasMainTabs ? dp(MAIN_TABS_HEIGHT_WITH_MARGINS) : 0;
-        additionFloatingButtonOffset = hasMainTabs ? dp(DialogsActivity.MAIN_TABS_HEIGHT + DialogsActivity.MAIN_TABS_MARGIN) : 0;
+        updateMainTabsOffsets();
 
         return true;
     }
@@ -3997,12 +4036,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         ActionBarMenu menu = actionBar.createMenu();
         menu.setTranslationX(-dp(5));
-        boolean hideTopSearch = AppConfig.showMainTabs && AppConfig.showSearchInTabs && hasMainTabs;
         searchItem = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true, false);
-        if (hideTopSearch) {
-            searchItem.setVisibility(View.GONE);
-            menu.removeView(searchItem);
-        }
         searchItem.setOnClickListener(v -> {
             showSearch(true, false, true);
             fragmentSearchFieldWatcher.toggleSearch(true);
@@ -6406,10 +6440,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         undoView[1] = null;
 
         if (hasMainTabs) {
-            actionBar.getTitlesContainer().setTranslationX(dp(4));
-            // NimarkoGram CG-parity (CG DialogsActivity L5374): explicit gilroy=true so
-            // the lazy-created tab title text view uses Gilroy ExtraBold typeface.
-            actionBar.setTitleColor(getThemedColor(Theme.key_telegram_color_dialogsLogo), true);
+            updateMainTabsTitle();
         }
 
         if (folderId != 0 || communityId != 0) {
@@ -6867,7 +6898,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     private int getSearchFieldReservedHeight() {
-        return shouldHideHomeSearchField() ? 0 : dp(SEARCH_FIELD_HEIGHT);
+        return isSupportSearch() && !shouldHideHomeSearchField() ? dp(SEARCH_FIELD_HEIGHT) : 0;
     }
 
     public boolean isStarsSubscriptionHintVisible() {
@@ -8819,7 +8850,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         final boolean freshSearchOpen = show && searchAnimationProgress == 0f && searchAnimator == null;
         resetStoriesScrollHaptics();
-        if (mainTabsActivityController != null && hasMainTabs) {
+        if (mainTabsActivityController != null) {
             mainTabsActivityController.setTabsHiddenByOverlay(show);
         }
         animatorSearchVisible.forceValue(show, searchAnimationProgress);
@@ -13157,8 +13188,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     }
 
     public void setDelegate(DialogsActivityDelegate dialogsActivityDelegate) {
-        delegate = app.nimarkogram.messenger.plugins.bridge.PythonInterfaceProxy
-                .adaptDialogsDelegate(dialogsActivityDelegate);
+        delegate = app.nimarkogram.messenger.distribution.ClientPlugins.adaptDialogsDelegate(dialogsActivityDelegate);
     }
 
     public void setSharedMedia(ArrayList<MediaController.PhotoEntry> entries, CharSequence initialCaption) {
@@ -15700,12 +15730,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         try {
             final java.util.Map<String, Object> nimarkoCtx = new java.util.HashMap<>();
             nimarkoCtx.put("fragment", "DialogsActivity");
-            java.util.List<app.nimarkogram.messenger.plugins.hooks.MenuItemRecord> nimarkoItems =
+            java.util.List<app.nimarkogram.messenger.distribution.ClientPlugins.MenuItem> nimarkoItems =
                     new java.util.ArrayList<>();
             for (String loc : new String[]{"drawer_menu", "main_menu", "chat_action_menu"}) {
                 try {
-                    java.util.List<app.nimarkogram.messenger.plugins.hooks.MenuItemRecord> part =
-                            app.nimarkogram.messenger.plugins.PluginsController.getInstance()
+                    java.util.List<app.nimarkogram.messenger.distribution.ClientPlugins.MenuItem> part =
+                            app.nimarkogram.messenger.distribution.ClientPlugins
                                     .getMenuItemsForLocation(loc, nimarkoCtx);
                     if (part != null) nimarkoItems.addAll(part);
                 } catch (Throwable t) {
@@ -15719,7 +15749,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 pluginOptions.setOnDismiss(io::dismiss);
                 java.util.Set<String> seen = new java.util.HashSet<>();
                 // Controller already pre-filtered via checkCondition; skip duplicate eval.
-                for (final app.nimarkogram.messenger.plugins.hooks.MenuItemRecord rec : nimarkoItems) {
+                for (final app.nimarkogram.messenger.distribution.ClientPlugins.MenuItem rec : nimarkoItems) {
                     if (rec == null || android.text.TextUtils.isEmpty(rec.text)) continue;
                     // C4: dedupe by stable plugin identity (pluginId:itemId), not the
                     // visible label — two plugins may share a caption (mirror ChatActivity).
@@ -15732,10 +15762,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                             // C3: re-check the owning plugin is still active right
                             // before crossing into Python — the menu was built when
                             // the popup opened and the plugin may have been disabled.
-                            if (!app.nimarkogram.messenger.plugins.PluginsController.getInstance().isPluginActive(rec.pluginId)) {
+                            if (!app.nimarkogram.messenger.distribution.ClientPlugins.isPluginActive(rec.pluginId)) {
                                 return;
                             }
-                            rec.onClickCallback.call(nimarkoCtx);
+                            rec.click(nimarkoCtx);
                         } catch (Throwable t) {
                             FileLog.e("nimarko: plugin menu click failed in DialogsActivity", t);
                         }
@@ -15770,10 +15800,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-        windowInsetsStateHolder.setInsets(insets);
 
         final Insets systemInsets = AndroidUtilities.getDefaultWindowInsets(insets, false);
         statusBarHeight = systemInsets.top;
+        final boolean navigationInsetChanged = navigationBarHeight != systemInsets.bottom;
         navigationBarHeight = systemInsets.bottom;
         final int imeInsetHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom;
         if (this.imeInsetHeight != imeInsetHeight) {
@@ -15781,8 +15811,22 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             fragmentView.requestLayout();
         }
 
+        windowInsetsStateHolder.setInsets(insets);
         dialogsActivityStatusLayout.setPadding(0, statusBarHeight, 0, 0);
 
+        updateBottomInsets();
+        if (navigationInsetChanged) {
+            checkUi_chatListViewPaddingsBottom();
+        }
+
+        if (rightSlidingDialogContainer != null) {
+            ViewCompat.dispatchApplyWindowInsets(rightSlidingDialogContainer, insets);
+        }
+
+        return WindowInsetsCompat.CONSUMED;
+    }
+
+    private void updateBottomInsets() {
         updateFloatingButtonOffset();
 
         ViewGroup.MarginLayoutParams lp;
@@ -15802,20 +15846,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // contentView extends behind both the system nav bar inset and the host's
         // MainTabs strip, so we must push the tabs up by navigationBarHeight +
         // additionNavigationBarHeight to sit ABOVE both. Mirrors the undoView loop.
-        if (filterTabsView != null && foldersAtBottom()) {
-            final int filterTabsBottomMargin = getBottomFolderMargin();
-            final ViewGroup.MarginLayoutParams ftLp = (ViewGroup.MarginLayoutParams) filterTabsView.getLayoutParams();
-            if (ftLp != null && ftLp.bottomMargin != filterTabsBottomMargin) {
-                ftLp.bottomMargin = filterTabsBottomMargin;
-                filterTabsView.setLayoutParams(ftLp);
-            }
-        }
-
-        if (rightSlidingDialogContainer != null) {
-            ViewCompat.dispatchApplyWindowInsets(rightSlidingDialogContainer, insets);
-        }
-
-        return WindowInsetsCompat.CONSUMED;
+        updateBottomFolderMargin();
     }
 
     /* Animations */
@@ -16236,7 +16267,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         // layout without CG's in-tabs search button, so there is no duplicate to gate.
         // The earlier showSearchInTabs gate accidentally hid the icon when the flag
         // defaulted to true (no UI toggle in NG to flip it back).
-        return true;
+        return !hasMainTabs || !AppConfig.showSearchInTabs;
     }
 
     private boolean isSupportSearch() {

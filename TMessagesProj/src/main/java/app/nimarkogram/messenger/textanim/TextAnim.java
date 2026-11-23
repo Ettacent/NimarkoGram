@@ -31,8 +31,6 @@ import java.util.Map;
 import java.util.Random;
 import java.util.WeakHashMap;
 
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
 
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.Emoji;
@@ -70,7 +68,6 @@ public final class TextAnim {
 
     private static volatile boolean installed;
     private static final Object installLock = new Object();
-    private static final List<XC_MethodHook.Unhook> hooks = new ArrayList<>();
     private static final WeakHashMap<View, State> states = new WeakHashMap<>();
     private static final int BLUR_CACHE_MAX = 96;
     private static final int BLUR_BITMAP_MAX_DIMENSION = 512;
@@ -96,7 +93,7 @@ public final class TextAnim {
     private static volatile Field fieldResourcesProvider;
     private static final boolean DIRECT_INTEGRATION = true;
 
-    private static volatile boolean masterEnabled;
+    static volatile boolean masterEnabled;
     private static volatile boolean appearEnabled;
     private static volatile boolean smoothCursorEnabled;
     private static volatile boolean deleteEnabled;
@@ -243,9 +240,7 @@ public final class TextAnim {
             }
             cacheFields(target);
             try {
-                hookOnDraw(target);
-                hookFocusChanged(target);
-                hookTouchEvent(target);
+                EditorLegacyHooks.install(target);
                 installed = true;
             } catch (Throwable t) {
                 FileLog.e("TextAnim install failed", t);
@@ -256,10 +251,7 @@ public final class TextAnim {
 
     public static void uninstall() {
         synchronized (installLock) {
-            for (XC_MethodHook.Unhook h : hooks) {
-                try { h.unhook(); } catch (Throwable ignored) {}
-            }
-            hooks.clear();
+            EditorLegacyHooks.clear();
             synchronized (blurCache) {
                 for (Bitmap b : blurCache.values()) {
                     if (b != null && !b.isRecycled()) {
@@ -332,65 +324,7 @@ public final class TextAnim {
         return null;
     }
 
-    private static void hookOnDraw(Class<?> cls) throws Exception {
-        Method m = cls.getDeclaredMethod("onDraw", Canvas.class);
-        m.setAccessible(true);
-        hooks.add(XposedBridge.hookMethod(m, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                if (!masterEnabled) return;
-                try {
-                    handleBeforeDraw((EditText) param.thisObject);
-                } catch (Throwable t) {
-                    FileLog.e(t);
-                }
-            }
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                if (!masterEnabled) return;
-                try {
-                    handleAfterDraw(
-                            (EditText) param.thisObject, (Canvas) param.args[0]);
-                } catch (Throwable t) {
-                    FileLog.e(t);
-                }
-            }
-        }));
-    }
-
-    private static void hookFocusChanged(Class<?> cls) {
-        Method m = findMethod(cls, "onFocusChanged");
-        if (m == null) return;
-        m.setAccessible(true);
-        hooks.add(XposedBridge.hookMethod(m, new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                try {
-                    EditText view = (EditText) param.thisObject;
-                    boolean focused = (Boolean) param.args[0];
-                    handleFocusChanged(view, focused);
-                } catch (Throwable t) { FileLog.e(t); }
-            }
-        }));
-    }
-
-    private static void hookTouchEvent(Class<?> cls) {
-        Method m = findMethod(cls, "onTouchEvent");
-        if (m == null) return;
-        m.setAccessible(true);
-        hooks.add(XposedBridge.hookMethod(m, new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) {
-                try {
-                    View view = (View) param.thisObject;
-                    view.invalidate();
-                    startHeartbeat(view);
-                } catch (Throwable ignored) {}
-            }
-        }));
-    }
-
-    private static Method findMethod(Class<?> cls, String name) {
+    static Method findMethod(Class<?> cls, String name) {
         for (Class<?> c = cls; c != null; c = c.getSuperclass()) {
             for (Method m : c.getDeclaredMethods()) {
                 if (m.getName().equals(name)) return m;
@@ -410,7 +344,7 @@ public final class TextAnim {
         }
     }
 
-    private static void startHeartbeat(final View view) {
+    static void startHeartbeat(final View view) {
         if (!masterEnabled || !smoothCursorEnabled) return;
         final State st = getState(view);
         if (st.heartbeatRunning) return;
@@ -466,7 +400,7 @@ public final class TextAnim {
         return 0;
     }
 
-    private static void handleBeforeDraw(EditText edit) {
+    static void handleBeforeDraw(EditText edit) {
         State st = getState(edit);
         st.drawingDepth++;
         st.focused = edit.isFocused();
@@ -593,7 +527,7 @@ public final class TextAnim {
         }
     }
 
-    private static void handleAfterDraw(EditText edit, Canvas canvas) {
+    static void handleAfterDraw(EditText edit, Canvas canvas) {
         State st = getState(edit);
         st.drawingDepth = Math.max(0, st.drawingDepth - 1);
         if (st.drawingDepth > 0) return;
@@ -947,7 +881,7 @@ public final class TextAnim {
         }
     }
 
-    private static void handleFocusChanged(EditText edit, boolean focused) {
+    static void handleFocusChanged(EditText edit, boolean focused) {
         State st = getState(edit);
         st.focused = focused;
         if (focused) {

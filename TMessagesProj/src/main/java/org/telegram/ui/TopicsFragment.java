@@ -110,7 +110,6 @@ import org.telegram.ui.Cells.TopicSearchCell;
 import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
-import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BlurredRecyclerView;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
@@ -3884,9 +3883,18 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         private void setUnresolvedSearchMessage(MessageObject message) {
             setForumTopic(null, message.getDialogId(), null, false, false);
             setAnimatedEmojiDrawable(null);
-            setForumIcon(null);
             setTopicIcon(null);
+            setForumIcon(getSearchIconPlaceholder());
             setDialog(message.getDialogId(), message, null, message.messageOwner.date, false, false);
+        }
+
+        private Drawable searchIconPlaceholder;
+        private boolean searchResultRow;
+
+        private Drawable getSearchIconPlaceholder() {
+            if (searchIconPlaceholder == null) searchIconPlaceholder = Theme.getThemedDrawable(getContext(), R.drawable.msg_topics,
+                    getThemedColor(Theme.key_windowBackgroundWhiteGrayIcon));
+            return searchIconPlaceholder;
         }
 
         private TLRPC.TL_forumTopic currentTopic;
@@ -3992,7 +4000,14 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                     } else {
                         animatedEmojiDrawable.setBounds(padding, paddingTop, padding + size, paddingTop + size);
                     }
-                    if (isTopicIconPresented()) {
+                    if (searchResultRow) {
+                        if (animatedEmojiDrawable.getImageReceiver() == null || !animatedEmojiDrawable.getImageReceiver().hasReadyImage()) {
+                            Drawable placeholder = getSearchIconPlaceholder();
+                            placeholder.setBounds(animatedEmojiDrawable.getBounds());
+                            placeholder.draw(canvas);
+                        }
+                        animatedEmojiDrawable.drawForTopicSearch(canvas, animatedEmojiDrawable.getBounds(), this);
+                    } else if (isTopicIconPresented()) {
                         animatedEmojiDrawable.draw(canvas);
                     }
                 } else {
@@ -4405,7 +4420,8 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
         }
 
         private void onTopicsLoaded() {
-            if (isCurrentSearch(searchOwner) && !searchResultMessages.isEmpty()) {
+            if (isCurrentSearch(searchOwner)) {
+                filterSearchTopics(searchOwner.query);
                 updateRows();
             }
         }
@@ -4461,6 +4477,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             recyclerView.setAdapter(searchAdapter = new SearchAdapter());
             recyclerView.setLayoutManager(layoutManager = new LinearLayoutManager(context));
             DefaultItemAnimator searchItemAnimator = new DefaultItemAnimator();
+            searchItemAnimator.setDelayAnimations(false);
             searchItemAnimator.setAddDuration(150);
             searchItemAnimator.setRemoveDuration(130);
             searchItemAnimator.setMoveDuration(200);
@@ -4695,7 +4712,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
 
             boolean changed = !TextUtils.equals(this.searchString, query);
             this.searchString = query;
-            if (changed) {
+            if (changed && view != searchContainer) {
                 long generation = invalidateSearch();
                 if (generation != searchGeneration || !TextUtils.equals(this.searchString, query)) return;
             }
@@ -4729,37 +4746,16 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
             }
             if (TextUtils.isEmpty(searchString)) {
                 isLoading = false;
-                searchResultTopics.clear();
+                filterSearchTopics(searchString);
                 searchResultMessages.clear();
-                for (int i = 0; i < forumTopics.size(); i++) {
-                    if (forumTopics.get(i).topic != null) {
-                        searchResultTopics.add(forumTopics.get(i).topic);
-                        forumTopics.get(i).topic.searchQuery = null;
-                    }
-                }
                 updateRows();
                 // emptyView.showProgress(true, true);
                 return;
             }
 
-            isLoading = rowCount == 0;
-            if (isLoading) emptyView.showProgress(true, true);
 
             if (!isCurrentSearch(owner)) return;
-            searchRunnable = () -> {
-                if (!isCurrentSearch(owner)) return;
-                searchRunnable = null;
-                String searchTrimmed = searchString.trim().toLowerCase();
-                ArrayList<TLRPC.TL_forumTopic> topics = new ArrayList<>();
-                for (int i = 0; i < forumTopics.size(); i++) {
-                    if (forumTopics.get(i).topic != null && forumTopics.get(i).topic.title.toLowerCase().contains(searchTrimmed)) {
-                        topics.add(forumTopics.get(i).topic);
-                        forumTopics.get(i).topic.searchQuery = searchTrimmed;
-                    }
-                }
-
-                searchResultTopics.clear();
-                searchResultTopics.addAll(topics);
+            filterSearchTopics(searchString);
                 searchResultMessages.clear();
                 isLoading = searchResultTopics.isEmpty();
                 updateRows();
@@ -4768,9 +4764,23 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 emptyView.showProgress(isLoading, true);
 
                 if (!isCurrentSearch(owner)) return;
+            searchRunnable = () -> {
+                if (!isCurrentSearch(owner)) return;
+                searchRunnable = null;
                 loadMessages(searchString);
             };
             AndroidUtilities.runOnUIThread(searchRunnable, 200);
+        }
+
+        private void filterSearchTopics(String query) {
+            String needle = query.trim().toLowerCase();
+            searchResultTopics.clear();
+            for (int i = 0; i < forumTopics.size(); i++) {
+                TLRPC.TL_forumTopic topic = forumTopics.get(i).topic;
+                if (topic != null && (needle.isEmpty() || topic.title != null && topic.title.toLowerCase().contains(needle))) {
+                    searchResultTopics.add(topic);
+                }
+            }
         }
 
         public void setSearchString(String searchString) {
@@ -5022,19 +5032,13 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                         view = new GraySectionCell(parent.getContext());
                         break;
                     case VIEW_TYPE_TOPIC: {
-                        TopicSearchCell cell = new TopicSearchCell(parent.getContext());
-                        for (int i = 0; i < cell.getChildCount(); i++) {
-                            View child = cell.getChildAt(i);
-                            if (child instanceof BackupImageView) {
-                                ((BackupImageView) child).getImageReceiver().setCurrentAccount(searchAccount);
-                            }
-                        }
-                        view = cell;
+                        view = new TopicSearchCell(parent.getContext(), searchAccount, getResourceProvider());
                         break;
                     }
                     case VIEW_TYPE_MESSAGE:
                         view = new TopicDialogCell(null, parent.getContext(), false, true);
                         ((TopicDialogCell) view).inPreviewMode = inPreviewMode;
+                        ((TopicDialogCell) view).searchResultRow = true;
                         break;
                     default:
                         throw new RuntimeException("unsupported view type");
@@ -5059,7 +5063,7 @@ public class TopicsFragment extends BaseFragment implements NotificationCenter.N
                 if (getItemViewType(position) == VIEW_TYPE_TOPIC) {
                     TLRPC.TL_forumTopic topic = searchResultTopics.get(position - topicsStartRow);
                     TopicSearchCell topicSearchCell = (TopicSearchCell) holder.itemView;
-                    topicSearchCell.setTopic(topic);
+                    topicSearchCell.setTopic(topic, searchString.trim().toLowerCase());
                     topicSearchCell.drawDivider = position != topicsEndRow - 1;
                 }
                 if (getItemViewType(position) == VIEW_TYPE_MESSAGE) {

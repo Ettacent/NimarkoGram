@@ -4,6 +4,7 @@
 (function () {
   'use strict';
   var root = document.documentElement;
+  var status = document.getElementById('vw-status'), statusLabels = {};
   var active = false,started = false,paused = false,ready = false,finished = false;
   var nativeAllowCopy = false,pdfAllowCopy = true,allowCopy = false;
   var generation = 0,count = 0,index = 0,initialIndex = 0,scale = 1,baseScale = 1;
@@ -124,6 +125,7 @@
     scheduleFrame();
   }
   function scheduleFrame() {
+    discardMovedResumePage();
     frameDirty = true;
     if (!visible() || !ready || awaitingAck || frameTask) return;
     frameTask = requestAnimationFrame(function () {
@@ -155,12 +157,24 @@
     const vv = window.visualViewport;
     return { x: vv?.pageLeft ?? scrollX, y: vv?.pageTop ?? scrollY };
   }
-  function cancelPageNavigation() {
-    pageRequest = enginePageRequest = null;
+  function discardMovedResumePage() {
+    const r = pageRequest, vv = window.visualViewport;
+    if (r?.resumeWidth !== undefined && (!vv || vv.pageLeft !== r.x || vv.pageTop !== r.y ||
+        vv.width !== r.resumeWidth || vv.height !== r.viewportHeight || vv.scale !== r.viewportScale ||
+        topInset !== r.topInset || bottomInset !== r.bottomInset)) pageRequest = null;
+  }
+  function cancelPageNavigation(forPause = false) {
+    const vv = window.visualViewport;
+    if (forPause && vv && pageRequest && !pageRequest.moving && requestedPage() !== null) {
+      pageRequest = { index: pageRequest.index, ...pagePoint(), resumeWidth: vv.width, topInset, bottomInset,
+        viewportHeight: vv.height, viewportScale: vv.scale, extent: root.scrollHeight };
+    } else pageRequest = null;
+    enginePageRequest = null;
     cancelAnimationFrame(pageTask);pageTask = 0;
     window.OfficePdf?.cancelNavigation?.();
   }
   function requestedPage() {
+    discardMovedResumePage();
     if (!pageRequest) return null;
     if (!pageRequest.moving && !OfficePdf.retainPageRequest(pageRequest)) pageRequest = null;
     return pageRequest?.index ?? null;
@@ -242,9 +256,9 @@
   function fail(code, features) {
     if (!active) return;
     post({ type: 'error', code: code, renderer: 'gander-pdf', fallbackRequired: true, featureCodes: features || [] });
-    var status = document.getElementById('vw-status');
     status.className = 'vw-status vw-error';status.style.display = '';
-    status.textContent = code === 4 ? 'This PDF needs the native reader for its protection.' : 'Opening this PDF in the native reader is required.';
+    status.textContent = statusLabels.nativePdf || '';
+    status.hidden = !status.textContent;
     cancel(false);
   }
   window.officePdfFailure = function (e) {
@@ -363,6 +377,10 @@
   async function open(m) {
     if (started) return;
     started = active = true;generation++;
+    statusLabels = m.statusLabels || {};
+    status.lang = m.statusLanguage || '';
+    status.textContent = statusLabels.opening || '';
+    status.hidden = !status.textContent;
     if (typeof m.password === 'string') {
       if (m.password.length > 4096) {fail(4, ['passwordLengthLimit']);return;}
       initialPassword = m.password;
@@ -390,7 +408,7 @@
     } catch (_) {if (active) fail(1, ['documentReadFailure']);}
   }
   function suspend() {
-    cancelPageNavigation();
+    cancelPageNavigation(true);
     clearLoadTimeout();cancelAnimationFrame(frameTask);frameTask = 0;awaitingAck = 0;frameDirty = true;
     if (window.OfficePdf) OfficePdf.setPaused(true);
   }
@@ -458,6 +476,6 @@
   addEventListener('pagehide', function () {cancel(true);});
   document.addEventListener('visibilitychange', function () {if (document.hidden) suspend();else resume();});
   protection(false);
-  window.OfficeViewer = Object.freeze({ command: command, stopScrolling: function () {cancelPageNavigation();cancelReveal();scheduleFrame();}, getNativeScale: function () {return visible() && ready && window.visualViewport ? visualViewport.scale / baseScale : 0;}, getNativeZoomState: function () {return [visible() && ready && window.visualViewport ? visualViewport.scale / baseScale : 0, window.visualViewport ? visualViewport.scale : 0, window.devicePixelRatio || 1];} });
+  window.OfficeViewer = Object.freeze({ command: command, stopScrolling: function (forPause) {cancelPageNavigation(forPause);cancelReveal();scheduleFrame();}, getNativeScale: function () {return visible() && ready && window.visualViewport ? visualViewport.scale / baseScale : 0;}, getNativeZoomState: function () {return [visible() && ready && window.visualViewport ? visualViewport.scale / baseScale : 0, window.visualViewport ? visualViewport.scale : 0, window.devicePixelRatio || 1];} });
   post({ type: 'bridgeReady' });
 })();

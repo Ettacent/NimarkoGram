@@ -754,7 +754,7 @@ public final class InAppNotifications {
                 .setInterpolator(CubicBezierInterpolator.Emphasized).start();
         next.postOnAnimation(() -> {
             if (banner == next && !next.opening && !next.closing
-                    && (next.delivery != null && !next.delivery.isActive()
+                    && (next.delivery != null && (!next.delivery.isActive() || !next.delivery.canRetainPrivacy())
                     || !next.sample && !canNotify(next.account, next.dialogId, next.topicId, next.delivery == null ? null : next.delivery.channelHint)
                     || !isCurrent(next.account, next.owner, next.loginSession)
                     || !allowed(next.account, next.owner, next.dialogId, next.topicId, next.sample))) {
@@ -1182,7 +1182,8 @@ public final class InAppNotifications {
                     postDelayed(this, 250);
                     return;
                 }
-                if (delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, topicId, sample)
+                if (delivery != null && (!delivery.isActive() || !delivery.canRetainPrivacy())
+                        || !isCurrent(account, owner, loginSession) || !mayRemain(account, owner, dialogId, topicId, sample)
                         || !sample && !canNotify(account, dialogId, topicId, delivery == null ? null : delivery.channelHint)
                         || !sample && preview && !canPreview(account, dialogId, topicId, delivery == null ? null : delivery.channelHint)) {
 
@@ -1924,7 +1925,8 @@ public final class InAppNotifications {
 
         void openChat() {
             if (banner != this) return;
-            if (closing || delivery != null && !delivery.isActive() || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, topicId, sample)) {
+            if (closing || delivery != null && (!delivery.isActive() || !delivery.canRetainPrivacy())
+                    || !isCurrent(account, owner, loginSession) || !allowed(account, owner, dialogId, topicId, sample)) {
                 removeCurrent(); return;
             }
             if (!sample && (navigationRequestCurrent == null || !navigationRequestCurrent.getAsBoolean())) {

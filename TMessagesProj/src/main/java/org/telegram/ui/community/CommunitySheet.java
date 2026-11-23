@@ -744,7 +744,7 @@ public class CommunitySheet extends BottomSheet implements NotificationCenter.No
             actionBar.setBackButtonImage(R.drawable.ic_ab_back);
             ThemeBind.actionBarItemsColor(actionBar, Theme.key_actionBarActionModeDefaultIcon, CommunitySheet.this.resourcesProvider, false);
             actionBar.setTitle(DialogObject.getName(currentCommunity));
-            actionBar.getTitleTextView().setTranslationX(-dp(18));
+            actionBar.setUncenteredTitleOffsetX(-dp(18));
             actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
                 @Override
                 public void onItemClick(int id) {
@@ -876,7 +876,7 @@ public class CommunitySheet extends BottomSheet implements NotificationCenter.No
             actionBar.setBackButtonImage(onlyChatsMode ? R.drawable.ic_ab_close : R.drawable.ic_ab_back);
             ThemeBind.actionBarItemsColor(actionBar, Theme.key_actionBarActionModeDefaultIcon, CommunitySheet.this.resourcesProvider, false);
             actionBar.setTitle(getString(R.string.CommunityAddAChatToCommunityHeader));
-            actionBar.getTitleTextView().setTranslationX(-dp(18));
+            actionBar.setUncenteredTitleOffsetX(-dp(18));
             actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
                 @Override
                 public void onItemClick(int id) {
@@ -957,7 +957,7 @@ public class CommunitySheet extends BottomSheet implements NotificationCenter.No
             actionBar.setBackButtonImage(R.drawable.ic_ab_back);
             ThemeBind.actionBarItemsColor(actionBar, Theme.key_actionBarActionModeDefaultIcon, CommunitySheet.this.resourcesProvider, false);
             actionBar.setTitle(getString(R.string.CommunityPendingRequestsTitle));
-            actionBar.getTitleTextView().setTranslationX(-dp(18));
+            actionBar.setUncenteredTitleOffsetX(-dp(18));
             actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
                 @Override
                 public void onItemClick(int id) {

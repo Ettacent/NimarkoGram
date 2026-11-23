@@ -146,7 +146,7 @@ public class FileLoader extends BaseController {
         private final long generation;
         private final StreamCancellation cancellation;
         private volatile FileLoadOperation operation;
-        private FileLoadOperation recoveryOperation;
+        private AccountFileLoadOperation recoveryOperation;
         private volatile boolean closed;
         private volatile boolean terminallyCancelled;
 
@@ -168,8 +168,27 @@ public class FileLoader extends BaseController {
                     && this.operation == operation && (scope == null || !scope.closed);
         }
 
+        boolean canRecover(FileLoadOperation previous) {
+            if (!owner.isCurrent()) return false;
+            synchronized (loader.streamOperationLock) {
+                return previous != null && previous == recoveryOperation && canRecoverLocked(recoveryOperation);
+            }
+        }
+
+        private boolean canRecoverLocked(AccountFileLoadOperation previous) {
+            return recoveryOperation == previous && isLiveOnLocked(previous);
+        }
+
+        private boolean isLiveOnLocked(AccountFileLoadOperation previous) {
+            return operation == previous && cancellation.current == this && !isLocallyClosed()
+                    && owner.matches(previous.owner) && !previous.streamUserCancelled;
+        }
+
+        private boolean isLocallyClosed() {
+            return closed || terminallyCancelled || cancellation.cancelled || scope != null && scope.closed;
+        }
         public boolean isClosed() {
-            return closed || terminallyCancelled || cancellation.cancelled || !owner.isCurrent() || scope != null && scope.closed;
+            return isLocallyClosed() || !owner.isCurrent();
         }
 
         boolean isReaderCancelled() {
@@ -317,7 +336,7 @@ public class FileLoader extends BaseController {
         for (StreamRegistration registration : pendingStreamRecoveries.keySet()) {
             FileLoadOperation previous = registration.recoveryOperation;
             if (registration.cancellation != except && !registration.closed && previous != null
-                    && owner.matches(registration.owner) && name.equals(previous.getFileName())) {
+                    && owner.matches(registration.owner) && (name == null || name.equals(previous.getFileName()))) {
                 cancelStreamRegistrationLocked(registration);
                 cancelled.add(registration);
             }
@@ -350,12 +369,13 @@ public class FileLoader extends BaseController {
             if (((AccountFileLoadOperation) operation).retired.get()) return false;
             StreamOperationState state = streamOperations.get(operation);
             if (state != null && state.retiring) return false;
-            if (registration != null && (registration.closed || registration.terminallyCancelled || registration.cancellation.cancelled || registration.loader != this
-                    || !owner.matches(registration.owner) || registration.scope != null && registration.scope.closed)) return false;
+            if (registration != null && (registration.isLocallyClosed() || registration.loader != this
+                    || !owner.matches(registration.owner))) return false;
             if (registration != null && registration.operation instanceof AccountFileLoadOperation) {
                 AccountFileLoadOperation current = (AccountFileLoadOperation) registration.operation;
                 if (current.streamUserCancelled || current.retired.get()
-                        && !current.streamReleaseRetired && registration.recoveryOperation != current) return false;
+                        && !current.streamReleaseRetired && (!registration.canRecoverLocked(current)
+                        || !current.getFileName().equals(operation.getFileName()))) return false;
             }
             if (loadOperationPaths.get(operation.getFileName()) != operation) return false;
             if (state == null) streamOperations.put(operation, state = new StreamOperationState(owner));
@@ -878,6 +898,7 @@ public class FileLoader extends BaseController {
         volatile LoadOperationUIObject admission;
         volatile boolean streamReleaseRetired;
         volatile boolean streamUserCancelled;
+        boolean streamRecoveryRetired;
         final IdentityHashMap<StreamRegistration, Boolean> streamRegistrations = new IdentityHashMap<>();
 
         AccountFileLoadOperation(TransferOwner owner, SecureDocument document) {
@@ -1763,6 +1784,12 @@ public class FileLoader extends BaseController {
         return cancelDownload(name, operation, ui, owner, null);
     }
 
+    private void retireDisplacedDownload(AccountFileLoadOperation operation) {
+        synchronized (streamOperationLock) {
+            if (operation.streamRecoveryRetired) return;
+        }
+        operation.retire();
+    }
     boolean recoverStreamFile(FileLoadOperation operation, StreamRegistration registration) {
         if (!(operation instanceof AccountFileLoadOperation) || registration == null || registration.loader != this) return false;
         final String name = operation.getFileName();
@@ -1784,11 +1811,16 @@ public class FileLoader extends BaseController {
             current = target instanceof AccountFileLoadOperation && owner.matches(downloadOwner(target))
                     ? (AccountFileLoadOperation) target : null;
             if (recovery != null) {
-                if (current == null || recovery.operation != current || recovery.closed || recovery.terminallyCancelled || recovery.cancellation.cancelled
-                        || !owner.matches(recovery.owner) || recovery.scope != null && recovery.scope.closed
-                        || current.streamUserCancelled || !current.retired.compareAndSet(false, true)) return false;
-                recovery.recoveryOperation = current;
-                pendingStreamRecoveries.put(recovery, true);
+                if (current == null || !recovery.isLiveOnLocked(current)) return false;
+                if (recovery.recoveryOperation == current) return true;
+                if (!current.retired.compareAndSet(false, true)) return false;
+                current.streamRecoveryRetired = true;
+                for (StreamRegistration registration : current.streamRegistrations.keySet()) {
+                    if (registration.isLiveOnLocked(current)) {
+                        registration.recoveryOperation = current;
+                        pendingStreamRecoveries.put(registration, true);
+                    }
+                }
                 cancel = true;
                 cancelled = new ArrayList<>();
             } else if (current != null) {
@@ -1889,6 +1921,12 @@ public class FileLoader extends BaseController {
 //                });
 //            }
         }
+        if (!owner.isCurrent()) return;
+        final ArrayList<StreamRegistration> cancelled;
+        synchronized (streamOperationLock) {
+            cancelled = cancelPendingStreamRecoveriesLocked(null, owner, null);
+        }
+        closeCancelledStreamRegistrations(cancelled);
     }
 
     public FileUploadOperation findUploadOperationByRequestToken(final int requestToken) {
@@ -2079,7 +2117,7 @@ public class FileLoader extends BaseController {
         if (operation != null && (!owner.matches(downloadOwner(operation))
                 || ((AccountFileLoadOperation) operation).retired.get())) {
             if (!owner.isCurrent()) return null;
-            ((AccountFileLoadOperation) operation).retire();
+            retireDisplacedDownload((AccountFileLoadOperation) operation);
             loadOperationPaths.remove(finalFileName, operation);
             forgetStreamOperation(operation);
             operation.getQueue().remove(operation);
@@ -2214,9 +2252,10 @@ public class FileLoader extends BaseController {
                             saveCustomPath = true;
                         }
                     } else if (!TextUtils.isEmpty(getDocumentFileName(document)) && canSaveAsFile(parentObject)) {
-                        storeFileName = getDocumentFileName(document);
                         File newDir = getDirectory(MEDIA_DIR_FILES);
-                        if (newDir != null) {
+                        if (newDir != null && !newDir.equals(tempDir)) {
+                        storeFileName = getDocumentFileName(document);
+                            operation.needsUniqueDocumentName = true;
                             storeDir = newDir;
                             saveCustomPath = true;
                         }
@@ -3104,15 +3143,45 @@ public class FileLoader extends BaseController {
         return "";
     }
 
+    private static boolean isDocumentPathMapped(File file) throws IOException {
+        for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
+            if (UserConfig.isValidAccount(account)
+                    && getInstance(account).getFileDatabase().isDownloadPathMapped(file.toString())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean reserveDocumentFile(File file) throws IOException {
+        return !file.exists() && !isDocumentPathMapped(file) && file.createNewFile();
+    }
+
+    private static final class CacheSidecarCheck {
+        private boolean lookupFailed;
+
+        boolean canDelete(File file) {
+            if (lookupFailed || file.getParentFile() == null || !file.getParentFile().equals(getDirectory(MEDIA_DIR_CACHE))
+                    || !file.exists()) return false;
+            try {
+                return !isDocumentPathMapped(file);
+            } catch (IOException e) {
+                lookupFailed = true;
+                FileLog.e(e);
+                return false;
+            }
+        }
+    }
     public void deleteFiles(final ArrayList<File> files, final int type) {
         if (files == null || files.isEmpty()) {
             return;
         }
         fileLoaderQueue.postRunnable(() -> {
+            CacheSidecarCheck sidecars = new CacheSidecarCheck();
             for (int a = 0; a < files.size(); a++) {
                 File file = files.get(a);
                 File encrypted = new File(file.getAbsolutePath() + ".enc");
-                if (encrypted.exists()) {
+                if (sidecars.canDelete(encrypted)) {
                     try {
                         if (!encrypted.delete()) {
                             encrypted.deleteOnExit();
@@ -3139,7 +3208,7 @@ public class FileLoader extends BaseController {
                 }
                 try {
                     File qFile = new File(file.getParentFile(), "q_" + file.getName());
-                    if (qFile.exists()) {
+                    if (sidecars.canDelete(qFile)) {
                         if (!qFile.delete()) {
                             qFile.deleteOnExit();
                         }

@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.messenger;
 
 import android.annotation.SuppressLint;
@@ -91,6 +93,14 @@ public class TelegramMediaSession {
     private Paint roundPaint;
     private RectF bitmapRect;
 
+    static PendingIntent optionalIntent(java.util.function.Supplier<PendingIntent> create) {
+        try {
+            return create.get();
+        } catch (SecurityException denied) {
+            if (BuildVars.LOGS_ENABLED) FileLog.d("Media notification intent unavailable");
+            return null;
+        }
+    }
     private TelegramMediaSession(Context appContext) {
         this.appContext = appContext;
         this.currentAccount = UserConfig.selectedAccount;
@@ -101,9 +111,9 @@ public class TelegramMediaSession {
         session.setCallback(new SessionCallback());
 
         Intent activityIntent = new Intent(appContext, LaunchActivity.class);
-        PendingIntent pi = PendingIntent.getActivity(
+        PendingIntent pi = optionalIntent(() -> PendingIntent.getActivity(
                 appContext, 99, activityIntent,
-                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         session.setSessionActivity(pi);
 
         Bundle extras = new Bundle();

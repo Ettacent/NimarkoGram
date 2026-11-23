@@ -12,6 +12,8 @@
     <string name="NM_SearchDatesYesterday">Yesterday</string>
     <string name="NM_SearchDatesLast7">Last 7 days</string>
     <string name="NM_SearchDatesLast30">Last 30 days</string>
+    <string name="NM_SearchDatesQuick7">7 days</string>
+    <string name="NM_SearchDatesQuick30">30 days</string>
     <string name="NM_SearchDatesApply">Apply filter</string>
     <string name="NM_SearchDatesReset">All dates</string>
     <string name="NM_SearchDatesRange">%1$s – %2$s</string>

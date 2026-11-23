@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat;
 
 import com.google.common.util.concurrent.ListenableFuture;
 
+import com.google.common.util.concurrent.SettableFuture;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.SharedConfig;
 
@@ -242,32 +243,44 @@ public final class CameraXUtils {
     }
 
     public static ListenableFuture<ProcessCameraProvider> getProviderFuture(Context context) {
-        ListenableFuture<ProcessCameraProvider> future = sharedProviderFuture;
-        if (future != null) {
-            return future;
-        }
+        final SettableFuture<ProcessCameraProvider> pending;
         synchronized (PROVIDER_LOCK) {
-            future = sharedProviderFuture;
-            if (future == null) {
-                Context appContext = context.getApplicationContext();
-                future = ProcessCameraProvider.getInstance(appContext != null ? appContext : context);
-                sharedProviderFuture = future;
-                final ListenableFuture<ProcessCameraProvider> createdFuture = future;
-                createdFuture.addListener(() -> {
-                    try {
-                        createdFuture.get();
-                    } catch (Throwable error) {
+            if (sharedProviderFuture != null) return sharedProviderFuture;
+            pending = SettableFuture.create();
+            sharedProviderFuture = pending;
+        }
+        pending.addListener(() -> {
+            try {
+                com.google.common.util.concurrent.Futures.getDone(pending);
+            } catch (Exception failedOrCancelled) {
 
                         synchronized (PROVIDER_LOCK) {
-                            if (sharedProviderFuture == createdFuture) {
-                                sharedProviderFuture = null;
-                            }
-                        }
-                    }
-                }, ContextCompat.getMainExecutor(appContext != null ? appContext : context));
+                    if (sharedProviderFuture == pending) sharedProviderFuture = null;
+                }
             }
+        }, Runnable::run);
+        final Context app = context.getApplicationContext();
+        final Context owner = app != null ? app : context;
+        try {
+            final ExecutorService worker = newQualityExecutor();
+            try {
+                worker.execute(() -> {
+                    try {
+                        pending.setFuture(ProcessCameraProvider.getInstance(owner));
+                    } catch (RuntimeException | LinkageError error) {
+                        pending.setException(error);
+                    } finally {
+                        worker.shutdown();
+                    }
+                });
+            } catch (RuntimeException error) {
+                worker.shutdown();
+                throw error;
+            }
+        } catch (RuntimeException | LinkageError error) {
+            pending.setException(error);
         }
-        return future;
+        return pending;
     }
 
     public static Map<Quality, Size> getAvailableVideoSizes() {

@@ -27,7 +27,7 @@ public final class VideoPlaybackFocus {
     private AudioManager.OnAudioFocusChangeListener listener;
     private Object request;
     private long generation;
-    private boolean granted, suspended, wanted;
+    private boolean granted, suspended, wanted, requesting;
     private boolean autoStartCancelled;
 
     public boolean canAutoStart() { return !autoStartCancelled; }
@@ -77,6 +77,7 @@ public final class VideoPlaybackFocus {
             else handler.post(() -> onFocus(lease, change));
         };
         listener = next;
+        requesting = true;
         active.add(this);
         Object issued = null;
         int result;
@@ -96,6 +97,7 @@ public final class VideoPlaybackFocus {
             abandonRequest(next, issued);
             return false;
         }
+        requesting = false;
         if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED || !owner.isCurrent() || !wanted) {
             abandon();
             if (owner == client && owner.isCurrent()) notifyClient(owner, false);
@@ -108,6 +110,14 @@ public final class VideoPlaybackFocus {
 
     public void pause(Client owner) {
         if (owner == client) wanted = false;
+    }
+
+    public boolean hasLease(Client owner) {
+        return owner == client && listener != null;
+    }
+
+    public void releasePaused(Client owner) {
+        if (hasLease(owner) && !wanted && !requesting) abandon();
     }
 
     public void finish(Client owner) {
@@ -186,7 +196,7 @@ public final class VideoPlaybackFocus {
         active.remove(this);
         request = null;
         ++generation;
-        granted = suspended = false;
+        granted = suspended = requesting = false;
         abandonRequest(oldListener, oldRequest);
     }
 

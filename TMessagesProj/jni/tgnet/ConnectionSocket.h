@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 /*
  * This is the source code of tgnet library v. 1.1
  * It is licensed under GNU GPL v. 2 or later.
@@ -33,7 +35,7 @@ public:
     bool isDisconnected();
     void dropConnection();
     void setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret);
-    void onHostNameResolved(std::string host, std::string ip, bool ipv6);
+    void onHostNameResolved(std::string host, std::string ip);
 
 protected:
     int32_t instanceNum;
@@ -84,6 +86,8 @@ private:
 
     int32_t checkSocketError(int32_t *error);
     void closeSocket(int32_t reason, int32_t error);
+    int parseProxyAddress(const std::string &address);
+    void openProxyConnection(int family);
     void openConnectionInternal(bool ipv6);
     void adjustWriteOp();
 

@@ -729,6 +729,7 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                 return;
             }
             if (request.abandoned) {
+                if (request.path != null) request.path.delete();
                 AndroidUtilities.runOnUIThread(() -> {
                     request.completed = true;
                     if (viewRecordingRequest == request) {
@@ -743,7 +744,10 @@ public class CameraController implements MediaRecorder.OnInfoListener {
                 }
                 request.completed = true;
                 viewRecordingRequest = null;
-                if (!request.abandoned && request.onFinished != null) {
+                if (request.abandoned) {
+                    request.path.delete();
+                    if (thumb != null) new File(thumb).delete();
+                } else if (request.onFinished != null) {
                     request.onFinished.onFinishVideoRecording(thumb, duration);
                 }
             });
@@ -987,6 +991,32 @@ public class CameraController implements MediaRecorder.OnInfoListener {
         }
     }
 
+    public boolean isViewRecording(ICameraView view, File file) {
+        ViewRecordingRequest request = viewRecordingRequest;
+        return request != null && request.view == view && request.path == file
+                && request.accepted && !request.stopped;
+    }
+
+    public void stopViewRecording(File file, boolean abandon) {
+        ViewRecordingRequest request = viewRecordingRequest;
+        if (file != null && request != null && request.path == file) {
+            stopViewRecording(request, abandon);
+        }
+    }
+
+    private void stopViewRecording(ViewRecordingRequest request, boolean abandon) {
+        request.abandoned |= abandon;
+        if (request.stopped || request.completed) {
+            return;
+        }
+        request.stopped = true;
+        recordingCurrentCameraView = null;
+        if (request.accepted) {
+            request.view.stopRecording();
+        } else {
+            rejectViewRecording(request);
+        }
+    }
     public void stopVideoRecording(final Object sessionObject, final boolean abandon) {
         stopVideoRecording(sessionObject, abandon, true);
     }
@@ -999,17 +1029,7 @@ public class CameraController implements MediaRecorder.OnInfoListener {
             if (session != null && session != request.session) {
                 return;
             }
-            request.abandoned |= abandon;
-            if (request.stopped || request.completed) {
-                return;
-            }
-            request.stopped = true;
-            recordingCurrentCameraView = null;
-            if (request.accepted) {
-                request.view.stopRecording();
-            } else {
-                rejectViewRecording(request);
-            }
+            stopViewRecording(request, abandon);
             return;
         }
         if (viewRecordingMode) {
