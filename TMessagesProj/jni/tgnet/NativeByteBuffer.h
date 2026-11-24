@@ -17,6 +17,7 @@
 
 #ifdef ANDROID
 #include <jni.h>
+#include <mutex>
 #endif
 
 class ByteArray;
@@ -111,6 +112,7 @@ private:
     bool bufferOwner = true;
     std::atomic<bool> inFreePool{false};
 #ifdef ANDROID
+    std::mutex javaByteBufferMutex;
     jobject javaByteBuffer = nullptr;
 #endif
 };

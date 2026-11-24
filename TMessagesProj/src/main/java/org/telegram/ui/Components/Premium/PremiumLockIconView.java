@@ -1,3 +1,5 @@
+/* Modifications Copyright (C) 2026 Ettacent */
+
 package org.telegram.ui.Components.Premium;
 
 import android.content.Context;
@@ -201,7 +203,7 @@ public class PremiumLockIconView extends ImageView {
         if (restore) {
             canvas.restore();
         }
-        wasDrawn = true;
+        wasDrawn = paint != null;
     }
 
     public void setImageReceiver(ImageReceiver imageReceiver) {
@@ -242,10 +244,11 @@ public class PremiumLockIconView extends ImageView {
             c1 = ColorUtils.blendARGB(baseColor, Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider), 0.4f);
 
             if (shader == null || color1 != c1 || color2 != c2) {
-                if (wasDrawn) {
-                    oldShaderPaint = paint;
-                    oldShaderPaint.setAlpha(255);
-                    shaderCrossfadeProgress = 0;
+                final Paint previousPaint = wasDrawn ? paint : null;
+                oldShaderPaint = previousPaint;
+                shaderCrossfadeProgress = previousPaint == null ? 1f : 0f;
+                if (previousPaint != null) {
+                    previousPaint.setAlpha(255);
                 }
                 paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 shader = new LinearGradient(0, getMeasuredHeight(), 0, 0, new int[]{color1 = c1, color2 = c2}, null, Shader.TileMode.CLAMP);
@@ -273,6 +276,8 @@ public class PremiumLockIconView extends ImageView {
             paint = null;
         }
         shader = null;
+        oldShaderPaint = null;
+        shaderCrossfadeProgress = 1f;
         wasDrawn = false;
     }
 

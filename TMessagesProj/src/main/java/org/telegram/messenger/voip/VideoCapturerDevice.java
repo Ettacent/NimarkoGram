@@ -687,12 +687,20 @@ public class VideoCapturerDevice {
     }
 
     private void onStateChanged(long bindingId, int state) {
+        applyCaptureState(bindingId, state);
+    }
+
+    private boolean applyCaptureState(long bindingId, int state) {
         synchronized (lifecycleLock) {
             Binding binding = bindings.get(bindingId);
-            if (!isCurrentLocked(binding)) return;
+            if (!isCurrentLocked(binding) || binding.failed) return false;
             binding.state = state;
         }
         scheduleWork();
+        synchronized (lifecycleLock) {
+            Binding binding = bindings.get(bindingId);
+            return isCurrentLocked(binding) && !binding.failed;
+        }
     }
 
     private void onAspectRatioRequested(float aspectRatio) {

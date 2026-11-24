@@ -1,0 +1,278 @@
+diff --git a/tgcalls/platform/android/VideoCameraCapturer.cpp b/tgcalls/platform/android/VideoCameraCapturer.cpp
+index f84828f404fb..856950c1730c 100644
+--- a/tgcalls/platform/android/VideoCameraCapturer.cpp
++++ b/tgcalls/platform/android/VideoCameraCapturer.cpp
+@@ -1,62 +1,203 @@
+ #include "VideoCameraCapturer.h"
+
+ #include <stdint.h>
+ #include <memory>
+ #include <algorithm>
++#include <limits>
++#include <map>
++#include <mutex>
+
+ #include "AndroidInterface.h"
+ #include "AndroidContext.h"
++#include "rtc_base/logging.h"
++#include "rtc_base/thread.h"
+ #include "sdk/android/native_api/jni/jvm.h"
+
+ namespace tgcalls {
++class CaptureStateReporter {
++public:
++    explicit CaptureStateReporter(std::function<void(VideoState)> update) : _update(std::move(update)) {}
+
+-VideoCameraCapturer::VideoCameraCapturer(rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source, std::string deviceId, std::function<void(VideoState)> stateUpdated, std::shared_ptr<PlatformContext> platformContext) : _source(source), _stateUpdated(stateUpdated), _platformContext(platformContext) {
++    void publish(VideoState state) {
++        _state = state;
++        if (_update) _update(state);
++    }
++
++    void retired() {
++        if (_state != VideoState::Inactive) publish(VideoState::Inactive);
++    }
++
++private:
++    std::function<void(VideoState)> _update;
++    VideoState _state = VideoState::Inactive;
++};
++}
++
++namespace {
++
++struct CaptureSourceLease {
++    rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source;
++    rtc::Thread *releaseThread;
++    std::weak_ptr<tgcalls::CaptureStateReporter> reporter;
++};
++
++std::mutex captureSourceLeasesMutex;
++std::map<jlong, std::unique_ptr<CaptureSourceLease>> captureSourceLeases;
++jlong nextCaptureBindingId = 1;
++
++bool captureException(JNIEnv *env, const char *operation) {
++    if (!env->ExceptionCheck()) {
++        return false;
++    }
++    env->ExceptionClear();
++    RTC_LOG(LS_ERROR) << "Camera JNI failed: " << operation;
++    return true;
++}
++
++jmethodID captureMethod(JNIEnv *env, jclass cls, const char *name, const char *descriptor) {
++    const auto method = env->GetMethodID(cls, name, descriptor);
++    return captureException(env, name) ? nullptr : method;
++}
++
++jlong retainCaptureSource(rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source,
++                          const std::shared_ptr<tgcalls::CaptureStateReporter> &reporter) {
++    auto lease = std::make_unique<CaptureSourceLease>();
++    lease->source = std::move(source);
++    lease->reporter = reporter;
++    lease->releaseThread = rtc::Thread::Current();
++    if (lease->releaseThread == nullptr) {
++        return 0;
++    }
++    std::lock_guard<std::mutex> lock(captureSourceLeasesMutex);
++    if (nextCaptureBindingId == std::numeric_limits<jlong>::max()) {
++        return 0;
++    }
++    const jlong id = nextCaptureBindingId++;
++    auto entry = captureSourceLeases.emplace(id, nullptr);
++    entry.first->second = std::move(lease);
++    return id;
++}
++
++void releaseCaptureSource(jlong id) {
++    std::unique_ptr<CaptureSourceLease> lease;
++    {
++        std::lock_guard<std::mutex> lock(captureSourceLeasesMutex);
++        auto entry = captureSourceLeases.find(id);
++        if (entry == captureSourceLeases.end()) {
++            return;
++        }
++        lease = std::move(entry->second);
++        captureSourceLeases.erase(entry);
++    }
++    auto *thread = lease->releaseThread;
++    thread->PostTask([lease = std::move(lease)] {
++        if (auto reporter = lease->reporter.lock()) reporter->retired();
++    });
++}
++
++}
++
++namespace tgcalls {
++
++VideoCameraCapturer::VideoCameraCapturer(rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source, std::string deviceId, std::function<void(VideoState)> stateUpdated, std::shared_ptr<PlatformContext> platformContext) : _source(source), _reporter(std::make_shared<CaptureStateReporter>(std::move(stateUpdated))), _platformContext(platformContext) {
+     AndroidContext *context = (AndroidContext *) platformContext.get();
+     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
+-    jmethodID methodId = env->GetMethodID(context->getJavaCapturerClass(), "init", "(JLjava/lang/String;)V");
+-    env->CallVoidMethod(context->getJavaCapturer(), methodId, (jlong) (intptr_t) this, env->NewStringUTF(deviceId.c_str()));
++    if (!context || !context->getJavaCapturer() || !context->getJavaCapturerClass() || env->ExceptionCheck()) {
++        return;
++    }
++    const auto cls = context->getJavaCapturerClass();
++    const auto initMethod = captureMethod(env, cls, "init", "(JLjava/lang/String;Lorg/webrtc/CapturerObserver;)Z");
++    _retireMethod = captureMethod(env, cls, "onCaptureRetired", "(J)V");
++    _stateMethod = captureMethod(env, cls, "applyCaptureState", "(JI)Z");
++    _aspectMethod = captureMethod(env, cls, "onAspectRatioRequested", "(F)V");
++    if (!initMethod || !_retireMethod || !_stateMethod || !_aspectMethod) {
++        return;
++    }
++    auto observer = _source->GetJavaVideoCapturerObserver(env);
++    if (captureException(env, "observer") || !observer.obj()) {
++        return;
++    }
++    webrtc::ScopedJavaLocalRef<jstring> name(env, env->NewStringUTF(deviceId.c_str()));
++    if (captureException(env, "device name") || !name.obj()) {
++        return;
++    }
++    _bindingId = retainCaptureSource(_source, _reporter);
++    if (_bindingId == 0) {
++        return;
++    }
++    const jboolean accepted = env->CallBooleanMethod(context->getJavaCapturer(), initMethod, _bindingId, name.obj(), observer.obj());
++    if (captureException(env, "init")) {
++        retireCapture();
++    } else if (!accepted) {
++        releaseCaptureSource(_bindingId);
++        _bindingId = 0;
++    }
++}
++
++VideoCameraCapturer::~VideoCameraCapturer() {
++    _reporter.reset();
++    retireCapture();
++    if (_pendingRetirementId) retireCapture();
++}
++
++void VideoCameraCapturer::retireCapture() {
++    if (_bindingId) {
++        _pendingRetirementId = _bindingId;
++        _bindingId = 0;
++    }
++    if (!_pendingRetirementId) {
++        return;
++    }
++    auto *context = static_cast<AndroidContext *>(_platformContext.get());
++    JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
++    env->CallVoidMethod(context->getJavaCapturer(), _retireMethod, _pendingRetirementId);
++    if (!captureException(env, "retire")) _pendingRetirementId = 0;
+ }
+
+ void VideoCameraCapturer::setState(VideoState state) {
+-    _state = state;
+-    if (_stateUpdated) {
+-        _stateUpdated(_state);
++    const auto reporter = _reporter;
++    if (!_bindingId) {
++        if (_pendingRetirementId) retireCapture();
++        reporter->publish(VideoState::Inactive);
++        return;
+     }
+     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
+     AndroidContext *context = (AndroidContext *) _platformContext.get();
+-    jmethodID methodId = env->GetMethodID(context->getJavaCapturerClass(), "onStateChanged", "(JI)V");
+-    env->CallVoidMethod(context->getJavaCapturer(), methodId, (jlong) (intptr_t) this, (jint) state);
++    const jboolean accepted = env->CallBooleanMethod(context->getJavaCapturer(), _stateMethod, _bindingId, (jint) state);
++    if (captureException(env, "state") || !accepted) {
++        retireCapture();
++        state = VideoState::Inactive;
++    }
++    reporter->publish(state);
+ }
+
+ void VideoCameraCapturer::setPreferredCaptureAspectRatio(float aspectRatio) {
+     _aspectRatio = aspectRatio;
++    if (!_bindingId) {
++        return;
++    }
+     JNIEnv *env = webrtc::AttachCurrentThreadIfNeeded();
+     AndroidContext *context = (AndroidContext *) _platformContext.get();
+-    jmethodID methodId = env->GetMethodID(context->getJavaCapturerClass(), "onAspectRatioRequested", "(F)V");
+-    env->CallVoidMethod(context->getJavaCapturer(), methodId, (jfloat) aspectRatio);
++    env->CallVoidMethod(context->getJavaCapturer(), _aspectMethod, (jfloat) aspectRatio);
++    captureException(env, "aspect");
+ }
+
+ void VideoCameraCapturer::setUncroppedSink(std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink) {
+     if (_uncroppedSink != nullptr) {
+         _source->RemoveSink(_uncroppedSink.get());
+     }
+     if (sink != nullptr) {
+         _source->AddOrUpdateSink(sink.get(), rtc::VideoSinkWants());
+     }
+     _uncroppedSink = sink;
+ }
+
+-webrtc::ScopedJavaLocalRef<jobject> VideoCameraCapturer::GetJavaVideoCapturerObserver(JNIEnv *env) {
+-    return _source->GetJavaVideoCapturerObserver(env);
+-}
+-
+ }  // namespace tgcalls
+
+ extern "C" {
+
+-JNIEXPORT jobject Java_org_telegram_messenger_voip_VideoCapturerDevice_nativeGetJavaVideoCapturerObserver(JNIEnv *env, jclass clazz, jlong ptr) {
+-    tgcalls::VideoCameraCapturer *capturer = (tgcalls::VideoCameraCapturer *) (intptr_t) ptr;
+-    return capturer->GetJavaVideoCapturerObserver(env).Release();
++JNIEXPORT void JNICALL Java_org_telegram_messenger_voip_VideoCapturerDevice_nativeReleaseSourceLease(JNIEnv *env, jclass clazz, jlong bindingId) {
++    releaseCaptureSource(bindingId);
+ }
+
+-}
+\ No newline at end of file
++}
+diff --git a/tgcalls/platform/android/VideoCameraCapturer.h b/tgcalls/platform/android/VideoCameraCapturer.h
+index 2615703c0913..7da8bfecfdc1 100644
+--- a/tgcalls/platform/android/VideoCameraCapturer.h
++++ b/tgcalls/platform/android/VideoCameraCapturer.h
+@@ -13,29 +13,34 @@
+ #include <stddef.h>
+ #include <jni.h>
+
+ namespace tgcalls {
+
+ class VideoCameraCapturer;
++class CaptureStateReporter;
+
+ class VideoCameraCapturer {
+
+ public:
+-	VideoCameraCapturer(rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source, std::string deviceId, std::function<void(VideoState)> stateUpdated, std::shared_ptr<PlatformContext> platformContext);
++	VideoCameraCapturer(rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> source, std::string deviceId, std::function<void(VideoState)> stateUpdated, std::shared_ptr<PlatformContext> platformContext);
++	~VideoCameraCapturer();
+
+-	void setState(VideoState state);
++	void setState(VideoState state);
+-	void setPreferredCaptureAspectRatio(float aspectRatio);
++	void setPreferredCaptureAspectRatio(float aspectRatio);
+-	void setUncroppedSink(std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink);
++	void setUncroppedSink(std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> sink);
+
+-    webrtc::ScopedJavaLocalRef<jobject> GetJavaVideoCapturerObserver(JNIEnv* env);
+-
+ private:
++	void retireCapture();
+-	rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> _source;
++	rtc::scoped_refptr<webrtc::JavaVideoTrackSourceInterface> _source;
++	jlong _bindingId = 0;
++	jlong _pendingRetirementId = 0;
++	jmethodID _retireMethod = nullptr;
++	jmethodID _stateMethod = nullptr;
++	jmethodID _aspectMethod = nullptr;
+
+-	std::function<void(VideoState)> _stateUpdated;
+-	VideoState _state;
++	std::shared_ptr<CaptureStateReporter> _reporter;
+
+-	std::shared_ptr<PlatformContext> _platformContext;
++	std::shared_ptr<PlatformContext> _platformContext;
+
+-	float _aspectRatio;
++	float _aspectRatio;
+-	std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> _uncroppedSink;
++	std::shared_ptr<rtc::VideoSinkInterface<webrtc::VideoFrame>> _uncroppedSink;
+ };

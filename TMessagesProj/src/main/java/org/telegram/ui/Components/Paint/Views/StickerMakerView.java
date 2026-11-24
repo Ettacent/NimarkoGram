@@ -100,6 +100,9 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
     private final Path dashPath = new Path();
     private volatile boolean segmentingLoading;
     private volatile boolean segmentingLoaded;
+    private volatile int segmentationGeneration;
+    private Runnable segmentationRetry;
+    private volatile Runnable pendingSegmentation;
     private SegmentedObject selectedObject;
     public float outlineWidth = 2f;
     public boolean empty;
@@ -441,7 +444,9 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
 
     public void updateOutlinePath(Bitmap newMaskBitmap) {
         if (selectedObject == null) return;
-        selectedObject.overrideImage = createSmoothEdgesSegmentedImage(0, 0, newMaskBitmap, true);
+        Bitmap image = createSmoothEdgesSegmentedImage(segmentationGeneration, sourceBitmap, 0, 0, newMaskBitmap, true);
+        if (image == null) return;
+        selectedObject.overrideImage = image;
         selectedObject.overrideDarkMaskImage = selectedObject.makeDarkMaskImage();
         createSegmentImagePath(selectedObject, containerWidth, containerHeight);
     }
@@ -785,31 +790,58 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
         canvas.drawPath(dashPath, dashPaint);
     }
 
-    private Bitmap createSmoothEdgesSegmentedImage(int x, int y, Bitmap inputBitmap, boolean full) {
-        Bitmap srcBitmap = getSourceBitmap();
-        if (inputBitmap == null || inputBitmap.isRecycled() || srcBitmap == null) {
+    private boolean ownsSegmentation(int generation, Bitmap source) {
+        return generation == segmentationGeneration && source != null && sourceBitmap == source;
+    }
+
+    private boolean canUseSegmentationSource(int generation, Bitmap source) {
+        return pendingSegmentation == null && ownsSegmentation(generation, source) && !source.isRecycled();
+    }
+
+    private static boolean drawBorrowedBitmap(Canvas canvas, Bitmap bitmap, int x, int y, Paint paint) {
+        if (bitmap.isRecycled()) return false;
+        try {
+            canvas.drawBitmap(bitmap, x, y, paint);
+            return true;
+        } catch (RuntimeException error) {
+            if (bitmap.isRecycled() && error.getMessage() != null
+                    && error.getMessage().startsWith("Canvas: trying to use a recycled bitmap")) {
+                return false;
+            }
+            throw error;
+        }
+    }
+
+    private Bitmap createSmoothEdgesSegmentedImage(int generation, Bitmap source, int x, int y, Bitmap inputBitmap, boolean full) {
+        if (!canUseSegmentationSource(generation, source) || inputBitmap == null || inputBitmap.isRecycled()) {
             return null;
         }
         Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        Bitmap bluredBitmap = Bitmap.createBitmap(srcBitmap.getWidth(), srcBitmap.getHeight(), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bluredBitmap);
+        int width = source.getWidth(), height = source.getHeight();
+        Bitmap blurredBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Bitmap result = null;
+        try {
+            Canvas canvas = new Canvas(blurredBitmap);
         if (full) {
-            canvas.scale((float) bluredBitmap.getWidth() / inputBitmap.getWidth(), (float) bluredBitmap.getHeight() / inputBitmap.getHeight());
-            canvas.drawBitmap(inputBitmap, x, y, bitmapPaint);
-        } else {
-            canvas.drawBitmap(inputBitmap, x, y, bitmapPaint);
-        }
-        Utilities.stackBlurBitmap(bluredBitmap, 5);
+                canvas.scale((float) width / inputBitmap.getWidth(), (float) height / inputBitmap.getHeight());
+            }
+            if (!drawBorrowedBitmap(canvas, inputBitmap, x, y, bitmapPaint)) return null;
+            Utilities.stackBlurBitmap(blurredBitmap, 5);
 
-        Bitmap resultBitmap = Bitmap.createBitmap(srcBitmap.getWidth(), srcBitmap.getHeight(), Bitmap.Config.ARGB_8888);
-        canvas = new Canvas(resultBitmap);
-        canvas.drawBitmap(srcBitmap, 0, 0, bitmapPaint);
+            if (!canUseSegmentationSource(generation, source)) return null;
+            result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            canvas = new Canvas(result);
+            if (!drawBorrowedBitmap(canvas, source, 0, 0, bitmapPaint)) return null;
         Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         maskPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-        canvas.drawBitmap(bluredBitmap, 0, 0, maskPaint);
-        Bitmap segmentedImage = resultBitmap;
-        bluredBitmap.recycle();
-        return segmentedImage;
+            canvas.drawBitmap(blurredBitmap, 0, 0, maskPaint);
+            Bitmap completed = result;
+            result = null;
+            return completed;
+        } finally {
+            blurredBitmap.recycle();
+            if (result != null) result.recycle();
+        }
     }
 
     public void segmentImage(Bitmap source, int orientation, int containerWidth, int containerHeight, Utilities.Callback<SegmentedObject> whenEmpty) {
@@ -824,78 +856,97 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
         if (segmentingLoaded) {
             return;
         }
-        if (segmentingLoading || source == null) return;
-        if (Build.VERSION.SDK_INT < 24) return;
+        if (Build.VERSION.SDK_INT < 24 || source == null || source.isRecycled()) return;
+        if (segmentingLoading) {
+            if (sourceBitmap != source || pendingSegmentation != null) {
+                final int width = containerWidth, height = containerHeight;
+                pendingSegmentation = () -> segmentImage(source, orientation, width, height, whenEmpty);
+                if (segmentationRetry != null) {
+                    cancelSegmentationRetry();
+                    abortSegmentation(segmentationGeneration, sourceBitmap);
+                }
+            }
+            return;
+        }
+        cancelSegmentationRetry();
+        final int generation = ++segmentationGeneration;
+        segmentingLoading = true;
         sourceBitmap = source;
         this.orientation = orientation;
         detectedEmoji = null;
-        segment(source, orientation, subjects -> {
-            final ArrayList<SegmentedObject> finalObjects = new ArrayList<>();
+        segment(generation, source, orientation, subjects -> {
+            final int width = this.containerWidth, height = this.containerHeight;
+            if (!Utilities.themeQueue.postRunnable(() -> buildSegmentation(generation, source, orientation, width, height, subjects, whenEmpty))) {
+                releaseTemporarySubjects(subjects);
+                abortSegmentation(generation, source);
+            }
+        });
+    }
 
-            Utilities.themeQueue.postRunnable(() -> {
-                if (sourceBitmap == null || segmentingLoaded) return;
+    private void buildSegmentation(int generation, Bitmap source, int orientation, int width, int height,
+                                   List<SubjectMock> subjects, Utilities.Callback<SegmentedObject> whenEmpty) {
+        final ArrayList<SegmentedObject> results = new ArrayList<>();
+        final boolean noSubjects = subjects.isEmpty();
+        boolean complete = false;
+        try {
+            if (!canUseSegmentationSource(generation, source)) return;
+            int sourceWidth = source.getWidth(), sourceHeight = source.getHeight();
                 Matrix matrix = new Matrix();
-                matrix.postScale(1f / sourceBitmap.getWidth(), 1f / sourceBitmap.getHeight());
+            matrix.postScale(1f / sourceWidth, 1f / sourceHeight);
                 matrix.postTranslate(-.5f, -.5f);
                 matrix.postRotate(orientation);
                 matrix.postTranslate(.5f, .5f);
                 if (orientation / 90 % 2 != 0) {
-                    matrix.postScale(sourceBitmap.getHeight(), sourceBitmap.getWidth());
-                } else {
-                    matrix.postScale(sourceBitmap.getWidth(), sourceBitmap.getHeight());
+                matrix.postScale(sourceHeight, sourceWidth);
+            } else {
+                matrix.postScale(sourceWidth, sourceHeight);
+            }
+            for (int i = 0, count = Math.max(1, subjects.size()); i < count; ++i) {
+                if (!canUseSegmentationSource(generation, source)) return;
+                SubjectMock subject = noSubjects ? null : subjects.get(i);
+                int x = noSubjects ? 0 : subject.startX, y = noSubjects ? 0 : subject.startY;
+                SegmentedObject object = new SegmentedObject();
+                object.bounds.set(x, y, x + (noSubjects ? sourceWidth : subject.width), y + (noSubjects ? sourceHeight : subject.height));
+                object.rotatedBounds.set(object.bounds);
+                matrix.mapRect(object.rotatedBounds);
+                object.orientation = orientation;
+                object.image = createSmoothEdgesSegmentedImage(generation, source, x, y, noSubjects ? source : subject.bitmap, false);
+                if (object.image == null) {
+                    if (noSubjects) return;
+                    continue;
                 }
-                if (subjects.isEmpty()) {
-                    SegmentedObject o = new SegmentedObject();
-                    o.bounds.set(0, 0, sourceBitmap.getWidth(), sourceBitmap.getHeight());
-                    o.rotatedBounds.set(o.bounds);
-                    matrix.mapRect(o.rotatedBounds);
-                    o.orientation = orientation;
-                    o.image = createSmoothEdgesSegmentedImage(0, 0, sourceBitmap, false);
-                    if (o.image == null) {
-                        FileLog.e(new RuntimeException("createSmoothEdgesSegmentedImage failed on empty image"));
+                results.add(object);
+                object.darkMaskImage = object.makeDarkMaskImage();
+                createSegmentImagePath(object, width, height);
+            }
+            complete = canUseSegmentationSource(generation, source);
+        } finally {
+            releaseTemporarySubjects(subjects);
+            if (!complete) {
+                recycleUnpublishedResults(results);
+                AndroidUtilities.runOnUIThread(() -> abortSegmentation(generation, source));
+            }
+        }
+        if (!complete) return;
+        AndroidUtilities.runOnUIThread(() -> {
+            if (!canUseSegmentationSource(generation, source)) {
+                recycleUnpublishedResults(results);
+                abortSegmentation(generation, source);
                         return;
                     }
-                    o.darkMaskImage = o.makeDarkMaskImage();
-                    createSegmentImagePath(o, this.containerWidth, this.containerHeight);
-                    segmentBorderImageWidth = o.borderImageWidth;
-                    segmentBorderImageHeight = o.borderImageHeight;
-
-                    finalObjects.add(o);
-                    AndroidUtilities.runOnUIThread(() -> {
-                        empty = true;
-                        objects = finalObjects.toArray(new SegmentedObject[0]);
-                        whenEmpty.run(o);
-                    });
-                    selectedObject = o;
+            empty = noSubjects;
+            objects = results.toArray(new SegmentedObject[0]);
+            selectedObject = empty ? objects[0] : null;
                     segmentingLoaded = true;
                     segmentingLoading = false;
-                    return;
-                } else {
-                    for (int i = 0; i < subjects.size(); ++i) {
-                        SubjectMock subject = subjects.get(i);
-                        SegmentedObject o = new SegmentedObject();
-                        o.bounds.set(subject.startX, subject.startY, subject.startX + subject.width, subject.startY + subject.height);
-                        o.rotatedBounds.set(o.bounds);
-                        matrix.mapRect(o.rotatedBounds);
-                        o.orientation = orientation;
-                        o.image = createSmoothEdgesSegmentedImage(subject.startX, subject.startY, subject.bitmap, false);
-                        if (o.image == null) continue;
-                        o.darkMaskImage = o.makeDarkMaskImage();
-                        createSegmentImagePath(o, this.containerWidth, this.containerHeight);
-                        segmentBorderImageWidth = o.borderImageWidth;
-                        segmentBorderImageHeight = o.borderImageHeight;
-
-                        finalObjects.add(o);
-                    }
-                }
-                selectedObject = null;
-
-                segmentingLoaded = true;
-                segmentingLoading = false;
-                AndroidUtilities.runOnUIThread(() -> {
-                    empty = false;
-                    objects = finalObjects.toArray(new SegmentedObject[0]);
                     if (objects.length > 0) {
+                SegmentedObject last = objects[objects.length - 1];
+                segmentBorderImageWidth = last.borderImageWidth;
+                segmentBorderImageHeight = last.borderImageHeight;
+            }
+            if (empty) {
+                whenEmpty.run(selectedObject);
+            } else if (objects.length > 0 && stickerCutOutBtn != null) {
                         stickerCutOutBtn.setScaleX(0.3f);
                         stickerCutOutBtn.setScaleY(0.3f);
                         stickerCutOutBtn.setAlpha(0f);
@@ -903,13 +954,46 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
                     }
                 });
 
-            });
-        }, whenEmpty);
+    }
+
+    private static void recycleUnpublishedResults(List<SegmentedObject> results) {
+        for (SegmentedObject object : results) object.recycle();
+    }
+
+    private void abortSegmentation(int generation, Bitmap source) {
+        if (!ownsSegmentation(generation, source)) return;
+        segmentingLoading = false;
+        if (source.isRecycled()) sourceBitmap = null;
+        Runnable next = pendingSegmentation;
+        pendingSegmentation = null;
+        if (next != null) next.run();
+    }
+
+    private void cancelSegmentationRetry() {
+        if (segmentationRetry != null) {
+            AndroidUtilities.cancelRunOnUIThread(segmentationRetry);
+            segmentationRetry = null;
+        }
+    }
+
+    private void retireSegmentation() {
+        ++segmentationGeneration;
+        cancelSegmentationRetry();
+        pendingSegmentation = null;
+        sourceBitmap = null;
+        segmentingLoading = false;
+    }
+
+    private static void releaseTemporarySubjects(List<SubjectMock> subjects) {
+        for (SubjectMock subject : subjects) {
+            if (subject.ownsBitmap) subject.bitmap.recycle();
+        }
     }
 
     private static class SubjectMock {
         public Bitmap bitmap;
         public int startX, startY, width, height;
+        private boolean ownsBitmap;
         public static SubjectMock of(Subject subject) {
             SubjectMock m = new SubjectMock();
             m.bitmap = subject.getBitmap();
@@ -923,6 +1007,7 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
             SubjectMock m = new SubjectMock();
             m.width = m.height = (int) (Math.min(source.getWidth(), source.getHeight()) * .4f);
             m.bitmap = Bitmap.createBitmap(m.width, m.height, Bitmap.Config.ARGB_8888);
+            m.ownsBitmap = true;
             new Canvas(m.bitmap).drawRect(0, 0, m.width, m.height, Theme.DEBUG_RED);
             m.startX = (source.getWidth() - m.width) / 2;
             m.startY = (source.getHeight() - m.height) / 2;
@@ -930,8 +1015,11 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
         }
     }
 
-    private void segment(Bitmap bitmap, int orientation, Utilities.Callback<List<SubjectMock>> whenDone, Utilities.Callback<SegmentedObject> whenEmpty) {
-        segmentingLoading = true;
+    private void segment(int generation, Bitmap bitmap, int orientation, Utilities.Callback<List<SubjectMock>> whenDone) {
+        if (!canUseSegmentationSource(generation, bitmap)) {
+            abortSegmentation(generation, bitmap);
+            return;
+        }
         SubjectSegmenter segmenter = SubjectSegmentation.getClient(
             new SubjectSegmenterOptions.Builder()
                 .enableMultipleSubjects(
@@ -943,13 +1031,17 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
         );
         if (EmuDetector.with(getContext()).detect()) {
             ArrayList<SubjectMock> list = new ArrayList<>();
-            list.add(SubjectMock.mock(sourceBitmap));
+            list.add(SubjectMock.mock(bitmap));
             whenDone.run(list);
             return;
         }
         InputImage inputImage = InputImage.fromBitmap(bitmap, orientation);
         segmenter.process(inputImage)
             .addOnSuccessListener(result -> {
+                if (!canUseSegmentationSource(generation, bitmap)) {
+                    abortSegmentation(generation, bitmap);
+                    return;
+                }
                 ArrayList<SubjectMock> list = new ArrayList<>();
                 for (int i = 0; i < result.getSubjects().size(); ++i) {
                     list.add(SubjectMock.of(result.getSubjects().get(i)));
@@ -957,10 +1049,18 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
                 whenDone.run(list);
             })
             .addOnFailureListener(error -> {
-                segmentingLoading = false;
+                if (!canUseSegmentationSource(generation, bitmap)) {
+                    abortSegmentation(generation, bitmap);
+                    return;
+                }
                 FileLog.e(error);
                 if (isWaitingMlKitError(error) && isAttachedToWindow()) {
-                    AndroidUtilities.runOnUIThread(() -> segmentImage(bitmap, orientation, containerWidth, containerHeight, whenEmpty), 2000);
+                    segmentationRetry = () -> {
+                        segmentationRetry = null;
+                        if (isAttachedToWindow()) segment(generation, bitmap, orientation, whenDone);
+                        else abortSegmentation(generation, bitmap);
+                    };
+                    AndroidUtilities.runOnUIThread(segmentationRetry, 2000);
                 } else {
                     whenDone.run(new ArrayList<>());
                 }
@@ -971,6 +1071,7 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
             ImageLabeling.getClient(ImageLabelerOptions.DEFAULT_OPTIONS)
                 .process(inputImage)
                 .addOnSuccessListener(labels -> {
+                    if (!canUseSegmentationSource(generation, bitmap)) return;
                     if (labels.size() <= 0) {
                         FileLog.d("objimg: no objects");
                         return;
@@ -1207,11 +1308,13 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
     }
 
     public void clean() {
+        retireSegmentation();
         if (bordersAnimator != null) {
             bordersAnimator.cancel();
             bordersAnimator = null;
         }
-        sourceBitmap = null;
+        selectedObject = null;
+        filteredBitmap = null;
         if (objects != null) {
             for (int i = 0; i < objects.length; ++i) {
                 if (objects[i] != null) {
@@ -1221,7 +1324,6 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
             objects = null;
         }
         segmentingLoaded = false;
-        segmentingLoading = false;
         isSegmentedState = false;
         actionTextView.setAlpha(0f);
         actionTextView.setScaleX(0.3f);
@@ -1266,6 +1368,7 @@ public class StickerMakerView extends FrameLayout implements NotificationCenter.
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        if (segmentingLoading) retireSegmentation();
         if (currentAccount >= 0) {
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploaded);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploadProgressChanged);

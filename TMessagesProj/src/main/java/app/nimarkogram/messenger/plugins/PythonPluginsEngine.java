@@ -6548,7 +6548,7 @@ public class PythonPluginsEngine implements PluginsController.PluginsEngine {
                     this.settingsCache.put(str, new ConcurrentHashMap<>(map));
                     return map;
                 }
-            } catch (PyException e) {
+            } catch (PyException | ClassCastException e) {
                 FileLog.e("Failed to get all plugin settings for " + str, e);
             }
             return null;

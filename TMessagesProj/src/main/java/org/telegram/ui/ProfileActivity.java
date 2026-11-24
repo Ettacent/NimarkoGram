@@ -3964,11 +3964,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             musicHeaderAnimator.cancel();
             musicHeaderAnimator = null;
         }
-        if (expandAnimator != null) {
-            expandAnimator.removeAllListeners();
-            expandAnimator.removeAllUpdateListeners();
-            expandAnimator.cancel();
-        }
+        retireProfileExpandAnimator();
         if (headerAnimatorSet != null) {
             headerAnimatorSet.removeAllListeners();
             headerAnimatorSet.cancel();
@@ -4151,6 +4147,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     @Override
     public View createView(Context context) {
+        retireProfileExpandAnimator();
         if (actionBar != null) actionBar.closeMenuOverlay(false);
         cancelProfileBannerReclaim();
         profileSlideInProgress = false;
@@ -7665,10 +7662,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         frameLayout.addView(undoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 8));
 
         final int expandLifecycleGeneration = profileLifecycleGeneration;
+        final View expandViewOwner = fragmentView;
+        final ActionBar expandBarOwner = actionBar;
         expandAnimator = ValueAnimator.ofFloat(0f, 1f);
         expandAnimator.addUpdateListener(anim -> {
-            if (profileLifecycleDestroyed
-                    || expandLifecycleGeneration != profileLifecycleGeneration) {
+            if (!ownsProfileExpandAnimator(anim, expandLifecycleGeneration, expandViewOwner, expandBarOwner)) {
                 return;
             }
             setAvatarExpandProgress(anim.getAnimatedFraction());
@@ -7682,11 +7680,10 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
             @Override
             public void onAnimationEnd(Animator animation) {
-                if (profileLifecycleDestroyed
-                        || expandLifecycleGeneration != profileLifecycleGeneration) {
+                if (!ownsProfileExpandAnimator(animation, expandLifecycleGeneration, expandViewOwner, expandBarOwner)) {
                     return;
                 }
-                actionBar.setItemsBackgroundColor(isPulledDown ? Theme.ACTION_BAR_WHITE_SELECTOR_COLOR : peerColor != null ? 0x20ffffff : getThemedColor(Theme.key_avatar_actionBarSelectorBlue), false);
+                expandBarOwner.setItemsBackgroundColor(isPulledDown ? Theme.ACTION_BAR_WHITE_SELECTOR_COLOR : peerColor != null ? 0x20ffffff : getThemedColor(Theme.key_avatar_actionBarSelectorBlue), false);
                 avatarImage.clearForeground();
                 doNotSetForeground = false;
                 updateStoriesViewBounds(false);
@@ -16859,8 +16856,39 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return ssb;
     }
 
+    private boolean ownsProfileExpandAnimator(Animator animation, int generation, View view, ActionBar bar) {
+        return expandAnimator == animation && !profileLifecycleDestroyed && generation == profileLifecycleGeneration
+                && view != null && fragmentView == view && bar != null && actionBar == bar;
+    }
+
+    private void retireProfileExpandAnimator() {
+        if (expandAnimator == null) {
+            return;
+        }
+        final boolean wasSettling = expandAnimator.isStarted() || collapsePagerPending;
+        expandAnimator.removeAllListeners();
+        expandAnimator.removeAllUpdateListeners();
+        expandAnimator.cancel();
+        if (wasSettling) {
+            collapsePagerPending = false;
+            justFullyExpanded = false;
+            doNotSetForeground = false;
+            if (listView != null) {
+                listView.canStopFlinger = true;
+            }
+            if (!profileLifecycleDestroyed) {
+                final app.nimarkogram.messenger.banners.BannerRenderer banner =
+                        app.nimarkogram.messenger.banners.BannerRenderer.peek();
+                if (banner != null && banner.isCurrentProfile(topView, currentAccount, getDialogId())) {
+                    banner.setPagerOwnedByProfile(false);
+                    banner.setCollapseSettling(false);
+                }
+            }
+        }
+    }
     @Override
     public void clearViews() {
+        retireProfileExpandAnimator();
         stopProfileHeaderSearchProgress();
         if (actionBar != null) actionBar.closeMenuOverlay(false);
         if (avatarImage != null) {

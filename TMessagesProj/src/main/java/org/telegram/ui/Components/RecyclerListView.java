@@ -2613,6 +2613,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        postSectionsDecorationUpdate();
         if (fastScroll != null && fastScroll.getParent() != getParent()) {
             ViewGroup parent = (ViewGroup) fastScroll.getParent();
             if (parent != null) {
@@ -2896,6 +2897,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        cancelSectionsDecorationUpdate();
         activeTouches = 0;
         if (onTouchEndListener != null) removeCallbacks(onTouchEndListener);
         if (adaptiveOverScroll) setOverScrollMode(OVER_SCROLL_NEVER);
@@ -3512,6 +3514,17 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
     private SectionsDrawingMode bitmapSectionsDrawingMode = SectionsDrawingMode.OPTIMIZED_BACKGROUND;
     private int bitmapSectionsBackgroundColorKey = Theme.key_windowBackgroundGray;
 
+    private static final int SECTIONS_DECORATION_REBUILD = 1;
+    private static final int SECTIONS_DECORATION_BACKGROUND = 2;
+    private static final int SECTIONS_DECORATION_DRAWING_MODE = 4;
+    private int pendingSectionsDecorationUpdates;
+    private boolean sectionsDecorationUpdatePosted;
+    private final Runnable sectionsDecorationUpdate = () -> {
+        sectionsDecorationUpdatePosted = false;
+        if (isAttachedToWindow()) {
+            applySectionsDecorationUpdates();
+        }
+    };
     public enum SectionsDrawingMode {
         FULL_BACKGROUND,
         SECTION_COLOR_BACKGROUND,
@@ -3529,15 +3542,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
         this.sectionRadiusTop = null;
         this.sectionRadiusBottom = null;
         this.drawSectionBackground = null;
-        if (sectionsItemDecoration != null) {
-            removeItemDecoration(sectionsItemDecoration);
-            sectionsItemDecoration = null;
-        }
-        invalidateSectionHeaders();
-        if (bitmapSectionsItemDecoration != null) {
-            removeItemDecoration(bitmapSectionsItemDecoration);
-            bitmapSectionsItemDecoration = null;
-        }
+        requestSectionsDecorationUpdate(SECTIONS_DECORATION_REBUILD);
     }
 
     public void setLegacySections(boolean legacySections) {
@@ -3545,9 +3550,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
             return;
         }
         this.legacySections = legacySections;
-        installSectionsDecoration();
-        invalidateItemDecorations();
-        invalidate();
+        requestSectionsDecorationUpdate(SECTIONS_DECORATION_REBUILD);
     }
 
     public boolean getSectionsDrawBackground() {
@@ -3562,13 +3565,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
         if (drawBackground) {
             setLegacySections(false);
         }
-        if (bitmapSectionsItemDecoration != null) {
-            bitmapSectionsItemDecoration.setDrawBackground(drawBackground);
-            hideIfEmpty = false;
-            if (emptyView != null) {
-                setVisibility(VISIBLE);
-            }
-        }
+        requestSectionsDecorationUpdate(SECTIONS_DECORATION_BACKGROUND);
     }
 
     public void setSectionsDrawingMode(@NonNull SectionsDrawingMode drawingMode) {
@@ -3576,9 +3573,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
             return;
         }
         bitmapSectionsDrawingMode = drawingMode;
-        if (bitmapSectionsItemDecoration != null) {
-            bitmapSectionsItemDecoration.setDrawingMode(drawingMode);
-        }
+        requestSectionsDecorationUpdate(SECTIONS_DECORATION_DRAWING_MODE);
     }
 
     public void setBitmapSectionsBackgroundColorKey(int key) {
@@ -3587,6 +3582,52 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
         }
         bitmapSectionsBackgroundColorKey = key;
         invalidate();
+    }
+
+    private void requestSectionsDecorationUpdate(int updates) {
+        pendingSectionsDecorationUpdates |= updates;
+        applySectionsDecorationUpdates();
+    }
+
+    private void postSectionsDecorationUpdate() {
+        if (pendingSectionsDecorationUpdates != 0 && !sectionsDecorationUpdatePosted && isAttachedToWindow()) {
+            sectionsDecorationUpdatePosted = true;
+            postOnAnimation(sectionsDecorationUpdate);
+        }
+    }
+
+    private void cancelSectionsDecorationUpdate() {
+        if (sectionsDecorationUpdatePosted) {
+            removeCallbacks(sectionsDecorationUpdate);
+            sectionsDecorationUpdatePosted = false;
+        }
+    }
+
+    private void applySectionsDecorationUpdates() {
+        if (isComputingLayout()) {
+            postSectionsDecorationUpdate();
+            return;
+        }
+        cancelSectionsDecorationUpdate();
+        final int updates = pendingSectionsDecorationUpdates;
+        pendingSectionsDecorationUpdates = 0;
+        if ((updates & SECTIONS_DECORATION_REBUILD) != 0) {
+            installSectionsDecoration();
+            invalidateSectionHeaders();
+        }
+        if (bitmapSectionsItemDecoration == null) {
+            return;
+        }
+        if ((updates & SECTIONS_DECORATION_BACKGROUND) != 0) {
+            bitmapSectionsItemDecoration.setDrawBackground(bitmapSectionsDrawBackground);
+            hideIfEmpty = false;
+            if (emptyView != null) {
+                setVisibility(VISIBLE);
+            }
+        }
+        if ((updates & SECTIONS_DECORATION_DRAWING_MODE) != 0) {
+            bitmapSectionsItemDecoration.setDrawingMode(bitmapSectionsDrawingMode);
+        }
     }
 
     private void installSectionsDecoration() {
@@ -3704,8 +3745,7 @@ public class RecyclerListView extends RecyclerView implements IBlur3Capture, Con
             roundRadius, roundRadius
         };
         this.drawSectionBackground = drawSectionBackground;
-        installSectionsDecoration();
-        invalidateSectionHeaders();
+        requestSectionsDecorationUpdate(SECTIONS_DECORATION_REBUILD);
 
     }
 

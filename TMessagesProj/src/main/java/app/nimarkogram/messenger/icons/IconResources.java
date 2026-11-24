@@ -20,9 +20,15 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.SparseArray;
+import android.util.Size;
+import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -721,6 +727,51 @@ public class IconResources extends Resources {
         return theme != null ? wrapped.getDrawable(id, theme) : wrapped.getDrawable(id);
     }
 
+    private static final int RIFF_TAG = 0x52494646, WEBP_TAG = 0x57454250, VP8L_TAG = 0x5650384c;
+
+    private Size simpleWebpIntrinsicSize(int id, int targetDensity) {
+        if (wrapped.getClass() != Resources.class || targetDensity <= 0) return null;
+        TypedValue value = new TypedValue();
+        try {
+            wrapped.getValue(id, value, true);
+            if (!isWebpAsset(value)) return null;
+            try (DataInputStream input = new DataInputStream(wrapped.openRawResource(id, value))) {
+                if (!isWebpAsset(value)) return null;
+                byte[] bytes = new byte[25];
+                input.readFully(bytes);
+                ByteBuffer header = ByteBuffer.wrap(bytes);
+                if (header.getInt(0) != RIFF_TAG || header.getInt(8) != WEBP_TAG
+                        || header.getInt(12) != VP8L_TAG || bytes[20] != 0x2f) return null;
+                header.order(ByteOrder.LITTLE_ENDIAN);
+                long payload = header.getInt(16) & 0xffffffffL;
+                long padded = (payload + 1) & ~1L;
+                if (payload <= 5 || (header.getInt(4) & 0xffffffffL) != 12L + padded
+                        || input.available() != padded - 5) return null;
+                int dimensions = header.getInt(21);
+                if ((dimensions >>> 29) != 0) return null;
+                int width = 1 + (dimensions & 0x3fff);
+                int height = 1 + ((dimensions >>> 14) & 0x3fff);
+                if (value.density != TypedValue.DENSITY_NONE) {
+                    int src = value.density == TypedValue.DENSITY_DEFAULT ? DisplayMetrics.DENSITY_DEFAULT : value.density;
+                    int scaledWidth = (int) (((long) width * targetDensity + src / 2) / src);
+                    int scaledHeight = (int) (((long) height * targetDensity + src / 2) / src);
+                    float scale = (float) targetDensity / src;
+                    if ((int) (width * scale + 0.5f) != scaledWidth || (int) (height * scale + 0.5f) != scaledHeight) return null;
+                    width = scaledWidth;
+                    height = scaledHeight;
+                }
+                return width > 0 && height > 0 ? new Size(width, height) : null;
+            }
+        } catch (IOException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isWebpAsset(TypedValue value) {
+        if (value.type != TypedValue.TYPE_STRING || value.string == null) return false;
+        String path = value.string.toString();
+        return path.startsWith("res/") && path.endsWith(".webp") && !path.endsWith(".9.webp");
+    }
     private Drawable getSkinnedDrawable(int id, int density, Theme theme) {
         while (true) {
             final ReplacementState state = refreshConfiguration();
@@ -755,6 +806,12 @@ public class IconResources extends Resources {
         final int defaultSize = (int) Math.ceil(24f * metrics.density);
         int w = defaultSize;
         int h = w;
+        if (!RENDER_24DP_ICONS.contains(stockId)) {
+            Size size = density == 0 ? simpleWebpIntrinsicSize(stockId, displayDensity) : null;
+            if (size != null) {
+                w = size.getWidth();
+                h = size.getHeight();
+            } else {
         try {
             Drawable stock = loadRaw(stockId, density, theme);
             if (stock != null && stock.getIntrinsicWidth() > 0 && stock.getIntrinsicHeight() > 0) {
@@ -762,8 +819,7 @@ public class IconResources extends Resources {
                 h = stock.getIntrinsicHeight();
             }
         } catch (Throwable ignore) {  }
-        if (RENDER_24DP_ICONS.contains(stockId)) {
-            w = h = defaultSize;
+            }
         }
 
         if (w <= 0 || h <= 0) return twin;

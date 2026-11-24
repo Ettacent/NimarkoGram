@@ -53,6 +53,7 @@ import org.xmlpull.v1.XmlPullParser;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -1002,7 +1003,7 @@ public class LocaleController {
         if (currentLocaleInfo == null || checkingUpdateForCurrentRemoteLocale) {
             return;
         }
-        if (shouldReinstallLangpack(currentLocaleInfo.shortName)) {
+        if (shouldReinstallLangpack(currentLocaleInfo, currentAccount, false)) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("reload locale because locale file is not enough");
             }
@@ -1312,13 +1313,17 @@ public class LocaleController {
         FileInputStream stream = null;
         HashMap<String, String> stringMap = null;
         try {
+            try {
+                stream = new FileInputStream(file);
+            } catch (FileNotFoundException e) {
             if (!file.exists()) {
                 return new HashMap<>();
+            }
+                throw e;
             }
             stringMap = new HashMap<>(10_000);
             XmlPullParser parser = Xml.newPullParser();
 
-            stream = new FileInputStream(file);
             parser.setInput(stream, "UTF-8");
             int eventType = parser.getEventType();
             String name = null;
@@ -1528,9 +1533,10 @@ public class LocaleController {
                 languageOverride = localeInfo.shortName;
 
                 SharedPreferences preferences = MessagesController.getGlobalMainSettings();
-                SharedPreferences.Editor editor = preferences.edit();
-                editor.putString("language", localeInfo.getKey());
-                editor.commit();
+                String key = localeInfo.getKey();
+                if (!init || !TextUtils.equals(preferences.getString("language", null), key)) {
+                    preferences.edit().putString("language", key).commit();
+                }
             }
             if (pathToFile == null) {
                 localizationExternal = Localization.EMPTY;
@@ -1538,9 +1544,9 @@ public class LocaleController {
             } else if (!fromFile) {
                 HashMap<String, String> localeValues;
                 reloadLastFile = false;
-                localeValues = getLocaleFileStrings(hasBase ? localeInfo.getPathToBaseFile() : localeInfo.getPathToFile());
+                localeValues = getLocaleFileStrings(hasBase ? pathToBaseFile : pathToFile);
                 if (hasBase) {
-                    localeValues.putAll(getLocaleFileStrings(localeInfo.getPathToFile()));
+                    localeValues.putAll(getLocaleFileStrings(pathToFile));
                 }
                 localizationExternal = new Localization.Builder()
                     .addLocalization(localeValues)
@@ -1577,7 +1583,7 @@ public class LocaleController {
                 FileLog.d("reload locale because it was malformed before " + pathToFile);
                 reloadLastFile = true;
             }
-            if (reloadLastFile || !isLoadingRemote && !force && shouldReinstallLangpack(localeInfo.shortName)) {
+            if (reloadLastFile || !isLoadingRemote && !force && shouldReinstallLangpack(localeInfo, currentAccount, init)) {
                 if (BuildVars.LOGS_ENABLED) {
                     FileLog.d("reload locale because one of file is corrupted " + pathToFile + " " + pathToBaseFile + " reloadLastFile=" + reloadLastFile + " isLoadingRemote=" + isLoadingRemote + " force=" + force);
                 }
@@ -3711,7 +3717,8 @@ public class LocaleController {
         }
         LocaleInfo info = languageOverride == null
                 ? getLanguageForSystemLocale(systemDefaultLocale) : currentLocaleInfo;
-        applyLanguage(info, false, false, account);
+        boolean reuseLocalStrings = languageOverride != null && info.isLocal() && localizationExternalSize > 0;
+        applyLanguage(info, false, false, reuseLocalStrings, false, account, null);
     }
 
     private static class LangpackRequest {
@@ -4764,11 +4771,22 @@ public class LocaleController {
         return formatDistance(distance, type, null);
     }
 
-    private boolean shouldReinstallLangpack(String lng) {
-        int mustBeCount = MessagesController.getInstance(UserConfig.selectedAccount).checkResetLangpack;
+    private boolean shouldReinstallLangpack(LocaleInfo localeInfo, int account, boolean init) {
+        if (!localeInfo.isRemote() && !localeInfo.isUnofficial()) {
+            return false;
+        }
+        final int mustBeCount;
+        if (init) {
+            SharedPreferences settings = account == 0 ? MessagesController.getGlobalMainSettings()
+                    : ApplicationLoader.applicationContext.getSharedPreferences("mainconfig" + account, Activity.MODE_PRIVATE);
+            mustBeCount = settings.getInt("checkResetLangpack", 0);
+        } else {
+            mustBeCount = MessagesController.getInstance(account).checkResetLangpack;
+        }
         if (mustBeCount <= 0) {
             return false;
         }
+        String lng = localeInfo.shortName;
         boolean alreadyPatched = MessagesController.getGlobalMainSettings().getBoolean("lngpack_patched_" + lng, false);
         if (alreadyPatched) {
             return false;

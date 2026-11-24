@@ -2722,6 +2722,7 @@ public class MessagesController extends BaseController implements NotificationCe
         boolean changed = false;
         boolean storiesChanged = false;
         boolean keelAliveChanged = false;
+        boolean langpackResetChanged = false;
         resetAppConfig();
         TLRPC.TL_jsonObject liteAppOptions = null;
         int transcribeAudioTrialWeeklyNumber = 0;
@@ -3888,7 +3889,7 @@ public class MessagesController extends BaseController implements NotificationCe
                         if (num.value != checkResetLangpack) {
                             checkResetLangpack = (int) num.value;
                             editor.putInt("checkResetLangpack", checkResetLangpack);
-                            LocaleController.getInstance().checkPatchLangpack(currentAccount);
+                            langpackResetChanged = true;
                             changed = true;
                         }
                     }
@@ -5094,6 +5095,9 @@ public class MessagesController extends BaseController implements NotificationCe
 
         if (changed) {
             editor.apply();
+            if (langpackResetChanged) {
+                LocaleController.getInstance().checkPatchLangpack(currentAccount);
+            }
             AndroidUtilities.runOnUIThread(() -> {
                 getNotificationCenter().postNotificationName(NotificationCenter.appConfigUpdated);
             });

@@ -18,25 +18,57 @@
 
 static int buffersCount = 0;
 
+#ifdef ANDROID
+namespace {
+[[noreturn]] void failJavaByteBuffer(const char *reason) {
+    if (LOGS_ENABLED) DEBUG_E("%s", reason);
+    exit(1);
+}
+
+JNIEnv *requireJavaByteBufferEnv() {
+    JNIEnv *env = nullptr;
+    if (javaVm == nullptr ||
+            javaVm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK ||
+            env == nullptr) {
+        failJavaByteBuffer("can't get NativeByteBuffer jnienv");
+    }
+    return env;
+}
+
+jobject retainJavaByteBuffer(JNIEnv *env, jobject localRef) {
+    if (localRef == nullptr || env->ExceptionCheck()) {
+        env->DeleteLocalRef(localRef);
+        failJavaByteBuffer("can't create NativeByteBuffer Java view");
+    }
+    const jobject globalRef = env->NewGlobalRef(localRef);
+    env->DeleteLocalRef(localRef);
+    if (globalRef == nullptr || env->ExceptionCheck()) {
+        env->DeleteGlobalRef(globalRef);
+        failJavaByteBuffer("can't retain NativeByteBuffer Java view");
+    }
+    return globalRef;
+}
+}
+#endif
+
 NativeByteBuffer::NativeByteBuffer(uint32_t size) {
 #ifdef ANDROID
     if (jclass_ByteBuffer != nullptr) {
-        JNIEnv *env = 0;
-        if (javaVm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
-            if (LOGS_ENABLED) DEBUG_E("can't get jnienv");
-            exit(1);
+        JNIEnv *env = requireJavaByteBufferEnv();
+        if (env->ExceptionCheck()) {
+            failJavaByteBuffer("pending JNI exception before NativeByteBuffer allocation");
         }
-        javaByteBuffer = env->CallStaticObjectMethod(jclass_ByteBuffer, jclass_ByteBuffer_allocateDirect, size);
-        if (javaByteBuffer == nullptr) {
-            if (LOGS_ENABLED) DEBUG_E("can't create javaByteBuffer");
-            exit(1);
+        const jobject localRef = env->CallStaticObjectMethod(
+                jclass_ByteBuffer, jclass_ByteBuffer_allocateDirect, static_cast<jint>(size));
+        const jobject globalRef = retainJavaByteBuffer(env, localRef);
+        buffer = static_cast<uint8_t *>(env->GetDirectBufferAddress(globalRef));
+        if (buffer == nullptr || env->ExceptionCheck()) {
+            env->DeleteGlobalRef(globalRef);
+            failJavaByteBuffer("can't get NativeByteBuffer Java view address");
         }
-        DEBUG_REF("nativebytebuffer");
-        jobject globalRef = env->NewGlobalRef(javaByteBuffer);
-        env->DeleteLocalRef(javaByteBuffer);
-        javaByteBuffer = globalRef;
-        buffer = (uint8_t *) env->GetDirectBufferAddress(javaByteBuffer);
         bufferOwner = false;
+        javaByteBuffer = globalRef;
+        DEBUG_REF("nativebytebuffer");
     } else {
 #endif
         buffer = new uint8_t[size];
@@ -65,11 +97,7 @@ NativeByteBuffer::NativeByteBuffer(uint8_t *buff, uint32_t length) {
 NativeByteBuffer::~NativeByteBuffer() {
 #ifdef ANDROID
     if (javaByteBuffer != nullptr) {
-        JNIEnv *env = 0;
-        if (javaVm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
-		    if (LOGS_ENABLED) DEBUG_E("can't get jnienv");
-            exit(1);
-	    }
+        JNIEnv *env = requireJavaByteBufferEnv();
         DEBUG_DELREF("nativebytebuffer");
         env->DeleteGlobalRef(javaByteBuffer);
         javaByteBuffer = nullptr;
@@ -748,21 +776,15 @@ void NativeByteBuffer::markInUse() {
 
 #ifdef ANDROID
 jobject NativeByteBuffer::getJavaByteBuffer() {
+    std::lock_guard<std::mutex> lock(javaByteBufferMutex);
     if (javaByteBuffer == nullptr && javaVm != nullptr) {
-        JNIEnv *env = 0;
-        if (javaVm->GetEnv((void **) &env, JNI_VERSION_1_6) != JNI_OK) {
-		    if (LOGS_ENABLED) DEBUG_E("can't get jnienv");
-            exit(1);
-	    }
-        javaByteBuffer = env->NewDirectByteBuffer(buffer, _capacity);
-        if (javaByteBuffer == nullptr) {
-            if (LOGS_ENABLED) DEBUG_E("can't allocate NativeByteBuffer buffer");
-            exit(1);
+        JNIEnv *env = requireJavaByteBufferEnv();
+        if (env->ExceptionCheck()) {
+            failJavaByteBuffer("pending JNI exception before NativeByteBuffer view creation");
         }
+        const jobject localRef = env->NewDirectByteBuffer(buffer, _capacity);
+        javaByteBuffer = retainJavaByteBuffer(env, localRef);
         DEBUG_REF("nativebytebuffer");
-        jobject globalRef = env->NewGlobalRef(javaByteBuffer);
-        env->DeleteLocalRef(javaByteBuffer);
-        javaByteBuffer = globalRef;
     }
     return javaByteBuffer;
 }

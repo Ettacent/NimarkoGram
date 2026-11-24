@@ -226,7 +226,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
 
     public boolean isLongpressed;
 
-    Runnable longPressRunnable = () -> setLongPressed(true);
+    Runnable longPressRunnable;
 
     public boolean unreadStateChanged;
     private StoriesVolumeControl volumeControl;
@@ -269,11 +269,46 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         globalInstances.clear();
     }
 
+    private void scheduleLongPress(View window) {
+        final StoriesViewPager pager = storiesViewPager;
+        if (window == null || window != windowView || pager == null || !isShowing || isClosed) {
+            return;
+        }
+        cancelLongPress();
+        final int generation = viewerGeneration;
+        final Runnable callback = new Runnable() {
+            @Override
+            public void run() {
+                if (longPressRunnable != this) {
+                    return;
+                }
+                longPressRunnable = null;
+                if (generation == viewerGeneration && window == windowView
+                        && pager == storiesViewPager && isShowing && !isClosed) {
+                    setLongPressed(true);
+                }
+            }
+        };
+        longPressRunnable = callback;
+        AndroidUtilities.runOnUIThread(callback, 400);
+    }
+
+    private void cancelLongPress() {
+        final Runnable callback = longPressRunnable;
+        longPressRunnable = null;
+        if (callback != null) {
+            AndroidUtilities.cancelRunOnUIThread(callback);
+        }
+    }
     private void setLongPressed(boolean b) {
         if (isLongpressed != b) {
+            final StoriesViewPager pager = storiesViewPager;
+            if (b && (pager == null || windowView == null || !isShowing || isClosed)) {
+                return;
+            }
             isLongpressed = b;
             if (b && !isInPinchToZoom) {
-                PeerStoriesView peerView = storiesViewPager.getCurrentPeerView();
+                PeerStoriesView peerView = pager.getCurrentPeerView();
                 if (peerView != null && peerView.currentStory != null && !peerView.currentStory.isLive() && peerView.currentStory.uploadingStory == null) {
                     if (!inSeekingMode && !inSwipeToDissmissMode && currentPlayerScope != null && currentPlayerScope.player != null) {
                         peerView.storyContainer.invalidate();
@@ -286,8 +321,8 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                 }
             }
             updatePlayingMode();
-            if (storiesViewPager != null) {
-                PeerStoriesView peerStoriesView = storiesViewPager.getCurrentPeerView();
+            if (pager != null && pager == storiesViewPager) {
+                PeerStoriesView peerStoriesView = pager.getCurrentPeerView();
                 if (peerStoriesView != null) {
                     peerStoriesView.setLongpressed(isLongpressed);
                 }
@@ -412,7 +447,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         isLongpressed = false;
         isTranslating = false;
         savedPositions.clear();
-        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+        cancelLongPress();
         windowLayoutParams = new WindowManager.LayoutParams();
         windowLayoutParams.height = WindowManager.LayoutParams.MATCH_PARENT;
         windowLayoutParams.format = PixelFormat.TRANSLUCENT;
@@ -892,7 +927,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     if (ev.getAction() == MotionEvent.ACTION_UP || ev.getAction() == MotionEvent.ACTION_CANCEL) {
                         inSwipeToDissmissMode = false;
-                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                        cancelLongPress();
                         if (swipeToDismissHorizontalOffset != 0) {
                             swipeToDissmissBackAnimator = ValueAnimator.ofFloat(swipeToDismissHorizontalOffset, 0);
                             swipeToDissmissBackAnimator.addUpdateListener(animation -> {
@@ -993,7 +1028,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                             AndroidUtilities.runOnUIThread(delayedTapRunnable, 150);
                         }
                         if (allowIntercept && !keyboardVisible && !isRecording && !isInTextSelectionMode) {
-                            AndroidUtilities.runOnUIThread(longPressRunnable, 400);
+                            scheduleLongPress(this);
                         }
                     } else if (ev.getAction() == MotionEvent.ACTION_MOVE) {
                         float dy = Math.abs(startY - ev.getY());
@@ -1044,12 +1079,12 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                                     delayedTapRunnable.run();
                                     delayedTapRunnable = null;
                                 }
-                                AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                                cancelLongPress();
                                 layoutAndFindView();
                             }
                         }
                     } else if (ev.getAction() == MotionEvent.ACTION_UP || ev.getAction() == MotionEvent.ACTION_CANCEL) {
-                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                        cancelLongPress();
                         if (delayedTapRunnable != null) {
                             AndroidUtilities.cancelRunOnUIThread(delayedTapRunnable);
                             delayedTapRunnable = null;
@@ -1275,7 +1310,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
                 public void onStateChanged() {
                     if (!isOwnerCurrent()) return;
                     if (storiesViewPager.currentState == ViewPager.SCROLL_STATE_DRAGGING) {
-                        AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+                        cancelLongPress();
                     }
                 }
             };
@@ -2645,6 +2680,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             return;
         }
         isClosed = true;
+        cancelLongPress();
         cancelOpenCloseAnimator();
         AndroidUtilities.hideKeyboard(windowView);
         fullyVisible = false;
@@ -2820,6 +2856,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
     }
     @Override
     public void release() {
+        cancelLongPress();
         cancelSwipeToViewsAnimation();
         detachWindowNotifications(windowView);
         if (storiesViewPager != null) storiesViewPager.retire();
@@ -2864,6 +2901,7 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
             return;
         }
         isClosed = true;
+        cancelLongPress();
         cancelSwipeToViewsAnimation();
         AndroidUtilities.hideKeyboard(windowView);
         invalidateOutRect = true;

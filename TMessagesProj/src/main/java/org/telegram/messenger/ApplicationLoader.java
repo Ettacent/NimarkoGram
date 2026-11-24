@@ -92,9 +92,9 @@ public class ApplicationLoader extends Application {
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
-        documentRendererProcess = org.telegram.utils.twidget.WidgetEngineService.isEngineProcess()
-                || app.nimarkogram.messenger.documents.DocumentProcess.isIsolated(base);
+        documentRendererProcess = isRendererProcess(base);
         if (documentRendererProcess) return;
+        warmStartupPreferences(base);
         try {
             ru.noties.jlatexmath.JLatexMathAndroid.init(base);
         } catch (Throwable ignored) {
@@ -103,6 +103,27 @@ public class ApplicationLoader extends Application {
         try {
             app.nimarkogram.messenger.CrashHandler.install(base);
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean isRendererProcess(Context base) {
+        if (app.nimarkogram.messenger.documents.DocumentProcess.isIsolated(base)) return true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            String name = Application.getProcessName();
+            if (name != null && !name.isEmpty()) return name.contains(":widgets");
+        }
+        return org.telegram.utils.twidget.WidgetEngineService.isEngineProcess();
+    }
+
+    private static void warmStartupPreferences(Context storage) {
+        try {
+            new Thread(() -> {
+                try {
+                    storage.getSharedPreferences("userconfing", Context.MODE_PRIVATE);
+                } catch (RuntimeException ignored) {
+                }
+            }, "ng-startup-prefs").start();
+        } catch (RuntimeException ignored) {
         }
     }
 

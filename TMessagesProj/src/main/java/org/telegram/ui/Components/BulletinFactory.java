@@ -762,6 +762,17 @@ public final class BulletinFactory {
     }
 
     public Bulletin createEmojiBulletin(String emoji, String text) {
+        return createEmojiBulletinWithText(emoji, text);
+    }
+
+    public Bulletin createEmojiBulletin(String emoji, CharSequence text) {
+        if (text != null && AndroidUtilities.charSequenceIndexOf(text, "**") >= 0) {
+            text = AndroidUtilities.replaceTags(new SpannableStringBuilder(text));
+        }
+        return createEmojiBulletinWithText(emoji, text);
+    }
+
+    private Bulletin createEmojiBulletinWithText(String emoji, CharSequence text) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
         layout.setAnimation(MediaDataController.getInstance(UserConfig.selectedAccount).getEmojiAnimatedSticker(emoji), 36, 36);
         layout.textView.setText(text);

@@ -42,6 +42,7 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -147,9 +148,12 @@ import java.util.TimerTask;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 public class MediaController implements AudioManager.OnAudioFocusChangeListener, NotificationCenter.NotificationCenterDelegate, SensorEventListener {
 
     private native int startRecord(String path, int sampleRate);
@@ -1072,6 +1076,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     private boolean allowStartRecord;
     private boolean ignoreOnPause;
     private boolean sensorsStarted;
+    private volatile RaiseToEarRoute raiseToEarRoute;
+    private final AtomicBoolean raiseToEarRouteWorkQueued = new AtomicBoolean();
+    private RaiseToEarRoute workerRaiseToEarRoute;
     private float previousAccValue;
     private float[] gravity = new float[3];
     private float[] gravityFast = new float[3];
@@ -2616,31 +2623,175 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         return proximityTouched && (isRecordingAudio() || playingMessageObject != null && (playingMessageObject.isVoice() || playingMessageObject.isRoundVideo()));
     }
 
+    private static final long RAISE_TO_EAR_ROUTE_REFRESH_MS = 1000;
+    private static final long RAISE_TO_EAR_ROUTE_VALID_MS = 2000;
+    private static final Executor RAISE_TO_EAR_ROUTE_QUEUE =
+            Executors.newSingleThreadExecutor(task -> new Thread(task, "raiseToEarRoute"));
     private boolean forbidRaiseToListen() {
+        final RaiseToEarRoute route = raiseToEarRoute;
+        if (route == null) {
+            return true;
+        }
+        final long now = SystemClock.elapsedRealtime();
+        if (now >= route.snapshot.get().refreshAfter) {
+            requestRaiseToEarRouteRefresh();
+        }
+        return raiseToEarRoute != route || now >= route.snapshot.get().allowedUntil;
+    }
+
+    private void requestRaiseToEarRouteRefresh() {
+        if (raiseToEarRouteWorkQueued.compareAndSet(false, true)) {
+            RAISE_TO_EAR_ROUTE_QUEUE.execute(this::refreshRaiseToEarRoute);
+        }
+    }
+
+    private void refreshRaiseToEarRoute() {
+        final RaiseToEarRoute route = raiseToEarRoute;
         try {
+            if (workerRaiseToEarRoute != route) {
+                if (workerRaiseToEarRoute != null) {
+                    workerRaiseToEarRoute.closeDevices();
+                }
+                workerRaiseToEarRoute = route;
+            }
+            if (route != null && raiseToEarRoute == route) {
+                route.refresh();
+            }
+        } finally {
+            raiseToEarRouteWorkQueued.set(false);
+            final RaiseToEarRoute next = raiseToEarRoute;
+            if (next != route || next != null && next.snapshot.get().refreshAfter == 0) {
+                requestRaiseToEarRouteRefresh();
+            }
+        }
+    }
+
+    private static final class RaiseToEarRouteSnapshot {
+        final long refreshAfter;
+        final long allowedUntil;
+
+        RaiseToEarRouteSnapshot(long refreshAfter, long allowedUntil) {
+            this.refreshAfter = refreshAfter;
+            this.allowedUntil = allowedUntil;
+        }
+    }
+
+    private final class RaiseToEarRoute {
+        private final AtomicReference<RaiseToEarRouteSnapshot> snapshot =
+                new AtomicReference<>(new RaiseToEarRouteSnapshot(0, 0));
+        private volatile RaiseToEarAudioDevices devices;
+
+        private void refresh() {
+            final RaiseToEarRouteSnapshot previous = snapshot.get();
+            final long started = SystemClock.elapsedRealtime();
+            if (started < previous.refreshAfter) {
+                return;
+            }
+            boolean allowed = false;
+            try {
+                final AudioManager manager = NotificationsController.audioManager;
+                if (devices != null && devices.manager != manager) {
+                    closeDevices();
+                }
+                if (manager != null) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                AudioDeviceInfo[] devices = NotificationsController.audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
-                for (AudioDeviceInfo device : devices) {
-                    final int type = device.getType();
-                    if ((
-                        type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                        type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                        type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                        type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
-                        type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                        type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                    ) && device.isSink()) {
-                        return true;
+                        if (devices == null) {
+                            devices = new RaiseToEarAudioDevices(manager, this);
+                        }
+                        devices.register();
+                        if (raiseToEarRoute != this) {
+                            return;
+                        }
+                        allowed = devices.hasKnownOutputWithoutHeadset();
+                    } else {
+                        allowed = !manager.isWiredHeadsetOn() && !manager.isBluetoothA2dpOn() && !manager.isBluetoothScoOn();
                     }
                 }
-                return false;
-            } else {
-                return NotificationsController.audioManager.isWiredHeadsetOn() || NotificationsController.audioManager.isBluetoothA2dpOn() || NotificationsController.audioManager.isBluetoothScoOn();
+            } catch (RuntimeException e) {
+                FileLog.e(e);
             }
-        } catch (Exception e) {
-            FileLog.e(e);
+            if (raiseToEarRoute == this) {
+                snapshot.compareAndSet(previous, new RaiseToEarRouteSnapshot(
+                        SystemClock.elapsedRealtime() + RAISE_TO_EAR_ROUTE_REFRESH_MS,
+                        allowed ? started + RAISE_TO_EAR_ROUTE_VALID_MS : 0));
+            }
         }
+
+        private void devicesChanged(RaiseToEarAudioDevices source) {
+            if (raiseToEarRoute == this && devices == source) {
+                snapshot.set(new RaiseToEarRouteSnapshot(0, 0));
+                requestRaiseToEarRouteRefresh();
+            }
+        }
+
+        private void closeDevices() {
+            final RaiseToEarAudioDevices old = devices;
+            devices = null;
+            if (old != null) {
+                try {
+                    old.manager.unregisterAudioDeviceCallback(old);
+                } catch (RuntimeException e) {
+                    FileLog.e(e);
+                }
+            }
+        }
+    }
+
+    private static final class RaiseToEarAudioDevices extends AudioDeviceCallback {
+        private final AudioManager manager;
+        private final RaiseToEarRoute route;
+        private boolean registered;
+
+        RaiseToEarAudioDevices(AudioManager manager, RaiseToEarRoute route) {
+            this.manager = manager;
+            this.route = route;
+        }
+
+        private void register() {
+            if (!registered) {
+                manager.registerAudioDeviceCallback(this, ApplicationLoader.applicationHandler);
+                registered = true;
+            }
+        }
+
+        @Override
+        public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+            route.devicesChanged(this);
+        }
+
+        @Override
+        public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+            route.devicesChanged(this);
+        }
+
+        private boolean hasKnownOutputWithoutHeadset() {
+            final AudioDeviceInfo[] outputs = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
+            if (outputs == null) {
+                return false;
+            }
+            boolean knownOutput = false;
+            for (AudioDeviceInfo device : outputs) {
+                if (device == null) {
         return false;
+                }
+                if (!device.isSink()) {
+                    continue;
+                }
+                switch (device.getType()) {
+                    case AudioDeviceInfo.TYPE_UNKNOWN:
+                    case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                    case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                    case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                    case AudioDeviceInfo.TYPE_BLE_SPEAKER:
+                    case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                    case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                        return false;
+                    default:
+                        knownOutput = true;
+                }
+            }
+            return knownOutput;
+        }
     }
 
     @Override
@@ -3035,7 +3186,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 }
                 sensorManager.registerListener(MediaController.this, proximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
             });
+            raiseToEarRoute = new RaiseToEarRoute();
             sensorsStarted = true;
+            requestRaiseToEarRouteRefresh();
         }
     }
 
@@ -3056,6 +3209,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
         raiseChat = null;
         sensorsStarted = false;
+        raiseToEarRoute = null;
+        requestRaiseToEarRouteRefresh();
         accelerometerVertical = false;
         proximityTouched = false;
         raiseToEarRecord = false;

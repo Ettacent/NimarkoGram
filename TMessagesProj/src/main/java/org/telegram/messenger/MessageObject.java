@@ -9004,7 +9004,8 @@ public class MessageObject {
         if (messageOwner.send_state != MESSAGE_SEND_STATE_SENT) {
             hasEntities = false;
         } else {
-            hasEntities = !getEntities().isEmpty();
+            final ArrayList<TLRPC.MessageEntity> entities = getEntities();
+            hasEntities = entities != null && !entities.isEmpty();
         }
 
         boolean useManualParse = !hasEntities && (

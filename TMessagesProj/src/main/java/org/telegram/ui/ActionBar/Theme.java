@@ -2228,7 +2228,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     private static final Object sync = new Object();
-    public static Runnable wallpaperLoadTask;
+    private static final Object wallpaperLoadLock = new Object();
+    private static int wallpaperLoadGeneration;
+    private static ThemeInfo wallpaperLoadOwner;
+    public static volatile Runnable wallpaperLoadTask;
 
     public static final int ACTION_BAR_PHOTO_VIEWER_COLOR = 0x7f000000;
     public static final int ACTION_BAR_MEDIA_PICKER_COLOR = 0xff333333;
@@ -2293,7 +2296,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static ArrayList<ThemeInfo> themes;
     private static ArrayList<ThemeInfo> otherThemes;
     private static HashMap<String, ThemeInfo> themesDict;
-    private static ThemeInfo currentTheme;
+    private static volatile ThemeInfo currentTheme;
     private static ThemeInfo currentNightTheme;
     private static ThemeInfo currentDayTheme;
     private static ThemeInfo defaultTheme;
@@ -2318,7 +2321,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     public static int serviceMessageColorBackup;
     public static int serviceSelectedMessageColorBackup;
     public static int currentColor;
-    private static Drawable wallpaper;
+    private static volatile Drawable wallpaper;
     private static Drawable themedWallpaper;
     private static int themedWallpaperFileOffset;
     private static String themedWallpaperLink;
@@ -4501,11 +4504,24 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             preferences.edit().remove("overrideThemeWallpaper").remove("selectedBackground2").commit();
         }
 
-        int switchToTheme = needSwitchToTheme();
-        if (switchToTheme == 2) {
-            applyingTheme = currentNightTheme;
+        final ThemeInfo configuredDayTheme = applyingTheme;
+        final boolean startAtNight = needSwitchToTheme() == 2;
+        final ThemeInfo initialTheme = startAtNight ? currentNightTheme : configuredDayTheme;
+        applyTheme(initialTheme, false, false, startAtNight);
+        if (currentTheme == null && startAtNight && initialTheme != configuredDayTheme) {
+            applyTheme(configuredDayTheme, false, false, false);
         }
-        applyTheme(applyingTheme, false, false, switchToTheme == 2);
+        if (currentTheme == null && initialTheme != defaultTheme && configuredDayTheme != defaultTheme) {
+            applyTheme(defaultTheme, false, false, false);
+            currentDayTheme = configuredDayTheme;
+        }
+        if (currentTheme == null) {
+            currentColorsNoAccent.clear();
+            themedWallpaperFileOffset = 0;
+            themedWallpaperLink = null;
+            currentTheme = defaultTheme;
+            refreshThemeColors();
+        }
         AndroidUtilities.runOnUIThread(Theme::checkAutoNightThemeConditions);
     }
 
@@ -7251,7 +7267,6 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                 }
                 if (finalSave && !upload) {
                     wallpaper = wallpaperToSave;
-                    calcBackgroundColor(wallpaperToSave, 2);
                 }
             }
             if (!upload) {
@@ -7262,13 +7277,19 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     saveOtherThemes(true);
                     sortThemes();
                 }
+                final boolean loadMissingWallpaper;
+                synchronized (wallpaperLoadLock) {
+                    loadMissingWallpaper = currentTheme != themeInfo && getCachedWallpaperNonBlocking() == null;
                 currentTheme = themeInfo;
+                }
                 if (currentTheme != currentNightTheme) {
                     currentDayTheme = currentTheme;
                 }
                 if (useDefaultColors) {
                     currentColorsNoAccent.clear();
                     refreshThemeColors();
+                } else if (loadMissingWallpaper) {
+                    loadWallpaper(true);
                 }
                 SharedPreferences preferences = MessagesController.getGlobalMainSettings();
                 SharedPreferences.Editor editor = preferences.edit();
@@ -9838,7 +9859,7 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         if (bitmap != null) {
             themedWallpaper = new BitmapDrawable(bitmap);
             saveCurrentTheme(themeInfo, false, false, false);
-            calcBackgroundColor(themedWallpaper, 0);
+            setWallpaperServiceColors(AndroidUtilities.calcDrawableColor(themedWallpaper));
             applyChatServiceMessageColor();
             applyChatMessageSelectedBackgroundColor();
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
@@ -10028,6 +10049,10 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     public static void reloadWallpaper(boolean async) {
+        synchronized (wallpaperLoadLock) {
+            ++wallpaperLoadGeneration;
+            wallpaperLoadTask = null;
+            wallpaperLoadOwner = null;
         if (backgroundGradientDisposable != null) {
             backgroundGradientDisposable.dispose();
             backgroundGradientDisposable = null;
@@ -10039,15 +10064,13 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
         }
         wallpaper = null;
         themedWallpaper = null;
+        }
         loadWallpaper(async);
     }
 
-    private static void calcBackgroundColor(Drawable drawable, int save) {
-        if (save != 2) {
-            int[] result = AndroidUtilities.calcDrawableColor(drawable);
-            serviceMessageColor = serviceMessageColorBackup = result[0];
-            serviceSelectedMessageColor = serviceSelectedMessageColorBackup = result[1];
-        }
+    private static void setWallpaperServiceColors(int[] colors) {
+        serviceMessageColor = serviceMessageColorBackup = colors[0];
+        serviceSelectedMessageColor = serviceSelectedMessageColorBackup = colors[1];
     }
 
     public static int getServiceMessageColor() {
@@ -10060,13 +10083,23 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
     }
 
     public static void loadWallpaper(boolean async) {
-        if (wallpaper != null) {
+        final ThemeInfo theme = currentTheme;
+        final int generation;
+        synchronized (wallpaperLoadLock) {
+            if (theme == null) {
             return;
         }
-        boolean defaultTheme = currentTheme.firstAccentIsDefault && currentTheme.currentAccentId == DEFALT_THEME_ACCENT_ID;
+            if (wallpaper != null || (async && wallpaperLoadTask != null && wallpaperLoadOwner == theme)) {
+                return;
+            }
+            generation = ++wallpaperLoadGeneration;
+            wallpaperLoadTask = null;
+            wallpaperLoadOwner = null;
+        }
+        boolean defaultTheme = theme.firstAccentIsDefault && theme.currentAccentId == DEFALT_THEME_ACCENT_ID;
         File wallpaperFile;
         boolean wallpaperMotion;
-        ThemeAccent accent = currentTheme.getAccent(false);
+        ThemeAccent accent = theme.getAccent(false);
         TLRPC.Document wallpaperDocument = null;
         if (accent != null) {
             wallpaperFile = accent.getPathToWallpaper();
@@ -10083,63 +10116,87 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             wallpaperMotion = false;
         }
         int intensity;
-        OverrideWallpaperInfo overrideWallpaper = currentTheme.overrideWallpaper;
+        OverrideWallpaperInfo overrideWallpaper = theme.overrideWallpaper;
         if (overrideWallpaper != null) {
             intensity = (int) (overrideWallpaper.intensity * 100);
         } else {
-            intensity = (int) (accent != null ? (accent.patternIntensity * 100) : currentTheme.patternIntensity);
+            intensity = (int) (accent != null ? (accent.patternIntensity * 100) : theme.patternIntensity);
         }
 
         TLRPC.Document finalWallpaperDocument = wallpaperDocument;
+        final SparseIntArray colors = currentColors.clone();
+        final String wallpaperLink = themedWallpaperLink;
+        final int wallpaperFileOffset = themedWallpaperFileOffset, phase = previousPhase;
+        final boolean previewingTheme = hasPreviousTheme, applyingAccent = isApplyingAccent;
+        final Runnable load = () -> {
+            Drawable drawable = null;
+            try {
+                synchronized (wallpaperLoadLock) {
+                    if (generation != wallpaperLoadGeneration || currentTheme != theme) {
+                        return;
+                    }
+                }
+                BackgroundDrawableSettings settings = createBackgroundDrawable(theme, overrideWallpaper, colors,
+                        wallpaperFile, wallpaperLink, wallpaperFileOffset, intensity, phase, defaultTheme,
+                        previewingTheme, applyingAccent, wallpaperMotion, finalWallpaperDocument, true, true);
+                final Drawable result = settings.wallpaper;
+                final int[] serviceColors = AndroidUtilities.calcDrawableColor(result);
+                synchronized (wallpaperLoadLock) {
+                    if (generation != wallpaperLoadGeneration || currentTheme != theme) {
+                        return;
+                    }
+                    if (result instanceof BackgroundGradientDrawable) {
+                        startWallpaperDithering((BackgroundGradientDrawable) result);
+                    }
+                    isWallpaperMotion = settings.isWallpaperMotion != null ? settings.isWallpaperMotion : isWallpaperMotion;
+                    isPatternWallpaper = settings.isPatternWallpaper != null ? settings.isPatternWallpaper : isPatternWallpaper;
+                    isCustomTheme = settings.isCustomTheme != null ? settings.isCustomTheme : isCustomTheme;
+                    patternIntensity = intensity;
+                    setWallpaperServiceColors(serviceColors);
+                    wallpaper = drawable = result;
+                }
+            } finally {
+                final Drawable loaded = drawable;
         if (async) {
-            Utilities.themeQueue.postRunnable(wallpaperLoadTask = () -> {
-                Drawable drawable = loadWallpaperInternal(overrideWallpaper, wallpaperFile, intensity, wallpaperMotion, finalWallpaperDocument, defaultTheme);
-                AndroidUtilities.runOnUIThread(() -> {
+                    AndroidUtilities.runOnUIThread(() -> finishWallpaperLoad(theme, generation, loaded));
+                } else {
+                    finishWallpaperLoad(theme, generation, loaded);
+                }
+            }
+        };
+        if (async) {
+            synchronized (wallpaperLoadLock) {
+                if (generation != wallpaperLoadGeneration) {
+                    return;
+                }
+                wallpaperLoadTask = load;
+                wallpaperLoadOwner = theme;
+            }
+            if (!Utilities.themeQueue.postRunnable(load)) {
+                finishWallpaperLoad(theme, generation, null);
+            }
+        } else {
+            load.run();
+        }
+    }
+
+    private static void finishWallpaperLoad(ThemeInfo theme, int generation, Drawable drawable) {
+        synchronized (wallpaperLoadLock) {
+            if (generation != wallpaperLoadGeneration) {
+                return;
+            }
                     wallpaperLoadTask = null;
+            wallpaperLoadOwner = null;
+            if (currentTheme != theme || drawable == null) {
+                return;
+            }
+        }
                     createCommonChatResources();
                     if (!disallowChangeServiceMessageColor) {
                         applyChatServiceMessageColor(null, null, drawable);
                         applyChatMessageSelectedBackgroundColor(null, drawable);
                     }
                     NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
-                });
-            });
-        } else {
-            Drawable drawable = loadWallpaperInternal(overrideWallpaper, wallpaperFile, intensity, wallpaperMotion, finalWallpaperDocument, defaultTheme);
-            createCommonChatResources();
-            if (!disallowChangeServiceMessageColor) {
-                applyChatServiceMessageColor(null, null, drawable);
-                applyChatMessageSelectedBackgroundColor(null, drawable);
-            }
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
-        }
-    }
-
-    private static Drawable loadWallpaperInternal(OverrideWallpaperInfo overrideWallpaper, File wallpaperFile, int intensity, boolean wallpaperMotion, TLRPC.Document finalWallpaperDocument, boolean defaultTheme) {
-        BackgroundDrawableSettings settings = createBackgroundDrawable(
-                currentTheme,
-                overrideWallpaper,
-                currentColors,
-                wallpaperFile,
-                themedWallpaperLink,
-                themedWallpaperFileOffset,
-                intensity,
-                previousPhase,
-                defaultTheme,
-                hasPreviousTheme,
-                isApplyingAccent,
-                wallpaperMotion,
-                finalWallpaperDocument,
-                false
-        );
-        isWallpaperMotion = settings.isWallpaperMotion != null ? settings.isWallpaperMotion : isWallpaperMotion;
-        isPatternWallpaper = settings.isPatternWallpaper != null ? settings.isPatternWallpaper : isPatternWallpaper;
-        isCustomTheme = settings.isCustomTheme != null ? settings.isCustomTheme : isCustomTheme;
-        patternIntensity = intensity;
-        wallpaper = settings.wallpaper != null ? settings.wallpaper : wallpaper;
-        Drawable drawable = settings.wallpaper;
-        calcBackgroundColor(drawable, 1);
-        return drawable;
     }
 
 
@@ -10178,6 +10235,41 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
             boolean wallpaperMotion,
             TLRPC.Document wallpaperDocument,
             boolean local
+    ) {
+        return createBackgroundDrawable(currentTheme, overrideWallpaper, currentColors, wallpaperFile, themedWallpaperLink,
+                themedWallpaperFileOffset, intensity, previousPhase, defaultTheme, hasPreviousTheme, isApplyingAccent,
+                wallpaperMotion, wallpaperDocument, local, false);
+    }
+
+    private static void startWallpaperDithering(BackgroundGradientDrawable drawable) {
+        backgroundGradientDisposable = drawable.startDithering(BackgroundGradientDrawable.Sizes.ofDeviceScreen(),
+                new BackgroundGradientDrawable.ListenerAdapter() {
+                    @Override
+                    public void onSizeReady(int width, int height) {
+                        final boolean isOrientationPortrait = AndroidUtilities.displaySize.x <= AndroidUtilities.displaySize.y;
+                        if (isOrientationPortrait == (width <= height)) {
+                            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
+                        }
+                    }
+                }, 100);
+    }
+
+    private static BackgroundDrawableSettings createBackgroundDrawable(
+            ThemeInfo currentTheme,
+            OverrideWallpaperInfo overrideWallpaper,
+            SparseIntArray currentColors,
+            File wallpaperFile,
+            String themedWallpaperLink,
+            int themedWallpaperFileOffset,
+            int intensity,
+            int previousPhase,
+            boolean defaultTheme,
+            boolean hasPreviousTheme,
+            boolean isApplyingAccent,
+            boolean wallpaperMotion,
+            TLRPC.Document wallpaperDocument,
+            boolean local,
+            boolean deferWallpaperEffects
     ) {
         BackgroundDrawableSettings settings = new BackgroundDrawableSettings();
         settings.wallpaper = local ? null : wallpaper;
@@ -10269,17 +10361,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     final int[] colors = {backgroundColor, gradientToColor1};
                     final BackgroundGradientDrawable.Orientation orientation = BackgroundGradientDrawable.getGradientOrientation(rotation);
                     final BackgroundGradientDrawable backgroundGradientDrawable = new BackgroundGradientDrawable(orientation, colors);
-                    final BackgroundGradientDrawable.Listener listener = new BackgroundGradientDrawable.ListenerAdapter() {
-                        @Override
-                        public void onSizeReady(int width, int height) {
-                            final boolean isOrientationPortrait = AndroidUtilities.displaySize.x <= AndroidUtilities.displaySize.y;
-                            final boolean isGradientPortrait = width <= height;
-                            if (isOrientationPortrait == isGradientPortrait) {
-                                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
-                            }
-                        }
-                    };
-                    backgroundGradientDisposable = backgroundGradientDrawable.startDithering(BackgroundGradientDrawable.Sizes.ofDeviceScreen(), listener, 100);
+                    if (!deferWallpaperEffects) {
+                        startWallpaperDithering(backgroundGradientDrawable);
+                    }
                     settings.wallpaper = backgroundGradientDrawable;
                 }
                 settings.isCustomTheme = true;
@@ -10305,8 +10389,11 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                     }
                     Bitmap bitmap = loadScreenSizedBitmap(new FileInputStream(file), themedWallpaperFileOffset);
                     if (bitmap != null) {
-                        settings.wallpaper = settings.themedWallpaper = wallpaper = new BitmapDrawable(bitmap);
-                        wallpaper.setFilterBitmap(true);
+                        settings.wallpaper = settings.themedWallpaper = new BitmapDrawable(bitmap);
+                        settings.wallpaper.setFilterBitmap(true);
+                        if (!deferWallpaperEffects) {
+                            wallpaper = settings.wallpaper;
+                        }
                         settings.isCustomTheme = true;
                     }
                 } catch (Throwable e) {
@@ -10347,17 +10434,9 @@ public class Theme extends com.exteragram.messenger.utils.ui.LegacyThemeFields {
                             final int[] colors = {selectedColor, overrideWallpaper.gradientColor1};
                             final BackgroundGradientDrawable.Orientation orientation = BackgroundGradientDrawable.getGradientOrientation(overrideWallpaper.rotation);
                             final BackgroundGradientDrawable backgroundGradientDrawable = new BackgroundGradientDrawable(orientation, colors);
-                            final BackgroundGradientDrawable.Listener listener = new BackgroundGradientDrawable.ListenerAdapter() {
-                                @Override
-                                public void onSizeReady(int width, int height) {
-                                    final boolean isOrientationPortrait = AndroidUtilities.displaySize.x <= AndroidUtilities.displaySize.y;
-                                    final boolean isGradientPortrait = width <= height;
-                                    if (isOrientationPortrait == isGradientPortrait) {
-                                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetNewWallpapper);
-                                    }
-                                }
-                            };
-                            backgroundGradientDisposable = backgroundGradientDrawable.startDithering(BackgroundGradientDrawable.Sizes.ofDeviceScreen(), listener, 100);
+                            if (!deferWallpaperEffects) {
+                                startWallpaperDithering(backgroundGradientDrawable);
+                            }
                             settings.wallpaper = backgroundGradientDrawable;
                         } else {
                             settings.wallpaper = new ColorDrawable(selectedColor);

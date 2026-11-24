@@ -9,7 +9,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.text.TextPaint;
-import android.text.style.ReplacementSpan;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -20,7 +19,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.ui.ActionBar.Theme;
 
-public class ColoredImageSpan extends ReplacementSpan {
+public class ColoredImageSpan extends ColoredImageSpanCompat {
 
     public boolean draw = true;
     int drawableColor;
@@ -211,6 +210,10 @@ public class ColoredImageSpan extends ReplacementSpan {
         return this;
     }
 
+    @Override
+    protected final void applyLegacyOverrideColor(int color) {
+        setOverrideColor(color);
+    }
     public void setAlpha(float v) {
         this.alpha = v;
     }
